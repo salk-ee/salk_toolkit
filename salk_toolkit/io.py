@@ -17,6 +17,7 @@ from typing import List, Tuple, Dict, Union, Optional
 
 import pyarrow as pa
 import pyarrow.parquet as pq
+import pyreadstat
 
 import salk_toolkit as stk
 from salk_toolkit.utils import replace_constants
@@ -38,11 +39,15 @@ def read_annotated_data(meta_fname=None, multilevel=False, meta=None, data_file=
     if not data_file:
         data_file = os.path.join(os.path.dirname(meta_fname),meta['file'])
     opts = meta['read_opts'] if'read_opts' in meta else {}
-    raw_data = pd.read_csv(data_file, **opts)
+    
+    if data_file[-3:] == 'csv':
+        raw_data = pd.read_csv(data_file, **opts)
+    elif data_file[-3:] == 'sav':
+        raw_data, _ = pyreadstat.read_sav(data_file, **{ 'apply_value_formats':True, 'dates_as_pandas_datetime':True },**opts)
+    elif data_file[-7:] == 'parquet':
+        raw_data = pd.read_parquet(data_file, **opts)
     
     res = []
-    
-
     
     if 'preprocessing' in meta:
         exec(meta['preprocessing'],{'pd':pd, 'np':np },{ 'df':raw_data })
