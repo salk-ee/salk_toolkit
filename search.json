@@ -1,0 +1,37 @@
+[
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "salk_toolkit",
+    "section": "",
+    "text": "This file will become your README and also the index of your documentation."
+  },
+  {
+    "objectID": "index.html#install",
+    "href": "index.html#install",
+    "title": "salk_toolkit",
+    "section": "Install",
+    "text": "Install\npip install salk_toolkit"
+  },
+  {
+    "objectID": "index.html#how-to-use",
+    "href": "index.html#how-to-use",
+    "title": "salk_toolkit",
+    "section": "How to use",
+    "text": "How to use\nFill me in please! Don’t forget code examples:\n\n1+1\n\n2"
+  },
+  {
+    "objectID": "io.html",
+    "href": "io.html",
+    "title": "I/O",
+    "section": "",
+    "text": "source\n\nread_annotated_data\n\n read_annotated_data (meta_fname=None, multilevel=False, meta=None,\n                      data_file=None, return_meta=False)\n\n\nsource\n\n\nread_and_process_data\n\n read_and_process_data (desc, return_meta=False)\n\n\ndataf_meta = {\n    'file': '../data/master_meta.json',\n    'preprocessing': \"df.age_group.replace({'16-24':'18-24'}, inplace=True)\",\n    'filter': '(df.citizen) & (df.age&gt;=18) & (df.wave&lt;5)',\n}\n\ndf = read_and_process_data(dataf_meta)\nassert len(df) == 4355\n\n/tmp/ipykernel_430929/428843233.py:21: DtypeWarning: Columns (42) have mixed types. Specify dtype option on import or set low_memory=False.\n  raw_data = pd.read_csv(data_file, **opts)\n\n\n\nsource\n\n\nload_population_h5\n\n load_population_h5 (fname)\n\n\nsource\n\n\nsave_population_h5\n\n save_population_h5 (fname, pdf)\n\n\nsource\n\n\nsave_sample_h5\n\n save_sample_h5 (fname, trace, COORDS=None, filter_df=None)\n\n\nsource\n\n\nload_parquet_with_metadata\n\n load_parquet_with_metadata (file_name)\n\n\nsource\n\n\nsave_parquet_with_metadata\n\n save_parquet_with_metadata (df, meta, file_name)\n\n\n# Test saving and loading parquet with metadata\ndf = pd.DataFrame([[1,2],[3,4]],columns=['x','y'])\nmeta = { 'test': [1,{'x':2},[3]] }\n\nsave_parquet_with_metadata(df,meta,'test.parquet')\nndf, nmeta = load_parquet_with_metadata('test.parquet')\n\nassert nmeta == meta\nassert ndf.equals(df)\n\n\n# This is how you can add tests\n#assert False"
+  },
+  {
+    "objectID": "utils.html",
+    "href": "utils.html",
+    "title": "Utils",
+    "section": "",
+    "text": "source\n\nfactorize_w_codes\n\n factorize_w_codes (s, codes)\n\n\nsource\n\n\nbatch\n\n batch (iterable, n=1)\n\n\nsource\n\n\nloc2iloc\n\n loc2iloc (index, vals)\n\n\nsource\n\n\nreplace_constants\n\n replace_constants (d, constants={})\n\n\n# Test replace_constants\nd = {\n    'constants': { 'a': {'a':1}, 'b':['b'] },\n    'test1': 'a',\n    'test2': [1,'b'],\n    'test3': { 'xy': 'a' },\n    'test4': { 'xy': [2, 'b'] },\n    'test5': { 'constants': {'a': ['a'] }, 'x':'a' },\n    'test6': 'a'\n}\nreplace_constants(d)\nassert d == {'test1': {'a': 1}, 'test2': [1, ['b']], 'test3': {'xy': {'a': 1}}, 'test4': {'xy': [2, ['b']]}, 'test5': {'x': ['a']}, 'test6': {'a': 1}}\n\n\nsource\n\n\nindex_encoder\n\n index_encoder (z)"
+  }
+]
