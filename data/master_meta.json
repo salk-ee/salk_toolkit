@@ -44,12 +44,18 @@
             "Other": "lightgrey"
         }
     },
-    "structure": [{
-        "name": "meta",
+    "structure": [
+    {
+        "name": "internals",
         "columns": [
             ["wave", "laine"],
             ["t", "laine", { "transform": "s.replace(dict(((df.groupby('laine')['date'].apply(lambda s: pd.to_datetime(s).median() ) - pd.to_datetime('2023-03-05')).dt.days/30).items()))"    }],
-            ["date", { "transform": "pd.to_datetime(s)" }],
+            ["date", { "transform": "pd.to_datetime(s)" }]
+        ],
+        "hidden": true
+    }, {
+        "name": "survey",
+        "columns": [
             ["methods", { "categories": "infer" , "translate": {"WISE": "Cati"} }]
         ]
     }, {
@@ -63,11 +69,13 @@
             }],
             ["gender", {
                 "categories": ["Male", "Female"],
-                "translate": {    "Mees": "Male",    "Naine": "Female" }
+                "translate": {    "Mees": "Male",    "Naine": "Female" },
+                "colors": { "Male": "blue", "Female": "red" }
             }],
             ["nationality", "T3c", {
                 "categories": ["Estonian", "Other"],
-                "translate": { "Eestlane": "Estonian", "Muu": "Other", "Venelane": "Other" }
+                "translate": { "Eestlane": "Estonian", "Muu": "Other", "Venelane": "Other" },
+                "colors": { "Estonian": "blue", "Other": "grey" }
             }],
             ["electoral_district", "T6", { "categories": "infer", "translate": "districts" }],
             ["unit", "T6", { "categories": "infer", "translate": { "Harjumaa (välja arvatud Tallinn)": "Harjumaa" }    }],
@@ -77,7 +85,8 @@
         "name": "wedge",
         "scale": {
             "categories": ["Totally disagree", "Rather disagree", "Hard to say", "Rather agree", "Totally agree"],    "ordered": true,
-            "translate": { "Ei oska öelda": "Hard to say", "Täiesti nõus": "Totally agree", "Üldse ei nõustu": "Totally disagree", "Pigem nõus": "Rather agree", "Pigem ei ole nõus": "Rather disagree" }
+            "translate": { "Ei oska öelda": "Hard to say", "Täiesti nõus": "Totally agree", "Üldse ei nõustu": "Totally disagree", "Pigem nõus": "Rather agree", "Pigem ei ole nõus": "Rather disagree" },
+            "likert": true
         },
         "columns": [
             ["e-valimised", "Q1r1"],
@@ -99,7 +108,8 @@
         "name": "trust",
         "scale": {
             "categories": ["Don't trust at all", "Rather not trust", "Hard to say", "Rather trust", "Trust completely"], "ordered": true,
-            "translate": { "Ei oska öelda": "Hard to say", "Pigem ei usalda": "Rather not trust", "Usaldan täiesti": "Trust completely", "Pigem usaldan": "Rather trust", "Üldse ei usalda": "Don't trust at all" }
+            "translate": { "Ei oska öelda": "Hard to say", "Pigem ei usalda": "Rather not trust", "Usaldan täiesti": "Trust completely", "Pigem usaldan": "Rather trust", "Üldse ei usalda": "Don't trust at all" },
+            "likert": true
         },
         "columns": [
             ["valitsus", "Q3r1"],
@@ -110,8 +120,8 @@
         "name": "voting_behavior",
         "columns": [
             ["party_preference", "Q4r1", {
-                "categories": "infer",
-                "translate": { "Eesti Keskerakond": "Keskerakond", "Eesti Reformierakond": "Reformierakond", "Eesti Konservatiivne Rahvaerakond (EKRE)": "EKRE", "ISAMAA Erakond": "Isamaa", "Erakond Eesti 200": "Eesti 200", "Sotsiaaldemokraatlik Erakond": "SDE", "Erakond Eestimaa Rohelised": "Rohelised", "Erakond Parempoolsed": "Parempoolsed", "Mitte ükski erakond": "No party", "Ei oska öelda": "Hard to say" },
+                "categories": ["Keskerakond", "EKRE", "Reformierakond", "Isamaa", "SDE", "Rohelised", "Eesti 200", "Parempoolsed", "Other", "No party", "Hard to say"],
+                "translate": { "Eesti Keskerakond": "Keskerakond", "Eesti Reformierakond": "Reformierakond", "Eesti Konservatiivne Rahvaerakond (EKRE)": "EKRE", "ISAMAA Erakond": "Isamaa", "Erakond Eesti 200": "Eesti 200", "Sotsiaaldemokraatlik Erakond": "SDE", "Erakond Eestimaa Rohelised": "Rohelised", "Erakond Parempoolsed": "Parempoolsed", "Mitte ükski erakond": "No party", "Ei oska öelda": "Hard to say", "Muu": "Other" },
                 "colors": "party_colors"
             }],
             ["voting_intent", "Q5", {
@@ -121,8 +131,8 @@
         ]
     }, {
         "name": "compass",
-        "columns": ["Keskerakond", "EKRE", "Reformierakond", "Isamaa", "SDE", "Rohelised", "Eesti 200", "Parempoolsed"],
-        "colors": "party_colors"
+        "scale": { "continuous": true, "question_colors": "party_colors" },
+        "columns": ["Keskerakond", "EKRE", "Reformierakond", "Isamaa", "SDE", "Rohelised", "Eesti 200", "Parempoolsed"]
     }, {
         "name": "extras",
         "columns": [
