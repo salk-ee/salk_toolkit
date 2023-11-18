@@ -84,9 +84,8 @@
     }, {
         "name": "wedge",
         "scale": {
-            "categories": ["Totally disagree", "Rather disagree", "Hard to say", "Rather agree", "Totally agree"],    "ordered": true,
-            "translate": { "Ei oska öelda": "Hard to say", "Täiesti nõus": "Totally agree", "Üldse ei nõustu": "Totally disagree", "Pigem nõus": "Rather agree", "Pigem ei ole nõus": "Rather disagree" },
-            "likert": true
+            "categories": ["Strongly disagree", "Disagree", "Neither agree nor disagree", "Agree", "Strongly agree"], "ordered": true, "likert": true,
+            "translate": { "Ei oska öelda": "Neither agree nor disagree", "Täiesti nõus": "Strongly agree", "Üldse ei nõustu": "Strongly disagree", "Pigem nõus": "Agree", "Pigem ei ole nõus": "Disagree" }
         },
         "columns": [
             ["e-valimised", "Q1r1"],
@@ -99,7 +98,7 @@
             ["kooselu", "Q1r10"],
             ["abort", "Q1r12"],
             ["sõnavabadus", "Q1r13"],
-            ["jõukamad", "Q1r14"],
+            ["maksud", "Q1r14"],
             ["koroonapiirangud", "Q1r15"],
             ["NATO", "Q1r16"],
             ["usaldus", "Q1r17"]

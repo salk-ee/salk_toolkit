@@ -27,7 +27,7 @@ with st.spinner("Loading libraries.."):
 
     from pandas.api.types import is_numeric_dtype
 
-    from salk_toolkit.io import load_parquet_with_metadata
+    from salk_toolkit.io import load_parquet_with_metadata, read_json
     from salk_toolkit.pp import *
     from salk_toolkit.plots import matching_plots
 
@@ -40,14 +40,11 @@ warnings.filterwarnings(action='ignore', category=pd.errors.PerformanceWarning)
 global_data_metafile = './data/master_meta.json'
 
 if global_data_metafile:
-    from salk_toolkit.utils import replace_constants
-    with open(global_data_metafile,'r') as gdmf:
-        global_data_meta = json.load(gdmf)
-        replace_constants(global_data_meta)
-
+    global_data_meta = read_json(global_data_metafile,replace_const=True)
 
 #info.info("Libraries loaded.")
-path = '../salk_internal_package/samples/'
+#path = '../salk_internal_package/samples/'
+path = './samples/'
 
 input_file_choices = [ f for f in os.listdir(path) if f[-8:]=='.parquet' ]
 
@@ -100,7 +97,6 @@ with st.sidebar: #.expander("Select dimensions"):
 
     obs_dims = get_dimensions(data_meta,True,first_data.columns)
     all_dims = get_dimensions(data_meta,False,first_data.columns)
-    filter_vals = { col: list(first_data[col].unique()) for col in all_dims if col in first_data.columns }
 
     obs_name = st.selectbox('Observation', obs_dims)
     args['res_col'] = obs_name
@@ -116,17 +112,46 @@ with st.sidebar: #.expander("Select dimensions"):
         second_dim = st.sidebar.selectbox('Facet 2:', ['None'] + all_dims)
         if second_dim != 'None':  args['factor_cols'] = [facet_dim, second_dim]
 
-    args['plot_args'] = { 'internal_facet': st.checkbox('Internal facet?',False) }
+    args['plot_args'] = { 'internal_facet': st.checkbox('Internal facet?',True) }
 
     args['plot'] = st.selectbox('Plot type',matching_plots(args, first_data, data_meta))
 
     with st.sidebar.expander('Filters'):
-        filters = {
-            col: st.selectbox(col, ['All'] + filter_vals[col])
-            for col in all_dims if col in filter_vals
-        }
+        filter_vals = { col: list(first_data[col].unique()) for col in all_dims if col in first_data.columns }
+        filters = {}
+
+        for cn in all_dims:
+            col = first_data[cn]
+            if col.dtype.name=='category' and not col.dtype.ordered:
+                filters[cn] = st.selectbox(cn, ['All'] + list(col.dtype.categories))
+            elif col.dtype.name=='category':
+                cats = col.dtype.categories
+                filters[cn] = st.select_slider(cn,cats,value=(cats[0],cats[-1]))
+            elif col.dtype!='bool':
+                mima = (col.min(),col.max())
+                filters[cn] = st.slider(cn,*mima,value=mima)
 
         args['filter'] = { k:v for k,v in filters.items() if v != 'All'}
+
+        #print(args['filter'])
+
+
+    x='''
+    gcols = group_columns_dict(data_meta)
+    for g in data_meta['structure']:
+        with st.sidebar.expander(g['name']):
+            for cn in gcols[g['name']]:
+                if cn not in all_dims: continue
+                col = first_data[cn]
+                if col.dtype.name=='category' and not col.dtype.ordered:
+                    filters[cn] = st.selectbox(cn, ['All'] + list(col.dtype.categories))
+                elif col.dtype.name=='category':
+                    cats = col.dtype.categories
+                    filters[cn] = st.select_slider(cn,cats,value=(cats[0],cats[-1]))
+                elif col.dtype!='bool':
+                    mima = (col.min(),col.max())
+                    filters[cn] = st.slider(cn,*mima,value=mima)
+    '''
 
 
 #left, middle, right = st.columns([2, 5, 2])
@@ -174,6 +199,13 @@ else:
         cols[i].altair_chart(plot,
             use_container_width=(len(input_files)>1)
             )
+
+        with st.expander('Data Meta'):
+            st.json(loaded[ifile]['data_meta'])
+
+        with st.expander('Model Meta'):
+            st.json(loaded[ifile]['model_meta'])
+
 
 st.markdown("""***""")
 st.caption('Andmed & teostus: **SALK 2023**')

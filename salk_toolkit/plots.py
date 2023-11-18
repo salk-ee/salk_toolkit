@@ -2,8 +2,9 @@
 
 # %% auto 0
 __all__ = ['registry', 'registry_meta', 'priority_weights', 'register', 'get_plot_fn', 'get_plot_meta', 'calculate_priority',
-           'matching_plots', 'boxplots', 'boxplots_cont', 'make_start_end', 'likert_bars', 'density', 'matrix', 'lines',
-           'likert_smooth', 'likert_aggregate', 'likert_rad_pol']
+           'matching_plots', 'boxplots', 'boxplots_cont', 'columns', 'columns_cont', 'diff_columns',
+           'diff_columns_cont', 'make_start_end', 'likert_bars', 'density', 'matrix', 'lines', 'likert_smooth',
+           'likert_aggregate', 'likert_rad_pol']
 
 # %% ../nbs/03_plots.ipynb 3
 import json, os
@@ -58,7 +59,8 @@ priority_weights = {
     'draws': [0,50],
     'question': [0, 100],
     'ordered': [-10000,100],
-    'ordered_factor':[-10000,100]
+    'ordered_factor':[-10000,100],
+    'requires_factor':[-10000,0]
 }
 
 def calculate_priority(plot_meta, match):
@@ -76,7 +78,8 @@ def matching_plots(args, df, data_meta):
         'question': (rc not in df.columns),
         'continuous': vod(col_meta[rc],'continuous'),
         'ordered': vod(col_meta[rc],'ordered'),
-        'ordered_factor': (vod(args,'factor_cols',[])!=[]) and vod(col_meta[args['factor_cols'][0]],'ordered') and vod(vod(args,'plot_args',{}),'internal_facet'),
+        'ordered_factor': (vod(args,'factor_cols',[])==[]) or not vod(vod(args,'plot_args',{}),'internal_facet') or vod(col_meta[args['factor_cols'][0]],'ordered'),
+        'requires_factor': (vod(args,'factor_cols',[])!=[]) and vod(vod(args,'plot_args',{}),'internal_facet')
     }
     
     res = [ ( pn, calculate_priority(get_plot_meta(pn),match) ) for pn in registry.keys() ]
@@ -86,22 +89,53 @@ def matching_plots(args, df, data_meta):
 
 # %% ../nbs/03_plots.ipynb 14
 @register('boxplots', data_format='longform', draws=True)
-def boxplots(data, cat_col, value_col='value', color_scale=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined):
-    cat_order = list(data[cat_col].dtype.categories)
-    
+def boxplots(data, cat_col, value_col='value', color_scale=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined,x_format='%'):
     plot = alt.Chart(round(data, 3), width = 'container' \
     ).mark_boxplot(
         clip=True,
         #extent='min-max',
         outliers=False
     ).encode(
-        y=alt.Y(f'{cat_col}:N', title=None, sort=cat_order),
+        y=alt.Y(f'{cat_col}:N', title=None, sort=list(data[cat_col].dtype.categories)),
         x=alt.X(
             f'{value_col}:Q',
             title=value_col,
-            #axis=alt.Axis(format='%'),
+            axis=alt.Axis(format=x_format)
+            ),
+        tooltip = [
+            cat_col,
+            alt.Tooltip(f'{value_col}:N',format=x_format)
+        ],
+        **({
+                'color': alt.Color(f'{cat_col}:N', scale=color_scale, legend=None)    
+            } if not factor_col else {
+                'yOffset':alt.YOffset(f'{factor_col}:N', title=None, sort=list(data[factor_col].dtype.categories)), 
+                'color': alt.Color(f'{factor_col}:N', scale=factor_color_scale, legend=alt.Legend(orient='top'))
+            }),
+    )
+    return plot
+
+# Version for continous that just replaces 'question' for cat_col
+@register('boxplots-cont', data_format='longform', draws=True, continuous=True, question=True)
+def boxplots_cont(data, value_col='value', question_color_scale=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined):
+    return boxplots(data, cat_col='question', value_col=value_col, color_scale=question_color_scale, factor_col=factor_col, factor_color_scale=factor_color_scale,x_format='.1f')
+
+# %% ../nbs/03_plots.ipynb 16
+@register('columns', data_format='longform', draws=False)
+def columns(data, cat_col, value_col='value', color_scale=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, x_format='%'):
+    plot = alt.Chart(round(data, 3), width = 'container' \
+    ).mark_bar().encode(
+        y=alt.Y(f'{cat_col}:N', title=None, sort=list(data[cat_col].dtype.categories)),
+        x=alt.X(
+            f'{value_col}:Q',
+            title=value_col,
+            axis=alt.Axis(format=x_format),
             #scale=alt.Scale(domain=[0,30]) #see lõikab mõnedes jaotustes parema ääre ära
             ),
+        tooltip = [
+            cat_col,
+            alt.Tooltip(f'{value_col}:N',format=x_format)
+        ],
         
         #tooltip=[
         #    'response:N',
@@ -117,15 +151,49 @@ def boxplots(data, cat_col, value_col='value', color_scale=alt.Undefined, factor
     return plot
 
 # Version for continous that just replaces 'question' for cat_col
-@register('boxplots-cont', data_format='longform', draws=True, continuous=True, question=True)
-def boxplots_cont(data, value_col='value', question_color_scale=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined):
-    return boxplots(data, cat_col='question', value_col=value_col, color_scale=question_color_scale, factor_col=factor_col, factor_color_scale=factor_color_scale)
+@register('columns-cont', data_format='longform', draws=False, continuous=True, question=True)
+def columns_cont(data, value_col='value', question_color_scale=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined):
+    return columns(data, cat_col='question', value_col=value_col, color_scale=question_color_scale, factor_col=factor_col, factor_color_scale=factor_color_scale,x_format='.1f')
 
-# %% ../nbs/03_plots.ipynb 16
+# %% ../nbs/03_plots.ipynb 18
+@register('diff_columns', data_format='longform', draws=False, requires_factor=True)
+def diff_columns(data, cat_col, value_col='value', color_scale=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, x_format='%'):
+    
+    ind_cols = list(set(data.columns)-{value_col,factor_col})
+    factors = data[factor_col].unique() # use unique instead of categories to allow filters to select the two that remain
+    
+    idf = data.set_index(ind_cols)
+    diff = (idf[idf[factor_col]==factors[1]][value_col]-idf[idf[factor_col]==factors[0]][value_col]).reset_index()
+    
+    plot = alt.Chart(round(diff, 3), width = 'container' \
+    ).mark_bar().encode(
+        y=alt.Y(f'{cat_col}:N', title=None, sort=list(data[cat_col].dtype.categories)),
+        x=alt.X(
+            f'{value_col}:Q',
+            title=f"{factors[1]} - {factors[0]}",
+            axis=alt.Axis(format=x_format),
+            #scale=alt.Scale(domain=[0,30]) #see lõikab mõnedes jaotustes parema ääre ära
+            ),
+        
+        tooltip=[
+            cat_col,
+            alt.Tooltip(f'{value_col}:N',format=x_format, title=f'{value_col} difference')
+            ],
+        color=alt.Color(f'{cat_col}:N', scale=color_scale, legend=None)    
+    )
+    return plot
+
+# Version for continous that just replaces 'question' for cat_col
+@register('diff_columns-cont', data_format='longform', draws=False, continuous=True, question=True)
+def diff_columns_cont(data, value_col='value', question_color_scale=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined):
+    return diff_columns(data, cat_col='question', value_col=value_col, color_scale=question_color_scale, factor_col=factor_col, factor_color_scale=factor_color_scale,x_format='.1f')
+
+# %% ../nbs/03_plots.ipynb 20
 # Make the likert bar pieces
 def make_start_end(x,value_col):
     #print("######################")
     #print(x)
+    if len(x)!=5: return 
     scale_start=1
     x_mid = x.iloc[2:3,:]
     x_mid.loc[:,'end'] = -scale_start+x_mid[value_col]
@@ -154,13 +222,13 @@ def likert_bars(data, cat_col, value_col='value', color_scale=alt.Undefined, fac
                     title='Response',
                     orient='bottom',
                     ),
-                scale=alt.Scale(domain=options_cols, range=["#c30d24", "#f3a583", "#cccccc", "#94c6da", "#1770ab", ]),
+                scale=alt.Scale(domain=options_cols, range=["#c30d24", "#f3a583", "#cccccc", "#94c6da", "#1770ab"]),
             ),
             **({ 'yOffset':alt.YOffset(f'{factor_col}:N', title=None, sort=list(data[factor_col].dtype.categories))} if factor_col else {})
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 18
+# %% ../nbs/03_plots.ipynb 22
 @register('density', data_format='raw', continuous=True, sample=100, factor_columns=3)
 def density(data, value_col='value',factor_col=None, factor_color_scale=alt.Undefined):
     gb_cols = list(set(data.columns)-{ value_col }) # Assume we groupby over everything except value
@@ -178,8 +246,8 @@ def density(data, value_col='value',factor_col=None, factor_color_scale=alt.Unde
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 20
-@register('matrix', data_format='longform', continuous=True, question=True)
+# %% ../nbs/03_plots.ipynb 24
+@register('matrix', data_format='longform', continuous=True, question=True, requires_factor=True)
 def matrix(data, value_col='value',factor_col=None, factor_color_scale=alt.Undefined):
     
     base = alt.Chart(data).mark_rect().encode(
@@ -205,8 +273,8 @@ def matrix(data, value_col='value',factor_col=None, factor_color_scale=alt.Undef
     
     return base+text
 
-# %% ../nbs/03_plots.ipynb 22
-@register('lines',data_format='longform', question=False, draws=False, ordered_factor=True)
+# %% ../nbs/03_plots.ipynb 26
+@register('lines',data_format='longform', question=False, draws=False, ordered_factor=True, requires_factor=True)
 def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, factor_col=None, smooth=False):
     if smooth:
         smoothing = 'basis'
@@ -227,11 +295,12 @@ def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, factor_co
     return plot
 
 
-# %% ../nbs/03_plots.ipynb 24
-@register('likert_smooth',data_format='longform', question=False, draws=False, likert=True, ordered_factor=True)
-def likert_smooth(data, cat_col, value_col='value', factor_col=None):
+# %% ../nbs/03_plots.ipynb 28
+@register('likert_smooth',data_format='longform', question=False, draws=False, ordered=True, ordered_factor=True, requires_factor=True)
+def likert_smooth(data, cat_col, value_col='value', color_scale=alt.Undefined, factor_col=None):
     options_cols = list(data[cat_col].dtype.categories)
     ldict = dict(zip(options_cols, range(len(options_cols))))
+    data.loc[:,'order'] = data[cat_col].replace(ldict)
     plot=alt.Chart(data
         ).mark_area(interpolate='natural').encode(
             x=alt.X(f'{factor_col}:O', title=None),
@@ -240,14 +309,14 @@ def likert_smooth(data, cat_col, value_col='value', factor_col=None):
                  ),
             order="order:O",
             color=alt.Color(cat_col, legend=alt.Legend(orient='right', title=None),
-                sort=alt.SortField("order", "descending"), scale=alt.Scale(domain=options_cols, range=["#c30d24", "#f3a583", "#cccccc", "#94c6da", "#1770ab", ])
+                sort=alt.SortField("order", "descending"), scale=color_scale
                 ),
             #tooltip=[alt.Tooltip(teema, title='vastus'), 'laine',
             #    alt.Tooltip('pct:Q', title='osakaal', format='.1%')]
-        ).transform_calculate(order=f"{ldict}[datum.{cat_col}]") # TODO: cat_col needs rename to be robust to weird column names
+        )
     return plot
 
-# %% ../nbs/03_plots.ipynb 26
+# %% ../nbs/03_plots.ipynb 30
 def likert_aggregate(x, cat_col, value_col):
     
     cc, vc = x[cat_col], x[value_col]
@@ -266,7 +335,7 @@ def likert_aggregate(x, cat_col, value_col):
 
     return pd.Series({ 'polarisation': pol, 'radicalisation':rad, 'relevance':rel})
 
-@register('likert_rad_pol',data_format='longform', question=False, draws=False, likert=True)
+@register('likert_rad_pol',data_format='longform', question=False, draws=False, likert=True, requires_factor=True)
 def likert_rad_pol(data, cat_col, value_col='value', factor_col=None, factor_color_scale=alt.Undefined):
     gb_cols = list(set(data.columns)-{ cat_col, value_col }) # Assume all other cols still in data will be used for factoring
     options_cols = list(data[cat_col].dtype.categories) # Get likert scale names

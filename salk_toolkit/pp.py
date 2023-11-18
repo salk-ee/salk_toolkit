@@ -58,22 +58,34 @@ def get_filtered_data(full_df, data_meta, columns=None, **kwargs):
     
     # If any aliases are used, cconvert them to column names according to the data_meta
     gc_dict = group_columns_dict(data_meta)
-    cols = [ c for c in list_aliases(cols,gc_dict) if c in full_df.columns ]
+    cols = [ c for c in np.unique(list_aliases(cols,gc_dict)) if c in full_df.columns ]
+    
+    #print("C",cols)
     
     df = full_df[cols]
+    
+    # Filter using demographics dict. This is very clever but hard to read. See:
+    filter_dict = vod(kwargs,'filter',{})
+    inds = np.full(len(df),True)
+    for k, v in filter_dict.items():
+        if isinstance(v,tuple): # Tuples specify a range
+            inds = (((df[k]>=v[0]) & (df[k]<=v[1])) | df[k].isna()) & inds
+        elif isinstance(v,list): # List indicates a set of values
+            inds = df[k].isin(v) & inds
+        else: # Just filter on single value
+            inds = (df[k]==v) & inds
+        #if not inds.any():
+        #    print(f"None left after {k}:{v}")
+        #    break
+    filtered_df = df[inds]
     
     # If res_col is a group of questions
     # This might move to wrangle but currently easier to do here as we have gc_dict handy
     if kwargs['res_col'] in gc_dict:
         value_vars = [ c for c in gc_dict[kwargs['res_col']] if c in cols ]
         id_vars = [ c for c in cols if c not in value_vars ]
-        df = df.melt(id_vars=id_vars, value_vars=value_vars, var_name='question', value_name=kwargs['res_col'])
-        df['question'] = pd.Categorical(df['question'],gc_dict[kwargs['res_col']])
-    
-    # Filter using demographics dict. This is very clever but hard to read. See:
-    # https://stackoverflow.com/questions/34157811/filter-a-pandas-dataframe-using-values-from-a-dict
-    filter_dict = vod(kwargs,'filter',{})
-    filtered_df = df[(df[list(filter_dict)] == pd.Series(filter_dict,dtype='str')).all(axis=1)]
+        filtered_df = filtered_df.melt(id_vars=id_vars, value_vars=value_vars, var_name='question', value_name=kwargs['res_col'])
+        filtered_df['question'] = pd.Categorical(filtered_df['question'],gc_dict[kwargs['res_col']])
     
     return filtered_df
 
@@ -82,18 +94,24 @@ def get_filtered_data(full_df, data_meta, columns=None, **kwargs):
 def gb_in(df, gb_cols):
     return df.groupby(gb_cols) if len(gb_cols)>0 else df
 
+def discretize_continuous(col, col_meta={}):
+    # NB! qcut might be a better default - see where testing leads us
+    cut = pd.cut(col, bins = vod(col_meta,'bins',5), labels = vod(col_meta,'bin_labels',None) )
+    cut = pd.Categorical(cut.astype(str), map(str,cut.dtype.categories), True) # Convert from intervals to strings for it to play nice with altair
+    return cut
+
 # Helper function that handles reformating data for create_plot
-def wrangle_data(raw_df, res_col, factor_cols, draws=False, continuous=False, data_format='longform',**kwargs):
+def wrangle_data(raw_df, plot_meta, col_meta, res_col, factor_cols ,**kwargs):
+    
+    draws, continuous, data_format = (vod(plot_meta, n, False) for n in ['draws','continuous','data_format'])
+    
     gb_dims = (['draw'] if draws else []) + (factor_cols if factor_cols else []) + (['question'] if 'question' in raw_df.columns else [])
     
     if 'weight' not in raw_df.columns and not continuous: raw_df['weight'] = 1
     
-    if draws: 
-        if 'draw' in raw_df.columns: # Draw present in data
-            raw_df = augment_draws(raw_df,gb_dims[1:],threshold=50)
-        else: # Draw not present - emulate it with a bootstrap
-            pass # TODO
-    
+    if draws and 'draw' in raw_df.columns: # Draw present in data
+        raw_df = augment_draws(raw_df,gb_dims[1:],threshold=50) # Augment draws so we always have 50 data points in each
+        
     rv = { 'value_col': 'value' }
     
     if data_format=='raw':
@@ -107,63 +125,80 @@ def wrangle_data(raw_df, res_col, factor_cols, draws=False, continuous=False, da
         res_cols = list(ddf.columns)
         ddf.loc[:,gb_dims] = raw_df[gb_dims]
         rv['data'] = gb_in(ddf,gb_dims)[res_cols].mean().reset_index()
+        
     elif data_format=='longform':
         if continuous:
-            rv['data'] = gb_in(raw_df,gb_dims)[res_col].mean().reset_index() 
+            rv['data'] = gb_in(raw_df,gb_dims)[res_col].mean().dropna().reset_index() 
             rv['value_col'] = res_col
         else: # categorical
             rv['cat_col'] = res_col 
             rv['value_col'] = 'percent'
-            rv['data'] = (raw_df.groupby(gb_dims+[res_col])['weight'].sum()/gb_in(raw_df,gb_dims)['weight'].sum()).rename(rv['value_col']).reset_index()
+            rv['data'] = (raw_df.groupby(gb_dims+[res_col])['weight'].sum()/gb_in(raw_df,gb_dims)['weight'].sum()).rename(rv['value_col']).dropna().reset_index()
+            
     else:
         raise Exception("Unknown data_format")
         
     # Ensure all rv columns other than value are categorical
     for c in rv['data'].columns:
         if rv['data'][c].dtype.name != 'categorical' and c!=rv['value_col']:
-            rv['data'].loc[:,c] = pd.Categorical(rv['data'][c])
+            if vod(vod(col_meta,c,{}),'continuous'):
+                rv['data'].loc[:,c] = discretize_continuous(rv['data'][c],vod(col_meta,c,{}))
+            else: # Just assume it's categorical by any other name
+                rv['data'].loc[:,c] = pd.Categorical(rv['data'][c])
             
     return rv
 
 # %% ../nbs/02_pp.ipynb 11
+ordered_gradient = ["#c30d24", "#f3a583", "#94c6da", "#1770ab"]
+
+def meta_color_scale(cmeta,argname='colors',column=None):
+    scale = vod(cmeta,argname)
+    if scale is None and column is not None and column.dtype.name=='category' and column.dtype.ordered:
+        cats = column.dtype.categories
+        scale = dict(zip(cats,gradient_to_discrete_color_scale(ordered_gradient, len(cats))))
+    return to_alt_scale(scale)
+
+# %% ../nbs/02_pp.ipynb 12
 # Function that takes filtered raw data and plot information and outputs the plot
 # Handles all of the data wrangling and parameter formatting
-def create_plot(filtered_df, data_meta, plot, alt_properties={}, **kwargs):
+def create_plot(filtered_df, data_meta, plot, alt_properties={}, dry_run=False, **kwargs):
     plot_meta = get_plot_meta(plot)
     col_meta = extract_column_meta(data_meta)
+    col_meta['question'] = vod(col_meta[kwargs['res_col']],'question_colors',{})
     
-    params = wrangle_data(filtered_df, **plot_meta, **kwargs)
+    params = wrangle_data(filtered_df, plot_meta, col_meta, **kwargs)
+    data = params['data']
+    
     if 'plot_args' in kwargs: params.update(kwargs['plot_args'])
-    params['color_scale'] = to_alt_scale(vod(col_meta[kwargs['res_col']],'colors'))
+    params['color_scale'] = meta_color_scale(col_meta[kwargs['res_col']],'colors',data[kwargs['res_col']])
 
     # Handle factor columns 
     factor_cols = vod(kwargs,'factor_cols',[])
     
     # If we have a question column not handled by the plot, add it to factors:
-    if 'question' in filtered_df.columns and not vod(plot_meta,'question'):
+    if 'question' in data.columns and not vod(plot_meta,'question'):
         factor_cols = factor_cols + ['question']
     # If we don't have a question column but need it, just fill it with res_col name
-    elif 'question' not in filtered_df.columns and vod(plot_meta,'question'):
-        params['data']['question'] = pd.Categorical([kwargs['res_col']]*len(params['data']))
+    elif 'question' not in data.columns and vod(plot_meta,'question'):
+        data.loc[:,'question'] = pd.Categorical([kwargs['res_col']]*len(params['data']))
         
     if vod(plot_meta,'question'):
-        params['question_color_scale'] = to_alt_scale(vod(col_meta[kwargs['res_col']],'question_colors'))
+        params['question_color_scale'] = meta_color_scale(col_meta[kwargs['res_col']],'question_colors')
     
     if factor_cols:
         # See if we should use it as an internal facet?
         plot_args = vod(kwargs,'plot_args',{})
         if vod(plot_args,'internal_facet'):
             params['factor_col'] = factor_cols[0]
-            params['factor_color_scale'] = to_alt_scale(vod(vod(col_meta,kwargs['factor_cols'][0],{}),'colors'))
+            params['factor_color_scale'] = meta_color_scale(col_meta[factor_cols[0]],'colors',data[factor_cols[0]])
             factor_cols = factor_cols[1:] # Leave rest for external faceting
         
         # If we still have more than 1 factor - merge the rest
         if len(factor_cols)>1:
-            df = params['data']
             factor_col = '+'.join(factor_cols)
-            df.loc[:,factor_col] = df[factor_cols].agg(', '.join, axis=1)
-            params['data'] = df
-            n_facet_cols = len(df[factor_cols[-1]].dtype.categories)
+            data.loc[:,factor_col] = data[factor_cols].agg(', '.join, axis=1)
+            params['data'] = data
+            n_facet_cols = len(data[factor_cols[-1]].dtype.categories)
             factor_cols = [factor_col]
         else:
             n_facet_cols = vod(plot_meta,'factor_columns',1)
@@ -175,6 +210,7 @@ def create_plot(filtered_df, data_meta, plot, alt_properties={}, **kwargs):
     if aspec.varkw is None: params = { k:v for k,v in params.items() if k in aspec.args }
     
     # Create the plot using it's function
+    if dry_run: return params
     plot = plot_fn(**params).properties(**alt_properties)
     
     # Handle rest of factors via altair facet
