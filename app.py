@@ -27,9 +27,10 @@ with st.spinner("Loading libraries.."):
 
     from pandas.api.types import is_numeric_dtype
 
-    from salk_toolkit.io import load_parquet_with_metadata, read_json
+    from salk_toolkit.io import load_parquet_with_metadata, read_json, extract_column_meta
     from salk_toolkit.pp import *
     from salk_toolkit.plots import matching_plots
+    from salk_toolkit.utils import vod
 
     tqdm = lambda x: x # So we can freely copy-paste from notebooks
 
@@ -37,10 +38,12 @@ with st.spinner("Loading libraries.."):
 warnings.filterwarnings(action='ignore', category=UserWarning)
 warnings.filterwarnings(action='ignore', category=pd.errors.PerformanceWarning)
 
-global_data_metafile = './data/master_meta.json'
+# If none, uses the meta of the first data source
+global_data_metafile = None #'./data/master_meta.json'
 
 if global_data_metafile:
     global_data_meta = read_json(global_data_metafile,replace_const=True)
+else: global_data_meta = None
 
 #info.info("Libraries loaded.")
 #path = '../salk_internal_package/samples/'
@@ -76,7 +79,7 @@ else:
 #                                                                      #
 ########################################################################
 
-from salk_toolkit.utils import vod
+
 def get_dimensions(data_meta, observations=True, whitelist=None):
     res = []
     for g in data_meta['structure']:
@@ -91,15 +94,21 @@ def get_dimensions(data_meta, observations=True, whitelist=None):
 
 args = {}
 
+c_meta = extract_column_meta(data_meta)
+
 with st.sidebar: #.expander("Select dimensions"):
     f_info = st.empty()
     st.markdown("""___""")
 
-    obs_dims = get_dimensions(data_meta,True,first_data.columns)
-    all_dims = get_dimensions(data_meta,False,first_data.columns)
+    show_grouped = st.checkbox('Show grouped facets', True)
+
+    obs_dims = get_dimensions(data_meta, show_grouped, first_data.columns)
+    all_dims = get_dimensions(data_meta, False, first_data.columns)
 
     obs_name = st.selectbox('Observation', obs_dims)
     args['res_col'] = obs_name
+
+    all_dims += vod(c_meta[obs_name],'modifiers', [])
 
     facet_dims = all_dims
     if len(input_files)>1: facet_dims = ['input_file'] + facet_dims

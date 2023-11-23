@@ -116,8 +116,8 @@ def wrangle_data(raw_df, plot_meta, col_meta, res_col, factor_cols ,**kwargs):
     
     if data_format=='raw':
         rv['value_col'] = res_col
-        if vod(kwargs,'sample'):
-            rv['data'] = gb_in(raw_df[gb_dims+[res_col]],gb_dims).sample(kwargs['sample'])
+        if vod(plot_meta,'sample'):
+            rv['data'] = gb_in(raw_df[gb_dims+[res_col]],gb_dims).sample(plot_meta['sample'])
         else: rv['data'] = raw_df[gb_dims+[res_col]]
 
     elif False and data_format=='table': # TODO: Untested. Fix when first needed
