@@ -169,7 +169,7 @@
             }]
         ]
     }, {
-        "name": "compass",
+        "name": "termomeeter",
         "scale": { 
             "translate": { "0 - täiesti negatiivne": 0, "5 – neutraalne (või ükskõikne)": 5 , "10 – väga positiivne": 10}, "transform": "s.astype(int)", 
             "continuous":true, "question_colors": "party_colors" 
