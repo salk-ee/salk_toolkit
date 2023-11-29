@@ -49,7 +49,7 @@ else: global_data_meta = None
 #path = '../salk_internal_package/samples/'
 path = './samples/'
 
-input_file_choices = [ f for f in os.listdir(path) if f[-8:]=='.parquet' ]
+input_file_choices = sorted([ f for f in os.listdir(path) if f[-8:]=='.parquet' ])
 
 input_files = st.sidebar.multiselect('Select files:',input_file_choices)
 
@@ -79,6 +79,7 @@ else:
 #                                                                      #
 ########################################################################
 
+from pandas.api.types import is_datetime64_any_dtype as is_datetime
 
 def get_dimensions(data_meta, observations=True, whitelist=None):
     res = []
@@ -100,9 +101,15 @@ with st.sidebar: #.expander("Select dimensions"):
     f_info = st.empty()
     st.markdown("""___""")
 
+    if 'training_subsample' in first_data.columns:
+        poststrat = st.checkbox('Poststratisfied?', True)
+    else: poststrat = True
+
+
     show_grouped = st.checkbox('Show grouped facets', True)
 
     obs_dims = get_dimensions(data_meta, show_grouped, first_data.columns)
+    obs_dims = [c for c in obs_dims if c not in first_data.columns or not is_datetime(first_data[c])]
     all_dims = get_dimensions(data_meta, False, first_data.columns)
 
     obs_name = st.selectbox('Observation', obs_dims)
@@ -121,7 +128,7 @@ with st.sidebar: #.expander("Select dimensions"):
         second_dim = st.sidebar.selectbox('Facet 2:', ['None'] + all_dims)
         if second_dim != 'None':  args['factor_cols'] = [facet_dim, second_dim]
 
-    args['plot_args'] = { 'internal_facet': st.checkbox('Internal facet?',True) }
+    args['internal_facet'] = st.checkbox('Internal facet?',True)
 
     args['plot'] = st.selectbox('Plot type',matching_plots(args, first_data, data_meta))
 
@@ -136,11 +143,13 @@ with st.sidebar: #.expander("Select dimensions"):
             elif col.dtype.name=='category':
                 cats = col.dtype.categories
                 filters[cn] = st.select_slider(cn,cats,value=(cats[0],cats[-1]))
-            elif col.dtype!='bool':
-                mima = (col.min(),col.max())
-                filters[cn] = st.slider(cn,*mima,value=mima)
+            #elif col.dtype!='bool':
+            #    mima = (col.min(),col.max())
+            #    filters[cn] = st.slider(cn,*mima,value=mima)
 
         args['filter'] = { k:v for k,v in filters.items() if v != 'All'}
+
+        if not poststrat:  args['filter']['training_subsample'] = True
 
         #print(args['filter'])
 
@@ -183,7 +192,9 @@ if facet_dim == 'input_file':
     with st.spinner('Filtering data...'):
         dfs = []
         for ifile in input_files:
-            df = get_filtered_data(loaded[ifile]['data'], data_meta, **args)
+            fargs = args.copy()
+            fargs['filter'] = { k:v for k,v in args['filter'].items() if k in loaded[ifile]['data'].columns }
+            df = get_filtered_data(loaded[ifile]['data'], data_meta, **fargs)
             df['input_file'] = ifile
             dfs.append(df)
         fdf = pd.concat(dfs)
@@ -202,17 +213,20 @@ else:
         data_meta = loaded[ifile]['data_meta'] if global_data_meta is None else global_data_meta
 
         with st.spinner('Filtering data...'):
-            fdf = get_filtered_data(loaded[ifile]['data'], data_meta, **args)
-            plot = create_plot(fdf,data_meta,alt_properties={'width':800},**args)
+            fargs = args.copy()
+            fargs['filter'] = { k:v for k,v in args['filter'].items() if k in loaded[ifile]['data'].columns }
+            fdf = get_filtered_data(loaded[ifile]['data'], data_meta, **fargs)
+            plot = create_plot(fdf,data_meta,alt_properties={'width':800},**fargs)
 
+        cols[i].write('Based on %.1f%% of data' % (100*len(fdf)/len(loaded[ifile]['data'])))
         cols[i].altair_chart(plot,
             use_container_width=(len(input_files)>1)
             )
 
-        with st.expander('Data Meta'):
+        with cols[i].expander('Data Meta'):
             st.json(loaded[ifile]['data_meta'])
 
-        with st.expander('Model Meta'):
+        with cols[i].expander('Model Meta'):
             st.json(loaded[ifile]['model_meta'])
 
 

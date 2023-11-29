@@ -39,8 +39,8 @@
             "Rohelised": "#88AF47",
             "SDE": "#E10600",
             "Parempoolsed": "orange",
-            "No party": "grey",
-            "Hard to say": "lightgrey",
+            "None of the parties": "grey",
+            "No opinion": "lightgrey",
             "Other": "lightgrey"
         }
     },
@@ -95,32 +95,31 @@
             ["eestikeelne haridus", "Q1r6"],
             ["kliimamuutus", "Q1r7"],
             ["metsaraie", "Q1r8"],
-            ["kooselu", "Q1r10"],
+            ["abieluvõrdsus", "Q1r10"],
             ["abort", "Q1r12"],
             ["sõnavabadus", "Q1r13"],
             ["maksud", "Q1r14"],
-            ["koroonapiirangud", "Q1r15"],
+            ["sündimus", "Q1r15"],
             ["NATO", "Q1r16"],
-            ["usaldus", "Q1r17"]
+            ["ip usaldus", "Q1r17"]
         ]
     }, {
         "name": "trust",
         "scale": {
-            "categories": ["Don't trust at all", "Rather not trust", "Hard to say", "Rather trust", "Trust completely"], "ordered": true,
-            "translate": { "Ei oska öelda": "Hard to say", "Pigem ei usalda": "Rather not trust", "Usaldan täiesti": "Trust completely", "Pigem usaldan": "Rather trust", "Üldse ei usalda": "Don't trust at all" },
-            "likert": true
+            "categories": ["Completely distrust", "Distrust", "Neither trust nor distrust", "Trust", "Trust completely"], "ordered": true, "likert": true,
+            "translate": { "Ei oska öelda": "Neither trust nor distrust", "Pigem ei usalda": "Distrust", "Usaldan täiesti": "Trust completely", "Pigem usaldan": "Trust", "Üldse ei usalda": "Completely distrust" }
         },
         "columns": [
             ["valitsus", "Q3r1"],
             ["riigikogu", "Q3r2"],
-            ["ajakirjandus", "Q3r4"]
+            ["meedia", "Q3r4"]
         ]
     }, {
         "name": "voting_behavior",
         "columns": [
             ["party_preference", "Q4r1", {
-                "categories": ["Keskerakond", "EKRE", "Reformierakond", "Isamaa", "SDE", "Rohelised", "Eesti 200", "Parempoolsed", "Other", "No party", "Hard to say"],
-                "translate": { "Eesti Keskerakond": "Keskerakond", "Eesti Reformierakond": "Reformierakond", "Eesti Konservatiivne Rahvaerakond (EKRE)": "EKRE", "ISAMAA Erakond": "Isamaa", "Erakond Eesti 200": "Eesti 200", "Sotsiaaldemokraatlik Erakond": "SDE", "Erakond Eestimaa Rohelised": "Rohelised", "Erakond Parempoolsed": "Parempoolsed", "Mitte ükski erakond": "No party", "Ei oska öelda": "Hard to say", "Muu": "Other" },
+                "categories": ["Keskerakond", "EKRE", "Reformierakond", "Isamaa", "SDE", "Rohelised", "Eesti 200", "Parempoolsed", "Other", "None of the parties", "No opinion"],
+                "translate": { "Eesti Keskerakond": "Keskerakond", "Eesti Reformierakond": "Reformierakond", "Eesti Konservatiivne Rahvaerakond (EKRE)": "EKRE", "ISAMAA Erakond": "Isamaa", "Erakond Eesti 200": "Eesti 200", "Sotsiaaldemokraatlik Erakond": "SDE", "Erakond Eestimaa Rohelised": "Rohelised", "Erakond Parempoolsed": "Parempoolsed", "Mitte ükski erakond": "None of the parties", "Ei oska öelda": "No opinion", "Muu": "Other" },
                 "colors": "party_colors"
             }],
             ["voting_intent", "Q5", {
@@ -129,7 +128,7 @@
             }]
         ]
     }, {
-        "name": "compass",
+        "name": "thermometer",
         "scale": { "continuous": true, "question_colors": "party_colors" },
         "columns": ["Keskerakond", "EKRE", "Reformierakond", "Isamaa", "SDE", "Rohelised", "Eesti 200", "Parempoolsed"]
     }, {
