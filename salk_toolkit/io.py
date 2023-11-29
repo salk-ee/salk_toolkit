@@ -118,7 +118,7 @@ def read_annotated_data(meta_fname=None, multilevel=False, meta=None, data_file=
 
 # Convert data_meta into a dict where each group and column maps to their metadata dict
 def extract_column_meta(data_meta):
-    res = {}
+    res = defaultdict(lambda: {})
     for g in data_meta['structure']:
         base = g['scale'] if 'scale' in g else {}
         res[g['name']] = base

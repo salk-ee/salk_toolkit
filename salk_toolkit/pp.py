@@ -188,7 +188,7 @@ def create_plot(filtered_df, data_meta, plot, alt_properties={}, dry_run=False, 
     if factor_cols:
         # See if we should use it as an internal facet?
         plot_args = vod(kwargs,'plot_args',{})
-        if vod(plot_args,'internal_facet'):
+        if vod(kwargs,'internal_facet'):
             params['factor_col'] = factor_cols[0]
             params['factor_color_scale'] = meta_color_scale(col_meta[factor_cols[0]],'colors',data[factor_cols[0]])
             factor_cols = factor_cols[1:] # Leave rest for external faceting

@@ -20,7 +20,7 @@ from typing import List, Tuple, Dict, Union, Optional
 import altair as alt
 
 from salk_toolkit.utils import *
-from salk_toolkit.io import extract_column_meta
+from salk_toolkit.io import extract_column_meta, read_json
 
 # %% ../nbs/03_plots.ipynb 5
 registry = {}
@@ -78,8 +78,8 @@ def matching_plots(args, df, data_meta):
         'question': (rc not in df.columns),
         'continuous': vod(col_meta[rc],'continuous'),
         'ordered': vod(col_meta[rc],'ordered'),
-        'ordered_factor': (vod(args,'factor_cols',[])==[]) or not vod(vod(args,'plot_args',{}),'internal_facet') or vod(col_meta[args['factor_cols'][0]],'ordered'),
-        'requires_factor': (vod(args,'factor_cols',[])!=[]) and vod(vod(args,'plot_args',{}),'internal_facet')
+        'ordered_factor': (vod(args,'factor_cols',[])==[]) or not vod(args,'internal_facet') or vod(col_meta[args['factor_cols'][0]],'ordered'),
+        'requires_factor': (vod(args,'factor_cols',[])!=[]) and vod(args,'internal_facet')
     }
     
     res = [ ( pn, calculate_priority(get_plot_meta(pn),match) ) for pn in registry.keys() ]
@@ -90,30 +90,50 @@ def matching_plots(args, df, data_meta):
 # %% ../nbs/03_plots.ipynb 14
 @register('boxplots', data_format='longform', draws=True)
 def boxplots(data, cat_col, value_col='value', color_scale=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined,x_format='%'):
-    plot = alt.Chart(round(data, 3), width = 'container' \
-    ).mark_boxplot(
+    if x_format == '%': data[value_col]*=100
+    
+    shared = {
+        'y': alt.Y(f'{cat_col}:N', title=None, sort=list(data[cat_col].dtype.categories)),
+
+        **({
+            'color': alt.Color(f'{cat_col}:N', scale=color_scale, legend=None)    
+            } if not factor_col else {
+                'yOffset':alt.YOffset(f'{factor_col}:N', title=None, sort=list(data[factor_col].dtype.categories)), 
+                'color': alt.Color(f'{factor_col}:N', scale=factor_color_scale, legend=alt.Legend(orient='top'))
+            })
+    }
+    
+    base = alt.Chart(round(data, 2))
+    
+    # This plot is here because boxplot does not draw if variance is very low, so this is the backup
+    tick_plot = base.mark_tick(thickness=3).encode(
+        x=alt.X(f'mean({value_col}):Q'),
+        tooltip=[
+            alt.Tooltip(f'mean({value_col}):Q'),
+            *([alt.Tooltip(factor_col)] if factor_col else []),
+            cat_col,
+        ],
+        **shared
+    )
+    
+    box_plot = base.mark_boxplot(
         clip=True,
         #extent='min-max',
         outliers=False
     ).encode(
-        y=alt.Y(f'{cat_col}:N', title=None, sort=list(data[cat_col].dtype.categories)),
         x=alt.X(
             f'{value_col}:Q',
             title=value_col,
-            axis=alt.Axis(format=x_format)
+            axis=alt.Axis(format=x_format if x_format != '%' else 'f')
             ),
-        tooltip = [
+        tooltip=[
+            *([alt.Tooltip(factor_col)] if factor_col else []),
             cat_col,
-            alt.Tooltip(f'{value_col}:N',format=x_format)
+            #alt.Tooltip(f'median({value_col})',format=x_format)
         ],
-        **({
-                'color': alt.Color(f'{cat_col}:N', scale=color_scale, legend=None)    
-            } if not factor_col else {
-                'yOffset':alt.YOffset(f'{factor_col}:N', title=None, sort=list(data[factor_col].dtype.categories)), 
-                'color': alt.Color(f'{factor_col}:N', scale=factor_color_scale, legend=alt.Legend(orient='top'))
-            }),
+        **shared,
     )
-    return plot
+    return tick_plot + box_plot
 
 # Version for continous that just replaces 'question' for cat_col
 @register('boxplots-cont', data_format='longform', draws=True, continuous=True, question=True)
@@ -133,6 +153,7 @@ def columns(data, cat_col, value_col='value', color_scale=alt.Undefined, factor_
             #scale=alt.Scale(domain=[0,30]) #see lõikab mõnedes jaotustes parema ääre ära
             ),
         tooltip = [
+            *([alt.Tooltip(factor_col)] if factor_col else []),
             cat_col,
             alt.Tooltip(f'{value_col}:N',format=x_format)
         ],
@@ -215,7 +236,8 @@ def likert_bars(data, cat_col, value_col='value', color_scale=alt.Undefined, fac
             x=alt.X('start:Q', axis=alt.Axis(title=None, format = '%')),
             x2=alt.X2('end:Q'),
             y=alt.Y(f'question:N', axis=alt.Axis(title=None, offset=5, ticks=False, minExtent=60, domain=False), sort=list(data['question'].dtype.categories)),
-            tooltip=[alt.Tooltip('question'), alt.Tooltip(cat_col), alt.Tooltip(f'{value_col}:Q', title=value_col, format='.1%')],
+            tooltip=[*([alt.Tooltip(factor_col)] if factor_col else []),
+                    alt.Tooltip('question'), alt.Tooltip(cat_col), alt.Tooltip(f'{value_col}:Q', title=value_col, format='.1%')],
             color=alt.Color(
                 f'{cat_col}:N',
                 legend=alt.Legend(
@@ -224,7 +246,10 @@ def likert_bars(data, cat_col, value_col='value', color_scale=alt.Undefined, fac
                     ),
                 scale=alt.Scale(domain=options_cols, range=["#c30d24", "#f3a583", "#cccccc", "#94c6da", "#1770ab"]),
             ),
-            **({ 'yOffset':alt.YOffset(f'{factor_col}:N', title=None, sort=list(data[factor_col].dtype.categories))} if factor_col else {})
+            **({ 'yOffset':alt.YOffset(f'{factor_col}:N', title=None, sort=list(data[factor_col].dtype.categories)),
+                 #'stroke': alt.Stroke(f'{factor_col}:N', scale=factor_color_scale, legend=alt.Legend(orient='top')),
+                 #'strokeWidth': alt.value(3)
+               } if factor_col else {})
         )
     return plot
 
