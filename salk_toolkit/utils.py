@@ -126,11 +126,12 @@ def multicol_to_vals_cats(df, cols=None, col_prefix=None, reverse_cols=[], rever
     if cols is None: cols = [ c for c in df.columns if c.startswith(col_prefix)]
     
     if not reverse_cols and reverse_suffixes is not None:
-        reverse_cols = [ c for c in cols for rs in reverse_suffixes if c.endswith(rs)]
+        reverse_cols = list({ c for c in cols for rs in reverse_suffixes if c.endswith(rs)})
     
-    if reverse_cols:
+    if len(reverse_cols)>0:
+        #print("RC",reverse_cols)
         remap = dict(zip(cat_order,reversed(cat_order)))
-        df.loc[:,reverse_cols].replace(remap,inplace=True)
+        df.loc[:,reverse_cols] = df.loc[:,reverse_cols].replace(remap)
     
     tdf = df[cols]
     cinds = np.argmax(tdf.notna(),axis=1)
@@ -138,7 +139,7 @@ def multicol_to_vals_cats(df, cols=None, col_prefix=None, reverse_cols=[], rever
     df.loc[:,cats_name] = np.array(tdf.columns)[cinds]
     return df
 
-# %% ../nbs/10_utils.ipynb 18
+# %% ../nbs/10_utils.ipynb 19
 # Grad is a list of colors
 def gradient_to_discrete_color_scale( grad, num_colors):
     cmap = mpc.LinearSegmentedColormap.from_list('grad',grad)
