@@ -42,29 +42,31 @@
             "Hard to say": "lightgrey",
             "Other": "lightgrey"
         },
+
+"reverse_questions": ["2a","3a","4a","7a","8a","9a","10a","11a","12a", "14a", "16a", "17a", "18a", "19a"],
         "long_questions": {
              "Q7_allr1": "Minu meelest tuleks rohkem küsimusi otsustada rahvahääletuse teel.",
              "Q7_allr2": "Minu meelest tehakse liiga palju Eesti jaoks olulisi otsuseid Euroopa Liidu tasandil.",
              "Q7_allr2a": "Minu meelest ei otsusta Euroopa Liit liiga palju Eesti asjade üle. (pööratud)",
              "Q7_allr3": "Minu meelest parandab NATO liitlasvägede suurem kohalolu Eesti julgeolekut.",
-             "Q7_allr3a": "Minu meelest ei paranda NATO liitlasvägede suurem kohalolu Eesti julgeolekut. (pööratud)",
+             "Q7_allr3a": "Minu meelest toob NATO liitlasvägede suurem kohalolu Eestis kaasa rohkem riske kui kasu. (pööratud)",
              "Q7_allr4": "Minu meelest on Ukraina toetamine sõjas Venemaaga sama tähtis kui siseriiklike probleemide lahendamine.",
              "Q7_allr4a": "Minu meelest on siseriiklike probleemidega tegelemine olulisem kui Ukraina toetamine sõjas Venemaaga. (pööratud)",
              "Q7_allr5": "Minu meelest tuleks Eestil üle minna ühtsele eestikeelsele haridussüsteemile.",
              "Q7_allr6": "Minu meelest peaks jõukamate inimeste panus riigi ülalpidamisse tulumaksu või teiste maksude näol olema senisest suurem.",
              "Q7_allr6a": "Minu meelest tuleks Eestis kasutusele võtta astmeline tulumaks.",
              "Q7_allr7": "Minu meelest tuleb riigi kulutusi kärpida.",
-             "Q7_allr7a": "Minu meelest ei tohiks praegu riigi kulutusi kärpida. (pööratud)",
+             "Q7_allr7a": "Minu meelest tuleks praegu riigi kulutuste kärpimisest hoiduda. (pööratud)",
              "Q7_allr8": "Minu meelest arvestab riik piisavalt minu linna/valla vajadustega.",
              "Q7_allr8a": "Minu meelest ei arvesta riik minu linna/valla vajadustega. (pööratud)",
-             "Q7_allr9": "Minu meelest peaks riik tegema rohkem kliimamuutuse pidurdamiseks",
+             "Q7_allr9": "Minu meelest peaks riik tegema rohkem kliimamuutuse pidurdamiseks.",
              "Q7_allr9a": "Minu meelest ei peaks riik kliimamuutuse pidurdamisega tegelema. (pööratud)",
              "Q7_allr10": "Minu meelest peaks Eesti kiirendama üleminekut taastuvenergiale.",
-             "Q7_allr10a": "Minu meelest ei peaks Eesti põlevkivienergia kasutamist lõpetama. (pööratud)",
+             "Q7_allr10a": "Minu meelest peaks Eesti jätkama põlevkivienergia kasutamist ka tulevikus. (pööratud)",
              "Q7_allr11": "Minu meelest tuleks Eestisse ehitada tuumajaam.",
-             "Q7_allr11a": "Minu meelest ei peaks Eestisse tuumajaama ehitama. (pööratud)",
+             "Q7_allr11a": "Minu meelest peaks tuumajaama Eestisse rajamisest hoiduma. (pööratud)",
              "Q7_allr12": "Minu meelest tuleks metsade raiet vähendada.",
-             "Q7_allr12a": "Minu meelest ei peaks metsade raiet vähendama. (pööratud)",
+             "Q7_allr12a": "Minu meelest võiks metsade raiega jätkata senises mahus. (pööratud)",
              "Q7_allr13": "Minu meelest on automaksu kehtestamine vajalik.",
              "Q7_allr13a": "Minu meelest peaks automaksuga suunama inimesi kasutama vähem saastavat transporti.",
              "Q7_allr14": "Minu meelest on E-valimised usaldusväärsed.",
@@ -72,13 +74,13 @@
              "Q7_allr15": "Minu meelest peaks sündimuse tõstmiseks maksma senisest suuremaid rahalisi toetusi.",
              "Q7_allr15a": "Minu meelest on õigustatud maksta oluliselt suuremaid toetusi alates kolmandast lapsest võrreldes esimese kahe lapsega, et sünniks rohkem lapsi.",
              "Q7_allr16": "Minu meelest peaks samast soost paaridel olema õigus abielluda.",
-             "Q7_allr16a": "Minu meelest ei peaks samast soost paarid saama abielluda. (pööratud)",
+             "Q7_allr16a": "Minu meelest peaks abielu jääma ainult mehe ja naise vaheliseks liiduks. (pööratud)",
              "Q7_allr17": "Minu meelest tuleks abortide riiklik rahastamine Eestis lõpetada.",
              "Q7_allr17a": "Minu meelest on abordi tegemine iga naise isiklik otsus. (pööratud)",
              "Q7_allr18": "Minu meelest tuleks sisserännet Eestisse senisest enam piirata.",
-             "Q7_allr18a": "Minu meelest ei peaks sisserännet praegusest rohkem piirama. (pööratud)",
+             "Q7_allr18a": "Minu meelest peaks sisserände piirangute karmistamisest hoiduma. (pööratud)",
              "Q7_allr19": "Minu meelest on sõnavabaduse piiramine avalikus ruumis õigustatud, kui see ohustab mõnda vähemust (nt üleskutsed füüsilisele vägivallale).",
-             "Q7_allr19a": "Minu meelest ei peaks sõnavabadust avalikus ruumis piirama, isegi kui see ohustab mõnda vähemust (nt üleskutsed füüsilisele vägivallale).  (pööratud)",
+             "Q7_allr19a": "Minu meelest tuleb tagada täielik sõnavabadus avalikus ruumis isegi siis, kui see ohustab mõnda vähemust (nt üleskutsed füüsilisele vägivallale). (pööratud)",
              "Q8": "Kui tihti Te jälgite seda, mis toimub poliitikas?",
              "Q8a": "Mil määral tunnete huvi poliitika vastu?"
         },
@@ -86,7 +88,7 @@
         "reverse_questions": ["2a","3a","4a","7a","8a","9a","10a","11a","12a", "14a", "16a", "17a", "18a", "19a"],
         "ee_likert_scale": [ "Üldse ei nõustu", "Pigem ei ole nõus", "Ei oska öelda", "Pigem nõus", "Täiesti nõus"]
     },
-    "preprocessing": "[ stk.utils.multicol_to_vals_cats(df, col_prefix=qn, reverse_suffixes=reverse_questions, cat_order=ee_likert_scale, vals_name=f'{qn}v', cats_name=f'{qn}c', inplace=True) for qn in multicol_questions ]; df['T6']=df['T6'].astype('str'); df.loc[df.D4 == 'Tartu linn', 'T6'] = 'Tartu linn'; df.loc[df.D4 == 'Tallinn (L)', 'T6'] = df.D4b",
+    "preprocessing": "df.drop(columns=['Q8_least'],inplace=True); [ stk.utils.multicol_to_vals_cats(df, col_prefix=qn, reverse_suffixes=reverse_questions, cat_order=ee_likert_scale, vals_name=f'{qn}v', cats_name=f'{qn}c', inplace=True) for qn in multicol_questions ]; df['T6']=df['T6'].astype('str'); df.loc[df.D4 == 'Tartu linn', 'T6'] = 'Tartu linn'; df.loc[df.D4 == 'Tallinn (L)', 'T6'] = df.D4b",
     "structure": [{
         "name": "meta",
         "columns": [
@@ -154,10 +156,6 @@
     }, {
         "name": "voting_behavior",
         "columns": [
-            ["interest", "Q8v", { 
-                "categories": ["Almost not at all", "A little", "Somewhat", "A lot"], "ordered": true, 
-                "translate": { "Aeg-ajalt": "Somewhat", "Harva": "A little", "Peaaegu üldse mitte": "Almost not at all", "Suurema osa ajast": "A lot", "Mõnevõrra":"Somewhat", "Palju":"A lot", "Peaaegu üldse mitte":"Almost not at all", "Pigem vähe":"A little"}
-            }],
             ["party_preference", "Q4r1", {
                 "categories": ["Keskerakond", "EKRE", "Reformierakond", "Isamaa", "SDE", "Rohelised", "Eesti 200", "Parempoolsed", "No party", "Other", "Hard to say"],
                 "translate": { "Eesti Keskerakond": "Keskerakond", "Eesti Reformierakond": "Reformierakond", "Eesti Konservatiivne Rahvaerakond (EKRE)": "EKRE", "Isamaa Erakond": "Isamaa", "Erakond Eesti 200": "Eesti 200", "Sotsiaaldemokraatlik Erakond": "SDE", "Erakond Eestimaa Rohelised": "Rohelised", "Erakond Parempoolsed": "Parempoolsed", "Muu":"Other", "Mitte ükski erakond": "No party", "Ei oska öelda": "Hard to say"  },
@@ -166,6 +164,10 @@
             ["voting_intent", "Q5", {
                 "categories": ["No", "No opinion", "Yes"], "ordered":     true,
                 "translate": { "Ei": "No", "Ei soovi avaldada": "No opinion", "Jah": "Yes" }
+            }],
+            ["interest", "Q8v", { 
+                "categories": ["Almost not at all", "A little", "Somewhat", "A lot"], "ordered": true, 
+                "translate": { "Aeg-ajalt": "Somewhat", "Harva": "A little", "Peaaegu üldse mitte": "Almost not at all", "Suurema osa ajast": "A lot", "Mõnevõrra":"Somewhat", "Palju":"A lot", "Peaaegu üldse mitte":"Almost not at all", "Pigem vähe":"A little"}
             }]
         ]
     }, {
@@ -206,7 +208,7 @@
         "hidden": true,
         "scale": { "categories": "infer", "translate": "long_questions" },
         "columns": [
-            ["interest c","Q8c"],
+            ["interest c","Q8a"],
             ["e-valimised c", "Q7_allr14c"],
             ["sisseränne c", "Q7_allr18c"],
             ["Euroopa Liit c", "Q7_allr2c"],

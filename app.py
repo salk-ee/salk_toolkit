@@ -115,7 +115,7 @@ with st.sidebar: #.expander("Select dimensions"):
     obs_name = st.selectbox('Observation', obs_dims)
     args['res_col'] = obs_name
 
-    all_dims += vod(c_meta[obs_name],'modifiers', [])
+    all_dims = vod(c_meta[obs_name],'modifiers', []) + all_dims
 
     facet_dims = all_dims
     if len(input_files)>1: facet_dims = ['input_file'] + facet_dims
