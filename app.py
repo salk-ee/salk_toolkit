@@ -65,7 +65,8 @@ input_files = st.sidebar.multiselect('Select files:',input_file_choices)
 @st.cache_resource(show_spinner=False)
 def load_file(input_file):
     full_df, meta = load_parquet_with_metadata(path+input_file)
-    return { 'data': full_df, 'data_meta': meta['data'], 'model_meta': meta['model'] }
+    if meta is None: meta = {}
+    return { 'data': full_df, 'data_meta': vod(meta,'data',None), 'model_meta': vod(meta,'model') }
 
 if len(input_files)==0:
     st.markdown("""Please choose an input file from the sidebar""")
@@ -73,7 +74,7 @@ if len(input_files)==0:
 else:
     loaded = { ifile:load_file(ifile) for ifile in input_files }
     first_file = loaded[input_files[0]]
-    data_meta = first_file['data_meta'] if global_data_meta is None else global_data_meta
+    first_data_meta = first_file['data_meta'] if global_data_meta is None else global_data_meta
     first_data = first_file['data']
 
 ########################################################################
@@ -98,7 +99,7 @@ def get_dimensions(data_meta, observations=True, whitelist=None):
 
 args = {}
 
-c_meta = extract_column_meta(data_meta)
+c_meta = extract_column_meta(first_data_meta)
 
 with st.sidebar: #.expander("Select dimensions"):
     f_info = st.empty()
@@ -111,9 +112,9 @@ with st.sidebar: #.expander("Select dimensions"):
 
     show_grouped = st.checkbox('Show grouped facets', True)
 
-    obs_dims = get_dimensions(data_meta, show_grouped, first_data.columns)
+    obs_dims = get_dimensions(first_data_meta, show_grouped, first_data.columns)
     obs_dims = [c for c in obs_dims if c not in first_data.columns or not is_datetime(first_data[c])]
-    all_dims = get_dimensions(data_meta, False, first_data.columns)
+    all_dims = get_dimensions(first_data_meta, False, first_data.columns)
 
     obs_name = st.selectbox('Observation', obs_dims)
     args['res_col'] = obs_name
@@ -133,7 +134,7 @@ with st.sidebar: #.expander("Select dimensions"):
 
     args['internal_facet'] = st.checkbox('Internal facet?',True)
 
-    args['plot'] = st.selectbox('Plot type',matching_plots(args, first_data, data_meta))
+    args['plot'] = st.selectbox('Plot type',matching_plots(args, first_data, first_data_meta))
 
     with st.sidebar.expander('Filters'):
         filter_vals = { col: list(first_data[col].unique()) for col in all_dims if col in first_data.columns }
@@ -197,12 +198,12 @@ if facet_dim == 'input_file':
         for ifile in input_files:
             fargs = args.copy()
             fargs['filter'] = { k:v for k,v in args['filter'].items() if k in loaded[ifile]['data'].columns }
-            df = get_filtered_data(loaded[ifile]['data'], data_meta, **fargs)
+            df = get_filtered_data(loaded[ifile]['data'], first_data_meta, **fargs)
             df['input_file'] = ifile
             dfs.append(df)
         fdf = pd.concat(dfs)
         fdf['input_file'] = pd.Categorical(fdf['input_file'],input_files)
-        plot = create_plot(fdf,data_meta,alt_properties={'width':800},**args)
+        plot = create_plot(fdf,first_data_meta,alt_properties={'width':800},**args)
 
     st.altair_chart(plot,use_container_width=True)
 
@@ -214,6 +215,7 @@ else:
         cols[i].header(os.path.splitext(ifile.replace('_',' '))[0])
 
         data_meta = loaded[ifile]['data_meta'] if global_data_meta is None else global_data_meta
+        if data_meta is None: data_meta = first_data_meta
 
         with st.spinner('Filtering data...'):
             fargs = args.copy()

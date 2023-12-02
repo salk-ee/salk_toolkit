@@ -34,7 +34,7 @@ def read_json(fname,replace_const=True):
 # %% ../nbs/01_io.ipynb 5
 # Default usage with mature metafile: read_annotated_data(<metafile name>)
 # When figuring out the metafile, it can also be run as: read_annotated_data(meta=<dict>, data_file=<>)
-def read_annotated_data(meta_fname=None, multilevel=False, meta=None, data_file=None, return_meta=False):
+def read_annotated_data(meta_fname=None, multilevel=False, meta=None, data_file=None, return_meta=False, only_fix_categories=False):
     
     # Read metafile
     if meta_fname:
@@ -60,7 +60,7 @@ def read_annotated_data(meta_fname=None, multilevel=False, meta=None, data_file=
     
     res = []
     
-    if 'preprocessing' in meta:
+    if 'preprocessing' in meta and not only_fix_categories:
         exec(meta['preprocessing'],{'pd':pd, 'np':np, 'stk':stk, 'df':raw_data, **constants })
         
     for group in meta['structure']:
@@ -73,6 +73,8 @@ def read_annotated_data(meta_fname=None, multilevel=False, meta=None, data_file=
             else:
                 cn = sn = tpl
                 cd = {}
+                
+            if only_fix_categories: sn = cn
 
             if 'scale' in group: cd = {**group['scale'],**cd}
             
@@ -86,10 +88,10 @@ def read_annotated_data(meta_fname=None, multilevel=False, meta=None, data_file=
                 
             s = raw_data[sn].rename(cn)
             
-            if 'translate' in cd: s.replace(cd['translate'],inplace=True)
-            
-            if 'transform' in cd: s = eval(cd['transform'],{ 's':s, 'df':raw_data, 'pd':pd, 'np':np, 'stk':stk , **constants })
-            
+            if not only_fix_categories:
+                if 'translate' in cd: s.replace(cd['translate'],inplace=True)
+                if 'transform' in cd: s = eval(cd['transform'],{ 's':s, 'df':raw_data, 'pd':pd, 'np':np, 'stk':stk , **constants })
+
             if 'categories' in cd: 
                 na_sum = s.isna().sum()
                 cats = cd['categories'] if cd['categories']!='infer' else [ c for c in s.unique() if pd.notna(c) ]
@@ -105,13 +107,14 @@ def read_annotated_data(meta_fname=None, multilevel=False, meta=None, data_file=
     
     df = pd.concat(res,axis=1)
     
-    if 'postprocessing' in meta:
+    if 'postprocessing' in meta and not only_fix_categories:
         exec(meta['postprocessing'],{'pd':pd, 'np':np, 'stk':stk, 'df':df, **constants  })
 
     if not multilevel:
         df.columns = df.columns.get_level_values(1)    
     
     return (df, meta) if return_meta else df
+
 
 # %% ../nbs/01_io.ipynb 6
 # Helper functions designed to be used with the annotations
@@ -308,14 +311,18 @@ def save_parquet_with_metadata(df, meta, file_name):
 def load_parquet_with_metadata(file_name,**kwargs):
     restored_table = pq.read_table(file_name,**kwargs)
     restored_df = restored_table.to_pandas()
-    restored_meta_json = restored_table.schema.metadata[custom_meta_key.encode()]
-    restored_meta = json.loads(restored_meta_json)
-    
+    if custom_meta_key.encode() in restored_table.schema.metadata:
+        restored_meta_json = restored_table.schema.metadata[custom_meta_key.encode()]
+        restored_meta = json.loads(restored_meta_json)
+    else: restored_meta = None
     return restored_df, restored_meta
 
 # Just load the metadata from the parquet file
 # This is currently much more inefficient than it can be as it loads the entire table
 def load_parquet_metadata(file_name):
     restored_table = pq.read_table(file_name)
-    restored_meta_json = restored_table.schema.metadata[custom_meta_key.encode()]
-    return json.loads(restored_meta_json)    
+    if custom_meta_key.encode() in restored_table.schema.metadata:
+        restored_meta_json = restored_table.schema.metadata[custom_meta_key.encode()]
+        restored_meta = json.loads(restored_meta_json)
+    else: restored_meta = None
+    return restored_meta
