@@ -1,4 +1,7 @@
 import streamlit as st
+import warnings
+
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 profile = False
 if profile:
@@ -102,7 +105,7 @@ with st.sidebar: #.expander("Select dimensions"):
     st.markdown("""___""")
 
     if 'training_subsample' in first_data.columns:
-        poststrat = st.checkbox('Poststratisfied?', True)
+        poststrat = st.checkbox('Post-stratified?', True)
     else: poststrat = True
 
 
