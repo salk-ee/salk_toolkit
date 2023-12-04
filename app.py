@@ -1,5 +1,10 @@
 import streamlit as st
+from streamlit_dimensions import st_dimensions
 import warnings
+
+def get_plot_width(key):
+    wobj = st_dimensions(key=key) or { 'width': 400 }# Can return none so handle that
+    return int(0.85*wobj['width']) # Needs to be adjusted to leave margin
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -27,12 +32,13 @@ with st.spinner("Loading libraries.."):
     import altair as alt
     import itertools as it
     import warnings
+    import contextlib
 
     from pandas.api.types import is_numeric_dtype
 
     from salk_toolkit.io import load_parquet_with_metadata, read_json, extract_column_meta
     from salk_toolkit.pp import *
-    from salk_toolkit.plots import matching_plots
+    from salk_toolkit.plots import matching_plots, get_plot_meta
     from salk_toolkit.utils import vod
 
     tqdm = lambda x: x # So we can freely copy-paste from notebooks
@@ -136,6 +142,16 @@ with st.sidebar: #.expander("Select dimensions"):
 
     args['plot'] = st.selectbox('Plot type',matching_plots(args, first_data, first_data_meta))
 
+    plot_args = {}
+    for k, v in vod(get_plot_meta(args['plot']),'args',{}).items():
+        if v=='bool':
+            plot_args[k] = st.checkbox(k)
+        elif isinstance(v, list):
+            plot_args[k] = st.selectbox(k,v)
+
+    args['plot_args'] = plot_args
+
+
     with st.sidebar.expander('Filters'):
         filter_vals = { col: list(first_data[col].unique()) for col in all_dims if col in first_data.columns }
         filters = {}
@@ -190,7 +206,7 @@ st.markdown("""___""")
 # Create columns, one per input file
 if len(input_files)>1 and facet_dim != 'input_file':
     cols = st.columns(len(input_files))
-else: cols = [st]
+else: cols = [contextlib.suppress()]
 
 if facet_dim == 'input_file':
     with st.spinner('Filtering data...'):
@@ -203,36 +219,38 @@ if facet_dim == 'input_file':
             dfs.append(df)
         fdf = pd.concat(dfs)
         fdf['input_file'] = pd.Categorical(fdf['input_file'],input_files)
-        plot = create_plot(fdf,first_data_meta,alt_properties={'width':800},**args)
+        plot = create_plot(fdf,first_data_meta,width=get_plot_width('full'),**args)
 
     st.altair_chart(plot,use_container_width=True)
 
 else:
     # Iterate over input files
     for i, ifile in enumerate(input_files):
+        with cols[i]:
+            # Heading:
+            st.header(os.path.splitext(ifile.replace('_',' '))[0])
 
-        # Heading:
-        cols[i].header(os.path.splitext(ifile.replace('_',' '))[0])
+            data_meta = loaded[ifile]['data_meta'] if global_data_meta is None else global_data_meta
+            if data_meta is None: data_meta = first_data_meta
 
-        data_meta = loaded[ifile]['data_meta'] if global_data_meta is None else global_data_meta
-        if data_meta is None: data_meta = first_data_meta
+            with st.spinner('Filtering data...'):
+                fargs = args.copy()
+                fargs['filter'] = { k:v for k,v in args['filter'].items() if k in loaded[ifile]['data'].columns }
+                fdf = get_filtered_data(loaded[ifile]['data'], data_meta, **fargs)
 
-        with st.spinner('Filtering data...'):
-            fargs = args.copy()
-            fargs['filter'] = { k:v for k,v in args['filter'].items() if k in loaded[ifile]['data'].columns }
-            fdf = get_filtered_data(loaded[ifile]['data'], data_meta, **fargs)
-            plot = create_plot(fdf,data_meta,alt_properties={'width':800},**fargs)
+                plot = create_plot(fdf,data_meta,width=get_plot_width(f'{i}_{ifile}'),**fargs)
 
-        cols[i].write('Based on %.1f%% of data' % (100*len(fdf)/len(loaded[ifile]['data'])))
-        cols[i].altair_chart(plot,
-            use_container_width=(len(input_files)>1)
-            )
+            n_questions = fdf['question'].nunique() if 'question' in fdf else 1
+            st.write('Based on %.1f%% of data' % (100*len(fdf)/(len(loaded[ifile]['data'])*n_questions)))
+            st.altair_chart(plot,
+                use_container_width=(len(input_files)>1)
+                )
 
-        with cols[i].expander('Data Meta'):
-            st.json(loaded[ifile]['data_meta'])
+            with st.expander('Data Meta'):
+                st.json(loaded[ifile]['data_meta'])
 
-        with cols[i].expander('Model Meta'):
-            st.json(loaded[ifile]['model_meta'])
+            with st.expander('Model Meta'):
+                st.json(loaded[ifile]['model_meta'])
 
 
 st.markdown("""***""")
