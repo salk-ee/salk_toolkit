@@ -117,7 +117,7 @@ def wrangle_data(raw_df, plot_meta, col_meta, res_col, factor_cols ,**kwargs):
     if data_format=='raw':
         rv['value_col'] = res_col
         if vod(plot_meta,'sample'):
-            rv['data'] = gb_in(raw_df[gb_dims+[res_col]],gb_dims).sample(plot_meta['sample'])
+            rv['data'] = gb_in(raw_df[gb_dims+[res_col]],gb_dims).sample(plot_meta['sample'],replace=True)
         else: rv['data'] = raw_df[gb_dims+[res_col]]
 
     elif False and data_format=='table': # TODO: Untested. Fix when first needed
@@ -212,9 +212,9 @@ def create_plot(filtered_df, data_meta, plot, alt_properties={}, dry_run=False, 
     # Create the plot using it's function
     if dry_run: return params
 
-
-    p_width = width//n_facet_cols if factor_cols else width
-    plot = plot_fn(**params).properties(width=p_width, **alt_properties)
+    dims = {'width': width//n_facet_cols if factor_cols else width}
+    if 'aspect_ratio' in plot_meta:   dims['height'] = int(dims['width']/plot_meta['aspect_ratio'])        
+    plot = plot_fn(**params).properties(**dims, **alt_properties)
     
     # Handle rest of factors via altair facet
     if factor_cols:

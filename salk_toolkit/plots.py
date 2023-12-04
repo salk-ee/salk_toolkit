@@ -264,7 +264,7 @@ def likert_bars(data, cat_col, value_col='value', color_scale=alt.Undefined, fac
     return plot
 
 # %% ../nbs/03_plots.ipynb 23
-@stk_plot('density', data_format='raw', continuous=True, sample=100, factor_columns=3)
+@stk_plot('density', data_format='raw', continuous=True, sample=1000, factor_columns=3,aspect_ratio=(1.0/1.0))
 def density(data, value_col='value',factor_col=None, factor_color_scale=alt.Undefined):
     gb_cols = list(set(data.columns)-{ value_col }) # Assume we groupby over everything except value
     plot = alt.Chart(
@@ -282,7 +282,7 @@ def density(data, value_col='value',factor_col=None, factor_color_scale=alt.Unde
     return plot
 
 # %% ../nbs/03_plots.ipynb 25
-@stk_plot('matrix', data_format='longform', continuous=True, question=True, requires_factor=True)
+@stk_plot('matrix', data_format='longform', continuous=True, question=True, requires_factor=True, aspect_ratio=(1/0.8))
 def matrix(data, value_col='value',factor_col=None, factor_color_scale=alt.Undefined):
     base = alt.Chart(data).mark_rect().encode(
             x=alt.X(f'{factor_col}:N', title=None, sort=list(data[factor_col].dtype.categories)),
