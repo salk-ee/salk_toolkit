@@ -2,10 +2,10 @@
 
 # %% auto 0
 __all__ = ['vod', 'factorize_w_codes', 'batch', 'loc2iloc', 'min_diff', 'continify', 'match_data', 'replace_constants',
-           'index_encoder', 'to_alt_scale', 'multicol_to_vals_cats', 'gradient_to_discrete_color_scale']
+           'index_encoder', 'to_alt_scale', 'multicol_to_vals_cats', 'gradient_to_discrete_color_scale', 'is_datetime']
 
 # %% ../nbs/10_utils.ipynb 3
-import json, os
+import json, os, warnings
 import itertools as it
 from collections import defaultdict
 
@@ -144,3 +144,9 @@ def multicol_to_vals_cats(df, cols=None, col_prefix=None, reverse_cols=[], rever
 def gradient_to_discrete_color_scale( grad, num_colors):
     cmap = mpc.LinearSegmentedColormap.from_list('grad',grad)
     return [mpc.to_hex(cmap(i)) for i in np.linspace(0, 1, num_colors)]
+
+# %% ../nbs/10_utils.ipynb 20
+def is_datetime(col):
+    with warnings.catch_warnings():
+        warnings.simplefilter(action='ignore', category=UserWarning)
+        return pd.api.types.is_datetime64_any_dtype(col) or (col.dtype.name in ['str','object'] and pd.to_datetime(col,errors='coerce').notna().any())
