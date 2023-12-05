@@ -56,8 +56,13 @@ def process_annotated_data(meta_fname=None, multilevel=False, meta=None, data_fi
         raw_data, _ = pyreadstat.read_sav(data_file, **{ 'apply_value_formats':True, 'dates_as_pandas_datetime':True },**opts)
     elif data_file[-7:] == 'parquet':
         raw_data = pd.read_parquet(data_file, **opts)
+    elif data_file[-4:] in ['.xls', 'xlsx', 'xlsm', 'xlsb', '.odf', '.ods', '.odt']:
+        raw_data = pd.read_excel(data_file, **opts)
     else:
         raise Exception(f"Not a known file format {data_file}")
+        
+    # If data is multi-indexed, flatten the index
+    if isinstance(raw_data.columns,pd.MultiIndex): raw_data.columns = [" | ".join(tpl) for tpl in raw_data.columns]
     
     res = []
     
@@ -246,10 +251,11 @@ def change_parquet_meta(orig_file,data_metafile,new_file):
 def is_categorical(col):
     return col.dtype.name in ['object', 'str', 'category'] and not is_datetime(col)
 
+
 # %% ../nbs/01_io.ipynb 12
 # Create a very basic metafile for a dataset based on it's contents
 # This is not meant to be directly used, rather to speed up the annotation process
-def infer_meta(data_file=None, meta_file=True, read_opts={}, df=None):
+def infer_meta(data_file=None, meta_file=True, read_opts={}, df=None, translate_fn=None):
     meta = { 'constants': {}, 'read_opts': read_opts }
     
     # Read datafile
@@ -262,10 +268,16 @@ def infer_meta(data_file=None, meta_file=True, read_opts={}, df=None):
         elif data_file[-3:] == 'sav':
             df, sav_meta = pyreadstat.read_sav(data_file, **{ 'apply_value_formats':True, 'dates_as_pandas_datetime':True },**read_opts)
             col_labels = dict(zip(sav_meta.column_names, sav_meta.column_labels)) # Make this data easy to access by putting it in meta as constant
+            if translate_fn: col_labels = { k:translate_fn(v) for k,v in col_labels.items() }
         elif data_file[-7:] == 'parquet':
             df = pd.read_parquet(data_file, **read_opts)
+        elif data_file[-4:] in ['.xls', 'xlsx', 'xlsm', 'xlsb', '.odf', '.ods', '.odt']:
+            df = pd.read_excel(data_file, **read_opts)
         else:
             raise Exception(f"Not a known file format {data_file}")
+            
+    # If data is multi-indexed, flatten the index
+    if isinstance(df.columns,pd.MultiIndex): df.columns = [" | ".join(tpl) for tpl in df.columns]
 
     cats, grps = {}, defaultdict(lambda: list())
     
@@ -280,16 +292,32 @@ def infer_meta(data_file=None, meta_file=True, read_opts={}, df=None):
         if not is_categorical(df[cn]): continue
         cats[cn] = sorted(list(df[cn].dropna().unique())) if df[cn].dtype.name != 'category' else list(df[cn].dtype.categories)
         grps[str(cats[cn])].append(cn)
+        
+    # Fn to create the meta for a categorical column
+    def cat_meta(cn):
+        m = { 'categories': cats[cn] }
+        if df[cn].dtype=='category' and df[cn].dtype.ordered: m['ordered'] = True
+        if translate_fn is not None:
+            tdict = { c: translate_fn(c) for c in m['categories'] }
+            m['categories'] = [ tdict[c] for c in m['categories'] ]
+            m['translate'] = tdict
+        return m
+        
     
     # Create groups from values that share a category
     handled_cols = set()
     for k,g_cols in grps.items():
         if len(g_cols)<2: continue
-        fcn  = g_cols[0] # First col name
-        grp = { 'name': k, 'scale': { 'categories': cats[fcn] }, 
-               'columns': [ ( [cn,{'label': col_labels[cn]}] if cn in col_labels else cn) for cn in g_cols ] }
         
-        if df[fcn].dtype=='category' and df[fcn].dtype.ordered: grp['scale']['ordered'] = True
+        # Set up the columns part
+        m_cols = []
+        for cn in g_cols:
+            ce = [cn,{'label': col_labels[cn]}] if cn in col_labels else [cn]
+            if translate_fn is not None: ce = [translate_fn(cn)]+ ce
+            if len(ce) == 1: ce = ce[0]
+            m_cols.append(ce)
+        
+        grp = { 'name': k, 'scale': cat_meta(g_cols[0]), 'columns': m_cols }
         
         meta['structure'].append(grp)
         handled_cols.update(g_cols)
@@ -297,14 +325,12 @@ def infer_meta(data_file=None, meta_file=True, read_opts={}, df=None):
     # Put the rest of variables into main category
     main_cols = [ c for c in cols if c not in handled_cols ]
     for cn in main_cols:
-        if cn in cats:
-            cdesc = {'categories': cats[cn]}
-            if df[cn].dtype=='category' and df[cn].dtype.ordered: grp['scale']['ordered'] = True
+        if cn in cats: cdesc = cat_meta(cn)
         else: 
             cdesc = {'continuous':True}
             if is_datetime(df[cn]): cdesc['date'] = True
         if cn in col_labels: cdesc['label'] = col_labels[cn]
-        main_grp['columns'].append([cn,cdesc])
+        main_grp['columns'].append([cn,cdesc] if translate_fn is None else [translate_fn(cn),cn,cdesc])
         
     #print(json.dumps(meta,indent=2,ensure_ascii=False))
     
@@ -321,11 +347,11 @@ def infer_meta(data_file=None, meta_file=True, read_opts={}, df=None):
     return meta
 
 # Small convenience function to have a meta available for any dataset
-def data_with_inferred_meta(data_file, read_opts={}):
-    meta = infer_meta(data_file,meta_file=False, read_opts=read_opts)
+def data_with_inferred_meta(data_file, **kwargs):
+    meta = infer_meta(data_file,meta_file=False, **kwargs)
     return process_annotated_data(meta=meta, data_file=data_file, return_meta=True)
 
-# %% ../nbs/01_io.ipynb 15
+# %% ../nbs/01_io.ipynb 14
 def read_and_process_data(desc, return_meta=False):
     data, meta = read_annotated_data(desc['file'])
     
@@ -336,7 +362,7 @@ def read_and_process_data(desc, return_meta=False):
     
     return (data, meta) if return_meta else data
 
-# %% ../nbs/01_io.ipynb 17
+# %% ../nbs/01_io.ipynb 16
 def save_population_h5(fname,pdf):
     hdf = pd.HDFStore(fname,complevel=9, complib='zlib')
     hdf.put('population',pdf,format='table')
@@ -348,7 +374,7 @@ def load_population_h5(fname):
     hdf.close()
     return res
 
-# %% ../nbs/01_io.ipynb 18
+# %% ../nbs/01_io.ipynb 17
 def save_sample_h5(fname,trace,COORDS = None, filter_df = None):
     odims = [d for d in trace.predictions.dims if d not in ['chain','draw','obs_idx']]
     
@@ -389,7 +415,7 @@ def save_sample_h5(fname,trace,COORDS = None, filter_df = None):
     hdf.close()
 
 
-# %% ../nbs/01_io.ipynb 19
+# %% ../nbs/01_io.ipynb 18
 # These two very helpful functions are borrowed from https://towardsdatascience.com/saving-metadata-with-dataframes-71f51f558d8e
 
 custom_meta_key = 'salk-toolkit-meta'
