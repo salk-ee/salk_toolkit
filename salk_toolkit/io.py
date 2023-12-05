@@ -2,12 +2,12 @@
 
 # %% auto 0
 __all__ = ['custom_meta_key', 'read_json', 'process_annotated_data', 'read_annotated_data', 'extract_column_meta',
-           'group_columns_dict', 'list_aliases', 'change_meta_df', 'change_parquet_meta', 'read_and_process_data',
-           'save_population_h5', 'load_population_h5', 'save_sample_h5', 'save_parquet_with_metadata',
-           'load_parquet_with_metadata', 'load_parquet_metadata']
+           'group_columns_dict', 'list_aliases', 'change_meta_df', 'change_parquet_meta', 'infer_meta',
+           'data_with_inferred_meta', 'read_and_process_data', 'save_population_h5', 'load_population_h5',
+           'save_sample_h5', 'save_parquet_with_metadata', 'load_parquet_with_metadata', 'load_parquet_metadata']
 
 # %% ../nbs/01_io.ipynb 3
-import json, os
+import json, os, warnings
 import itertools as it
 from collections import defaultdict
 
@@ -22,7 +22,7 @@ import pyarrow.parquet as pq
 import pyreadstat
 
 import salk_toolkit as stk
-from salk_toolkit.utils import replace_constants, vod
+from salk_toolkit.utils import replace_constants, vod, is_datetime
 
 # %% ../nbs/01_io.ipynb 4
 def read_json(fname,replace_const=True):
@@ -96,10 +96,15 @@ def process_annotated_data(meta_fname=None, multilevel=False, meta=None, data_fi
             if 'categories' in cd: 
                 na_sum = s.isna().sum()
                 cats = cd['categories'] if cd['categories']!='infer' else [ c for c in s.unique() if pd.notna(c) ]
-                s = pd.Series(pd.Categorical(s,categories=cats,ordered=cd['ordered'] if 'ordered' in cd else False), name=cn)
+                ns = pd.Series(pd.Categorical(s,categories=cats,ordered=cd['ordered'] if 'ordered' in cd else False), name=cn)
                 # Check if the category list provided was comprehensive
-                new_nas = s.isna().sum() - na_sum
-                if new_nas > 0: print(f'Column {cn} has {new_nas} entries that were not listed in categories')
+                new_nas = ns.isna().sum() - na_sum
+                
+                if new_nas > 0: 
+                    unlisted_cats = set(s.unique().dropna())-set(cats)
+                    print(f"Column {cn} {f'({sn}) ' if cn != sn else ''}had unknown categories {unlisted_cats} for {new_nas} entries")
+                    
+                s = ns
             gres.append(s)
         if len(gres)==0: continue
         gdf = pd.concat(gres,axis=1)
@@ -238,6 +243,89 @@ def change_parquet_meta(orig_file,data_metafile,new_file):
 
 
 # %% ../nbs/01_io.ipynb 11
+def is_categorical(col):
+    return col.dtype.name in ['object', 'str', 'category'] and not is_datetime(col)
+
+# %% ../nbs/01_io.ipynb 12
+# Create a very basic metafile for a dataset based on it's contents
+# This is not meant to be directly used, rather to speed up the annotation process
+def infer_meta(data_file=None, meta_file=True, read_opts={}, df=None):
+    meta = { 'constants': {}, 'read_opts': read_opts }
+    
+    # Read datafile
+    col_labels = {}
+    if data_file is not None:
+        path, fname = os.path.split(data_file)
+        meta['file'] = fname
+        if data_file[-3:] == 'csv':
+            df = pd.read_csv(data_file, **read_opts)
+        elif data_file[-3:] == 'sav':
+            df, sav_meta = pyreadstat.read_sav(data_file, **{ 'apply_value_formats':True, 'dates_as_pandas_datetime':True },**read_opts)
+            col_labels = dict(zip(sav_meta.column_names, sav_meta.column_labels)) # Make this data easy to access by putting it in meta as constant
+        elif data_file[-7:] == 'parquet':
+            df = pd.read_parquet(data_file, **read_opts)
+        else:
+            raise Exception(f"Not a known file format {data_file}")
+
+    cats, grps = {}, defaultdict(lambda: list())
+    
+    main_grp = { 'name': 'main', 'columns':[] }
+    meta['structure'] = [main_grp]
+    
+    # Remove empty columns
+    cols = [ c for c in df.columns if df[c].notna().any() ]
+    
+    # Determine category lists for all categories
+    for cn in cols:
+        if not is_categorical(df[cn]): continue
+        cats[cn] = sorted(list(df[cn].dropna().unique())) if df[cn].dtype.name != 'category' else list(df[cn].dtype.categories)
+        grps[str(cats[cn])].append(cn)
+    
+    # Create groups from values that share a category
+    handled_cols = set()
+    for k,g_cols in grps.items():
+        if len(g_cols)<2: continue
+        fcn  = g_cols[0] # First col name
+        grp = { 'name': k, 'scale': { 'categories': cats[fcn] }, 
+               'columns': [ ( [cn,{'label': col_labels[cn]}] if cn in col_labels else cn) for cn in g_cols ] }
+        
+        if df[fcn].dtype=='category' and df[fcn].dtype.ordered: grp['scale']['ordered'] = True
+        
+        meta['structure'].append(grp)
+        handled_cols.update(g_cols)
+        
+    # Put the rest of variables into main category
+    main_cols = [ c for c in cols if c not in handled_cols ]
+    for cn in main_cols:
+        if cn in cats:
+            cdesc = {'categories': cats[cn]}
+            if df[cn].dtype=='category' and df[cn].dtype.ordered: grp['scale']['ordered'] = True
+        else: 
+            cdesc = {'continuous':True}
+            if is_datetime(df[cn]): cdesc['date'] = True
+        if cn in col_labels: cdesc['label'] = col_labels[cn]
+        main_grp['columns'].append([cn,cdesc])
+        
+    #print(json.dumps(meta,indent=2,ensure_ascii=False))
+    
+    # Write file to disk
+    if data_file is not None and meta_file:
+        if meta_file is True: meta_file = os.path.join(path, os.path.splitext(fname)[0]+'_meta.json')
+        if not os.path.exists(meta_file):
+            print(f"Writing {meta_file} to disk")
+            with open(meta_file,'w',encoding='utf8') as jf:
+                json.dump(meta,jf,indent=2,ensure_ascii=False)
+        else:
+            print(f"{meta_file} already exists")
+
+    return meta
+
+# Small convenience function to have a meta available for any dataset
+def data_with_inferred_meta(data_file, read_opts={}):
+    meta = infer_meta(data_file,meta_file=False, read_opts=read_opts)
+    return process_annotated_data(meta=meta, data_file=data_file, return_meta=True)
+
+# %% ../nbs/01_io.ipynb 15
 def read_and_process_data(desc, return_meta=False):
     data, meta = read_annotated_data(desc['file'])
     
@@ -248,7 +336,7 @@ def read_and_process_data(desc, return_meta=False):
     
     return (data, meta) if return_meta else data
 
-# %% ../nbs/01_io.ipynb 13
+# %% ../nbs/01_io.ipynb 17
 def save_population_h5(fname,pdf):
     hdf = pd.HDFStore(fname,complevel=9, complib='zlib')
     hdf.put('population',pdf,format='table')
@@ -260,7 +348,7 @@ def load_population_h5(fname):
     hdf.close()
     return res
 
-# %% ../nbs/01_io.ipynb 14
+# %% ../nbs/01_io.ipynb 18
 def save_sample_h5(fname,trace,COORDS = None, filter_df = None):
     odims = [d for d in trace.predictions.dims if d not in ['chain','draw','obs_idx']]
     
@@ -301,7 +389,7 @@ def save_sample_h5(fname,trace,COORDS = None, filter_df = None):
     hdf.close()
 
 
-# %% ../nbs/01_io.ipynb 15
+# %% ../nbs/01_io.ipynb 19
 # These two very helpful functions are borrowed from https://towardsdatascience.com/saving-metadata-with-dataframes-71f51f558d8e
 
 custom_meta_key = 'salk-toolkit-meta'
