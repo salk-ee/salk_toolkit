@@ -24,6 +24,8 @@ import pyreadstat
 import salk_toolkit as stk
 from salk_toolkit.utils import replace_constants, vod, is_datetime
 
+warn = lambda msg,*args: warnings.warn(msg,*args,stacklevel=3)
+
 # %% ../nbs/01_io.ipynb 4
 def read_json(fname,replace_const=True):
     with open(fname,'r') as jf:
@@ -85,11 +87,11 @@ def process_annotated_data(meta_fname=None, multilevel=False, meta=None, data_fi
             if 'scale' in group: cd = {**group['scale'],**cd}
             
             if sn not in raw_data:
-                print(f"Column {sn} not found")
+                warn(f"Column {sn} not found")
                 continue
             
             if raw_data[sn].isna().all():
-                print(f"Column {sn} is empty and thus ignored")
+                warn(f"Column {sn} is empty and thus ignored")
                 continue
                 
             s = raw_data[sn].rename(cn)
@@ -101,13 +103,13 @@ def process_annotated_data(meta_fname=None, multilevel=False, meta=None, data_fi
             if 'categories' in cd: 
                 na_sum = s.isna().sum()
                 cats = cd['categories'] if cd['categories']!='infer' else [ c for c in s.unique() if pd.notna(c) ]
-                ns = pd.Series(pd.Categorical(s,categories=cats,ordered=cd['ordered'] if 'ordered' in cd else False), name=cn)
+                ns = pd.Series(pd.Categorical(s,categories=cats,ordered=cd['ordered'] if 'ordered' in cd else False), name=cn, index=raw_data.index)
                 # Check if the category list provided was comprehensive
                 new_nas = ns.isna().sum() - na_sum
                 
                 if new_nas > 0: 
-                    unlisted_cats = set(s.unique().dropna())-set(cats)
-                    print(f"Column {cn} {f'({sn}) ' if cn != sn else ''}had unknown categories {unlisted_cats} for {new_nas} entries")
+                    unlisted_cats = set(s.dropna().unique())-set(cats)
+                    warn(f"Column {cn} {f'({sn}) ' if cn != sn else ''}had unknown categories {unlisted_cats} for { new_nas/len(ns) :.1%} entries")
                     
                 s = ns
             gres.append(s)
@@ -118,11 +120,11 @@ def process_annotated_data(meta_fname=None, multilevel=False, meta=None, data_fi
     
     df = pd.concat(res,axis=1)
     
-    if 'postprocessing' in meta and not only_fix_categories:
-        exec(meta['postprocessing'],{'pd':pd, 'np':np, 'stk':stk, 'df':df, **constants  })
-
     if not multilevel:
         df.columns = df.columns.get_level_values(1)    
+    
+    if 'postprocessing' in meta and not only_fix_categories:
+        exec(meta['postprocessing'],{'pd':pd, 'np':np, 'stk':stk, 'df':df, **constants  })
     
     return (df, meta) if return_meta else df
 
@@ -135,7 +137,12 @@ def read_annotated_data(fname):
         return process_annotated_data(fname, return_meta=True)
     elif ext == '.parquet':
         data, full_meta = load_parquet_with_metadata(fname)
-        return data, full_meta['data']
+        if full_meta is not None:
+            return data, full_meta['data']
+    
+    warn(f"Warning: using inferred meta for {fname}")
+    meta = infer_meta(fname,meta_file=False)
+    return process_annotated_data(fname, meta=meta, return_meta=True)
 
 # %% ../nbs/01_io.ipynb 7
 # Helper functions designed to be used with the annotations
@@ -185,7 +192,7 @@ def change_mapping(ot, nt, only_matches=False):
 # This is intended to allow making small improvements in the meta even after a model has been run
 # It is by no means perfect, but is nevertheless a useful tool to avoid re-running long pymc models for simple column/translation changes
 def change_meta_df(df, old_dmeta, new_dmeta):
-    print("Warning: this tool handles only simple cases of column name, translation and category order changes.")
+    warn("This tool handles only simple cases of column name, translation and category order changes.")
     
     # Ready the metafiles for parsing
     old_dmeta = replace_constants(old_dmeta); new_dmeta = replace_constants(new_dmeta)
@@ -210,7 +217,7 @@ def change_meta_df(df, old_dmeta, new_dmeta):
         
         # Warn about transformations and don't touch columns where those change
         if vod(ocd,'transform') != vod(ncd,'transform'):
-            print(f"Warning: column {c} has a different transformation. Leaving it unchanged")
+            warn(f"Column {c} has a different transformation. Leaving it unchanged")
             continue
         
         # Handle translation changes
@@ -344,7 +351,7 @@ def infer_meta(data_file=None, meta_file=True, read_opts={}, df=None, translate_
             with open(meta_file,'w',encoding='utf8') as jf:
                 json.dump(meta,jf,indent=2,ensure_ascii=False)
         else:
-            print(f"{meta_file} already exists")
+            print(f"{meta_file} already exists, skipping write")
 
     return meta
 
@@ -358,9 +365,9 @@ def read_and_process_data(desc, return_meta=False):
     data, meta = read_annotated_data(desc['file'])
     
     # Perform transformation and filtering
-    if 'preprocessing' in desc: exec(desc['preprocessing'],  {'pd':pd, 'np':np },{ 'df':data })
-    if 'filter' in desc: data = data[eval(desc['filter'],    {'pd':pd, 'np':np },{ 'df':data })]
-    if 'postprocessing' in desc: exec(desc['postprocessing'],{'pd':pd, 'np':np },{ 'df':data })
+    if 'preprocessing' in desc:  exec(desc['preprocessing'], {'pd':pd, 'np':np, 'stk':stk, 'df':df})
+    if 'filter' in desc: data = data[eval(desc['filter'],    {'pd':pd, 'np':np, 'stk':stk, 'df':df})]
+    if 'postprocessing' in desc: exec(desc['postprocessing'],{'pd':pd, 'np':np, 'stk':stk, 'df':df})
     
     return (data, meta) if return_meta else data
 
