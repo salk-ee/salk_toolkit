@@ -22,9 +22,7 @@ import pyarrow.parquet as pq
 import pyreadstat
 
 import salk_toolkit as stk
-from salk_toolkit.utils import replace_constants, vod, is_datetime
-
-warn = lambda msg,*args: warnings.warn(msg,*args,stacklevel=3)
+from salk_toolkit.utils import replace_constants, vod, is_datetime, warn
 
 # %% ../nbs/01_io.ipynb 4
 def read_json(fname,replace_const=True):
@@ -362,14 +360,14 @@ def data_with_inferred_meta(data_file, **kwargs):
 
 # %% ../nbs/01_io.ipynb 14
 def read_and_process_data(desc, return_meta=False):
-    data, meta = read_annotated_data(desc['file'])
+    df, meta = read_annotated_data(desc['file'])
     
     # Perform transformation and filtering
     if 'preprocessing' in desc:  exec(desc['preprocessing'], {'pd':pd, 'np':np, 'stk':stk, 'df':df})
-    if 'filter' in desc: data = data[eval(desc['filter'],    {'pd':pd, 'np':np, 'stk':stk, 'df':df})]
+    if 'filter' in desc: df = df[eval(desc['filter'],    {'pd':pd, 'np':np, 'stk':stk, 'df':df})]
     if 'postprocessing' in desc: exec(desc['postprocessing'],{'pd':pd, 'np':np, 'stk':stk, 'df':df})
     
-    return (data, meta) if return_meta else data
+    return (df, meta) if return_meta else df
 
 # %% ../nbs/01_io.ipynb 16
 def save_population_h5(fname,pdf):
