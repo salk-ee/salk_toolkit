@@ -196,7 +196,7 @@ def diff_columns(data, cat_col, value_col='value', color_scale=alt.Undefined, ca
     idf = data.set_index(ind_cols)
     diff = (idf[idf[factor_col]==factors[1]][value_col]-idf[idf[factor_col]==factors[0]][value_col]).reset_index()
     
-    if sort_descending: cat_order = list(diff.sort_values(value_col)[cat_col])
+    if sort_descending: cat_order = list(diff.sort_values(value_col,ascending=False)[cat_col])
     
     plot = alt.Chart(round(diff, 3), width = 'container' \
     ).mark_bar().encode(

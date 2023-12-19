@@ -25,7 +25,7 @@ info = st.empty()
 with st.spinner("Loading libraries.."):
     import pandas as pd
     import numpy as np
-    import json, io, gzip, os
+    import json, io, gzip, os, sys
     from collections import defaultdict
 
     import arviz as az
@@ -48,7 +48,7 @@ warnings.filterwarnings(action='ignore', category=UserWarning)
 warnings.filterwarnings(action='ignore', category=pd.errors.PerformanceWarning)
 
 # If none, uses the meta of the first data source
-global_data_metafile = None #'./data/master_meta.json'
+global_data_metafile = sys.argv[1] if len(sys.argv)>1 else None
 
 if global_data_metafile:
     global_data_meta = read_json(global_data_metafile,replace_const=True)
@@ -148,21 +148,26 @@ with st.sidebar: #.expander("Select dimensions"):
 
     args['plot_args'] = plot_args
 
+    
 
     with st.sidebar.expander('Filters'):
+        detailed = st.checkbox('Fine-grained filter', False)
         filter_vals = { col: list(first_data[col].unique()) for col in all_dims if col in first_data.columns }
         filters = {}
 
         for cn in all_dims:
             col = first_data[cn]
-            if col.dtype.name=='category' and not col.dtype.ordered:
-                filters[cn] = st.selectbox(cn, ['All'] + list(col.dtype.categories))
+            if detailed and col.dtype.name=='category':
+                filters[cn] = st.multiselect(cn, list(col.dtype.categories), list(col.dtype.categories))
+            elif col.dtype.name=='category' and not col.dtype.ordered:
+                filters[cn] = st.selectbox(cn, 
+                    ['All'] + list(vod(c_meta[cn],'groups',{}).keys()) + list(col.dtype.categories))
             elif col.dtype.name=='category':
-                cats = col.dtype.categories
+                cats = list(col.dtype.categories)
                 filters[cn] = st.select_slider(cn,cats,value=(cats[0],cats[-1]))
-            #elif col.dtype!='bool':
-            #    mima = (col.min(),col.max())
-            #    filters[cn] = st.slider(cn,*mima,value=mima)
+            elif is_numeric_dtype(col) and col.dtype!='bool':
+                mima = (col.min(),col.max())
+                filters[cn] = st.slider(cn,*mima,value=mima)
 
         args['filter'] = { k:v for k,v in filters.items() if v != 'All'}
 

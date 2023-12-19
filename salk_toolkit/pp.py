@@ -47,6 +47,11 @@ def augment_draws(data, factors=None, n_draws=None, threshold=50):
     return pd.concat([data, new_rows])
 
 # %% ../nbs/02_pp.ipynb 7
+# Get the categories that are in use
+def get_cats(col):
+    return [ c for c in col.dtype.categories if c in col.unique() ]
+
+# %% ../nbs/02_pp.ipynb 8
 # Get all data required for a given graph
 # Only return columns and rows that are needed
 # This is self-contained so it can be moved to polars later
@@ -58,6 +63,8 @@ def get_filtered_data(full_df, data_meta, columns=None, **kwargs):
     
     # If any aliases are used, cconvert them to column names according to the data_meta
     gc_dict = group_columns_dict(data_meta)
+    c_meta = extract_column_meta(data_meta)
+    
     cols = [ c for c in np.unique(list_aliases(cols,gc_dict)) if c in full_df.columns ]
     
     #print("C",cols)
@@ -77,11 +84,14 @@ def get_filtered_data(full_df, data_meta, columns=None, **kwargs):
             inds = (((df[k]>=v0) & (df[k]<=v1)) | df[k].isna()) & inds
         elif isinstance(v,list): # List indicates a set of values
             inds = df[k].isin(v) & inds
+        elif 'groups' in c_meta[k] and v in c_meta[k]['groups']:
+            inds = df[k].isin(c_meta[k]['groups'][v]) & inds
         else: # Just filter on single value
             inds = (df[k]==v) & inds
         #if not inds.any():
         #    print(f"None left after {k}:{v}")
         #    break
+            
     filtered_df = df[inds]
     
     # If res_col is a group of questions
@@ -92,6 +102,11 @@ def get_filtered_data(full_df, data_meta, columns=None, **kwargs):
         filtered_df = filtered_df.melt(id_vars=id_vars, value_vars=value_vars, var_name='question', value_name=kwargs['res_col'])
         filtered_df['question'] = pd.Categorical(filtered_df['question'],gc_dict[kwargs['res_col']])
         
+    # Filter out the unused categories so plots are cleaner
+    for k in filtered_df.columns:
+        if filtered_df[k].dtype.name == 'category':
+            filtered_df.loc[:,k] = pd.Categorical(filtered_df[k],get_cats(filtered_df[k]),ordered=filtered_df[k].dtype.ordered)
+        
     # If not poststratisfied
     if not vod(kwargs,'poststrat'):
         filtered_df['weight'] = 1.0 # Remove weighting
@@ -100,7 +115,7 @@ def get_filtered_data(full_df, data_meta, columns=None, **kwargs):
     
     return filtered_df
 
-# %% ../nbs/02_pp.ipynb 9
+# %% ../nbs/02_pp.ipynb 10
 # Groupby if needed - this simplifies the wrangle considerably :)
 def gb_in(df, gb_cols):
     return df.groupby(gb_cols) if len(gb_cols)>0 else df
@@ -160,17 +175,17 @@ def wrangle_data(raw_df, plot_meta, col_meta, res_col, factor_cols ,**kwargs):
             
     return rv
 
-# %% ../nbs/02_pp.ipynb 11
+# %% ../nbs/02_pp.ipynb 12
+# Create a color scale
 ordered_gradient = ["#c30d24", "#f3a583", "#94c6da", "#1770ab"]
-
 def meta_color_scale(cmeta,argname='colors',column=None):
     scale = vod(cmeta,argname)
-    cats = column.dtype.categories if column.dtype.name=='category' else None
+    cats = get_cats(column) if column.dtype.name=='category' else None
     if scale is None and column is not None and column.dtype.name=='category' and column.dtype.ordered:
         scale = dict(zip(cats,gradient_to_discrete_color_scale(ordered_gradient, len(cats))))
     return to_alt_scale(scale,cats)
 
-# %% ../nbs/02_pp.ipynb 12
+# %% ../nbs/02_pp.ipynb 13
 # Function that takes filtered raw data and plot information and outputs the plot
 # Handles all of the data wrangling and parameter formatting
 def create_plot(filtered_df, data_meta, plot, alt_properties={}, dry_run=False, width=200, **kwargs):
@@ -184,7 +199,7 @@ def create_plot(filtered_df, data_meta, plot, alt_properties={}, dry_run=False, 
     if 'plot_args' in kwargs: params.update(kwargs['plot_args'])
     params['color_scale'] = meta_color_scale(col_meta[kwargs['res_col']],'colors',data[kwargs['res_col']])
     if filtered_df[kwargs['res_col']].dtype.name=='category':
-        params['cat_order'] = list(filtered_df[kwargs['res_col']].dtype.categories)
+        params['cat_order'] = get_cats(filtered_df[kwargs['res_col']])
 
     # Handle factor columns 
     factor_cols = vod(kwargs,'factor_cols',[])
@@ -198,7 +213,7 @@ def create_plot(filtered_df, data_meta, plot, alt_properties={}, dry_run=False, 
         
     if vod(plot_meta,'question'):
         params['question_color_scale'] = meta_color_scale(col_meta[kwargs['res_col']],'question_colors',filtered_df['question'])
-        params['question_order'] = list(filtered_df['question'].dtype.categories)
+        params['question_order'] = get_cats(filtered_df['question'])
     
     if factor_cols:
         # See if we should use it as an internal facet?
@@ -206,7 +221,7 @@ def create_plot(filtered_df, data_meta, plot, alt_properties={}, dry_run=False, 
         if vod(kwargs,'internal_facet'):
             params['factor_col'] = factor_cols[0]
             params['factor_color_scale'] = meta_color_scale(col_meta[factor_cols[0]],'colors',data[factor_cols[0]])
-            params['factor_order'] = list(data[factor_cols[0]].dtype.categories)
+            params['factor_order'] = get_cats(data[factor_cols[0]])
             factor_cols = factor_cols[1:] # Leave rest for external faceting
         
         # If we still have more than 1 factor - merge the rest
@@ -239,7 +254,7 @@ def create_plot(filtered_df, data_meta, plot, alt_properties={}, dry_run=False, 
     
     return plot
 
-# %% ../nbs/02_pp.ipynb 15
+# %% ../nbs/02_pp.ipynb 16
 # A convenience function to draw a plot straight from a dataset
 def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, check_match=True):
     if data_file is None and full_df is None:
