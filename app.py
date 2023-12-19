@@ -111,10 +111,7 @@ with st.sidebar: #.expander("Select dimensions"):
     f_info = st.empty()
     st.markdown("""___""")
 
-    if 'training_subsample' in first_data.columns:
-        poststrat = st.checkbox('Post-stratified?', True)
-    else: poststrat = True
-
+    args['poststrat'] = st.checkbox('Post-stratified?', True)
 
     show_grouped = st.checkbox('Show grouped facets', True)
 
@@ -169,7 +166,7 @@ with st.sidebar: #.expander("Select dimensions"):
 
         args['filter'] = { k:v for k,v in filters.items() if v != 'All'}
 
-        if not poststrat:  args['filter']['training_subsample'] = True
+        
 
         #print(args['filter'])
 
@@ -190,6 +187,12 @@ with st.sidebar: #.expander("Select dimensions"):
                     mima = (col.min(),col.max())
                     filters[cn] = st.slider(cn,*mima,value=mima)
     '''
+
+
+# Check if any facet dims match observation dim or each other
+if len(set(args['factor_cols']+[obs_name])) != len(args['factor_cols'])+1:
+    st.markdown("""Please choose facets different from observation dimension""")
+    st.stop()
 
 
 #left, middle, right = st.columns([2, 5, 2])
@@ -228,6 +231,7 @@ if facet_dim == 'input_file':
 else:
     # Iterate over input files
     for i, ifile in enumerate(input_files):
+
         with cols[i]:
             # Heading:
             st.header(os.path.splitext(ifile.replace('_',' '))[0])

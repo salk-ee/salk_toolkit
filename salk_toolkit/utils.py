@@ -2,7 +2,8 @@
 
 # %% auto 0
 __all__ = ['warn', 'vod', 'factorize_w_codes', 'batch', 'loc2iloc', 'min_diff', 'continify', 'match_data', 'replace_constants',
-           'index_encoder', 'to_alt_scale', 'multicol_to_vals_cats', 'gradient_to_discrete_color_scale', 'is_datetime']
+           'index_encoder', 'to_alt_scale', 'multicol_to_vals_cats', 'gradient_to_discrete_color_scale', 'is_datetime',
+           'rel_wave_times']
 
 # %% ../nbs/10_utils.ipynb 3
 import json, os, warnings
@@ -34,7 +35,7 @@ def factorize_w_codes(s, codes):
     if not s.isin(codes).all(): # Throw an exception if all values were not replaced
         vals = set(s) - set(codes)
         raise Exception(f'Codes for {s.name} do not match all values: {vals}')
-    return res.to_numpy()
+    return res.to_numpy(dtype='int')
 
 # %% ../nbs/10_utils.ipynb 7
 # Simple batching of an iterable
@@ -121,10 +122,12 @@ def index_encoder(z):
 
 # %% ../nbs/10_utils.ipynb 17
 # Helper function to turn a dictionary into an Altair scale (or None into alt.Undefined)
-def to_alt_scale(scale):
+# Also: preserving order matters because scale order overrides sort argument
+def to_alt_scale(scale, order=None):
     if scale is None: scale = alt.Undefined
     if isinstance(scale,dict):
-        scale = alt.Scale(domain=list(scale.keys()),range=list(scale.values()))
+        if order is None: order = scale.keys()
+        scale = alt.Scale(domain=list(order),range=[ scale[c] for c in order ])
     return scale
 
 # %% ../nbs/10_utils.ipynb 18
@@ -154,8 +157,19 @@ def gradient_to_discrete_color_scale( grad, num_colors):
     cmap = mpc.LinearSegmentedColormap.from_list('grad',grad)
     return [mpc.to_hex(cmap(i)) for i in np.linspace(0, 1, num_colors)]
 
-# %% ../nbs/10_utils.ipynb 21
+# %% ../nbs/10_utils.ipynb 22
 def is_datetime(col):
     with warnings.catch_warnings():
         warnings.simplefilter(action='ignore', category=UserWarning)
         return pd.api.types.is_datetime64_any_dtype(col) or (col.dtype.name in ['str','object'] and pd.to_datetime(col,errors='coerce').notna().any())
+
+# %% ../nbs/10_utils.ipynb 23
+# Convert a series of wave indices and a series of survey dates into a time series usable by our gp model
+def rel_wave_times(ws, dts, dt0=None):
+    df = pd.DataFrame({'wave':ws, 'dt': pd.to_datetime(dts)})
+    adf = df.groupby('wave')['dt'].median()
+    if dt0 is None: dt0 = adf.max() # use last wave date as the reference
+    
+    w_to_time = dict(((adf - dt0).dt.days/30).items())
+    
+    return pd.Series(df['wave'].replace(w_to_time),name='t')

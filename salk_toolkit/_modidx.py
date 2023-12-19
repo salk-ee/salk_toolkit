@@ -68,6 +68,7 @@ d = { 'settings': { 'branch': 'main',
                                     'salk_toolkit.utils.min_diff': ('utils.html#min_diff', 'salk_toolkit/utils.py'),
                                     'salk_toolkit.utils.multicol_to_vals_cats': ( 'utils.html#multicol_to_vals_cats',
                                                                                   'salk_toolkit/utils.py'),
+                                    'salk_toolkit.utils.rel_wave_times': ('utils.html#rel_wave_times', 'salk_toolkit/utils.py'),
                                     'salk_toolkit.utils.replace_constants': ('utils.html#replace_constants', 'salk_toolkit/utils.py'),
                                     'salk_toolkit.utils.to_alt_scale': ('utils.html#to_alt_scale', 'salk_toolkit/utils.py'),
                                     'salk_toolkit.utils.vod': ('utils.html#vod', 'salk_toolkit/utils.py')}}}

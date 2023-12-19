@@ -53,7 +53,7 @@ def augment_draws(data, factors=None, n_draws=None, threshold=50):
 def get_filtered_data(full_df, data_meta, columns=None, **kwargs):
     
     # Figure out which columns we actually need
-    meta_cols = ['draw', 'weight']
+    meta_cols = ['draw', 'weight', 'training_subsample']
     cols = [ kwargs['res_col'] ]  + vod(kwargs,'factor_cols',[]) + list(vod(kwargs,'filter',{}).keys()) + [ c for c in meta_cols if c in full_df.columns ]
     
     # If any aliases are used, cconvert them to column names according to the data_meta
@@ -69,7 +69,12 @@ def get_filtered_data(full_df, data_meta, columns=None, **kwargs):
     inds = np.full(len(df),True)
     for k, v in filter_dict.items():
         if isinstance(v,tuple): # Tuples specify a range
-            inds = (((df[k]>=v[0]) & (df[k]<=v[1])) | df[k].isna()) & inds
+            if df[k].dtype.name == 'category': # Add a safety in case category lists do not fully match (f.i. filter is working off a longer list)
+                cats = df[k].dtype.categories
+                v0 = v[0] if v[0] in cats else cats[0]
+                v1 = v[1] if v[1] in cats else cats[-1]
+            else: v0,v1 = v[0], v[1]
+            inds = (((df[k]>=v0) & (df[k]<=v1)) | df[k].isna()) & inds
         elif isinstance(v,list): # List indicates a set of values
             inds = df[k].isin(v) & inds
         else: # Just filter on single value
@@ -86,6 +91,12 @@ def get_filtered_data(full_df, data_meta, columns=None, **kwargs):
         id_vars = [ c for c in cols if c not in value_vars ]
         filtered_df = filtered_df.melt(id_vars=id_vars, value_vars=value_vars, var_name='question', value_name=kwargs['res_col'])
         filtered_df['question'] = pd.Categorical(filtered_df['question'],gc_dict[kwargs['res_col']])
+        
+    # If not poststratisfied
+    if not vod(kwargs,'poststrat'):
+        filtered_df['weight'] = 1.0 # Remove weighting
+        if 'training_subsample' in filtered_df.columns:
+            filtered_df = filtered_df[filtered_df['training_subsample']]
     
     return filtered_df
 
@@ -107,7 +118,8 @@ def wrangle_data(raw_df, plot_meta, col_meta, res_col, factor_cols ,**kwargs):
     
     gb_dims = (['draw'] if draws else []) + (factor_cols if factor_cols else []) + (['question'] if 'question' in raw_df.columns else [])
     
-    if 'weight' not in raw_df.columns and not continuous: raw_df['weight'] = 1
+    if 'weight' not in raw_df.columns: raw_df['weight'] = 1.0
+    else: raw_df['weight'] = raw_df['weight'].fillna(1.0)
     
     if draws and 'draw' in raw_df.columns: # Draw present in data
         raw_df = augment_draws(raw_df,gb_dims[1:],threshold=50) # Augment draws so we always have 50 data points in each
@@ -140,7 +152,7 @@ def wrangle_data(raw_df, plot_meta, col_meta, res_col, factor_cols ,**kwargs):
         
     # Ensure all rv columns other than value are categorical
     for c in rv['data'].columns:
-        if rv['data'][c].dtype.name != 'categorical' and c!=rv['value_col']:
+        if rv['data'][c].dtype.name != 'category' and c!=rv['value_col']:
             if vod(vod(col_meta,c,{}),'continuous'):
                 rv['data'].loc[:,c] = discretize_continuous(rv['data'][c],vod(col_meta,c,{}))
             else: # Just assume it's categorical by any other name
@@ -153,10 +165,10 @@ ordered_gradient = ["#c30d24", "#f3a583", "#94c6da", "#1770ab"]
 
 def meta_color_scale(cmeta,argname='colors',column=None):
     scale = vod(cmeta,argname)
+    cats = column.dtype.categories if column.dtype.name=='category' else None
     if scale is None and column is not None and column.dtype.name=='category' and column.dtype.ordered:
-        cats = column.dtype.categories
         scale = dict(zip(cats,gradient_to_discrete_color_scale(ordered_gradient, len(cats))))
-    return to_alt_scale(scale)
+    return to_alt_scale(scale,cats)
 
 # %% ../nbs/02_pp.ipynb 12
 # Function that takes filtered raw data and plot information and outputs the plot
@@ -171,6 +183,8 @@ def create_plot(filtered_df, data_meta, plot, alt_properties={}, dry_run=False, 
     
     if 'plot_args' in kwargs: params.update(kwargs['plot_args'])
     params['color_scale'] = meta_color_scale(col_meta[kwargs['res_col']],'colors',data[kwargs['res_col']])
+    if filtered_df[kwargs['res_col']].dtype.name=='category':
+        params['cat_order'] = list(filtered_df[kwargs['res_col']].dtype.categories)
 
     # Handle factor columns 
     factor_cols = vod(kwargs,'factor_cols',[])
@@ -183,7 +197,8 @@ def create_plot(filtered_df, data_meta, plot, alt_properties={}, dry_run=False, 
         data.loc[:,'question'] = pd.Categorical([kwargs['res_col']]*len(params['data']))
         
     if vod(plot_meta,'question'):
-        params['question_color_scale'] = meta_color_scale(col_meta[kwargs['res_col']],'question_colors')
+        params['question_color_scale'] = meta_color_scale(col_meta[kwargs['res_col']],'question_colors',filtered_df['question'])
+        params['question_order'] = list(filtered_df['question'].dtype.categories)
     
     if factor_cols:
         # See if we should use it as an internal facet?
@@ -191,6 +206,7 @@ def create_plot(filtered_df, data_meta, plot, alt_properties={}, dry_run=False, 
         if vod(kwargs,'internal_facet'):
             params['factor_col'] = factor_cols[0]
             params['factor_color_scale'] = meta_color_scale(col_meta[factor_cols[0]],'colors',data[factor_cols[0]])
+            params['factor_order'] = list(data[factor_cols[0]].dtype.categories)
             factor_cols = factor_cols[1:] # Leave rest for external faceting
         
         # If we still have more than 1 factor - merge the rest
