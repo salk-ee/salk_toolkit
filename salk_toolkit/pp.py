@@ -48,18 +48,19 @@ def augment_draws(data, factors=None, n_draws=None, threshold=50):
 
 # %% ../nbs/02_pp.ipynb 7
 # Get the categories that are in use
-def get_cats(col):
-    return [ c for c in col.dtype.categories if c in col.unique() ]
+def get_cats(col, cats=None):
+    if cats is None or len(set(col.dtype.categories)-set(cats))>0: cats = col.dtype.categories
+    return [ c for c in cats if c in col.unique() ]
 
 # %% ../nbs/02_pp.ipynb 8
 # Get all data required for a given graph
 # Only return columns and rows that are needed
 # This is self-contained so it can be moved to polars later
-def get_filtered_data(full_df, data_meta, columns=None, **kwargs):
+def get_filtered_data(full_df, data_meta, pp_desc, columns=None):
     
     # Figure out which columns we actually need
     meta_cols = ['draw', 'weight', 'training_subsample']
-    cols = [ kwargs['res_col'] ]  + vod(kwargs,'factor_cols',[]) + list(vod(kwargs,'filter',{}).keys()) + [ c for c in meta_cols if c in full_df.columns ]
+    cols = [ pp_desc['res_col'] ]  + vod(pp_desc,'factor_cols',[]) + list(vod(pp_desc,'filter',{}).keys()) + [ c for c in meta_cols if c in full_df.columns ]
     
     # If any aliases are used, cconvert them to column names according to the data_meta
     gc_dict = group_columns_dict(data_meta)
@@ -72,7 +73,7 @@ def get_filtered_data(full_df, data_meta, columns=None, **kwargs):
     df = full_df[cols]
     
     # Filter using demographics dict. This is very clever but hard to read. See:
-    filter_dict = vod(kwargs,'filter',{})
+    filter_dict = vod(pp_desc,'filter',{})
     inds = np.full(len(df),True)
     for k, v in filter_dict.items():
         if isinstance(v,tuple): # Tuples specify a range
@@ -96,26 +97,30 @@ def get_filtered_data(full_df, data_meta, columns=None, **kwargs):
     
     # If res_col is a group of questions
     # This might move to wrangle but currently easier to do here as we have gc_dict handy
-    if kwargs['res_col'] in gc_dict:
-        value_vars = [ c for c in gc_dict[kwargs['res_col']] if c in cols ]
+    if pp_desc['res_col'] in gc_dict:
+        value_vars = [ c for c in gc_dict[pp_desc['res_col']] if c in cols ]
         id_vars = [ c for c in cols if c not in value_vars ]
-        filtered_df = filtered_df.melt(id_vars=id_vars, value_vars=value_vars, var_name='question', value_name=kwargs['res_col'])
-        filtered_df['question'] = pd.Categorical(filtered_df['question'],gc_dict[kwargs['res_col']])
+        filtered_df = filtered_df.melt(id_vars=id_vars, value_vars=value_vars, var_name='question', value_name=pp_desc['res_col'])
+        filtered_df['question'] = pd.Categorical(filtered_df['question'],gc_dict[pp_desc['res_col']])
         
     # Filter out the unused categories so plots are cleaner
     for k in filtered_df.columns:
         if filtered_df[k].dtype.name == 'category':
-            filtered_df.loc[:,k] = pd.Categorical(filtered_df[k],get_cats(filtered_df[k]),ordered=filtered_df[k].dtype.ordered)
+            m_cats = c_meta[k]['categories'] if vod(c_meta[k],'categories','infer')!='infer' else None
+            filtered_df.loc[:,k] = pd.Categorical(filtered_df[k],get_cats(filtered_df[k],m_cats),ordered=filtered_df[k].dtype.ordered)
         
     # If not poststratisfied
-    if not vod(kwargs,'poststrat'):
+    if not vod(pp_desc,'poststrat'):
         filtered_df['weight'] = 1.0 # Remove weighting
         if 'training_subsample' in filtered_df.columns:
             filtered_df = filtered_df[filtered_df['training_subsample']]
     
-    return filtered_df
+    # Aggregate the data into right shape
+    pparams = wrangle_data(filtered_df, data_meta, pp_desc)
+    
+    return pparams
 
-# %% ../nbs/02_pp.ipynb 10
+# %% ../nbs/02_pp.ipynb 9
 # Groupby if needed - this simplifies the wrangle considerably :)
 def gb_in(df, gb_cols):
     return df.groupby(gb_cols) if len(gb_cols)>0 else df
@@ -127,7 +132,12 @@ def discretize_continuous(col, col_meta={}):
     return cut
 
 # Helper function that handles reformating data for create_plot
-def wrangle_data(raw_df, plot_meta, col_meta, res_col, factor_cols ,**kwargs):
+def wrangle_data(raw_df, data_meta, pp_desc):
+    
+    plot_meta = get_plot_meta(pp_desc['plot'])
+    col_meta = extract_column_meta(data_meta)
+    
+    res_col, factor_cols = vod(pp_desc,'res_col'), vod(pp_desc,'factor_cols')
     
     draws, continuous, data_format = (vod(plot_meta, n, False) for n in ['draws','continuous','data_format'])
     
@@ -139,43 +149,45 @@ def wrangle_data(raw_df, plot_meta, col_meta, res_col, factor_cols ,**kwargs):
     if draws and 'draw' in raw_df.columns: # Draw present in data
         raw_df = augment_draws(raw_df,gb_dims[1:],threshold=50) # Augment draws so we always have 50 data points in each
         
-    rv = { 'value_col': 'value' }
+    pparams = { 'value_col': 'value' }
+    data = None
     
     if data_format=='raw':
-        rv['value_col'] = res_col
+        pparams['value_col'] = res_col
         if vod(plot_meta,'sample'):
-            rv['data'] = gb_in(raw_df[gb_dims+[res_col]],gb_dims).sample(plot_meta['sample'],replace=True)
-        else: rv['data'] = raw_df[gb_dims+[res_col]]
+            data = gb_in(raw_df[gb_dims+[res_col]],gb_dims).sample(plot_meta['sample'],replace=True)
+        else: data = raw_df[gb_dims+[res_col]]
 
     elif False and data_format=='table': # TODO: Untested. Fix when first needed
         ddf = pd.get_dummies(raw_df[res_col])
         res_cols = list(ddf.columns)
         ddf.loc[:,gb_dims] = raw_df[gb_dims]
-        rv['data'] = gb_in(ddf,gb_dims)[res_cols].mean().reset_index()
+        data = gb_in(ddf,gb_dims)[res_cols].mean().reset_index()
         
     elif data_format=='longform':
         if continuous:
-            rv['data'] = gb_in(raw_df,gb_dims)[res_col].mean().dropna().reset_index() 
-            rv['value_col'] = res_col
+            data = gb_in(raw_df,gb_dims)[res_col].mean().dropna().reset_index() 
+            pparams['value_col'] = res_col
         else: # categorical
-            rv['cat_col'] = res_col 
-            rv['value_col'] = 'percent'
-            rv['data'] = (raw_df.groupby(gb_dims+[res_col])['weight'].sum()/gb_in(raw_df,gb_dims)['weight'].sum()).rename(rv['value_col']).dropna().reset_index()
+            pparams['cat_col'] = res_col 
+            pparams['value_col'] = 'percent'
+            data = (raw_df.groupby(gb_dims+[res_col])['weight'].sum()/gb_in(raw_df,gb_dims)['weight'].sum()).rename(pparams['value_col']).dropna().reset_index()
             
     else:
         raise Exception("Unknown data_format")
         
     # Ensure all rv columns other than value are categorical
-    for c in rv['data'].columns:
-        if rv['data'][c].dtype.name != 'category' and c!=rv['value_col']:
+    for c in data.columns:
+        if data[c].dtype.name != 'category' and c!=pparams['value_col']:
             if vod(vod(col_meta,c,{}),'continuous'):
-                rv['data'].loc[:,c] = discretize_continuous(rv['data'][c],vod(col_meta,c,{}))
+                data.loc[:,c] = discretize_continuous(data[c],vod(col_meta,c,{}))
             else: # Just assume it's categorical by any other name
-                rv['data'].loc[:,c] = pd.Categorical(rv['data'][c])
+                data.loc[:,c] = pd.Categorical(data[c])
             
-    return rv
+    pparams['data'] = data
+    return pparams
 
-# %% ../nbs/02_pp.ipynb 12
+# %% ../nbs/02_pp.ipynb 11
 # Create a color scale
 ordered_gradient = ["#c30d24", "#f3a583", "#94c6da", "#1770ab"]
 def meta_color_scale(cmeta,argname='colors',column=None):
@@ -185,67 +197,67 @@ def meta_color_scale(cmeta,argname='colors',column=None):
         scale = dict(zip(cats,gradient_to_discrete_color_scale(ordered_gradient, len(cats))))
     return to_alt_scale(scale,cats)
 
-# %% ../nbs/02_pp.ipynb 13
+# %% ../nbs/02_pp.ipynb 12
 # Function that takes filtered raw data and plot information and outputs the plot
 # Handles all of the data wrangling and parameter formatting
-def create_plot(filtered_df, data_meta, plot, alt_properties={}, dry_run=False, width=200, **kwargs):
-    plot_meta = get_plot_meta(plot)
+def create_plot(pparams, data_meta, pp_desc, alt_properties={}, dry_run=False, width=200):
+    
+    data = pparams['data']
+
+    plot_meta = get_plot_meta(pp_desc['plot'])
     col_meta = extract_column_meta(data_meta)
-    col_meta['question'] = vod(col_meta[kwargs['res_col']],'question_colors',{})
+    col_meta['question'] = vod(col_meta[pp_desc['res_col']],'question_colors',{})
     
-    params = wrangle_data(filtered_df, plot_meta, col_meta, **kwargs)
-    data = params['data']
-    
-    if 'plot_args' in kwargs: params.update(kwargs['plot_args'])
-    params['color_scale'] = meta_color_scale(col_meta[kwargs['res_col']],'colors',data[kwargs['res_col']])
-    if filtered_df[kwargs['res_col']].dtype.name=='category':
-        params['cat_order'] = get_cats(filtered_df[kwargs['res_col']])
+    if 'plot_args' in pp_desc: pparams.update(pp_desc['plot_args'])
+    pparams['color_scale'] = meta_color_scale(col_meta[pp_desc['res_col']],'colors',data[pp_desc['res_col']])
+    if data[pp_desc['res_col']].dtype.name=='category':
+        pparams['cat_order'] = get_cats(data[pp_desc['res_col']])
 
     # Handle factor columns 
-    factor_cols = vod(kwargs,'factor_cols',[])
+    factor_cols = vod(pp_desc,'factor_cols',[])
     
     # If we have a question column not handled by the plot, add it to factors:
     if 'question' in data.columns and not vod(plot_meta,'question'):
         factor_cols = factor_cols + ['question']
     # If we don't have a question column but need it, just fill it with res_col name
     elif 'question' not in data.columns and vod(plot_meta,'question'):
-        data.loc[:,'question'] = pd.Categorical([kwargs['res_col']]*len(params['data']))
+        data.loc[:,'question'] = pd.Categorical([pp_desc['res_col']]*len(pparams['data']))
         
     if vod(plot_meta,'question'):
-        params['question_color_scale'] = meta_color_scale(col_meta[kwargs['res_col']],'question_colors',filtered_df['question'])
-        params['question_order'] = get_cats(filtered_df['question'])
+        pparams['question_color_scale'] = meta_color_scale(col_meta[pp_desc['res_col']],'question_colors',data['question'])
+        pparams['question_order'] = get_cats(data['question'])
     
     if factor_cols:
         # See if we should use it as an internal facet?
-        plot_args = vod(kwargs,'plot_args',{})
-        if vod(kwargs,'internal_facet'):
-            params['factor_col'] = factor_cols[0]
-            params['factor_color_scale'] = meta_color_scale(col_meta[factor_cols[0]],'colors',data[factor_cols[0]])
-            params['factor_order'] = get_cats(data[factor_cols[0]])
+        plot_args = vod(pp_desc,'plot_args',{})
+        if vod(pp_desc,'internal_facet'):
+            pparams['factor_col'] = factor_cols[0]
+            pparams['factor_color_scale'] = meta_color_scale(col_meta[factor_cols[0]],'colors',data[factor_cols[0]])
+            pparams['factor_order'] = get_cats(data[factor_cols[0]])
             factor_cols = factor_cols[1:] # Leave rest for external faceting
         
         # If we still have more than 1 factor - merge the rest
         if len(factor_cols)>1:
             factor_col = '+'.join(factor_cols)
             data.loc[:,factor_col] = data[factor_cols].agg(', '.join, axis=1)
-            params['data'] = data
+            pparams['data'] = data
             n_facet_cols = len(data[factor_cols[-1]].dtype.categories)
             factor_cols = [factor_col]
         else:
             n_facet_cols = vod(plot_meta,'factor_columns',1)
     
-    plot_fn = get_plot_fn(plot)
+    plot_fn = get_plot_fn(pp_desc['plot'])
             
     # Trim down parameters list if needed
     aspec = inspect.getfullargspec(plot_fn)
-    if aspec.varkw is None: params = { k:v for k,v in params.items() if k in aspec.args }
+    if aspec.varkw is None: pparams = { k:v for k,v in pparams.items() if k in aspec.args }
     
     # Create the plot using it's function
-    if dry_run: return params
+    if dry_run: return pparams
 
     dims = {'width': width//n_facet_cols if factor_cols else width}
     if 'aspect_ratio' in plot_meta:   dims['height'] = int(dims['width']/plot_meta['aspect_ratio'])        
-    plot = plot_fn(**params).properties(**dims, **alt_properties)
+    plot = plot_fn(**pparams).properties(**dims, **alt_properties)
     
     # Handle rest of factors via altair facet
     if factor_cols:
@@ -254,7 +266,7 @@ def create_plot(filtered_df, data_meta, plot, alt_properties={}, dry_run=False, 
     
     return plot
 
-# %% ../nbs/02_pp.ipynb 16
+# %% ../nbs/02_pp.ipynb 15
 # A convenience function to draw a plot straight from a dataset
 def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, check_match=True):
     if data_file is None and full_df is None:
@@ -273,8 +285,8 @@ def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, c
     if  fit<0:
         raise Exception(f"Plot {pp_desc['plot']} not applicable in this situation because of flags {imp}")
         
-    fdf = get_filtered_data(full_df, data_meta, **pp_desc)
-    return create_plot(fdf,data_meta,width=width,**pp_desc)
+    pparams = get_filtered_data(full_df, data_meta, pp_desc)
+    return create_plot(pparams, data_meta, pp_desc, width=width)
 
 # Another convenience function to simplify testing new plots
 def test_new_plot(fn, pp_desc, *args, plot_meta={}, **kwargs):

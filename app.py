@@ -155,24 +155,28 @@ with st.sidebar: #.expander("Select dimensions"):
         filter_vals = { col: list(first_data[col].unique()) for col in all_dims if col in first_data.columns }
         filters = {}
 
+        # Different selector for different category types
+        # Also - make sure filter is clean and only applies when it is changed from the default 'all' value
+        # This has considerable speed and efficiency implications
         for cn in all_dims:
             col = first_data[cn]
             if detailed and col.dtype.name=='category':
                 filters[cn] = st.multiselect(cn, list(col.dtype.categories), list(col.dtype.categories))
+                if set(filters[cn]) == set(list(col.dtype.categories)): del filters[cn]
             elif col.dtype.name=='category' and not col.dtype.ordered:
                 filters[cn] = st.selectbox(cn, 
                     ['All'] + list(vod(c_meta[cn],'groups',{}).keys()) + list(col.dtype.categories))
+                if filters[cn] == 'All': del filters[cn]
             elif col.dtype.name=='category':
                 cats = list(col.dtype.categories)
                 filters[cn] = st.select_slider(cn,cats,value=(cats[0],cats[-1]))
+                if filters[cn] == (cats[0],cats[-1]): del filters[cn]
             elif is_numeric_dtype(col) and col.dtype!='bool':
                 mima = (col.min(),col.max())
                 filters[cn] = st.slider(cn,*mima,value=mima)
+                if filters[cn] == mima: del filters[cn]
 
-        args['filter'] = { k:v for k,v in filters.items() if v != 'All'}
-
-        
-
+        args['filter'] = filters
         #print(args['filter'])
 
 
@@ -222,14 +226,16 @@ if facet_dim == 'input_file':
     with st.spinner('Filtering data...'):
         dfs = []
         for ifile in input_files:
-            fargs = args.copy()
-            fargs['filter'] = { k:v for k,v in args['filter'].items() if k in loaded[ifile]['data'].columns }
-            df = get_filtered_data(loaded[ifile]['data'], first_data_meta, **fargs)
+            df = loaded[ifile]['data']
             df['input_file'] = ifile
             dfs.append(df)
         fdf = pd.concat(dfs)
         fdf['input_file'] = pd.Categorical(fdf['input_file'],input_files)
-        plot = create_plot(fdf,first_data_meta,width=get_plot_width('full'),**args)
+
+        fargs = args.copy()
+        fargs['filter'] = { k:v for k,v in args['filter'].items() if k in loaded[ifile]['data'].columns }
+        pparams = get_filtered_data(fdf, first_data_meta, fargs)
+        plot = create_plot(pparams,first_data_meta,fargs,width=get_plot_width('full'))
 
     st.altair_chart(plot,use_container_width=True)
 
@@ -247,12 +253,11 @@ else:
             with st.spinner('Filtering data...'):
                 fargs = args.copy()
                 fargs['filter'] = { k:v for k,v in args['filter'].items() if k in loaded[ifile]['data'].columns }
-                fdf = get_filtered_data(loaded[ifile]['data'], data_meta, **fargs)
+                pparams = get_filtered_data(loaded[ifile]['data'], data_meta, fargs)
+                plot = create_plot(pparams,data_meta,fargs,width=get_plot_width(f'{i}_{ifile}'))
 
-                plot = create_plot(fdf,data_meta,width=get_plot_width(f'{i}_{ifile}'),**fargs)
-
-            n_questions = fdf['question'].nunique() if 'question' in fdf else 1
-            st.write('Based on %.1f%% of data' % (100*len(fdf)/(len(loaded[ifile]['data'])*n_questions)))
+            #n_questions = fdf['question'].nunique() if 'question' in fdf else 1
+            #st.write('Based on %.1f%% of data' % (100*len(fdf)/(len(loaded[ifile]['data'])*n_questions)))
             st.altair_chart(plot,
                 use_container_width=(len(input_files)>1)
                 )
