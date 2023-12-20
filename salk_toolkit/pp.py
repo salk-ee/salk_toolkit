@@ -10,6 +10,7 @@ from collections import defaultdict
 
 import numpy as np
 import pandas as pd
+import polars as pl
 import datetime as dt
 
 from typing import List, Tuple, Dict, Union, Optional
@@ -55,7 +56,7 @@ def get_cats(col, cats=None):
 # %% ../nbs/02_pp.ipynb 8
 # Get all data required for a given graph
 # Only return columns and rows that are needed
-# This is self-contained so it can be moved to polars later
+# This can handle either a pandas DataFrame or a polars LazyDataFrame (to allow for loading only needed data)
 def get_filtered_data(full_df, data_meta, pp_desc, columns=None):
     
     # Figure out which columns we actually need
@@ -70,30 +71,31 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=None):
     
     #print("C",cols)
     
-    df = full_df[cols]
+    lazy = isinstance(full_df,pl.LazyFrame)
+    if lazy: pl.enable_string_cache() # Needed for categories to be comparable to strings
+    
+    df = full_df.select(cols) if lazy else full_df[cols]
+    
     
     # Filter using demographics dict. This is very clever but hard to read. See:
     filter_dict = vod(pp_desc,'filter',{})
-    inds = np.full(len(df),True)
+    inds = True if lazy else np.full(len(df),True) 
     for k, v in filter_dict.items():
         if isinstance(v,tuple): # Tuples specify a range
-            if df[k].dtype.name == 'category': # Add a safety in case category lists do not fully match (f.i. filter is working off a longer list)
-                cats = df[k].dtype.categories
-                v0 = v[0] if v[0] in cats else cats[0]
-                v1 = v[1] if v[1] in cats else cats[-1]
-            else: v0,v1 = v[0], v[1]
-            inds = (((df[k]>=v0) & (df[k]<=v1)) | df[k].isna()) & inds
+            if lazy: inds = (((pl.col(k)>=v[0]) & (pl.col(k)<=v[1])) | pl.col(k).is_null()) & inds
+            else: inds = (((df[k]>=v[0]) & (df[k]<=v[1])) | df[k].isna()) & inds
         elif isinstance(v,list): # List indicates a set of values
-            inds = df[k].isin(v) & inds
+            inds = (pl.col(k).is_in(v) if lazy else df[k].isin(v)) & inds
         elif 'groups' in c_meta[k] and v in c_meta[k]['groups']:
-            inds = df[k].isin(c_meta[k]['groups'][v]) & inds
+            v = c_meta[k]['groups'][v]
+            inds = (pl.col(k).is_in(v) if lazy else df[k].isin(v)) & inds
         else: # Just filter on single value
-            inds = (df[k]==v) & inds
+            inds = ((pl.col(k)==v) if lazy else (df[k]==v)) & inds
         #if not inds.any():
         #    print(f"None left after {k}:{v}")
         #    break
             
-    filtered_df = df[inds]
+    filtered_df = df.filter(inds).collect().to_pandas() if lazy else df[inds].copy()
     
     # If res_col is a group of questions
     # This might move to wrangle but currently easier to do here as we have gc_dict handy
@@ -111,12 +113,14 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=None):
         
     # If not poststratisfied
     if not vod(pp_desc,'poststrat'):
-        filtered_df['weight'] = 1.0 # Remove weighting
+        filtered_df.loc[:,'weight'] = 1.0 # Remove weighting
         if 'training_subsample' in filtered_df.columns:
             filtered_df = filtered_df[filtered_df['training_subsample']]
     
     # Aggregate the data into right shape
     pparams = wrangle_data(filtered_df, data_meta, pp_desc)
+    
+    if lazy: pl.disable_string_cache()
     
     return pparams
 
@@ -143,8 +147,8 @@ def wrangle_data(raw_df, data_meta, pp_desc):
     
     gb_dims = (['draw'] if draws else []) + (factor_cols if factor_cols else []) + (['question'] if 'question' in raw_df.columns else [])
     
-    if 'weight' not in raw_df.columns: raw_df['weight'] = 1.0
-    else: raw_df['weight'] = raw_df['weight'].fillna(1.0)
+    if 'weight' not in raw_df.columns: raw_df.loc[:,'weight'] = 1.0
+    else: raw_df.loc[:,'weight'] = raw_df['weight'].fillna(1.0)
     
     if draws and 'draw' in raw_df.columns: # Draw present in data
         raw_df = augment_draws(raw_df,gb_dims[1:],threshold=50) # Augment draws so we always have 50 data points in each
@@ -274,7 +278,11 @@ def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, c
     if data_file is None and data_meta is None:
         raise Exception('If data provided as full_df then data_meta must also be given')
         
-    if full_df is None: full_df, data_meta = read_annotated_data(data_file)
+    if full_df is None: 
+        if data_file.endswith('.parquet'): # Try lazy loading as it only loads what it needs from disk
+            full_df, full_meta = load_parquet_with_metadata(data_file,lazy=True)
+            data_meta = full_meta['data']
+        else: full_df, data_meta = read_annotated_data(data_file)
     
     matches = matching_plots(pp_desc, full_df, data_meta, details=True)
     

@@ -4,7 +4,7 @@
 __all__ = ['max_cats', 'custom_meta_key', 'read_json', 'process_annotated_data', 'read_annotated_data', 'extract_column_meta',
            'group_columns_dict', 'list_aliases', 'change_meta_df', 'change_parquet_meta', 'infer_meta',
            'data_with_inferred_meta', 'read_and_process_data', 'save_population_h5', 'load_population_h5',
-           'save_sample_h5', 'save_parquet_with_metadata', 'load_parquet_with_metadata', 'load_parquet_metadata']
+           'save_sample_h5', 'save_parquet_with_metadata', 'load_parquet_metadata', 'load_parquet_with_metadata']
 
 # %% ../nbs/01_io.ipynb 3
 import json, os, warnings
@@ -13,6 +13,7 @@ from collections import defaultdict
 
 import numpy as np
 import pandas as pd
+import polars as pl
 import datetime as dt
 
 from typing import List, Tuple, Dict, Union, Optional
@@ -441,7 +442,23 @@ def save_parquet_with_metadata(df, meta, file_name):
     
     pq.write_table(table, file_name, compression='GZIP')
     
-def load_parquet_with_metadata(file_name,**kwargs):
+# Just load the metadata from the parquet file
+def load_parquet_metadata(file_name):
+    schema = pq.read_schema(file_name)
+    if custom_meta_key.encode() in schema.metadata:
+        restored_meta_json = schema.metadata[custom_meta_key.encode()]
+        restored_meta = json.loads(restored_meta_json)
+    else: restored_meta = None
+    return restored_meta
+    
+# Load parquet with metadata
+def load_parquet_with_metadata(file_name,lazy=False,**kwargs):
+    if lazy: # Load it as a polars lazy dataframe
+        meta = load_parquet_metadata(file_name)
+        ldf = pl.scan_parquet(file_name,**kwargs)
+        return ldf, meta
+    
+    # Read it as a normal pandas dataframe
     restored_table = pq.read_table(file_name,**kwargs)
     restored_df = restored_table.to_pandas()
     if custom_meta_key.encode() in restored_table.schema.metadata:
@@ -450,12 +467,4 @@ def load_parquet_with_metadata(file_name,**kwargs):
     else: restored_meta = None
     return restored_df, restored_meta
 
-# Just load the metadata from the parquet file
-# This is currently much more inefficient than it can be as it loads the entire table
-def load_parquet_metadata(file_name):
-    restored_table = pq.read_table(file_name)
-    if custom_meta_key.encode() in restored_table.schema.metadata:
-        restored_meta_json = restored_table.schema.metadata[custom_meta_key.encode()]
-        restored_meta = json.loads(restored_meta_json)
-    else: restored_meta = None
-    return restored_meta
+

@@ -127,6 +127,7 @@ def to_alt_scale(scale, order=None):
     if scale is None: scale = alt.Undefined
     if isinstance(scale,dict):
         if order is None: order = scale.keys()
+        else: order = [ c for c in order if c in scale ]
         scale = alt.Scale(domain=list(order),range=[ scale[c] for c in order ])
     return scale
 
