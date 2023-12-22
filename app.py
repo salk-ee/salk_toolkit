@@ -24,6 +24,7 @@ info = st.empty()
 
 with st.spinner("Loading libraries.."):
     import pandas as pd
+    import polars as pl
     import numpy as np
     import json, io, gzip, os, sys
     from collections import defaultdict
@@ -42,6 +43,10 @@ with st.spinner("Loading libraries.."):
     from salk_toolkit.utils import vod
 
     tqdm = lambda x: x # So we can freely copy-paste from notebooks
+
+    # Disable altair schema validations by setting debug_mode = False
+    # This speeds plots up considerably as altair performs an excessive amount of these validation for some reason
+    dm = alt.utils.schemapi.debug_mode(False); dm.__enter__()
 
 # Turn off annoying warnings
 warnings.filterwarnings(action='ignore', category=UserWarning)
@@ -69,16 +74,17 @@ input_files = st.sidebar.multiselect('Select files:',input_file_choices)
 ########################################################################
 
 @st.cache_resource(show_spinner=False)
-def load_file(input_file):
-    full_df, meta = load_parquet_with_metadata(path+input_file)
+def load_file(input_file, lazy=False):
+    full_df, meta = load_parquet_with_metadata(path+input_file,lazy=lazy)
+    n = full_df.select(pl.count()).collect()[0,0] if lazy else len(full_df)
     if meta is None: meta = {}
-    return { 'data': full_df, 'data_meta': vod(meta,'data',None), 'model_meta': vod(meta,'model') }
+    return { 'data': full_df, 'data_n': n, 'data_meta': vod(meta,'data',None), 'model_meta': vod(meta,'model') }
 
 if len(input_files)==0:
     st.markdown("""Please choose an input file from the sidebar""")
     st.stop()
 else:
-    loaded = { ifile:load_file(ifile) for ifile in input_files }
+    loaded = { ifile:load_file(ifile,(i!=0)) for i,ifile in enumerate(input_files) }
     first_file = loaded[input_files[0]]
     first_data_meta = first_file['data_meta'] if global_data_meta is None else global_data_meta
     first_data = first_file['data']
@@ -112,6 +118,7 @@ with st.sidebar: #.expander("Select dimensions"):
     st.markdown("""___""")
 
     args['poststrat'] = st.checkbox('Post-stratified?', True)
+    if args['poststrat']: del args['poststrat'] # True is default, so clean the dict from it in that case
 
     show_grouped = st.checkbox('Show grouped facets', True)
 
@@ -179,6 +186,9 @@ with st.sidebar: #.expander("Select dimensions"):
         args['filter'] = filters
         #print(args['filter'])
 
+    with st.expander('Plot desc'):
+        st.json(args)
+
 
     x='''
     gcols = group_columns_dict(data_meta)
@@ -224,18 +234,21 @@ else: cols = [contextlib.suppress()]
 
 if facet_dim == 'input_file':
     with st.spinner('Filtering data...'):
+        # This is a bit hacky because of the lazy data frames
         dfs = []
         for ifile in input_files:
-            df = loaded[ifile]['data']
-            df['input_file'] = ifile
-            dfs.append(df)
-        fdf = pd.concat(dfs)
-        fdf['input_file'] = pd.Categorical(fdf['input_file'],input_files)
+            df, fargs = loaded[ifile]['data'], args.copy()
+            fargs['filter'] = { k:v for k,v in fargs['filter'].items() if k in df.columns }
+            fargs['factor_cols'] = [ f for f in fargs['factor_cols'] if f!='input_file' ]
+            pparams = get_filtered_data(df, first_data_meta, fargs)
+            dfs.append(pparams['data'])
 
-        fargs = args.copy()
-        fargs['filter'] = { k:v for k,v in args['filter'].items() if k in loaded[ifile]['data'].columns }
-        pparams = get_filtered_data(fdf, first_data_meta, fargs)
-        plot = create_plot(pparams,first_data_meta,fargs,width=get_plot_width('full'))
+        fdf = pd.concat(dfs)
+        fdf['input_file'] = pd.Categorical(
+            [ v for i,f in enumerate(input_files) for v in [f]*len(dfs[i]) ],input_files)
+
+        pparams['data'] = fdf
+        plot = create_plot(pparams,first_data_meta,args,width=get_plot_width('full'))
 
     st.altair_chart(plot,use_container_width=True)
 
@@ -250,14 +263,16 @@ else:
             data_meta = loaded[ifile]['data_meta'] if global_data_meta is None else global_data_meta
             if data_meta is None: data_meta = first_data_meta
 
+
             with st.spinner('Filtering data...'):
                 fargs = args.copy()
                 fargs['filter'] = { k:v for k,v in args['filter'].items() if k in loaded[ifile]['data'].columns }
                 pparams = get_filtered_data(loaded[ifile]['data'], data_meta, fargs)
                 plot = create_plot(pparams,data_meta,fargs,width=get_plot_width(f'{i}_{ifile}'))
 
-            #n_questions = fdf['question'].nunique() if 'question' in fdf else 1
-            #st.write('Based on %.1f%% of data' % (100*len(fdf)/(len(loaded[ifile]['data'])*n_questions)))
+            #n_questions = pparams['data']['question'].nunique() if 'question' in pparams['data'] else 1
+            #st.write('Based on %.1f%% of data' % (100*pparams['n_datapoints']/(len(loaded[ifile]['data_n'])*n_questions)))
+            st.write('Based on %.1f%% of data' % (100*pparams['n_datapoints']/loaded[ifile]['data_n']))
             st.altair_chart(plot,
                 use_container_width=(len(input_files)>1)
                 )
@@ -269,9 +284,13 @@ else:
                 st.json(loaded[ifile]['model_meta'])
 
 
+
+
 st.markdown("""***""")
 st.caption('Andmed & teostus: **SALK 2023**')
 info.empty()
+
+dm.__exit__(None,None,None)
 
 if profile:
     p.stop()
