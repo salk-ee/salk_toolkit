@@ -98,6 +98,7 @@ def process_annotated_data(meta_fname=None, multilevel=False, meta=None, data_fi
             if not only_fix_categories:
                 if 'translate' in cd: s.replace(cd['translate'],inplace=True)
                 if 'transform' in cd: s = eval(cd['transform'],{ 's':s, 'df':raw_data, 'pd':pd, 'np':np, 'stk':stk , **constants })
+                if vod(cd,'continuous'): s = pd.to_numeric(s)
 
             if 'categories' in cd: 
                 na_sum = s.isna().sum()

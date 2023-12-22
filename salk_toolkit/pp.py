@@ -81,21 +81,35 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=None):
     filter_dict = vod(pp_desc,'filter',{})
     inds = True if lazy else np.full(len(df),True) 
     for k, v in filter_dict.items():
-        if isinstance(v,tuple): # Tuples specify a range
+        
+        if isinstance(v,tuple) and (vod(c_meta[k],'continuous') or vod(c_meta[k],'datetime')): # Only special case where we actually need a range
             if lazy: inds = (((pl.col(k)>=v[0]) & (pl.col(k)<=v[1])) | pl.col(k).is_null()) & inds
             else: inds = (((df[k]>=v[0]) & (df[k]<=v[1])) | df[k].isna()) & inds
-        elif isinstance(v,list): # List indicates a set of values
-            inds = (pl.col(k).is_in(v) if lazy else df[k].isin(v)) & inds
+            continue # NB! this approach does not work for ordered categoricals with polars LazyDataFrame, hence handling that separately below
+        
+        # Filter by list of values:
+        if isinstance(v,tuple):
+            if vod(c_meta[k],'categories','infer')=='infer': raise Exception(f'Ordering unknown for column {k}')
+            cats = list(c_meta[k]['categories'])
+            if set(v) & set(cats) != set(v): raise Exception(f'Column {k} values {v} not found in {cats}')
+            bi, ei = cats.index(v[0]), cats.index(v[1])
+            flst = cats[bi:ei+1] # 
         elif 'groups' in c_meta[k] and v in c_meta[k]['groups']:
-            v = c_meta[k]['groups'][v]
-            inds = (pl.col(k).is_in(v) if lazy else df[k].isin(v)) & inds
-        else: # Just filter on single value
-            inds = ((pl.col(k)==v) if lazy else (df[k]==v)) & inds
-        #if not inds.any():
-        #    print(f"None left after {k}:{v}")
-        #    break
+            flst = c_meta[k]['groups'][v]
+        elif isinstance(v,list): flst = v # List indicates a set of values
+        else: flst = [v] # Just filter on single value    
+            
+        inds =  (pl.col(k).is_in(flst) if lazy else df[k].isin(flst)) & inds
             
     filtered_df = df.filter(inds).collect().to_pandas() if lazy else df[inds].copy()
+    
+    # If not poststratisfied
+    if not vod(pp_desc,'poststrat',True):
+        filtered_df = filtered_df.assign(weight = 1.0) # Remove weighting
+        if 'training_subsample' in filtered_df.columns:
+            filtered_df = filtered_df[filtered_df['training_subsample']]
+    
+    n_datapoints = len(filtered_df)
     
     # If res_col is a group of questions
     # This might move to wrangle but currently easier to do here as we have gc_dict handy
@@ -110,15 +124,12 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=None):
         if filtered_df[k].dtype.name == 'category':
             m_cats = c_meta[k]['categories'] if vod(c_meta[k],'categories','infer')!='infer' else None
             filtered_df.loc[:,k] = pd.Categorical(filtered_df[k],get_cats(filtered_df[k],m_cats),ordered=filtered_df[k].dtype.ordered)
-        
-    # If not poststratisfied
-    if not vod(pp_desc,'poststrat'):
-        filtered_df.loc[:,'weight'] = 1.0 # Remove weighting
-        if 'training_subsample' in filtered_df.columns:
-            filtered_df = filtered_df[filtered_df['training_subsample']]
     
     # Aggregate the data into right shape
     pparams = wrangle_data(filtered_df, data_meta, pp_desc)
+    
+    # How many datapoints the plot is based on. This is useful metainfo to display sometimes
+    pparams['n_datapoints'] = n_datapoints
     
     if lazy: pl.disable_string_cache()
     
@@ -147,11 +158,11 @@ def wrangle_data(raw_df, data_meta, pp_desc):
     
     gb_dims = (['draw'] if draws else []) + (factor_cols if factor_cols else []) + (['question'] if 'question' in raw_df.columns else [])
     
-    if 'weight' not in raw_df.columns: raw_df.loc[:,'weight'] = 1.0
+    if 'weight' not in raw_df.columns: raw_df = raw_df.assign(weight=1.0) # This also works for empty df-s
     else: raw_df.loc[:,'weight'] = raw_df['weight'].fillna(1.0)
-    
-    if draws and 'draw' in raw_df.columns: # Draw present in data
-        raw_df = augment_draws(raw_df,gb_dims[1:],threshold=50) # Augment draws so we always have 50 data points in each
+
+    if draws and 'draw' in raw_df.columns and 'augment_to' in pp_desc: # Should we try to bootstrap the data to always have augment_to points. Note this is relatively slow
+        raw_df = augment_draws(raw_df,gb_dims[1:],threshold=pp_desc['augment_to'])
         
     pparams = { 'value_col': 'value' }
     data = None
@@ -196,7 +207,7 @@ def wrangle_data(raw_df, data_meta, pp_desc):
 ordered_gradient = ["#c30d24", "#f3a583", "#94c6da", "#1770ab"]
 def meta_color_scale(cmeta,argname='colors',column=None):
     scale = vod(cmeta,argname)
-    cats = get_cats(column) if column.dtype.name=='category' else None
+    cats = column.dtype.categories if column.dtype.name=='category' else None
     if scale is None and column is not None and column.dtype.name=='category' and column.dtype.ordered:
         scale = dict(zip(cats,gradient_to_discrete_color_scale(ordered_gradient, len(cats))))
     return to_alt_scale(scale,cats)
@@ -215,7 +226,7 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, dry_run=False, w
     if 'plot_args' in pp_desc: pparams.update(pp_desc['plot_args'])
     pparams['color_scale'] = meta_color_scale(col_meta[pp_desc['res_col']],'colors',data[pp_desc['res_col']])
     if data[pp_desc['res_col']].dtype.name=='category':
-        pparams['cat_order'] = get_cats(data[pp_desc['res_col']])
+        pparams['cat_order'] = list(data[pp_desc['res_col']].dtype.categories) 
 
     # Handle factor columns 
     factor_cols = vod(pp_desc,'factor_cols',[])
@@ -229,7 +240,7 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, dry_run=False, w
         
     if vod(plot_meta,'question'):
         pparams['question_color_scale'] = meta_color_scale(col_meta[pp_desc['res_col']],'question_colors',data['question'])
-        pparams['question_order'] = get_cats(data['question'])
+        pparams['question_order'] = list(data['question'].dtype.categories) 
     
     if factor_cols:
         # See if we should use it as an internal facet?
@@ -237,7 +248,7 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, dry_run=False, w
         if vod(pp_desc,'internal_facet'):
             pparams['factor_col'] = factor_cols[0]
             pparams['factor_color_scale'] = meta_color_scale(col_meta[factor_cols[0]],'colors',data[factor_cols[0]])
-            pparams['factor_order'] = get_cats(data[factor_cols[0]])
+            pparams['factor_order'] = list(data[factor_cols[0]].dtype.categories) 
             factor_cols = factor_cols[1:] # Leave rest for external faceting
         
         # If we still have more than 1 factor - merge the rest

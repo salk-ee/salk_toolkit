@@ -120,8 +120,8 @@ def boxplots(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_or
         x=alt.X(f'mean({value_col}):Q'),
         tooltip=[
             alt.Tooltip(f'mean({value_col}):Q'),
-            *([alt.Tooltip(factor_col)] if factor_col else []),
-            cat_col,
+            *([alt.Tooltip(f'{factor_col}:N')] if factor_col else []),
+            alt.Tooltip(f'{cat_col}:N')
         ],
         **shared
     )
@@ -137,9 +137,9 @@ def boxplots(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_or
             axis=alt.Axis(format=x_format if x_format != '%' else 'f')
             ),
         tooltip=[
-            *([alt.Tooltip(factor_col)] if factor_col else []),
-            cat_col,
-            #alt.Tooltip(f'median({value_col})',format=x_format)
+            *([alt.Tooltip(f'{factor_col}:N')] if factor_col else []),
+            alt.Tooltip(f'{cat_col}:N'),
+            #alt.Tooltip(f'median({value_col}:Q)',format=x_format)
         ],
         **shared,
     )
@@ -163,9 +163,9 @@ def columns(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_ord
             #scale=alt.Scale(domain=[0,30]) #see lõikab mõnedes jaotustes parema ääre ära
             ),
         tooltip = [
-            *([alt.Tooltip(factor_col)] if factor_col else []),
-            cat_col,
-            alt.Tooltip(f'{value_col}:N',format=x_format)
+            *([alt.Tooltip(f'{factor_col}:N')] if factor_col else []),
+            alt.Tooltip(f'{cat_col}:N'),
+            alt.Tooltip(f'{value_col}:Q',format=x_format)
         ],
         
         #tooltip=[
@@ -209,8 +209,8 @@ def diff_columns(data, cat_col, value_col='value', color_scale=alt.Undefined, ca
             ),
         
         tooltip=[
-            cat_col,
-            alt.Tooltip(f'{value_col}:N',format=x_format, title=f'{value_col} difference')
+            alt.Tooltip(f'{cat_col}:N'),
+            alt.Tooltip(f'{value_col}:Q',format=x_format, title=f'{value_col} difference')
             ],
         color=alt.Color(f'{cat_col}:N', scale=color_scale, legend=None)    
     )
@@ -248,8 +248,8 @@ def likert_bars(data, cat_col, value_col='value', question_order=alt.Undefined, 
             x=alt.X('start:Q', axis=alt.Axis(title=None, format = '%')),
             x2=alt.X2('end:Q'),
             y=alt.Y(f'question:N', axis=alt.Axis(title=None, offset=5, ticks=False, minExtent=60, domain=False), sort=question_order),
-            tooltip=[*([alt.Tooltip(factor_col)] if factor_col else []),
-                    alt.Tooltip('question'), alt.Tooltip(cat_col), alt.Tooltip(f'{value_col}:Q', title=value_col, format='.1%')],
+            tooltip=[*([alt.Tooltip(f'{factor_col}:N')] if factor_col else []),
+                    alt.Tooltip('question:N'), alt.Tooltip(f'{cat_col}:N'), alt.Tooltip(f'{value_col}:Q', title=value_col, format='.1%')],
             color=alt.Color(
                 f'{cat_col}:N',
                 legend=alt.Legend(
@@ -289,22 +289,22 @@ def matrix(data, value_col='value', question_order=alt.Undefined, factor_col=Non
     base = alt.Chart(data).mark_rect().encode(
             x=alt.X(f'{factor_col}:N', title=None, sort=factor_order),
             y=alt.Y('question:N', title=None, sort=question_order),
-            color=alt.Color(value_col, scale=alt.Scale(scheme='redyellowgreen', domainMid=0),
+            color=alt.Color(f'{value_col}:Q', scale=alt.Scale(scheme='redyellowgreen', domainMid=0),
                 legend=alt.Legend(title=None)),
             tooltip=[*([factor_col] if factor_col else []), 'question', alt.Tooltip(f'{value_col}:Q', title=None, format=',.2f')],
         )
 
     text = base.mark_text().encode(
-        text=alt.Text(value_col, format='.1f'),
+        text=alt.Text(f'{value_col}:Q', format='.1f'),
         color=alt.condition(
-            alt.datum[value_col]**2 > 1.5,
+            alt.datum[f'{value_col}:Q']**2 > 1.5,
             alt.value('white'),
             alt.value('black')
         ),
         tooltip=[
-            alt.Tooltip('question'),
-            *([alt.Tooltip(factor_col)] if factor_col else []),
-            alt.Tooltip(value_col, format='.2f')]
+            alt.Tooltip('question:N'),
+            *([alt.Tooltip(f'{factor_col}:N')] if factor_col else []),
+            alt.Tooltip(f'{value_col}:Q', format='.2f')]
     )
     
     return base+text
@@ -323,7 +323,7 @@ def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order
         alt.X(f'{factor_col}:O', title=None, sort=factor_order),
         alt.Y(f'{value_col}:Q', title=None, axis=alt.Axis(format='%')),
         tooltip=[
-            *([alt.Tooltip(factor_col)] if factor_col else []),
+            *([alt.Tooltip(f'{factor_col}:N')] if factor_col else []),
             alt.Tooltip(f'{value_col}:Q', format='.1%')],
         color=alt.Color(f'{cat_col}:N', scale=color_scale, sort=cat_order, legend=alt.Legend(orient='top'))
     )
@@ -343,7 +343,7 @@ def area_smooth(data, cat_col, value_col='value', color_scale=alt.Undefined, cat
                  scale=alt.Scale(domain=[0, 1]), axis=alt.Axis(format='%')
                  ),
             order=alt.Order("order:O"),
-            color=alt.Color(cat_col, legend=alt.Legend(orient='top', title=None),
+            color=alt.Color(f"{cat_col}:N", legend=alt.Legend(orient='top', title=None),
                 sort=cat_order, scale=color_scale
                 ),
             #tooltip=[alt.Tooltip(teema, title='vastus'), 'laine',
