@@ -3,10 +3,10 @@
 # %% auto 0
 __all__ = ['warn', 'default_color', 'vod', 'factorize_w_codes', 'batch', 'loc2iloc', 'min_diff', 'continify', 'match_data',
            'replace_constants', 'index_encoder', 'to_alt_scale', 'multicol_to_vals_cats',
-           'gradient_to_discrete_color_scale', 'is_datetime', 'rel_wave_times']
+           'gradient_to_discrete_color_scale', 'is_datetime', 'rel_wave_times', 'stable_draws', 'deterministic_draws']
 
 # %% ../nbs/10_utils.ipynb 3
-import json, os, warnings
+import json, os, warnings, math
 import itertools as it
 from collections import defaultdict
 
@@ -17,6 +17,7 @@ import datetime as dt
 import altair as alt
 import matplotlib.colors as mpc
 from copy import deepcopy
+from hashlib import sha256
 
 from typing import List, Tuple, Dict, Union, Optional
 
@@ -176,3 +177,19 @@ def rel_wave_times(ws, dts, dt0=None):
     w_to_time = dict(((adf - dt0).dt.days/30).items())
     
     return pd.Series(df['wave'].replace(w_to_time),name='t')
+
+# %% ../nbs/10_utils.ipynb 25
+# Generate a random draws column that is deterministic in n, n_draws and uid
+def stable_draws(n, n_draws, uid):
+    # Initialize a random generator with a hash of uid
+    bgen = np.random.SFC64(np.frombuffer(sha256(str(uid).encode("utf-8")).digest(), dtype='uint32'))
+    gen = np.random.Generator(bgen)
+    
+    n_samples = int(math.ceil(n/n_draws))
+    draws = (list(range(n_draws))*n_samples)[:n]
+    return gen.permuted(draws)
+
+# Use the stable_draws function to deterministicall assign shuffled draws to a df 
+def deterministic_draws(df, n_draws, uid):
+    df.loc[np.arange(len(df)),'draw'] = stable_draws(len(df), n_draws, uid)
+    return df
