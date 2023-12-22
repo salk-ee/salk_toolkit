@@ -224,9 +224,6 @@ st.markdown("""___""")
 #                                                                      #
 ########################################################################
 
-
-
-
 # Create columns, one per input file
 if len(input_files)>1 and facet_dim != 'input_file':
     cols = st.columns(len(input_files))
@@ -244,6 +241,12 @@ if facet_dim == 'input_file':
             dfs.append(pparams['data'])
 
         fdf = pd.concat(dfs)
+        
+        # Fix categories to match the first file in case there are discrepancies (like only one being ordered)
+        for c in fdf.columns:
+            if fdf[c].dtype.name!='category' and dfs[0][c].dtype.name=='category':
+                fdf[c] = pd.Categorical(fdf[c],dtype=dfs[0][c].dtype)
+
         fdf['input_file'] = pd.Categorical(
             [ v for i,f in enumerate(input_files) for v in [f]*len(dfs[i]) ],input_files)
 
