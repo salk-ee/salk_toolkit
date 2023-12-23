@@ -4,7 +4,7 @@
 __all__ = ['registry', 'registry_meta', 'stk_plot_defaults', 'priority_weights', 'stk_plot', 'stk_deregister', 'get_plot_fn',
            'get_plot_meta', 'calculate_priority', 'calculate_impossibilities', 'matching_plots', 'boxplots',
            'boxplots_cont', 'columns', 'columns_cont', 'diff_columns', 'diff_columns_cont', 'make_start_end',
-           'likert_bars', 'density', 'matrix', 'lines', 'area_smooth', 'likert_aggregate', 'likert_rad_pol']
+           'likert_bars', 'density', 'matrix', 'lines', 'area_smooth', 'likert_aggregate', 'likert_rad_pol', 'geoplot']
 
 # %% ../nbs/03_plots.ipynb 3
 import json, os
@@ -62,19 +62,24 @@ def get_plot_meta(plot_name):
 # This is very much a placeholder right now
 priority_weights = {
     'likert': [-10000, 100],
-    'continuous': [-10000, 100],
+    'continuous': [0, 100],
     'draws': [0,50],
     'question': [0, 100],
     'ordered': [-10000,100],
     'ordered_factor':[-10000,100],
-    'requires_factor':[-10000,0]
+    'requires_factor':[-10000,0],
+    'factor_meta':[-10000,0]
 }
 
 def calculate_priority(plot_meta, match):
-    return sum([ priority_weights[k][vod(match,k) or 0] for k, v in plot_meta.items() if k in priority_weights and v ])
+    base = 0
+    if 'factor_meta' in plot_meta: # Somewhat hacky way of adding this but it works
+        if len(set(plot_meta['factor_meta']) - set(match['factor_meta']))>0: base += priority_weights['factor_meta'][0]
+                                                                 
+    return base + sum([ priority_weights[k][vod(match,k) or 0] for k, v in plot_meta.items() if k not in ['factor_meta'] and k in priority_weights and v ])
 
 def calculate_impossibilities(plot_meta, match):
-    return [ k for k, v in plot_meta.items() if k in priority_weights and v and priority_weights[k][vod(match,k) or 0]<0 ]
+    return [ k for k, v in plot_meta.items() if k not in ['factor_meta'] and k in priority_weights and v and priority_weights[k][vod(match,k) or 0]<0 ]
 
 # Get a list of plot types matching required spec
 def matching_plots(args, df, data_meta, details=False):
@@ -89,8 +94,10 @@ def matching_plots(args, df, data_meta, details=False):
         'continuous': vod(col_meta[rc],'continuous'),
         'ordered': vod(col_meta[rc],'ordered'),
         'ordered_factor': (vod(args,'factor_cols',[])==[]) or not vod(args,'internal_facet') or vod(col_meta[args['factor_cols'][0]],'ordered'),
-        'requires_factor': (vod(args,'factor_cols',[])!=[]) and vod(args,'internal_facet')
+        'requires_factor': (vod(args,'factor_cols',[])!=[]) and vod(args,'internal_facet'),
     }
+    
+    match['factor_meta'] = col_meta[args['factor_cols'][0]] if match['requires_factor'] else []
     
     res = [ ( pn, calculate_priority(get_plot_meta(pn),match), calculate_impossibilities(get_plot_meta(pn),match)) for pn in registry.keys() ]
     
@@ -392,4 +399,29 @@ def likert_rad_pol(data, cat_col, value_col='value', factor_col=None, factor_col
         ],
         **({'color': alt.Color(f'{factor_col}:N', scale=factor_color_scale, legend=alt.Legend(orient='top'))} if factor_col else {})
         )
+    return plot
+
+# %% ../nbs/03_plots.ipynb 34
+@stk_plot('geoplot', data_format='longform', continuous=True, requires_factor=True, factor_meta=['topo_feature'])
+def geoplot(data, topo_feature, value_col='value', cat_order=alt.Undefined, factor_col=None, x_format='.1'):
+    
+    tjson_url, tjson_meta, tjson_col = topo_feature
+    source = alt.topo_feature(tjson_url, tjson_meta)
+
+    plot = alt.Chart(source).mark_geoshape(stroke='white', strokeWidth=0.1).transform_lookup(
+        lookup = f"properties.{tjson_col}",
+        from_ = alt.LookupData(
+            data=data,
+            key=factor_col,
+            fields=[value_col]
+        ),
+    ).encode(
+        tooltip=[alt.Tooltip(f'properties.{tjson_col}:N', title=factor_col),
+                alt.Tooltip(f'{value_col}:Q', title=value_col, format=x_format)],
+        color=alt.Color(
+            f'{value_col}:Q',
+            scale=alt.Scale(scheme="reds"),
+            legend=alt.Legend(format=x_format, title=None, orient='top-left'),
+        )
+    )
     return plot

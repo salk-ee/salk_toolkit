@@ -188,7 +188,7 @@ def wrangle_data(raw_df, data_meta, pp_desc):
         data = gb_in(ddf,gb_dims)[res_cols].mean().reset_index()
         
     elif data_format=='longform':
-        if continuous:
+        if vod(vod(col_meta,res_col,{}),'continuous'):
             data = gb_in(raw_df,gb_dims)[res_col].mean().dropna().reset_index() 
             pparams['value_col'] = res_col
         else: # categorical
@@ -223,7 +223,7 @@ def meta_color_scale(cmeta,argname='colors',column=None):
 # %% ../nbs/02_pp.ipynb 12
 # Function that takes filtered raw data and plot information and outputs the plot
 # Handles all of the data wrangling and parameter formatting
-def create_plot(pparams, data_meta, pp_desc, alt_properties={}, dry_run=False, width=200):
+def create_plot(pparams, data_meta, pp_desc, alt_properties={}, dry_run=False, width=200, use_alt_concat=False):
     
     data = pparams['data']
 
@@ -250,6 +250,9 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, dry_run=False, w
         pparams['question_color_scale'] = meta_color_scale(col_meta[pp_desc['res_col']],'question_colors',data['question'])
         pparams['question_order'] = list(data['question'].dtype.categories) 
     
+    if vod(plot_meta,'continuous') and 'cat_col' in pparams:
+        factor_cols.append(pparams['cat_col'])
+    
     if factor_cols:
         # See if we should use it as an internal facet?
         plot_args = vod(pp_desc,'plot_args',{})
@@ -258,6 +261,8 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, dry_run=False, w
             pparams['factor_color_scale'] = meta_color_scale(col_meta[factor_cols[0]],'colors',data[factor_cols[0]])
             pparams['factor_order'] = list(data[factor_cols[0]].dtype.categories) 
             factor_cols = factor_cols[1:] # Leave rest for external faceting
+            if 'factor_meta' in plot_meta: 
+                for kw in plot_meta['factor_meta']: pparams[kw] = vod(col_meta[pparams['factor_col']],kw)
         
         # If we still have more than 1 factor - merge the rest
         if len(factor_cols)>1:
@@ -278,15 +283,27 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, dry_run=False, w
     # Create the plot using it's function
     if dry_run: return pparams
 
+    if factor_cols: n_facet_cols = vod(plot_args,'n_facet_cols',n_facet_cols) # Allow plot_args to override col nr
     dims = {'width': width//n_facet_cols if factor_cols else width}
     if 'aspect_ratio' in plot_meta:   dims['height'] = int(dims['width']/plot_meta['aspect_ratio'])        
-    plot = plot_fn(**pparams).properties(**dims, **alt_properties)
     
     # Handle rest of factors via altair facet
     if factor_cols:
-        n_facet_cols = vod(plot_args,'n_facet_cols',n_facet_cols) # Allow plot_args to override col nr
-        plot = plot.facet(f'{factor_cols[0]}:O',columns=n_facet_cols)
-    
+        if use_alt_concat or pp_desc['plot']=='geoplot': # Geoplot needs a workaround
+            del pparams['data']
+            combs = it.product( *[data[fc].dtype.categories for fc in factor_cols ])
+            #print( [ data[(data[factor_cols]==c).all(axis=1)] for c in combs ] )
+            #print(list(combs))
+            plot = alt.concat(*(
+                plot_fn(data[(data[factor_cols]==c).all(axis=1)],**pparams).properties(title='-'.join(c),**dims, **alt_properties)
+                for c in combs
+              ), columns=n_facet_cols
+            )
+        else: # Use faceting:
+            plot = plot_fn(**pparams).properties(**dims, **alt_properties).facet(f'{factor_cols[0]}:O',columns=n_facet_cols)
+    else:
+        plot = plot_fn(**pparams).properties(**dims, **alt_properties)
+
     return plot
 
 # %% ../nbs/02_pp.ipynb 15
@@ -300,8 +317,9 @@ def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, c
     if full_df is None: 
         if data_file.endswith('.parquet'): # Try lazy loading as it only loads what it needs from disk
             full_df, full_meta = load_parquet_with_metadata(data_file,lazy=True)
-            data_meta = full_meta['data']
-        else: full_df, data_meta = read_annotated_data(data_file)
+            dm = full_meta['data']
+        else: full_df, dm = read_annotated_data(data_file)
+        if data_meta is None: data_meta = dm
     
     matches = matching_plots(pp_desc, full_df, data_meta, details=True)
     
