@@ -224,6 +224,16 @@ st.markdown("""___""")
 #                                                                      #
 ########################################################################
 
+# Workaround for geoplot - in that case draw multiple plots instead of a facet
+matrix_form = (args['plot'] == 'geoplot')
+def draw_plot_matrix(pmat,matrix_form = False):
+    if not matrix_form: pmat = [[pmat]]
+    cols = st.columns(len(pmat[0]))
+    for j,c in enumerate(cols):
+        for i, row in enumerate(pmat):
+            c.altair_chart(pmat[i][j])
+
+
 # Create columns, one per input file
 if len(input_files)>1 and facet_dim != 'input_file':
     cols = st.columns(len(input_files))
@@ -251,9 +261,12 @@ if facet_dim == 'input_file':
             [ v for i,f in enumerate(input_files) for v in [f]*len(dfs[i]) ],input_files)
 
         pparams['data'] = fdf
-        plot = create_plot(pparams,first_data_meta,args,width=get_plot_width('full'))
+        plot = create_plot(pparams,first_data_meta,args,
+                            width=get_plot_width('full'),
+                            return_matrix_of_plots=matrix_form)
 
-    st.altair_chart(plot,use_container_width=True)
+    draw_plot_matrix(plot,matrix_form=matrix_form)
+    #st.altair_chart(plot)#,use_container_width=True)
 
 else:
     # Iterate over input files
@@ -271,14 +284,15 @@ else:
                 fargs = args.copy()
                 fargs['filter'] = { k:v for k,v in args['filter'].items() if k in loaded[ifile]['data'].columns }
                 pparams = get_filtered_data(loaded[ifile]['data'], data_meta, fargs)
-                plot = create_plot(pparams,data_meta,fargs,width=get_plot_width(f'{i}_{ifile}'))
+                plot = create_plot(pparams,data_meta,fargs,
+                                    width=get_plot_width(f'{i}_{ifile}'),
+                                    return_matrix_of_plots=matrix_form)
 
             #n_questions = pparams['data']['question'].nunique() if 'question' in pparams['data'] else 1
             #st.write('Based on %.1f%% of data' % (100*pparams['n_datapoints']/(len(loaded[ifile]['data_n'])*n_questions)))
             st.write('Based on %.1f%% of data' % (100*pparams['n_datapoints']/loaded[ifile]['data_n']))
-            st.altair_chart(plot,
-                use_container_width=(len(input_files)>1)
-                )
+            #st.altair_chart(plot)#, use_container_width=(len(input_files)>1))
+            draw_plot_matrix(plot,matrix_form=matrix_form)
 
             with st.expander('Data Meta'):
                 st.json(loaded[ifile]['data_meta'])

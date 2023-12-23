@@ -402,8 +402,8 @@ def likert_rad_pol(data, cat_col, value_col='value', factor_col=None, factor_col
     return plot
 
 # %% ../nbs/03_plots.ipynb 34
-@stk_plot('geoplot', data_format='longform', continuous=True, requires_factor=True, factor_meta=['topo_feature'])
-def geoplot(data, topo_feature, value_col='value', cat_order=alt.Undefined, factor_col=None, x_format='.1'):
+@stk_plot('geoplot', data_format='longform', continuous=True, requires_factor=True, factor_meta=['topo_feature'],aspect_ratio=(4.0/3.0))
+def geoplot(data, topo_feature, value_col='value', cat_order=alt.Undefined, factor_col=None, x_format='.2'):
     
     tjson_url, tjson_meta, tjson_col = topo_feature
     source = alt.topo_feature(tjson_url, tjson_meta)
@@ -423,5 +423,5 @@ def geoplot(data, topo_feature, value_col='value', cat_order=alt.Undefined, fact
             scale=alt.Scale(scheme="reds"),
             legend=alt.Legend(format=x_format, title=None, orient='top-left'),
         )
-    )
+    ).project('mercator')
     return plot
