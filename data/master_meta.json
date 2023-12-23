@@ -48,15 +48,16 @@
     {
         "name": "internals",
         "columns": [
-            ["wave", "laine"],
             ["t", "laine", { "transform": "s.replace(dict(((df.groupby('laine')['date'].apply(lambda s: pd.to_datetime(s).median() ) - pd.to_datetime('2023-03-05')).dt.days/30).items()))"    }],
-            ["date", { "transform": "pd.to_datetime(s)" }]
+            ["date", { "transform": "pd.to_datetime(s)" }],
+            ["weight", { "continuous":true }]
         ],
         "hidden": true
     }, {
         "name": "survey",
         "columns": [
-            ["methods", { "categories": "infer" , "translate": {"WISE": "Cati"} }]
+            ["methods", { "categories": "infer" , "translate": {"WISE": "Cati"} }],
+            ["wave", "laine",{ "categories": "infer" , "ordered": true }]
         ]
     }, {
         "name": "demographics",
@@ -77,8 +78,10 @@
                 "translate": { "Eestlane": "Estonian", "Muu": "Other", "Venelane": "Other" },
                 "colors": { "Estonian": "blue", "Other": "grey" }
             }],
-            ["electoral_district", "T6", { "categories": "infer", "translate": "districts" }],
-            ["unit", "T6", { "categories": "infer", "translate": { "Harjumaa (välja arvatud Tallinn)": "Harjumaa" }    }],
+            ["electoral_district", "T6", { "categories": "infer", "translate": "districts",
+              "topo_feature": ["https://dl.dropboxusercontent.com/scl/fi/ciunedliwyvlafpm5nlos/estonia.topojson?rlkey=0g56uexaos1v59yghmikv09xi&dl=0","data","VNIMI"] }],
+            ["unit", "T6", { "categories": "infer", "translate": { "Harjumaa (välja arvatud Tallinn)": "Harjumaa" }, 
+             "topo_feature": ["https://dl.dropboxusercontent.com/scl/fi/ciunedliwyvlafpm5nlos/estonia.topojson?rlkey=0g56uexaos1v59yghmikv09xi&dl=0","data","MNIMI"] }],
             ["citizen", "K0", {    "transform": "s=='Jah'" }]
         ]
     }, {

@@ -262,7 +262,7 @@ if facet_dim == 'input_file':
 
         pparams['data'] = fdf
         plot = create_plot(pparams,first_data_meta,args,
-                            width=get_plot_width('full'),
+                            width=min(get_plot_width('full'),800),
                             return_matrix_of_plots=matrix_form)
 
     draw_plot_matrix(plot,matrix_form=matrix_form)
@@ -285,7 +285,7 @@ else:
                 fargs['filter'] = { k:v for k,v in args['filter'].items() if k in loaded[ifile]['data'].columns }
                 pparams = get_filtered_data(loaded[ifile]['data'], data_meta, fargs)
                 plot = create_plot(pparams,data_meta,fargs,
-                                    width=get_plot_width(f'{i}_{ifile}'),
+                                    width=min(get_plot_width(f'{i}_{ifile}'),800),
                                     return_matrix_of_plots=matrix_form)
 
             #n_questions = pparams['data']['question'].nunique() if 'question' in pparams['data'] else 1
