@@ -188,13 +188,14 @@ def wrangle_data(raw_df, data_meta, pp_desc):
         data = gb_in(ddf,gb_dims)[res_cols].mean().reset_index()
         
     elif data_format=='longform':
-        if vod(vod(col_meta,res_col,{}),'continuous'):
-            data = gb_in(raw_df,gb_dims)[res_col].mean().dropna().reset_index() 
-            pparams['value_col'] = res_col
-        else: # categorical
+        rc_meta = vod(col_meta,res_col,{})
+        if 'categories' in rc_meta: # categorical
             pparams['cat_col'] = res_col 
             pparams['value_col'] = 'percent'
             data = (raw_df.groupby(gb_dims+[res_col])['weight'].sum()/gb_in(raw_df,gb_dims)['weight'].sum()).rename(pparams['value_col']).dropna().reset_index()
+        else: # Continuous
+            data = gb_in(raw_df,gb_dims)[res_col].mean().dropna().reset_index() 
+            pparams['value_col'] = res_col
             
     else:
         raise Exception("Unknown data_format")
@@ -252,6 +253,7 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, dry_run=False, w
     
     if vod(plot_meta,'continuous') and 'cat_col' in pparams:
         to_ind = 1 if len(factor_cols)>0 and vod(pp_desc,'internal_facet') else 0
+        factor_cols = factor_cols.copy()
         factor_cols.insert(to_ind,pparams['cat_col'])
     
     if factor_cols:
@@ -298,7 +300,7 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, dry_run=False, w
             #print( [ data[(data[factor_cols]==c).all(axis=1)] for c in combs ] )
             #print(list(combs))
             return list(batch([
-                plot_fn(data[(data[factor_cols]==c).all(axis=1)],**pparams).properties(title='-'.join(c),**dims, **alt_properties)
+                plot_fn(data[(data[factor_cols]==c).all(axis=1)],**pparams).properties(title='-'.join(map(str,c)),**dims, **alt_properties)
                 for c in combs
                 ], n_facet_cols))
         else: # Use faceting:
