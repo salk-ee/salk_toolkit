@@ -190,6 +190,7 @@ def stable_draws(n, n_draws, uid):
     return gen.permuted(draws)
 
 # Use the stable_draws function to deterministicall assign shuffled draws to a df 
-def deterministic_draws(df, n_draws, uid):
-    df.loc[np.arange(len(df)),'draw'] = stable_draws(len(df), n_draws, uid)
+def deterministic_draws(df, n_draws, uid, n_total=None):
+    if n_total is None: n_total = len(df)
+    df.loc[:,'draw'] = pd.Series(stable_draws(n_total, n_draws, uid), index = np.arange(n_total))
     return df

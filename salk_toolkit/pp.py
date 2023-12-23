@@ -57,11 +57,12 @@ def get_cats(col, cats=None):
 # Get all data required for a given graph
 # Only return columns and rows that are needed
 # This can handle either a pandas DataFrame or a polars LazyDataFrame (to allow for loading only needed data)
-def get_filtered_data(full_df, data_meta, pp_desc, columns=None):
+def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
     
     # Figure out which columns we actually need
-    meta_cols = ['draw', 'weight', 'training_subsample']
-    cols = [ pp_desc['res_col'] ]  + vod(pp_desc,'factor_cols',[]) + list(vod(pp_desc,'filter',{}).keys()) + [ c for c in meta_cols if c in full_df.columns ]
+    meta_cols = ['weight', 'training_subsample', '__index_level_0__'] + (['draw'] if vod(get_plot_meta(pp_desc['plot']),'draws') else []) + columns
+    cols = [ pp_desc['res_col'] ]  + vod(pp_desc,'factor_cols',[]) + list(vod(pp_desc,'filter',{}).keys())
+    cols += [ c for c in meta_cols if c in full_df.columns and c not in cols ]
     
     # If any aliases are used, cconvert them to column names according to the data_meta
     gc_dict = group_columns_dict(data_meta)
@@ -102,6 +103,13 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=None):
         inds =  (pl.col(k).is_in(flst) if lazy else df[k].isin(flst)) & inds
             
     filtered_df = df.filter(inds).collect().to_pandas() if lazy else df[inds].copy()
+    if lazy and '__index_level_0__' in filtered_df.columns: # Fix index, if provided. This is a hack but seems to be needed as polars does not handle index properly by default
+        filtered_df.index = filtered_df['__index_level_0__'] 
+    
+    # Replace draw with the draws used in modelling - NB! does not currenlty work for group questions
+    if 'draw' in filtered_df.columns and pp_desc['res_col'] in vod(data_meta,'draws_data',{}):
+        uid, ndraws = data_meta['draws_data'][pp_desc['res_col']]
+        filtered_df = deterministic_draws(filtered_df, ndraws, uid, n_total = data_meta['total_size'] )
     
     # If not poststratisfied
     if not vod(pp_desc,'poststrat',True):
@@ -123,7 +131,7 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=None):
     for k in filtered_df.columns:
         if filtered_df[k].dtype.name == 'category':
             m_cats = c_meta[k]['categories'] if vod(c_meta[k],'categories','infer')!='infer' else None
-            filtered_df.loc[:,k] = pd.Categorical(filtered_df[k],get_cats(filtered_df[k],m_cats),ordered=filtered_df[k].dtype.ordered)
+            filtered_df.loc[:,k] = pd.Categorical(filtered_df[k],get_cats(filtered_df[k],m_cats),ordered=vod(c_meta[k],'ordered',False))
     
     # Aggregate the data into right shape
     pparams = wrangle_data(filtered_df, data_meta, pp_desc)
