@@ -309,7 +309,7 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, dry_run=False, w
 
     return plot
 
-# %% ../nbs/02_pp.ipynb 17
+# %% ../nbs/02_pp.ipynb 16
 # A convenience function to draw a plot straight from a dataset
 def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, check_match=True,**kwargs):
     if data_file is None and full_df is None:
