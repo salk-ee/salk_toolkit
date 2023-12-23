@@ -91,7 +91,7 @@ def matching_plots(args, df, data_meta, details=False):
         'draws': ('draw' in df.columns),
         'likert': vod(col_meta[rc],'likert'),
         'question': (rc not in df.columns),
-        'continuous': vod(col_meta[rc],'continuous'),
+        'continuous': ('categories' not in col_meta[rc]),
         'ordered': vod(col_meta[rc],'ordered'),
         'ordered_factor': (vod(args,'factor_cols',[])==[]) or not vod(args,'internal_facet') or vod(col_meta[args['factor_cols'][0]],'ordered'),
         'requires_factor': (vod(args,'factor_cols',[])!=[]) and vod(args,'internal_facet'),
