@@ -223,7 +223,7 @@ def meta_color_scale(cmeta,argname='colors',column=None):
 # %% ../nbs/02_pp.ipynb 12
 # Function that takes filtered raw data and plot information and outputs the plot
 # Handles all of the data wrangling and parameter formatting
-def create_plot(pparams, data_meta, pp_desc, alt_properties={}, dry_run=False, width=200, use_alt_concat=False):
+def create_plot(pparams, data_meta, pp_desc, alt_properties={}, dry_run=False, width=200, return_matrix_of_plots=False):
     
     data = pparams['data']
 
@@ -251,7 +251,8 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, dry_run=False, w
         pparams['question_order'] = list(data['question'].dtype.categories) 
     
     if vod(plot_meta,'continuous') and 'cat_col' in pparams:
-        factor_cols.append(pparams['cat_col'])
+        to_ind = 1 if len(factor_cols)>0 and vod(pp_desc,'internal_facet') else 0
+        factor_cols.insert(to_ind,pparams['cat_col'])
     
     if factor_cols:
         # See if we should use it as an internal facet?
@@ -266,11 +267,13 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, dry_run=False, w
         
         # If we still have more than 1 factor - merge the rest
         if len(factor_cols)>1:
-            factor_col = '+'.join(factor_cols)
-            data.loc[:,factor_col] = data[factor_cols].agg(', '.join, axis=1)
-            pparams['data'] = data
             n_facet_cols = len(data[factor_cols[-1]].dtype.categories)
-            factor_cols = [factor_col]
+            if not return_matrix_of_plots:
+                factor_col = '+'.join(factor_cols)
+                data.loc[:,factor_col] = data[factor_cols].agg(', '.join, axis=1)
+                pparams['data'] = data
+                n_facet_cols = len(data[factor_cols[-1]].dtype.categories)
+                factor_cols = [factor_col]
         else:
             n_facet_cols = vod(plot_meta,'factor_columns',1)
     
@@ -289,26 +292,26 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, dry_run=False, w
     
     # Handle rest of factors via altair facet
     if factor_cols:
-        if use_alt_concat or pp_desc['plot']=='geoplot': # Geoplot needs a workaround
+        if return_matrix_of_plots: 
             del pparams['data']
             combs = it.product( *[data[fc].dtype.categories for fc in factor_cols ])
             #print( [ data[(data[factor_cols]==c).all(axis=1)] for c in combs ] )
             #print(list(combs))
-            plot = alt.concat(*(
+            return list(batch([
                 plot_fn(data[(data[factor_cols]==c).all(axis=1)],**pparams).properties(title='-'.join(c),**dims, **alt_properties)
                 for c in combs
-              ), columns=n_facet_cols
-            )
+                ], n_facet_cols))
         else: # Use faceting:
             plot = plot_fn(**pparams).properties(**dims, **alt_properties).facet(f'{factor_cols[0]}:O',columns=n_facet_cols)
     else:
         plot = plot_fn(**pparams).properties(**dims, **alt_properties)
+        if return_matrix_of_plots: plot = [[plot]]
 
     return plot
 
-# %% ../nbs/02_pp.ipynb 15
+# %% ../nbs/02_pp.ipynb 17
 # A convenience function to draw a plot straight from a dataset
-def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, check_match=True):
+def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, check_match=True,**kwargs):
     if data_file is None and full_df is None:
         raise Exception('Data must be provided either as data_file or full_df')
     if data_file is None and data_meta is None:
@@ -331,7 +334,7 @@ def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, c
         raise Exception(f"Plot {pp_desc['plot']} not applicable in this situation because of flags {imp}")
         
     pparams = get_filtered_data(full_df, data_meta, pp_desc)
-    return create_plot(pparams, data_meta, pp_desc, width=width)
+    return create_plot(pparams, data_meta, pp_desc, width=width,**kwargs)
 
 # Another convenience function to simplify testing new plots
 def test_new_plot(fn, pp_desc, *args, plot_meta={}, **kwargs):
