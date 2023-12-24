@@ -97,6 +97,8 @@ else:
 
 from pandas.api.types import is_datetime64_any_dtype as is_datetime
 
+if global_data_meta: st.sidebar.info('⚠️ External meta loaded.')
+
 def get_dimensions(data_meta, observations=True, whitelist=None):
     res = []
     for g in data_meta['structure']:
@@ -155,7 +157,7 @@ with st.sidebar: #.expander("Select dimensions"):
 
     args['plot_args'] = plot_args
 
-    
+
 
     with st.sidebar.expander('Filters'):
         detailed = st.checkbox('Fine-grained filter', False)
@@ -171,7 +173,7 @@ with st.sidebar: #.expander("Select dimensions"):
                 filters[cn] = st.multiselect(cn, list(col.dtype.categories), list(col.dtype.categories))
                 if set(filters[cn]) == set(list(col.dtype.categories)): del filters[cn]
             elif col.dtype.name=='category' and not col.dtype.ordered:
-                filters[cn] = st.selectbox(cn, 
+                filters[cn] = st.selectbox(cn,
                     ['All'] + list(vod(c_meta[cn],'groups',{}).keys()) + list(col.dtype.categories))
                 if filters[cn] == 'All': del filters[cn]
             elif col.dtype.name=='category':
@@ -251,7 +253,7 @@ if facet_dim == 'input_file':
             dfs.append(pparams['data'])
 
         fdf = pd.concat(dfs)
-        
+
         # Fix categories to match the first file in case there are discrepancies (like only one being ordered)
         for c in fdf.columns:
             if fdf[c].dtype.name!='category' and dfs[0][c].dtype.name=='category':
