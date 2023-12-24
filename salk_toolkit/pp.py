@@ -126,6 +126,12 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
         id_vars = [ c for c in cols if c not in value_vars ]
         filtered_df = filtered_df.melt(id_vars=id_vars, value_vars=value_vars, var_name='question', value_name=pp_desc['res_col'])
         filtered_df['question'] = pd.Categorical(filtered_df['question'],gc_dict[pp_desc['res_col']])
+    
+    # Convert ordered categorical to continuous if we can
+    res_meta = c_meta[pp_desc['res_col']]
+    if vod(pp_desc,'convert_res') == 'continuous' and vod(res_meta,'ordered') and vod(res_meta,'categories','infer') != 'infer':
+        cmap = dict(zip(res_meta['categories'],vod(res_meta,'num_values',range(len(res_meta['categories'])))))
+        filtered_df[pp_desc['res_col']] = pd.to_numeric(filtered_df[pp_desc['res_col']].replace(cmap))
         
     # Filter out the unused categories so plots are cleaner
     for k in filtered_df.columns:
@@ -189,7 +195,7 @@ def wrangle_data(raw_df, data_meta, pp_desc):
         
     elif data_format=='longform':
         rc_meta = vod(col_meta,res_col,{})
-        if 'categories' in rc_meta: # categorical
+        if raw_df[res_col].dtype == 'category':  #'categories' in rc_meta: # categorical
             pparams['cat_col'] = res_col 
             pparams['value_col'] = 'percent'
             data = (raw_df.groupby(gb_dims+[res_col])['weight'].sum()/gb_in(raw_df,gb_dims)['weight'].sum()).rename(pparams['value_col']).dropna().reset_index()

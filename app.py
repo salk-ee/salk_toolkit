@@ -124,6 +124,9 @@ with st.sidebar: #.expander("Select dimensions"):
 
     show_grouped = st.checkbox('Show grouped facets', True)
 
+    if st.checkbox('Convert to continuous', False):
+        args['convert_res'] = 'continuous'
+
     obs_dims = get_dimensions(first_data_meta, show_grouped, first_data.columns)
     obs_dims = [c for c in obs_dims if c not in first_data.columns or not is_datetime(first_data[c])]
     all_dims = get_dimensions(first_data_meta, False, first_data.columns)
