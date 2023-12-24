@@ -279,7 +279,8 @@ else:
             data_meta = loaded[ifile]['data_meta'] if global_data_meta is None else global_data_meta
             if data_meta is None: data_meta = first_data_meta
 
-            if args['res_col'] not in loaded[ifile]['data'].columns:
+            if (args['res_col'] in first_data.columns   # I.e. it is a column, not a group
+                and args['res_col'] not in loaded[ifile]['data'].columns):
                 st.write(f"'{args['res_col']}' not present")
                 continue
 
