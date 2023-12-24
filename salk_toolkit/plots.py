@@ -4,7 +4,8 @@
 __all__ = ['registry', 'registry_meta', 'stk_plot_defaults', 'priority_weights', 'stk_plot', 'stk_deregister', 'get_plot_fn',
            'get_plot_meta', 'calculate_priority', 'calculate_impossibilities', 'matching_plots', 'boxplots',
            'boxplots_cont', 'columns', 'columns_cont', 'diff_columns', 'diff_columns_cont', 'make_start_end',
-           'likert_bars', 'density', 'matrix', 'lines', 'area_smooth', 'likert_aggregate', 'likert_rad_pol', 'geoplot']
+           'likert_bars', 'density', 'matrix', 'matrix_cont', 'lines', 'area_smooth', 'likert_aggregate',
+           'likert_rad_pol', 'geoplot']
 
 # %% ../nbs/03_plots.ipynb 3
 import json, os
@@ -291,32 +292,37 @@ def density(data, value_col='value',factor_col=None, factor_color_scale=alt.Unde
     return plot
 
 # %% ../nbs/03_plots.ipynb 25
-@stk_plot('matrix', data_format='longform', continuous=True, question=True, requires_factor=True, aspect_ratio=(1/0.8))
-def matrix(data, value_col='value', question_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined):
+@stk_plot('matrix', data_format='longform', requires_factor=True, aspect_ratio=(1/0.8))
+def matrix(data, cat_col, value_col='value', cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined):
     base = alt.Chart(data).mark_rect().encode(
             x=alt.X(f'{factor_col}:N', title=None, sort=factor_order),
-            y=alt.Y('question:N', title=None, sort=question_order),
+            y=alt.Y(f'{cat_col}:N', title=None, sort=cat_order),
             color=alt.Color(f'{value_col}:Q', scale=alt.Scale(scheme='redyellowgreen', domainMid=0),
                 legend=alt.Legend(title=None)),
-            tooltip=[*([factor_col] if factor_col else []), 'question', alt.Tooltip(f'{value_col}:Q', title=None, format=',.2f')],
+            tooltip=[*([factor_col] if factor_col else []), alt.Tooltip(f'{cat_col}:N'), alt.Tooltip(f'{value_col}:Q', title=None, format=',.2f')],
         )
 
     text = base.mark_text().encode(
-        text=alt.Text(f'{value_col}:Q', format='.1f'),
+        text=alt.Text(f'{value_col}:Q', format='.2f'),
         color=alt.condition(
             alt.datum[f'{value_col}:Q']**2 > 1.5,
             alt.value('white'),
             alt.value('black')
         ),
         tooltip=[
-            alt.Tooltip('question:N'),
+            alt.Tooltip(f'{cat_col}:N'),
             *([alt.Tooltip(f'{factor_col}:N')] if factor_col else []),
             alt.Tooltip(f'{value_col}:Q', format='.2f')]
     )
     
     return base+text
 
-# %% ../nbs/03_plots.ipynb 27
+# Version for continous that just replaces 'question' for cat_col
+@stk_plot('matrix-cont', data_format='longform', draws=False, continuous=True, question=True, aspect_ratio=(1/0.8))
+def matrix_cont(data, value_col='value', question_color_scale=alt.Undefined, question_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined):
+    return matrix(data, cat_col='question', value_col=value_col, cat_order=question_order, factor_col=factor_col, factor_color_scale=factor_color_scale,factor_order=factor_order)
+
+# %% ../nbs/03_plots.ipynb 28
 @stk_plot('lines',data_format='longform', question=False, draws=False, ordered_factor=True, requires_factor=True, args={'smooth':'bool'})
 def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, smooth=False):
     if smooth:
@@ -337,7 +343,7 @@ def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order
     return plot
 
 
-# %% ../nbs/03_plots.ipynb 29
+# %% ../nbs/03_plots.ipynb 30
 @stk_plot('area_smooth',data_format='longform', question=False, draws=False, ordered=False, ordered_factor=True, requires_factor=True)
 def area_smooth(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined,):
     ldict = dict(zip(cat_order, range(len(cat_order))))
@@ -358,7 +364,7 @@ def area_smooth(data, cat_col, value_col='value', color_scale=alt.Undefined, cat
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 31
+# %% ../nbs/03_plots.ipynb 32
 def likert_aggregate(x, cat_col, value_col):
     
     cc, vc = x[cat_col], x[value_col]
@@ -401,7 +407,7 @@ def likert_rad_pol(data, cat_col, value_col='value', factor_col=None, factor_col
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 34
+# %% ../nbs/03_plots.ipynb 35
 @stk_plot('geoplot', data_format='longform', continuous=True, requires_factor=True, factor_meta=['topo_feature'],aspect_ratio=(4.0/3.0))
 def geoplot(data, topo_feature, value_col='value', cat_order=alt.Undefined, factor_col=None, x_format='.2'):
     
