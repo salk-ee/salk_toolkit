@@ -98,6 +98,9 @@ def matching_plots(args, df, data_meta, details=False):
         'requires_factor': (vod(args,'factor_cols',[])!=[]) and vod(args,'internal_facet'),
     }
     
+    if vod(args,'convert_res')=='continuous' and vod(col_meta[rc],'ordered'):
+        match = {**match,'continuous':True,'ordered':False,'likert':False}
+    
     match['factor_meta'] = col_meta[args['factor_cols'][0]] if match['requires_factor'] else []
     
     res = [ ( pn, calculate_priority(get_plot_meta(pn),match), calculate_impossibilities(get_plot_meta(pn),match)) for pn in registry.keys() ]
@@ -105,7 +108,7 @@ def matching_plots(args, df, data_meta, details=False):
     if details: return { n: (p, i) for (n, p, i) in res } # Return dict with priorities and failure reasons
     else: return [ n for (n,p,i) in sorted(res,key=lambda t: t[1], reverse=True) if p >= 0 ] # Return list of possibilities in decreasing order of fit
 
-# %% ../nbs/03_plots.ipynb 15
+# %% ../nbs/03_plots.ipynb 17
 @stk_plot('boxplots', data_format='longform', draws=True)
 def boxplots(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, x_format='%'):
     if x_format == '%': data[value_col]*=100
@@ -158,7 +161,7 @@ def boxplots(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_or
 def boxplots_cont(data, value_col='value', question_color_scale=alt.Undefined, question_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, ):
     return boxplots(data, cat_col='question', value_col=value_col, color_scale=question_color_scale, cat_order=question_order, factor_col=factor_col, factor_color_scale=factor_color_scale, factor_order=factor_order, x_format='.1f')
 
-# %% ../nbs/03_plots.ipynb 17
+# %% ../nbs/03_plots.ipynb 19
 @stk_plot('columns', data_format='longform', draws=False)
 def columns(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, x_format='%'):
     plot = alt.Chart(round(data, 3), width = 'container' \
@@ -194,7 +197,7 @@ def columns(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_ord
 def columns_cont(data, value_col='value', question_color_scale=alt.Undefined, question_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined):
     return columns(data, cat_col='question', value_col=value_col, color_scale=question_color_scale, cat_order=question_order, factor_col=factor_col, factor_color_scale=factor_color_scale, factor_order=factor_order, x_format='.1f')
 
-# %% ../nbs/03_plots.ipynb 19
+# %% ../nbs/03_plots.ipynb 21
 @stk_plot('diff_columns', data_format='longform', draws=False, requires_factor=True, args={'sort_descending':'bool'})
 def diff_columns(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, x_format='%', sort_descending=False):
     
@@ -229,7 +232,7 @@ def diff_columns(data, cat_col, value_col='value', color_scale=alt.Undefined, ca
 def diff_columns_cont(data, value_col='value', question_color_scale=alt.Undefined, question_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, sort_descending=False):
     return diff_columns(data, cat_col='question', value_col=value_col, color_scale=question_color_scale, cat_order=question_order, factor_col=factor_col, factor_color_scale=factor_color_scale,x_format='.1f', sort_descending=sort_descending)
 
-# %% ../nbs/03_plots.ipynb 21
+# %% ../nbs/03_plots.ipynb 23
 # Make the likert bar pieces
 def make_start_end(x,value_col):
     #print("######################")
@@ -273,7 +276,7 @@ def likert_bars(data, cat_col, value_col='value', question_order=alt.Undefined, 
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 23
+# %% ../nbs/03_plots.ipynb 25
 @stk_plot('density', data_format='raw', continuous=True, sample=1000, factor_columns=3,aspect_ratio=(1.0/1.0))
 def density(data, value_col='value',factor_col=None, factor_color_scale=alt.Undefined):
     gb_cols = list(set(data.columns)-{ value_col }) # Assume we groupby over everything except value
@@ -291,7 +294,7 @@ def density(data, value_col='value',factor_col=None, factor_color_scale=alt.Unde
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 25
+# %% ../nbs/03_plots.ipynb 27
 @stk_plot('matrix', data_format='longform', requires_factor=True, aspect_ratio=(1/0.8))
 def matrix(data, cat_col, value_col='value', cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined):
     base = alt.Chart(data).mark_rect().encode(
@@ -322,7 +325,7 @@ def matrix(data, cat_col, value_col='value', cat_order=alt.Undefined, factor_col
 def matrix_cont(data, value_col='value', question_color_scale=alt.Undefined, question_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined):
     return matrix(data, cat_col='question', value_col=value_col, cat_order=question_order, factor_col=factor_col, factor_color_scale=factor_color_scale,factor_order=factor_order)
 
-# %% ../nbs/03_plots.ipynb 28
+# %% ../nbs/03_plots.ipynb 30
 @stk_plot('lines',data_format='longform', question=False, draws=False, ordered_factor=True, requires_factor=True, args={'smooth':'bool'})
 def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, smooth=False):
     if smooth:
@@ -343,7 +346,7 @@ def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order
     return plot
 
 
-# %% ../nbs/03_plots.ipynb 30
+# %% ../nbs/03_plots.ipynb 32
 @stk_plot('area_smooth',data_format='longform', question=False, draws=False, ordered=False, ordered_factor=True, requires_factor=True)
 def area_smooth(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined,):
     ldict = dict(zip(cat_order, range(len(cat_order))))
@@ -364,7 +367,7 @@ def area_smooth(data, cat_col, value_col='value', color_scale=alt.Undefined, cat
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 32
+# %% ../nbs/03_plots.ipynb 34
 def likert_aggregate(x, cat_col, value_col):
     
     cc, vc = x[cat_col], x[value_col]
@@ -407,7 +410,7 @@ def likert_rad_pol(data, cat_col, value_col='value', factor_col=None, factor_col
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 35
+# %% ../nbs/03_plots.ipynb 37
 @stk_plot('geoplot', data_format='longform', continuous=True, requires_factor=True, factor_meta=['topo_feature'],aspect_ratio=(4.0/3.0))
 def geoplot(data, topo_feature, value_col='value', cat_order=alt.Undefined, factor_col=None, x_format='.2'):
     

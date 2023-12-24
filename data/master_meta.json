@@ -62,8 +62,11 @@
     }, {
         "name": "demographics",
         "columns": [
-            "age", 
-            ["age_group", { "categories": ["16-24", "25-34", "35-44", "45-54", "55-64", "65-74", "75+"],    "ordered": true    }],
+            ["age",{"continuous":true}],
+            ["age_group", { 
+                "categories": ["16-24", "25-34", "35-44", "45-54", "55-64", "65-74", "75+"],    "ordered": true ,
+                "num_values": [20,30,40,50,60,70,80]
+            }],
             ["education", "T8", {
                 "categories": ["Basic education", "Secondary education", "Higher education"], "ordered": true,
                 "translate": { "Põhiharidus": "Basic education", "Keskharidus": "Secondary education", "Kõrgharidus": "Higher education" }
@@ -88,6 +91,7 @@
         "name": "wedge",
         "scale": {
             "categories": ["Strongly disagree", "Disagree", "Neither agree nor disagree", "Agree", "Strongly agree"], "ordered": true, "likert": true,
+            "num_values": [-2,-1,null,1,2],
             "translate": { "Ei oska öelda": "Neither agree nor disagree", "Täiesti nõus": "Strongly agree", "Üldse ei nõustu": "Strongly disagree", "Pigem nõus": "Agree", "Pigem ei ole nõus": "Disagree" }
         },
         "columns": [
@@ -110,6 +114,7 @@
         "name": "trust",
         "scale": {
             "categories": ["Completely distrust", "Distrust", "Neither trust nor distrust", "Trust", "Trust completely"], "ordered": true, "likert": true,
+            "num_values": [-2,-1,null,1,2],
             "translate": { "Ei oska öelda": "Neither trust nor distrust", "Pigem ei usalda": "Distrust", "Usaldan täiesti": "Trust completely", "Pigem usaldan": "Trust", "Üldse ei usalda": "Completely distrust" }
         },
         "columns": [
