@@ -2,13 +2,12 @@
 
 # %% auto 0
 __all__ = ['registry', 'registry_meta', 'stk_plot_defaults', 'priority_weights', 'stk_plot', 'stk_deregister', 'get_plot_fn',
-           'get_plot_meta', 'calculate_priority', 'calculate_impossibilities', 'matching_plots', 'boxplots',
-           'boxplots_cont', 'columns', 'columns_cont', 'diff_columns', 'diff_columns_cont', 'make_start_end',
-           'likert_bars', 'density', 'matrix', 'matrix_cont', 'lines', 'area_smooth', 'likert_aggregate',
-           'likert_rad_pol', 'geoplot']
+           'get_plot_meta', 'calculate_priority', 'calculate_impossibilities', 'matching_plots',
+           'register_stk_cont_version', 'boxplots', 'columns', 'diff_columns', 'make_start_end', 'likert_bars',
+           'kde_1d', 'density', 'matrix', 'lines', 'area_smooth', 'likert_aggregate', 'likert_rad_pol', 'geoplot']
 
 # %% ../nbs/03_plots.ipynb 3
-import json, os
+import json, os, inspect
 import itertools as it
 from collections import defaultdict
 
@@ -20,6 +19,7 @@ from typing import List, Tuple, Dict, Union, Optional
 
 import altair as alt
 import scipy.stats as sps
+from KDEpy import FFTKDE
 
 from salk_toolkit.utils import *
 from salk_toolkit.io import extract_column_meta, read_json
@@ -108,10 +108,30 @@ def matching_plots(args, df, data_meta, details=False):
     if details: return { n: (p, i) for (n, p, i) in res } # Return dict with priorities and failure reasons
     else: return [ n for (n,p,i) in sorted(res,key=lambda t: t[1], reverse=True) if p >= 0 ] # Return list of possibilities in decreasing order of fit
 
-# %% ../nbs/03_plots.ipynb 17
+# %% ../nbs/03_plots.ipynb 13
+# Create and register a continuous version of the cat_fn_name plot with 'question' dimension replacing category
+# This assumes the plot can display not just percentages but all real numbers
+def register_stk_cont_version(cat_fn_name):
+    cat_fn, cat_fn_meta = get_plot_fn(cat_fn_name), get_plot_meta(cat_fn_name)
+    @stk_plot(f'{cat_fn_name}-cont', **{**cat_fn_meta, **{'continuous':True, 'question':True} })
+    def cont(data, value_col='value', question_color_scale=alt.Undefined, question_order=alt.Undefined, **kwargs):
+        
+        # Remap certain args while keeping everything else intact
+        kwargs = {**kwargs, **{'data':data, 'cat_col':'question', 'cat_order': question_order, 'value_col':value_col, 'color_scale':question_color_scale}}
+        
+        # Trim down parameters list if needed
+        aspec = inspect.getfullargspec(cat_fn)
+        if aspec.varkw is None: kwargs = { k:v for k,v in kwargs.items() if k in aspec.args }
+        
+        return cat_fn(**kwargs)
+    return cont
+
+# %% ../nbs/03_plots.ipynb 16
 @stk_plot('boxplots', data_format='longform', draws=True)
-def boxplots(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, x_format='%'):
-    if x_format == '%': data[value_col]*=100
+def boxplots(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, val_format='%'):
+    if val_format[-1] == '%': # Boxplots being a compound plot, this workaround is needed for axis & tooltips to be proper
+        data[value_col]*=100
+        val_format = val_format[:-1]+'f'
     
     shared = {
         'y': alt.Y(f'{cat_col}:N', title=None, sort=cat_order),
@@ -145,38 +165,35 @@ def boxplots(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_or
         x=alt.X(
             f'{value_col}:Q',
             title=value_col,
-            axis=alt.Axis(format=x_format if x_format != '%' else 'f')
+            axis=alt.Axis(format=val_format)
             ),
         tooltip=[
             *([alt.Tooltip(f'{factor_col}:N')] if factor_col else []),
             alt.Tooltip(f'{cat_col}:N'),
-            #alt.Tooltip(f'median({value_col}:Q)',format=x_format)
+            #alt.Tooltip(f'median({value_col}:Q)',format=val_format)
         ],
         **shared,
     )
     return tick_plot + box_plot
 
-# Version for continous that just replaces 'question' for cat_col
-@stk_plot('boxplots-cont', data_format='longform', draws=True, continuous=True, question=True)
-def boxplots_cont(data, value_col='value', question_color_scale=alt.Undefined, question_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, ):
-    return boxplots(data, cat_col='question', value_col=value_col, color_scale=question_color_scale, cat_order=question_order, factor_col=factor_col, factor_color_scale=factor_color_scale, factor_order=factor_order, x_format='.1f')
+register_stk_cont_version('boxplots')
 
-# %% ../nbs/03_plots.ipynb 19
+# %% ../nbs/03_plots.ipynb 18
 @stk_plot('columns', data_format='longform', draws=False)
-def columns(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, x_format='%'):
+def columns(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, val_format='%'):
     plot = alt.Chart(round(data, 3), width = 'container' \
     ).mark_bar().encode(
         y=alt.Y(f'{cat_col}:N', title=None, sort=cat_order),
         x=alt.X(
             f'{value_col}:Q',
             title=value_col,
-            axis=alt.Axis(format=x_format),
+            axis=alt.Axis(format=val_format),
             #scale=alt.Scale(domain=[0,30]) #see lõikab mõnedes jaotustes parema ääre ära
             ),
         tooltip = [
             *([alt.Tooltip(f'{factor_col}:N')] if factor_col else []),
             alt.Tooltip(f'{cat_col}:N'),
-            alt.Tooltip(f'{value_col}:Q',format=x_format)
+            alt.Tooltip(f'{value_col}:Q',format=val_format)
         ],
         
         #tooltip=[
@@ -192,14 +209,11 @@ def columns(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_ord
     )
     return plot
 
-# Version for continous that just replaces 'question' for cat_col
-@stk_plot('columns-cont', data_format='longform', draws=False, continuous=True, question=True)
-def columns_cont(data, value_col='value', question_color_scale=alt.Undefined, question_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined):
-    return columns(data, cat_col='question', value_col=value_col, color_scale=question_color_scale, cat_order=question_order, factor_col=factor_col, factor_color_scale=factor_color_scale, factor_order=factor_order, x_format='.1f')
+register_stk_cont_version('columns')
 
-# %% ../nbs/03_plots.ipynb 21
+# %% ../nbs/03_plots.ipynb 20
 @stk_plot('diff_columns', data_format='longform', draws=False, requires_factor=True, args={'sort_descending':'bool'})
-def diff_columns(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, x_format='%', sort_descending=False):
+def diff_columns(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, val_format='%', sort_descending=False):
     
     ind_cols = list(set(data.columns)-{value_col,factor_col})
     factors = data[factor_col].unique() # use unique instead of categories to allow filters to select the two that remain
@@ -215,24 +229,21 @@ def diff_columns(data, cat_col, value_col='value', color_scale=alt.Undefined, ca
         x=alt.X(
             f'{value_col}:Q',
             title=f"{factors[1]} - {factors[0]}",
-            axis=alt.Axis(format=x_format, title=f"{factors[0]} <> {factors[1]}"),
+            axis=alt.Axis(format=val_format, title=f"{factors[0]} <> {factors[1]}"),
             #scale=alt.Scale(domain=[0,30]) #see lõikab mõnedes jaotustes parema ääre ära
             ),
         
         tooltip=[
             alt.Tooltip(f'{cat_col}:N'),
-            alt.Tooltip(f'{value_col}:Q',format=x_format, title=f'{value_col} difference')
+            alt.Tooltip(f'{value_col}:Q',format=val_format, title=f'{value_col} difference')
             ],
         color=alt.Color(f'{cat_col}:N', scale=color_scale, legend=None)    
     )
     return plot
 
-# Version for continous that just replaces 'question' for cat_col
-@stk_plot('diff_columns-cont', data_format='longform', draws=False, continuous=True, question=True, args={'sort_descending':'bool'})
-def diff_columns_cont(data, value_col='value', question_color_scale=alt.Undefined, question_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, sort_descending=False):
-    return diff_columns(data, cat_col='question', value_col=value_col, color_scale=question_color_scale, cat_order=question_order, factor_col=factor_col, factor_color_scale=factor_color_scale,x_format='.1f', sort_descending=sort_descending)
+register_stk_cont_version('diff_columns')
 
-# %% ../nbs/03_plots.ipynb 23
+# %% ../nbs/03_plots.ipynb 22
 # Make the likert bar pieces
 def make_start_end(x,value_col):
     #print("######################")
@@ -276,17 +287,20 @@ def likert_bars(data, cat_col, value_col='value', question_order=alt.Undefined, 
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 25
-@stk_plot('density', data_format='raw', continuous=True, sample=1000, factor_columns=3,aspect_ratio=(1.0/1.0))
+# %% ../nbs/03_plots.ipynb 24
+# Calculate KDE ourselves using a fast libary. This gets around having to do sampling which is unstable
+def kde_1d(vc, value_col):
+    ls = np.linspace(vc.min()-1e-10,vc.max()+1e-10,200)
+    y =  FFTKDE(kernel='gaussian').fit(vc.to_numpy()).evaluate(ls)
+    return pd.DataFrame({'density': y, value_col: ls})
+
+@stk_plot('density', data_format='raw', continuous=True, factor_columns=3,aspect_ratio=(1.0/1.0))
 def density(data, value_col='value',factor_col=None, factor_color_scale=alt.Undefined):
     gb_cols = list(set(data.columns)-{ value_col }) # Assume we groupby over everything except value
+    ndata = data.groupby(gb_cols)[value_col].apply(kde_1d,value_col=value_col).reset_index()
+    
     plot = alt.Chart(
-            data
-        ).transform_density(
-            value_col,
-            groupby=gb_cols,
-            as_=[value_col, 'density'],
-            #extent=[1, 10],
+            ndata
         ).mark_line().encode(
             x=alt.X(f"{value_col}:Q"),
             y=alt.Y('density:Q',axis=alt.Axis(title=None, format = '%')),
@@ -294,19 +308,19 @@ def density(data, value_col='value',factor_col=None, factor_color_scale=alt.Unde
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 27
+# %% ../nbs/03_plots.ipynb 26
 @stk_plot('matrix', data_format='longform', requires_factor=True, aspect_ratio=(1/0.8))
-def matrix(data, cat_col, value_col='value', cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined):
+def matrix(data, cat_col, value_col='value', cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, val_format='%'):
     base = alt.Chart(data).mark_rect().encode(
             x=alt.X(f'{factor_col}:N', title=None, sort=factor_order),
             y=alt.Y(f'{cat_col}:N', title=None, sort=cat_order),
             color=alt.Color(f'{value_col}:Q', scale=alt.Scale(scheme='redyellowgreen', domainMid=0),
                 legend=alt.Legend(title=None)),
-            tooltip=[*([factor_col] if factor_col else []), alt.Tooltip(f'{cat_col}:N'), alt.Tooltip(f'{value_col}:Q', title=None, format=',.2f')],
+            tooltip=[*([factor_col] if factor_col else []), alt.Tooltip(f'{cat_col}:N'), alt.Tooltip(f'{value_col}:Q', title=None, format=val_format)],
         )
 
     text = base.mark_text().encode(
-        text=alt.Text(f'{value_col}:Q', format='.2f'),
+        text=alt.Text(f'{value_col}:Q', format=val_format),
         color=alt.condition(
             alt.datum[f'{value_col}:Q']**2 > 1.5,
             alt.value('white'),
@@ -315,15 +329,12 @@ def matrix(data, cat_col, value_col='value', cat_order=alt.Undefined, factor_col
         tooltip=[
             alt.Tooltip(f'{cat_col}:N'),
             *([alt.Tooltip(f'{factor_col}:N')] if factor_col else []),
-            alt.Tooltip(f'{value_col}:Q', format='.2f')]
+            alt.Tooltip(f'{value_col}:Q', format=val_format)]
     )
     
     return base+text
 
-# Version for continous that just replaces 'question' for cat_col
-@stk_plot('matrix-cont', data_format='longform', draws=False, continuous=True, question=True, aspect_ratio=(1/0.8))
-def matrix_cont(data, value_col='value', question_color_scale=alt.Undefined, question_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined):
-    return matrix(data, cat_col='question', value_col=value_col, cat_order=question_order, factor_col=factor_col, factor_color_scale=factor_color_scale,factor_order=factor_order)
+register_stk_cont_version('matrix')
 
 # %% ../nbs/03_plots.ipynb 30
 @stk_plot('lines',data_format='longform', question=False, draws=False, ordered_factor=True, requires_factor=True, args={'smooth':'bool'})
@@ -412,7 +423,7 @@ def likert_rad_pol(data, cat_col, value_col='value', factor_col=None, factor_col
 
 # %% ../nbs/03_plots.ipynb 37
 @stk_plot('geoplot', data_format='longform', continuous=True, requires_factor=True, factor_meta=['topo_feature'],aspect_ratio=(4.0/3.0))
-def geoplot(data, topo_feature, value_col='value', cat_order=alt.Undefined, factor_col=None, x_format='.2'):
+def geoplot(data, topo_feature, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, val_format='.2f'):
     
     tjson_url, tjson_meta, tjson_col = topo_feature
     source = alt.topo_feature(tjson_url, tjson_meta)
@@ -426,11 +437,11 @@ def geoplot(data, topo_feature, value_col='value', cat_order=alt.Undefined, fact
         ),
     ).encode(
         tooltip=[alt.Tooltip(f'properties.{tjson_col}:N', title=factor_col),
-                alt.Tooltip(f'{value_col}:Q', title=value_col, format=x_format)],
+                alt.Tooltip(f'{value_col}:Q', title=value_col, format=val_format)],
         color=alt.Color(
             f'{value_col}:Q',
-            scale=alt.Scale(scheme="reds"),
-            legend=alt.Legend(format=x_format, title=None, orient='top-left'),
+            scale=alt.Scale(scheme="reds"), # To use color scale, consider switching to opacity for value
+            legend=alt.Legend(format=val_format, title=None, orient='right'),
         )
     ).project('mercator')
     return plot

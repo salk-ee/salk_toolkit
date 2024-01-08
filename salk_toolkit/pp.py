@@ -236,12 +236,15 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, dry_run=False, w
 
     plot_meta = get_plot_meta(pp_desc['plot'])
     col_meta = extract_column_meta(data_meta)
-    col_meta['question'] = vod(col_meta[pp_desc['res_col']],'question_colors',{})
+    
+
     
     if 'plot_args' in pp_desc: pparams.update(pp_desc['plot_args'])
     pparams['color_scale'] = meta_color_scale(col_meta[pp_desc['res_col']],'colors',data[pp_desc['res_col']])
     if data[pp_desc['res_col']].dtype.name=='category':
         pparams['cat_order'] = list(data[pp_desc['res_col']].dtype.categories) 
+        
+    pparams['val_format'] = '.1%' if pparams['value_col'] == 'percent' else '.1f'
 
     # Handle factor columns 
     factor_cols = vod(pp_desc,'factor_cols',[])
@@ -267,7 +270,10 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, dry_run=False, w
         plot_args = vod(pp_desc,'plot_args',{})
         if vod(pp_desc,'internal_facet'):
             pparams['factor_col'] = factor_cols[0]
-            pparams['factor_color_scale'] = meta_color_scale(col_meta[factor_cols[0]],'colors',data[factor_cols[0]])
+            if factor_cols[0] == 'question':
+                pparams['factor_color_scale'] = meta_color_scale(col_meta[pp_desc['res_col']],'question_colors',data['question'])
+            else:
+                pparams['factor_color_scale'] = meta_color_scale(col_meta[factor_cols[0]],'colors',data[factor_cols[0]])
             pparams['factor_order'] = list(data[factor_cols[0]].dtype.categories) 
             factor_cols = factor_cols[1:] # Leave rest for external faceting
             if 'factor_meta' in plot_meta: 
