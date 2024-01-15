@@ -200,9 +200,10 @@ def wrangle_data(raw_df, data_meta, pp_desc):
             pparams['value_col'] = 'percent'
             data = (raw_df.groupby(gb_dims+[res_col])['weight'].sum()/gb_in(raw_df,gb_dims)['weight'].sum()).rename(pparams['value_col']).dropna().reset_index()
         else: # Continuous
-            data = gb_in(raw_df,gb_dims)[res_col].mean().dropna().reset_index() 
+            agg_fn = vod(pp_desc,'agg_fn','mean') # We may want to try median vs mean or plot sd-s or whatever
+            agg_fn = vod(plot_meta,'agg_fn',agg_fn) # Some plots mandate this value (election model for instance)
+            data = getattr(gb_in(raw_df,gb_dims)[res_col],agg_fn)().dropna().reset_index() 
             pparams['value_col'] = res_col
-            
     else:
         raise Exception("Unknown data_format")
         
@@ -293,9 +294,6 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, dry_run=False, w
     
     plot_fn = get_plot_fn(pp_desc['plot'])
             
-    # Trim down parameters list if needed
-    aspec = inspect.getfullargspec(plot_fn)
-    if aspec.varkw is None: pparams = { k:v for k,v in pparams.items() if k in aspec.args }
     
     # Create the plot using it's function
     if dry_run: return pparams
@@ -304,8 +302,16 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, dry_run=False, w
     dims = {'width': width//n_facet_cols if factor_cols else width}
     if 'aspect_ratio' in plot_meta:   dims['height'] = int(dims['width']/plot_meta['aspect_ratio'])        
     
-    # Handle rest of factors via altair facet
-    if factor_cols:
+    # Make plot properties available to plot function (mostly useful for as_is plots)
+    pparams.update(dims); pparams['alt_properties'] = alt_properties; pparams['outer_factors'] = factor_cols
+    
+    # Trim down parameters list if needed
+    aspec = inspect.getfullargspec(plot_fn)
+    if aspec.varkw is None: pparams = { k:v for k,v in pparams.items() if k in aspec.args }
+    
+    if vod(plot_meta,'as_is'): # if as_is set, just return the plot as-is
+        return plot_fn(**pparams)
+    elif factor_cols:
         if return_matrix_of_plots: 
             del pparams['data']
             combs = it.product( *[data[fc].dtype.categories for fc in factor_cols ])
@@ -338,7 +344,7 @@ def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, c
         else: full_df, dm = read_annotated_data(data_file)
         if data_meta is None: data_meta = dm
     
-    matches = matching_plots(pp_desc, full_df, data_meta, details=True)
+    matches = matching_plots(pp_desc, full_df, data_meta, details=True, list_hidden=True)
     
     if pp_desc['plot'] not in matches: 
         raise Exception(f"Plot not registered: {pp_desc['plot']}")

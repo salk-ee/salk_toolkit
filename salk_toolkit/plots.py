@@ -83,7 +83,7 @@ def calculate_impossibilities(plot_meta, match):
     return [ k for k, v in plot_meta.items() if k not in ['factor_meta'] and k in priority_weights and v and priority_weights[k][vod(match,k) or 0]<0 ]
 
 # Get a list of plot types matching required spec
-def matching_plots(args, df, data_meta, details=False):
+def matching_plots(args, df, data_meta, details=False, list_hidden=False):
     
     rc = args['res_col']
     col_meta = extract_column_meta(data_meta)
@@ -96,6 +96,7 @@ def matching_plots(args, df, data_meta, details=False):
         'ordered': vod(col_meta[rc],'ordered'),
         'ordered_factor': (vod(args,'factor_cols',[])==[]) or not vod(args,'internal_facet') or vod(col_meta[args['factor_cols'][0]],'ordered'),
         'requires_factor': (vod(args,'factor_cols',[])!=[]) and vod(args,'internal_facet'),
+        'hidden': list_hidden
     }
     
     if vod(args,'convert_res')=='continuous' and vod(col_meta[rc],'ordered'):
@@ -248,14 +249,15 @@ register_stk_cont_version('diff_columns')
 def make_start_end(x,value_col):
     #print("######################")
     #print(x)
-    if len(x)!=5: return 
+    mid = len(x)//2
     scale_start=1
-    x_mid = x.iloc[2:3,:]
+    x_mid = x.iloc[[mid],:]
     x_mid.loc[:,'end'] = -scale_start+x_mid[value_col]
     x_mid.loc[:,'start'] = -scale_start
-    x_other = x.iloc[[0,1,3,4],:]
-    x_other.loc[:,'end'] = x_other[value_col].cumsum() - x_other[0:2][value_col].sum()
-    x_other.loc[:,'start'] = (x_other[value_col][::-1].cumsum()[::-1] - x_other[2:4][value_col].sum())*-1
+    nonmid = [ i for i in range(len(x)) if i!=mid ]
+    x_other = x.iloc[nonmid,:]
+    x_other.loc[:,'end'] = x_other[value_col].cumsum() - x_other[:mid][value_col].sum()
+    x_other.loc[:,'start'] = (x_other[value_col][::-1].cumsum()[::-1] - x_other[mid:][value_col].sum())*-1
     return pd.concat([x_other, x_mid])
 
 @stk_plot('likert_bars',data_format='longform',question=True,draws=False,likert=True)
@@ -278,7 +280,7 @@ def likert_bars(data, cat_col, value_col='value', question_order=alt.Undefined, 
                     title='Response',
                     orient='bottom',
                     ),
-                scale=alt.Scale(domain=options_cols, range=["#c30d24", "#f3a583", "#cccccc", "#94c6da", "#1770ab"]),
+                scale=color_scale,
             ),
             **({ 'yOffset':alt.YOffset(f'{factor_col}:N', title=None, sort=factor_order),
                  #'stroke': alt.Stroke(f'{factor_col}:N', scale=factor_color_scale, legend=alt.Legend(orient='top')),
@@ -384,16 +386,18 @@ def likert_aggregate(x, cat_col, value_col):
     cc, vc = x[cat_col], x[value_col]
     cats = cc.dtype.categories
     
+    mid = len(cats)//2
+    
     #print(len(x),x.columns,x.head())
     pol = ( np.minimum(
-                vc[cc.isin([cats[0], cats[1]])].sum(),
-                vc[cc.isin([cats[3], cats[4]])].sum()
-            ) / vc[cc !=  cats[2]].sum() )
+                vc[cc.isin(cats[:mid])].sum(),
+                vc[cc.isin(cats[mid+1:])].sum()
+            ) / vc[cc !=  cats[mid]].sum() )
 
-    rad = ( vc[cc.isin([cats[0],cats[4]])].sum() /
-            vc[cc != cats[2]].sum() )
+    rad = ( vc[cc.isin([cats[0],cats[-1]])].sum() /
+            vc[cc != cats[mid]].sum() )
 
-    rel = vc[cc == cats[2]].sum()/vc.sum()
+    rel = vc[cc == cats[mid]].sum()/vc.sum()
 
     return pd.Series({ 'polarisation': pol, 'radicalisation':rad, 'relevance':rel})
 
@@ -441,7 +445,7 @@ def geoplot(data, topo_feature, value_col='value', color_scale=alt.Undefined, ca
         color=alt.Color(
             f'{value_col}:Q',
             scale=alt.Scale(scheme="reds"), # To use color scale, consider switching to opacity for value
-            legend=alt.Legend(format=val_format, title=None, orient='right'),
+            legend=alt.Legend(format=val_format, title=None, orient='top-left',gradientThickness=6),
         )
     ).project('mercator')
     return plot
