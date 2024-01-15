@@ -250,15 +250,22 @@ def make_start_end(x,value_col):
     #print("######################")
     #print(x)
     mid = len(x)//2
-    scale_start=1
-    x_mid = x.iloc[[mid],:]
-    x_mid.loc[:,'end'] = -scale_start+x_mid[value_col]
-    x_mid.loc[:,'start'] = -scale_start
-    nonmid = [ i for i in range(len(x)) if i!=mid ]
+        
+    if len(x)%2==1: # odd:
+        scale_start=1
+        x_mid = x.iloc[[mid],:]
+        x_mid.loc[:,['start','end']] = -scale_start
+        x_mid.loc[:,'end'] = -scale_start+x_mid[value_col]
+        nonmid = [ i for i in range(len(x)) if i!=mid ]
+        x_mid = [x_mid]
+    else: # even - no separate mid
+        nonmid = np.arange(len(x))
+        x_mid = []
+    
     x_other = x.iloc[nonmid,:]
     x_other.loc[:,'end'] = x_other[value_col].cumsum() - x_other[:mid][value_col].sum()
     x_other.loc[:,'start'] = (x_other[value_col][::-1].cumsum()[::-1] - x_other[mid:][value_col].sum())*-1
-    return pd.concat([x_other, x_mid])
+    return pd.concat([x_other] + x_mid)
 
 @stk_plot('likert_bars',data_format='longform',question=True,draws=False,likert=True)
 def likert_bars(data, cat_col, value_col='value', question_order=alt.Undefined, color_scale=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined):
@@ -386,18 +393,20 @@ def likert_aggregate(x, cat_col, value_col):
     cc, vc = x[cat_col], x[value_col]
     cats = cc.dtype.categories
     
-    mid = len(cats)//2
+    mid, odd = len(cats)//2, len(cats)%2
+    
+    nonmid_sum = vc[cc !=  cats[mid]].sum() if odd else vc.sum()
     
     #print(len(x),x.columns,x.head())
     pol = ( np.minimum(
                 vc[cc.isin(cats[:mid])].sum(),
-                vc[cc.isin(cats[mid+1:])].sum()
-            ) / vc[cc !=  cats[mid]].sum() )
+                vc[cc.isin(cats[mid+odd:])].sum()
+            ) / nonmid_sum )
 
     rad = ( vc[cc.isin([cats[0],cats[-1]])].sum() /
-            vc[cc != cats[mid]].sum() )
+            nonmid_sum )
 
-    rel = vc[cc == cats[mid]].sum()/vc.sum()
+    rel = 1.0-nonmid_sum/vc.sum()
 
     return pd.Series({ 'polarisation': pol, 'radicalisation':rad, 'relevance':rel})
 
