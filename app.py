@@ -119,12 +119,12 @@ with st.sidebar: #.expander("Select dimensions"):
     f_info = st.empty()
     st.markdown("""___""")
 
-    args['poststrat'] = st.checkbox('Post-stratified?', True)
+    args['poststrat'] = st.toggle('Post-stratified?', True)
     if args['poststrat']: del args['poststrat'] # True is default, so clean the dict from it in that case
 
-    show_grouped = st.checkbox('Show grouped facets', True)
+    show_grouped = st.toggle('Show grouped facets', True)
 
-    if st.checkbox('Convert to continuous', False):
+    if st.toggle('Convert to continuous', False):
         args['convert_res'] = 'continuous'
 
     obs_dims = get_dimensions(first_data_meta, show_grouped, first_data.columns)
@@ -147,14 +147,14 @@ with st.sidebar: #.expander("Select dimensions"):
         second_dim = st.sidebar.selectbox('Facet 2:', ['None'] + all_dims)
         if second_dim != 'None':  args['factor_cols'] = [facet_dim, second_dim]
 
-    args['internal_facet'] = st.checkbox('Internal facet?',True)
+    args['internal_facet'] = st.toggle('Internal facet?',True)
 
     args['plot'] = st.selectbox('Plot type',matching_plots(args, first_data, first_data_meta))
 
     plot_args = {}
     for k, v in vod(get_plot_meta(args['plot']),'args',{}).items():
         if v=='bool':
-            plot_args[k] = st.checkbox(k)
+            plot_args[k] = st.toggle(k)
         elif isinstance(v, list):
             plot_args[k] = st.selectbox(k,v)
 
@@ -163,7 +163,7 @@ with st.sidebar: #.expander("Select dimensions"):
 
 
     with st.sidebar.expander('Filters'):
-        detailed = st.checkbox('Fine-grained filter', False)
+        detailed = st.toggle('Fine-grained filter', False)
         filter_vals = { col: list(first_data[col].unique()) for col in all_dims if col in first_data.columns }
         filters = {}
 

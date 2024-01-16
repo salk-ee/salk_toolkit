@@ -436,7 +436,7 @@ def likert_rad_pol(data, cat_col, value_col='value', factor_col=None, factor_col
 
 # %% ../nbs/03_plots.ipynb 37
 @stk_plot('geoplot', data_format='longform', continuous=True, requires_factor=True, factor_meta=['topo_feature'],aspect_ratio=(4.0/3.0))
-def geoplot(data, topo_feature, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, val_format='.2f'):
+def geoplot(data, topo_feature, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, val_format='%'):
     
     tjson_url, tjson_meta, tjson_col = topo_feature
     source = alt.topo_feature(tjson_url, tjson_meta)
@@ -454,7 +454,7 @@ def geoplot(data, topo_feature, value_col='value', color_scale=alt.Undefined, ca
         color=alt.Color(
             f'{value_col}:Q',
             scale=alt.Scale(scheme="reds"), # To use color scale, consider switching to opacity for value
-            legend=alt.Legend(format=val_format, title=None, orient='top-left',gradientThickness=6),
+            legend=alt.Legend(format=val_format, title=None, orient='top-left',gradientThickness=6,gradientLength=150),
         )
     ).project('mercator')
     return plot
