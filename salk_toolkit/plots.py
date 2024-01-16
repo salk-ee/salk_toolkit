@@ -454,7 +454,7 @@ def geoplot(data, topo_feature, value_col='value', color_scale=alt.Undefined, ca
         color=alt.Color(
             f'{value_col}:Q',
             scale=alt.Scale(scheme="reds"), # To use color scale, consider switching to opacity for value
-            legend=alt.Legend(format=val_format, title=None, orient='top-left',gradientThickness=6,gradientLength=150),
+            legend=alt.Legend(format=val_format, title=None, orient='top-left',gradientThickness=6),
         )
     ).project('mercator')
     return plot
