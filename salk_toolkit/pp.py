@@ -199,16 +199,21 @@ def wrangle_data(raw_df, data_meta, pp_desc):
             pparams['cat_col'] = res_col 
             pparams['value_col'] = 'percent'
             data = (raw_df.groupby(gb_dims+[res_col])['weight'].sum()/gb_in(raw_df,gb_dims)['weight'].sum()).rename(pparams['value_col']).dropna().reset_index()
+            
         else: # Continuous
             agg_fn = vod(pp_desc,'agg_fn','mean') # We may want to try median vs mean or plot sd-s or whatever
             agg_fn = vod(plot_meta,'agg_fn',agg_fn) # Some plots mandate this value (election model for instance)
             data = getattr(gb_in(raw_df,gb_dims)[res_col],agg_fn)().dropna().reset_index() 
             pparams['value_col'] = res_col
+            
+        if vod(plot_meta,'group_sizes'):
+            data = data.merge(gb_in(raw_df,gb_dims).size().rename('group_size').reset_index(),on=gb_dims,how='left')
     else:
         raise Exception("Unknown data_format")
         
     # Ensure all rv columns other than value are categorical
     for c in data.columns:
+        if c in ['group_size']: continue # bypass some columns added above
         if data[c].dtype.name != 'category' and c!=pparams['value_col']:
             if vod(vod(col_meta,c,{}),'continuous'):
                 data.loc[:,c] = discretize_continuous(data[c],vod(col_meta,c,{}))
@@ -237,8 +242,6 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, dry_run=False, w
 
     plot_meta = get_plot_meta(pp_desc['plot'])
     col_meta = extract_column_meta(data_meta)
-    
-
     
     if 'plot_args' in pp_desc: pparams.update(pp_desc['plot_args'])
     pparams['color_scale'] = meta_color_scale(col_meta[pp_desc['res_col']],'colors',data[pp_desc['res_col']])

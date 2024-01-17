@@ -15,7 +15,7 @@ if profile:
 
 st.set_page_config(
     layout="wide",
-    page_title="SALK Magic Model",
+    page_title="SALK Explorer",
     #page_icon="./s-model.png",
     initial_sidebar_state="expanded",
 )
@@ -310,10 +310,6 @@ else:
                 st.json(loaded[ifile]['model_meta'])
 
 
-
-
-st.markdown("""***""")
-st.caption('Andmed & teostus: **SALK 2023**')
 info.empty()
 
 dm.__exit__(None,None,None)

@@ -3,8 +3,9 @@
 # %% auto 0
 __all__ = ['registry', 'registry_meta', 'stk_plot_defaults', 'priority_weights', 'stk_plot', 'stk_deregister', 'get_plot_fn',
            'get_plot_meta', 'calculate_priority', 'calculate_impossibilities', 'matching_plots',
-           'register_stk_cont_version', 'boxplots', 'columns', 'diff_columns', 'make_start_end', 'likert_bars',
-           'kde_1d', 'density', 'matrix', 'lines', 'area_smooth', 'likert_aggregate', 'likert_rad_pol', 'geoplot']
+           'register_stk_cont_version', 'boxplots', 'columns', 'diff_columns', 'massplot', 'make_start_end',
+           'likert_bars', 'kde_1d', 'density', 'matrix', 'lines', 'area_smooth', 'likert_aggregate', 'likert_rad_pol',
+           'geoplot']
 
 # %% ../nbs/03_plots.ipynb 3
 import json, os, inspect
@@ -245,6 +246,46 @@ def diff_columns(data, cat_col, value_col='value', color_scale=alt.Undefined, ca
 register_stk_cont_version('diff_columns')
 
 # %% ../nbs/03_plots.ipynb 22
+@stk_plot('massplot', data_format='longform', draws=False, group_sizes=True)
+def massplot(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, n_datapoints=1, val_format='%'):
+
+    data['group_size']=(data['group_size']/n_datapoints)#.round(2)
+
+    plot = alt.Chart(round(data, 3), width = 'container' \
+    ).mark_circle().encode(
+        y=alt.Y(f'{cat_col}:N', title=None, sort=cat_order),
+        x=alt.X(
+            f'{value_col}:Q',
+            title=value_col,
+            axis=alt.Axis(format=val_format),
+            #scale=alt.Scale(domain=[0,30]) #see lõikab mõnedes jaotustes parema ääre ära
+            ),
+        size=alt.Size('group_size:Q', legend=None, scale=alt.Scale(range=[100, 500])),
+        opacity=alt.value(1.0),
+        stroke=alt.value('#777'),
+        tooltip = [
+            *([alt.Tooltip(f'{factor_col}:N')] if factor_col else []),
+            alt.Tooltip(f'{cat_col}:N'),
+            alt.Tooltip(f'{value_col}:Q',format=val_format),
+            alt.Tooltip('group_size:N',format='.1%',title='Group size'),
+        ],
+        
+        #tooltip=[
+        #    'response:N',
+            #alt.Tooltip('mean(support):Q',format='.1%')
+        #    ],
+        **({
+                'color': alt.Color(f'{cat_col}:N', scale=color_scale, legend=None)    
+            } if not factor_col else {
+                'yOffset':alt.YOffset(f'{factor_col}:N', title=None, sort=factor_order), 
+                'color': alt.Color(f'{factor_col}:N', scale=factor_color_scale, legend=alt.Legend(orient='top'))
+            }),
+    )
+    return plot
+
+register_stk_cont_version('massplot')
+
+# %% ../nbs/03_plots.ipynb 24
 # Make the likert bar pieces
 def make_start_end(x,value_col):
     #print("######################")
@@ -296,7 +337,7 @@ def likert_bars(data, cat_col, value_col='value', question_order=alt.Undefined, 
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 24
+# %% ../nbs/03_plots.ipynb 26
 # Calculate KDE ourselves using a fast libary. This gets around having to do sampling which is unstable
 def kde_1d(vc, value_col):
     ls = np.linspace(vc.min()-1e-10,vc.max()+1e-10,200)
@@ -317,17 +358,23 @@ def density(data, value_col='value',factor_col=None, factor_color_scale=alt.Unde
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 26
+# %% ../nbs/03_plots.ipynb 28
 @stk_plot('matrix', data_format='longform', requires_factor=True, aspect_ratio=(1/0.8))
 def matrix(data, cat_col, value_col='value', cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, val_format='%'):
+    
+    # Find max absolute value to keep color scale symmetric
+    dmax = max(-data[value_col].min(),data[value_col].max())
+    
+    # Draw colored boxes
     base = alt.Chart(data).mark_rect().encode(
             x=alt.X(f'{factor_col}:N', title=None, sort=factor_order),
             y=alt.Y(f'{cat_col}:N', title=None, sort=cat_order),
-            color=alt.Color(f'{value_col}:Q', scale=alt.Scale(scheme='redyellowgreen', domainMid=0),
+            color=alt.Color(f'{value_col}:Q', scale=alt.Scale(scheme='redyellowgreen', domainMid=0, domainMin=-dmax, domainMax=dmax),
                 legend=alt.Legend(title=None)),
             tooltip=[*([factor_col] if factor_col else []), alt.Tooltip(f'{cat_col}:N'), alt.Tooltip(f'{value_col}:Q', title=None, format=val_format)],
         )
-
+    
+    # Add in numerical values
     text = base.mark_text().encode(
         text=alt.Text(f'{value_col}:Q', format=val_format),
         color=alt.condition(
@@ -345,7 +392,7 @@ def matrix(data, cat_col, value_col='value', cat_order=alt.Undefined, factor_col
 
 register_stk_cont_version('matrix')
 
-# %% ../nbs/03_plots.ipynb 30
+# %% ../nbs/03_plots.ipynb 32
 @stk_plot('lines',data_format='longform', question=False, draws=False, ordered_factor=True, requires_factor=True, args={'smooth':'bool'})
 def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, smooth=False):
     if smooth:
@@ -366,7 +413,7 @@ def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order
     return plot
 
 
-# %% ../nbs/03_plots.ipynb 32
+# %% ../nbs/03_plots.ipynb 34
 @stk_plot('area_smooth',data_format='longform', question=False, draws=False, ordered=False, ordered_factor=True, requires_factor=True)
 def area_smooth(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined,):
     ldict = dict(zip(cat_order, range(len(cat_order))))
@@ -387,7 +434,7 @@ def area_smooth(data, cat_col, value_col='value', color_scale=alt.Undefined, cat
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 34
+# %% ../nbs/03_plots.ipynb 36
 def likert_aggregate(x, cat_col, value_col):
     
     cc, vc = x[cat_col], x[value_col]
@@ -434,7 +481,7 @@ def likert_rad_pol(data, cat_col, value_col='value', factor_col=None, factor_col
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 37
+# %% ../nbs/03_plots.ipynb 39
 @stk_plot('geoplot', data_format='longform', continuous=True, requires_factor=True, factor_meta=['topo_feature'],aspect_ratio=(4.0/3.0))
 def geoplot(data, topo_feature, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, val_format='%'):
     
