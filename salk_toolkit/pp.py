@@ -4,7 +4,7 @@
 __all__ = ['get_filtered_data', 'create_plot', 'e2e_plot', 'test_new_plot']
 
 # %% ../nbs/02_pp.ipynb 3
-import json, os, inspect
+import json, os
 import itertools as it
 from collections import defaultdict
 
@@ -309,8 +309,7 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, dry_run=False, w
     pparams.update(dims); pparams['alt_properties'] = alt_properties; pparams['outer_factors'] = factor_cols
     
     # Trim down parameters list if needed
-    aspec = inspect.getfullargspec(plot_fn)
-    if aspec.varkw is None: pparams = { k:v for k,v in pparams.items() if k in aspec.args }
+    pparams = clean_kwargs(plot_fn,pparams)
     
     if vod(plot_meta,'as_is'): # if as_is set, just return the plot as-is
         return plot_fn(**pparams)

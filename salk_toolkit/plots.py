@@ -392,7 +392,7 @@ def matrix(data, cat_col, value_col='value', cat_order=alt.Undefined, factor_col
 
 register_stk_cont_version('matrix')
 
-# %% ../nbs/03_plots.ipynb 32
+# %% ../nbs/03_plots.ipynb 31
 @stk_plot('lines',data_format='longform', question=False, draws=False, ordered_factor=True, requires_factor=True, args={'smooth':'bool'})
 def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, smooth=False):
     if smooth:
@@ -413,7 +413,7 @@ def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order
     return plot
 
 
-# %% ../nbs/03_plots.ipynb 34
+# %% ../nbs/03_plots.ipynb 33
 @stk_plot('area_smooth',data_format='longform', question=False, draws=False, ordered=False, ordered_factor=True, requires_factor=True)
 def area_smooth(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined,):
     ldict = dict(zip(cat_order, range(len(cat_order))))
@@ -434,7 +434,7 @@ def area_smooth(data, cat_col, value_col='value', color_scale=alt.Undefined, cat
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 36
+# %% ../nbs/03_plots.ipynb 35
 def likert_aggregate(x, cat_col, value_col):
     
     cc, vc = x[cat_col], x[value_col]
@@ -481,7 +481,7 @@ def likert_rad_pol(data, cat_col, value_col='value', factor_col=None, factor_col
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 39
+# %% ../nbs/03_plots.ipynb 38
 @stk_plot('geoplot', data_format='longform', continuous=True, requires_factor=True, factor_meta=['topo_feature'],aspect_ratio=(4.0/3.0))
 def geoplot(data, topo_feature, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, val_format='%'):
     

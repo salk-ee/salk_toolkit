@@ -3,7 +3,7 @@ from streamlit_dimensions import st_dimensions
 import warnings
 
 def get_plot_width(key):
-    wobj = st_dimensions(key=key) or { 'width': 400 }# Can return none so handle that
+    wobj = st_dimensions(key=key) or { 'width': 900 }# Can return none so handle that
     return int(0.85*wobj['width']) # Needs to be adjusted to leave margin
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
