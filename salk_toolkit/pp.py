@@ -28,7 +28,7 @@ def augment_draws(data, factors=None, n_draws=None, threshold=50):
     
     if factors: # Run recursively on each factor separately and concatenate results
         if data[ ['draw']+factors ].value_counts().min() >= threshold: return data # This takes care of large datasets fast
-        return data.groupby(factors).apply(augment_draws,n_draws=n_draws,threshold=threshold).reset_index(drop=True) # Slow-ish, but only needed on small data now
+        return data.groupby(factors,observed=True).apply(augment_draws,n_draws=n_draws,threshold=threshold).reset_index(drop=True) # Slow-ish, but only needed on small data now
     
     # Get count of values for each draw
     draw_counts = data['draw'].value_counts() # Get value counts of existing draws
@@ -152,7 +152,7 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
 # %% ../nbs/02_pp.ipynb 9
 # Groupby if needed - this simplifies the wrangle considerably :)
 def gb_in(df, gb_cols):
-    return df.groupby(gb_cols) if len(gb_cols)>0 else df
+    return df.groupby(gb_cols,observed=True) if len(gb_cols)>0 else df
 
 def discretize_continuous(col, col_meta={}):
     # NB! qcut might be a better default - see where testing leads us
@@ -198,7 +198,7 @@ def wrangle_data(raw_df, data_meta, pp_desc):
         if raw_df[res_col].dtype == 'category':  #'categories' in rc_meta: # categorical
             pparams['cat_col'] = res_col 
             pparams['value_col'] = 'percent'
-            data = (raw_df.groupby(gb_dims+[res_col])['weight'].sum()/gb_in(raw_df,gb_dims)['weight'].sum()).rename(pparams['value_col']).dropna().reset_index()
+            data = (raw_df.groupby(gb_dims+[res_col],observed=True)['weight'].sum()/gb_in(raw_df,gb_dims)['weight'].sum()).rename(pparams['value_col']).dropna().reset_index()
             
         else: # Continuous
             agg_fn = vod(pp_desc,'agg_fn','mean') # We may want to try median vs mean or plot sd-s or whatever

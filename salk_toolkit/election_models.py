@@ -102,11 +102,11 @@ def mandate_plot(data, electoral_system, mandates, value_col='value', question_c
     dfv = df[value_col].to_numpy()[:,None]
     dfm = pd.DataFrame((dfv>=tv).astype('int'),columns=tv[0], index=df.index)
     dfm['draw'],dfm['question'], dfm[factor_col] = df['draw'], df['question'], df[factor_col]
-    res = dfm.groupby(['question',factor_col])[tv[0]].mean().reset_index().melt(id_vars=['question',factor_col],
+    res = dfm.groupby(['question',factor_col],observed=True)[tv[0]].mean().reset_index().melt(id_vars=['question',factor_col],
                                                                                 var_name='mandates',value_name=value_col)
     
     # Remove parties who have no chance of even one elector
-    eliminate = (res.groupby('question')[value_col].sum() < 0.2)
+    eliminate = (res.groupby('question',observed=True)[value_col].sum() < 0.2)
     el_cols = [i for i,v in eliminate.items() if v]
     res = res[~res['question'].isin(el_cols)]
     question_order = list(eliminate[~eliminate].index)

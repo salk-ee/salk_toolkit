@@ -347,7 +347,7 @@ def kde_1d(vc, value_col):
 @stk_plot('density', data_format='raw', continuous=True, factor_columns=3,aspect_ratio=(1.0/1.0))
 def density(data, value_col='value',factor_col=None, factor_color_scale=alt.Undefined):
     gb_cols = list(set(data.columns)-{ value_col }) # Assume we groupby over everything except value
-    ndata = data.groupby(gb_cols)[value_col].apply(kde_1d,value_col=value_col).reset_index()
+    ndata = data.groupby(gb_cols,observed=True)[value_col].apply(kde_1d,value_col=value_col).reset_index()
     
     plot = alt.Chart(
             ndata
@@ -461,7 +461,7 @@ def likert_aggregate(x, cat_col, value_col):
 def likert_rad_pol(data, cat_col, value_col='value', factor_col=None, factor_color_scale=alt.Undefined, normalise=True):
     gb_cols = list(set(data.columns)-{ cat_col, value_col }) # Assume all other cols still in data will be used for factoring
     options_cols = list(data[cat_col].dtype.categories) # Get likert scale names
-    likert_indices = data.groupby(gb_cols, group_keys=False).apply(likert_aggregate,cat_col=cat_col,value_col=value_col).reset_index()
+    likert_indices = data.groupby(gb_cols, group_keys=False, observed=True).apply(likert_aggregate,cat_col=cat_col,value_col=value_col).reset_index()
     
     if normalise: likert_indices.loc[:,['polarisation','radicalisation']] = likert_indices[['polarisation','radicalisation']].apply(sps.zscore)
     
@@ -483,7 +483,7 @@ def likert_rad_pol(data, cat_col, value_col='value', factor_col=None, factor_col
 
 # %% ../nbs/03_plots.ipynb 38
 @stk_plot('geoplot', data_format='longform', continuous=True, requires_factor=True, factor_meta=['topo_feature'],aspect_ratio=(4.0/3.0))
-def geoplot(data, topo_feature, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, val_format='%'):
+def geoplot(data, topo_feature, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, val_format='.2f'):
     
     tjson_url, tjson_meta, tjson_col = topo_feature
     source = alt.topo_feature(tjson_url, tjson_meta)

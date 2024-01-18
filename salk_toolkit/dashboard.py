@@ -2,7 +2,7 @@
 
 # %% auto 0
 __all__ = ['draw_plot_matrix', 'st_plot', 'get_plot_width', 'open_fn', 'read_annotated_data_cached', 'load_json_cached',
-           'save_json', 'SalkDashboardBuilder']
+           'save_json', 'alias_file', 'SalkDashboardBuilder']
 
 # %% ../nbs/05_dashboard.ipynb 3
 import json, os, inspect
@@ -78,30 +78,48 @@ def load_json_cached(fname, _s3_fs=None, **kwargs):
 def save_json(d, fname, _s3_fs=None, **kwargs):
     with open_fn(fname,'w',s3_fs=_s3_fs) as jf:
         json.dump(d,jf)
+        
+def alias_file(fname, file_map):
+    if fname[:3]!='s3:' and fname in file_map and not os.path.exists(fname):
+        #print(f"Redirecting {fname} to {file_map[fname]}")
+        return file_map[fname]
+    else: return fname
 
 # %% ../nbs/05_dashboard.ipynb 8
 # Main dashboard wrapper - WIP
 class SalkDashboardBuilder:
 
     def __init__(self, data_source, auth_conf, public=False):
+        
+        # Allow deployment.json to redirect files from local to s3 if local missing (i.e. in deployment scenario)
+        if os.path.exists('deployment.json'):
+            dep_meta = load_json_cached('deployment.json')
+            filemap = vod(dep_meta,'files',{})
+            data_source = alias_file(data_source,filemap)
+            auth_conf = alias_file(auth_conf,filemap)
+        
         self.s3fs = s3fs.S3FileSystem(anon=False) # Initialize s3 access. Key in secrets.toml
         self.data_source = data_source
-        self.df, self.meta = read_annotated_data_cached(data_source)
         self.public = public
         self.pages = []
         self.sb_info = st.sidebar.empty()
         
+        # Load data
+        with st.spinner("Loading data..."):
+            self.df, self.meta = read_annotated_data_cached(data_source)
+        
         # Set up authentication
-        config = load_json_cached(auth_conf, _s3_fs = self.s3fs)
-        self.auth_conf_data, self.auth_conf_file = config, auth_conf
-        self.auth = stauth.Authenticate(
-            config['credentials'],
-            config['cookie']['name'],
-            config['cookie']['key'],
-            config['cookie']['expiry_days'],
-            config['preauthorized']
-        )
-        self.users = config['credentials']['usernames']
+        with st.spinner("Setting up authentication..."):
+            config = load_json_cached(auth_conf, _s3_fs = self.s3fs)
+            self.auth_conf_data, self.auth_conf_file = config, auth_conf
+            self.auth = stauth.Authenticate(
+                config['credentials'],
+                config['cookie']['name'],
+                config['cookie']['key'],
+                config['cookie']['expiry_days'],
+                config['preauthorized']
+            )
+            self.users = config['credentials']['usernames']
 
         if not public:
             if st.session_state["authentication_status"] is False:
@@ -119,9 +137,6 @@ class SalkDashboardBuilder:
         with open_fn(self.auth_conf_file,'w',s3_fs=self.s3fs) as jf:
             json.dump(self.auth_conf_data,jf)
 
-    def __enter__(self):
-        return self
-
     # pos_id is for plot_width to work in columns
     def plot(self, pp_desc, pos_id=None, **kwargs):
         st_plot(pp_desc,
@@ -137,9 +152,7 @@ class SalkDashboardBuilder:
                 self.pages.append( (name,pfunc,kwargs) )
         return decorator
 
-    # Render everything once we exit the with block
-    def __exit__(self, exc_type, exc_value, exc_tb):
-        
+    def build(self):    
         # If login failed and is required, don't go any further
         if not self.public and not st.session_state["authentication_status"]: return
     
@@ -171,6 +184,15 @@ class SalkDashboardBuilder:
         pname, pfunc, meta = self.pages[pnames.index(menu_choice)]
         st.title(pname)
         pfunc(**clean_kwargs(pfunc,{'sdb':self}))
+        
+    # Add enter and exit so it can be used as a context
+    def __enter__(self):
+        return self
+    
+    # Render everything once we exit the with block
+    def __exit__(self, exc_type, exc_value, exc_tb):
+        self.build()
+    
         
 
 # %% ../nbs/05_dashboard.ipynb 9
