@@ -333,7 +333,7 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, dry_run=False, w
 
 # %% ../nbs/02_pp.ipynb 16
 # A convenience function to draw a plot straight from a dataset
-def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, check_match=True,**kwargs):
+def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, check_match=True,lazy=True,**kwargs):
     if data_file is None and full_df is None:
         raise Exception('Data must be provided either as data_file or full_df')
     if data_file is None and data_meta is None:
@@ -341,7 +341,7 @@ def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, c
         
     if full_df is None: 
         if data_file.endswith('.parquet'): # Try lazy loading as it only loads what it needs from disk
-            full_df, full_meta = load_parquet_with_metadata(data_file,lazy=True)
+            full_df, full_meta = load_parquet_with_metadata(data_file,lazy=lazy)
             dm = full_meta['data']
         else: full_df, dm = read_annotated_data(data_file)
         if data_meta is None: data_meta = dm

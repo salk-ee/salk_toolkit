@@ -121,11 +121,7 @@ def register_stk_cont_version(cat_fn_name):
         # Remap certain args while keeping everything else intact
         kwargs = {**kwargs, **{'data':data, 'cat_col':'question', 'cat_order': question_order, 'value_col':value_col, 'color_scale':question_color_scale}}
         
-        # Trim down parameters list if needed
-        aspec = inspect.getfullargspec(cat_fn)
-        if aspec.varkw is None: kwargs = { k:v for k,v in kwargs.items() if k in aspec.args }
-        
-        return cat_fn(**kwargs)
+        return cat_fn(**clean_kwargs(cat_fn,kwargs))
     return cont
 
 # %% ../nbs/03_plots.ipynb 16
