@@ -3,12 +3,12 @@
 # %% auto 0
 __all__ = ['registry', 'registry_meta', 'stk_plot_defaults', 'priority_weights', 'stk_plot', 'stk_deregister', 'get_plot_fn',
            'get_plot_meta', 'calculate_priority', 'calculate_impossibilities', 'matching_plots',
-           'register_stk_cont_version', 'boxplots', 'columns', 'diff_columns', 'massplot', 'make_start_end',
-           'likert_bars', 'kde_1d', 'density', 'matrix', 'lines', 'area_smooth', 'likert_aggregate', 'likert_rad_pol',
-           'geoplot']
+           'register_stk_cont_version', 'estimate_legend_columns_horiz', 'boxplots', 'columns', 'diff_columns',
+           'massplot', 'make_start_end', 'likert_bars', 'kde_1d', 'density', 'matrix', 'lines', 'area_smooth',
+           'likert_aggregate', 'likert_rad_pol', 'barbell', 'geoplot']
 
 # %% ../nbs/03_plots.ipynb 3
-import json, os, inspect
+import json, os, math
 import itertools as it
 from collections import defaultdict
 
@@ -129,8 +129,18 @@ def register_stk_cont_version(cat_fn_name):
     return cont
 
 # %% ../nbs/03_plots.ipynb 16
+# Legends are not wrapped, nor is there a good way of doing accurately it in vega/altair
+# This attempts to estimate a reasonable value for columns which induces wrapping
+def estimate_legend_columns_horiz(cats, width):
+    max_str_len = max(map(len,cats))
+    n_cols = max(1,width//(15+5*max_str_len))
+    # distribute them roughly equally to avoid last row being awkwardly shorter
+    n_rows = int(math.ceil(len(cats)/n_cols))
+    return int(math.ceil(len(cats)/n_rows))
+
+# %% ../nbs/03_plots.ipynb 17
 @stk_plot('boxplots', data_format='longform', draws=True)
-def boxplots(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, val_format='%'):
+def boxplots(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, val_format='%', width=800):
     if val_format[-1] == '%': # Boxplots being a compound plot, this workaround is needed for axis & tooltips to be proper
         data[value_col]*=100
         val_format = val_format[:-1]+'f'
@@ -142,7 +152,8 @@ def boxplots(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_or
             'color': alt.Color(f'{cat_col}:N', scale=color_scale, legend=None)    
             } if not factor_col else {
                 'yOffset':alt.YOffset(f'{factor_col}:N', title=None, sort=factor_order), 
-                'color': alt.Color(f'{factor_col}:N', scale=factor_color_scale, legend=alt.Legend(orient='top'))
+                'color': alt.Color(f'{factor_col}:N', scale=factor_color_scale, 
+                                   legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(factor_order,width)))
             })
     }
     
@@ -180,9 +191,9 @@ def boxplots(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_or
 
 register_stk_cont_version('boxplots')
 
-# %% ../nbs/03_plots.ipynb 18
+# %% ../nbs/03_plots.ipynb 19
 @stk_plot('columns', data_format='longform', draws=False)
-def columns(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, val_format='%'):
+def columns(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, val_format='%', width=800):
     plot = alt.Chart(round(data, 3), width = 'container' \
     ).mark_bar().encode(
         y=alt.Y(f'{cat_col}:N', title=None, sort=cat_order),
@@ -206,14 +217,15 @@ def columns(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_ord
                 'color': alt.Color(f'{cat_col}:N', scale=color_scale, legend=None)    
             } if not factor_col else {
                 'yOffset':alt.YOffset(f'{factor_col}:N', title=None, sort=factor_order), 
-                'color': alt.Color(f'{factor_col}:N', scale=factor_color_scale, legend=alt.Legend(orient='top'))
+                'color': alt.Color(f'{factor_col}:N', scale=factor_color_scale,
+                                    legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(factor_order,width)))
             }),
     )
     return plot
 
 register_stk_cont_version('columns')
 
-# %% ../nbs/03_plots.ipynb 20
+# %% ../nbs/03_plots.ipynb 21
 @stk_plot('diff_columns', data_format='longform', draws=False, requires_factor=True, args={'sort_descending':'bool'})
 def diff_columns(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, val_format='%', sort_descending=False):
     
@@ -245,9 +257,9 @@ def diff_columns(data, cat_col, value_col='value', color_scale=alt.Undefined, ca
 
 register_stk_cont_version('diff_columns')
 
-# %% ../nbs/03_plots.ipynb 22
+# %% ../nbs/03_plots.ipynb 23
 @stk_plot('massplot', data_format='longform', draws=False, group_sizes=True)
-def massplot(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, n_datapoints=1, val_format='%'):
+def massplot(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, n_datapoints=1, val_format='%', width=800):
 
     data['group_size']=(data['group_size']/n_datapoints)#.round(2)
 
@@ -278,18 +290,22 @@ def massplot(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_or
                 'color': alt.Color(f'{cat_col}:N', scale=color_scale, legend=None)    
             } if not factor_col else {
                 'yOffset':alt.YOffset(f'{factor_col}:N', title=None, sort=factor_order), 
-                'color': alt.Color(f'{factor_col}:N', scale=factor_color_scale, legend=alt.Legend(orient='top'))
+                'color': alt.Color(f'{factor_col}:N', scale=factor_color_scale,
+                                legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(factor_order,width)))
             }),
     )
     return plot
 
 register_stk_cont_version('massplot')
 
-# %% ../nbs/03_plots.ipynb 24
+# %% ../nbs/03_plots.ipynb 25
 # Make the likert bar pieces
-def make_start_end(x,value_col):
+def make_start_end(x,value_col,cat_col,cat_order):
     #print("######################")
     #print(x)
+    if len(x) != len(cat_order):
+        # Fill in missing rows with value zero so they would just be skipped
+        x = pd.merge(pd.DataFrame({cat_col:cat_order}),x,on=cat_col,how='left').fillna({value_col:0})
     mid = len(x)//2
         
     if len(x)%2==1: # odd:
@@ -306,14 +322,14 @@ def make_start_end(x,value_col):
     x_other = x.iloc[nonmid,:]
     x_other.loc[:,'end'] = x_other[value_col].cumsum() - x_other[:mid][value_col].sum()
     x_other.loc[:,'start'] = (x_other[value_col][::-1].cumsum()[::-1] - x_other[mid:][value_col].sum())*-1
-    return pd.concat([x_other] + x_mid)
+    return pd.concat([x_other] + x_mid).dropna() # drop any na rows added in the filling in step
 
 @stk_plot('likert_bars',data_format='longform',question=True,draws=False,likert=True)
-def likert_bars(data, cat_col, value_col='value', question_order=alt.Undefined, color_scale=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined):
+def likert_bars(data, cat_col, cat_order=alt.Undefined, value_col='value', question_order=alt.Undefined, color_scale=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined):
     gb_cols = list(set(data.columns)-{ cat_col, value_col }) # Assume all other cols still in data will be used for factoring
     
     options_cols = list(data[cat_col].dtype.categories) # Get likert scale names
-    bar_data = data.groupby(gb_cols, group_keys=False).apply(make_start_end,value_col=value_col)
+    bar_data = data.groupby(gb_cols, group_keys=False, observed=False).apply(make_start_end,value_col=value_col,cat_col=cat_col,cat_order=cat_order)
     
     plot = alt.Chart(bar_data).mark_bar() \
         .encode(
@@ -337,7 +353,7 @@ def likert_bars(data, cat_col, value_col='value', question_order=alt.Undefined, 
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 26
+# %% ../nbs/03_plots.ipynb 27
 # Calculate KDE ourselves using a fast libary. This gets around having to do sampling which is unstable
 def kde_1d(vc, value_col):
     ls = np.linspace(vc.min()-1e-10,vc.max()+1e-10,200)
@@ -358,7 +374,7 @@ def density(data, value_col='value',factor_col=None, factor_color_scale=alt.Unde
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 28
+# %% ../nbs/03_plots.ipynb 29
 @stk_plot('matrix', data_format='longform', requires_factor=True, aspect_ratio=(1/0.8))
 def matrix(data, cat_col, value_col='value', cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, val_format='%'):
     
@@ -392,9 +408,9 @@ def matrix(data, cat_col, value_col='value', cat_order=alt.Undefined, factor_col
 
 register_stk_cont_version('matrix')
 
-# %% ../nbs/03_plots.ipynb 31
+# %% ../nbs/03_plots.ipynb 32
 @stk_plot('lines',data_format='longform', question=False, draws=False, ordered_factor=True, requires_factor=True, args={'smooth':'bool'})
-def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, smooth=False):
+def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, smooth=False, width=800):
     if smooth:
         smoothing = 'basis'
         points = 'transparent'
@@ -408,14 +424,15 @@ def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order
         tooltip=[
             *([alt.Tooltip(f'{factor_col}:N')] if factor_col else []),
             alt.Tooltip(f'{value_col}:Q', format='.1%')],
-        color=alt.Color(f'{cat_col}:N', scale=color_scale, sort=cat_order, legend=alt.Legend(orient='top'))
+        color=alt.Color(f'{cat_col}:N', scale=color_scale, sort=cat_order,
+                        legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(cat_order,width)))
     )
     return plot
 
 
-# %% ../nbs/03_plots.ipynb 33
+# %% ../nbs/03_plots.ipynb 34
 @stk_plot('area_smooth',data_format='longform', question=False, draws=False, ordered=False, ordered_factor=True, requires_factor=True)
-def area_smooth(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined,):
+def area_smooth(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, width=800):
     ldict = dict(zip(cat_order, range(len(cat_order))))
     data.loc[:,'order'] = data[cat_col].replace(ldict)
     #print(data[[cat_col,'order']])
@@ -426,7 +443,8 @@ def area_smooth(data, cat_col, value_col='value', color_scale=alt.Undefined, cat
                  scale=alt.Scale(domain=[0, 1]), axis=alt.Axis(format='%')
                  ),
             order=alt.Order("order:O"),
-            color=alt.Color(f"{cat_col}:N", legend=alt.Legend(orient='top', title=None),
+            color=alt.Color(f"{cat_col}:N",
+                legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(cat_order,width)),
                 sort=cat_order, scale=color_scale
                 ),
             #tooltip=[alt.Tooltip(teema, title='vastus'), 'laine',
@@ -434,11 +452,11 @@ def area_smooth(data, cat_col, value_col='value', color_scale=alt.Undefined, cat
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 35
-def likert_aggregate(x, cat_col, value_col):
+# %% ../nbs/03_plots.ipynb 36
+def likert_aggregate(x, cat_col, cat_order, value_col):
     
     cc, vc = x[cat_col], x[value_col]
-    cats = cc.dtype.categories
+    cats = cat_order
     
     mid, odd = len(cats)//2, len(cats)%2
     
@@ -454,14 +472,14 @@ def likert_aggregate(x, cat_col, value_col):
             nonmid_sum )
 
     rel = 1.0-nonmid_sum/vc.sum()
-
+    
     return pd.Series({ 'polarisation': pol, 'radicalisation':rad, 'relevance':rel})
 
 @stk_plot('likert_rad_pol',data_format='longform', question=False, draws=False, likert=True, requires_factor=True, args={'normalise':'bool'})
-def likert_rad_pol(data, cat_col, value_col='value', factor_col=None, factor_color_scale=alt.Undefined, normalise=True):
+def likert_rad_pol(data, cat_col, cat_order=alt.Undefined, value_col='value', factor_col=None, factor_order=alt.Undefined, factor_color_scale=alt.Undefined, normalise=True, width=800):
     gb_cols = list(set(data.columns)-{ cat_col, value_col }) # Assume all other cols still in data will be used for factoring
     options_cols = list(data[cat_col].dtype.categories) # Get likert scale names
-    likert_indices = data.groupby(gb_cols, group_keys=False, observed=True).apply(likert_aggregate,cat_col=cat_col,value_col=value_col).reset_index()
+    likert_indices = data.groupby(gb_cols, group_keys=False, observed=False).apply(likert_aggregate,cat_col=cat_col,cat_order=cat_order,value_col=value_col).reset_index()
     
     if normalise: likert_indices.loc[:,['polarisation','radicalisation']] = likert_indices[['polarisation','radicalisation']].apply(sps.zscore)
     
@@ -477,11 +495,50 @@ def likert_rad_pol(data, cat_col, value_col='value', factor_col=None, factor_col
             alt.Tooltip('polarisation:Q', format='.2'),
             alt.Tooltip('relevance:Q', format='.2')
         ],
-        **({'color': alt.Color(f'{factor_col}:N', scale=factor_color_scale, legend=alt.Legend(orient='top'))} if factor_col else {})
+        **({'color': alt.Color(f'{factor_col}:N', scale=factor_color_scale, 
+                               legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(factor_order,width)))
+            } if factor_col else {})
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 38
+# %% ../nbs/03_plots.ipynb 40
+@stk_plot('barbell', data_format='longform', draws=False)
+def barbell(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, n_datapoints=1, val_format='%', width=800):
+    
+    chart_base = alt.Chart(data).encode(
+        alt.X(f'{value_col}:Q', title=None, axis=alt.Axis(format=val_format)),
+        alt.Y(f'{cat_col}:N', title=None, sort=cat_order),
+        tooltip=[alt.Tooltip(f'{cat_col}:N'),
+                 alt.Tooltip(f'{value_col}:Q', format=val_format),
+                alt.Tooltip(f'{factor_col}:N')]
+    )
+
+    chart = chart_base.mark_line(color='lightgrey', size=1, opacity=1.0).encode(
+        detail=f'{cat_col}:N'
+    )
+    selection = alt.selection_point(fields=[factor_col], bind='legend')
+
+    chart += chart_base.mark_point(
+        size=50,
+        opacity=1,
+        filled=True
+    ).encode(
+        color=alt.Color(f'{factor_col}:N',
+            #legend=alt.Legend(orient='right', title=None),
+            legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(factor_order,width)),
+            scale=factor_color_scale,
+            sort=factor_order
+        ),
+        opacity=alt.condition(selection, alt.value(1), alt.value(0.2)),
+    ).add_params(
+        selection
+    )#.interactive()
+    
+    return chart
+    
+register_stk_cont_version('barbell')
+
+# %% ../nbs/03_plots.ipynb 43
 @stk_plot('geoplot', data_format='longform', continuous=True, requires_factor=True, factor_meta=['topo_feature'],aspect_ratio=(4.0/3.0))
 def geoplot(data, topo_feature, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, val_format='.2f'):
     

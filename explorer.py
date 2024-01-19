@@ -172,7 +172,8 @@ with st.sidebar: #.expander("Select dimensions"):
         # This has considerable speed and efficiency implications
         for cn in all_dims:
             col = first_data[cn]
-            if detailed and col.dtype.name=='category':
+            if col.dtype.name=='category' and len(col.dtype.categories)==1: continue
+            elif detailed and col.dtype.name=='category':
                 filters[cn] = st.multiselect(cn, list(col.dtype.categories), list(col.dtype.categories))
                 if set(filters[cn]) == set(list(col.dtype.categories)): del filters[cn]
             elif col.dtype.name=='category' and not col.dtype.ordered:
@@ -185,6 +186,7 @@ with st.sidebar: #.expander("Select dimensions"):
                 if filters[cn] == (cats[0],cats[-1]): del filters[cn]
             elif is_numeric_dtype(col) and col.dtype!='bool':
                 mima = (col.min(),col.max())
+                if mima[0]==mima[1]: continue
                 filters[cn] = st.slider(cn,*mima,value=mima)
                 if filters[cn] == mima: del filters[cn]
 
