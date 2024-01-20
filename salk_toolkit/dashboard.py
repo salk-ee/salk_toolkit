@@ -34,6 +34,7 @@ import streamlit_authenticator as stauth
 
 # Draw a matrix of plots using separate plots and st columns
 def draw_plot_matrix(pmat,matrix_form = False):
+    if not pmat: return # Do nothing if get None passed to it
     if not matrix_form: pmat = [[pmat]]
     cols = st.columns(len(pmat[0]))
     for j,c in enumerate(cols):

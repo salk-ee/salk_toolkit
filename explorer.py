@@ -41,6 +41,7 @@ with st.spinner("Loading libraries.."):
     from salk_toolkit.pp import *
     from salk_toolkit.plots import matching_plots, get_plot_meta
     from salk_toolkit.utils import vod
+    from salk_toolkit.dashboard import draw_plot_matrix
 
     tqdm = lambda x: x # So we can freely copy-paste from notebooks
 
@@ -246,13 +247,6 @@ st.markdown("""___""")
 
 # Workaround for geoplot - in that case draw multiple plots instead of a facet
 matrix_form = (args['plot'] == 'geoplot')
-def draw_plot_matrix(pmat,matrix_form = False):
-    if not matrix_form: pmat = [[pmat]]
-    cols = st.columns(len(pmat[0]))
-    for j,c in enumerate(cols):
-        for i, row in enumerate(pmat):
-            c.altair_chart(pmat[i][j])
-
 
 # Create columns, one per input file
 if len(input_files)>1 and facet_dim != 'input_file':
