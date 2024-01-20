@@ -3,9 +3,9 @@
 # %% auto 0
 __all__ = ['registry', 'registry_meta', 'stk_plot_defaults', 'priority_weights', 'stk_plot', 'stk_deregister', 'get_plot_fn',
            'get_plot_meta', 'calculate_priority', 'calculate_impossibilities', 'matching_plots',
-           'register_stk_cont_version', 'estimate_legend_columns_horiz', 'boxplots', 'columns', 'diff_columns',
-           'massplot', 'make_start_end', 'likert_bars', 'kde_1d', 'density', 'matrix', 'lines', 'area_smooth',
-           'likert_aggregate', 'likert_rad_pol', 'barbell', 'geoplot']
+           'register_stk_cont_version', 'estimate_legend_columns_horiz_naive', 'estimate_legend_columns_horiz',
+           'boxplots', 'columns', 'diff_columns', 'massplot', 'make_start_end', 'likert_bars', 'kde_1d', 'density',
+           'matrix', 'lines', 'area_smooth', 'likert_aggregate', 'likert_rad_pol', 'barbell', 'geoplot']
 
 # %% ../nbs/03_plots.ipynb 3
 import json, os, math
@@ -127,14 +127,36 @@ def register_stk_cont_version(cat_fn_name):
 # %% ../nbs/03_plots.ipynb 16
 # Legends are not wrapped, nor is there a good way of doing accurately it in vega/altair
 # This attempts to estimate a reasonable value for columns which induces wrapping
-def estimate_legend_columns_horiz(cats, width):
+def estimate_legend_columns_horiz_naive(cats, width):
     max_str_len = max(map(len,cats))
     n_cols = max(1,width//(15+5*max_str_len))
     # distribute them roughly equally to avoid last row being awkwardly shorter
     n_rows = int(math.ceil(len(cats)/n_cols))
     return int(math.ceil(len(cats)/n_rows))
 
-# %% ../nbs/03_plots.ipynb 17
+# More sophisticated version that looks at lengths of individual strings across multiple rows
+def estimate_legend_columns_horiz(cats, width):
+    max_cols, restart = len(cats), True
+    lens = list(map(lambda s: 15+legend_font.getlength(s),cats))
+    while restart:
+        restart, rl, cc = False, 0, 0
+        for l in lens:
+            if cc >= max_cols: # Start a new row
+                rl, cc = l, 1
+            elif rl + l > width: # Exceed width - restart
+                max_cols = cc
+                # Start from beginning every thime columns number changes
+                # This is because what ends up in second+ rows depends on length of first
+                restart = True
+            else: # Just append to existing row
+                rl += l
+                cc += 1
+
+    # distribute them roughly equally to avoid last row being awkwardly shorter
+    n_rows = int(math.ceil(len(cats)/max_cols))
+    return int(math.ceil(len(cats)/n_rows))
+
+# %% ../nbs/03_plots.ipynb 20
 @stk_plot('boxplots', data_format='longform', draws=True)
 def boxplots(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, val_format='%', width=800):
     if val_format[-1] == '%': # Boxplots being a compound plot, this workaround is needed for axis & tooltips to be proper
@@ -187,7 +209,7 @@ def boxplots(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_or
 
 register_stk_cont_version('boxplots')
 
-# %% ../nbs/03_plots.ipynb 19
+# %% ../nbs/03_plots.ipynb 22
 @stk_plot('columns', data_format='longform', draws=False)
 def columns(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, val_format='%', width=800):
     plot = alt.Chart(round(data, 3), width = 'container' \
@@ -221,7 +243,7 @@ def columns(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_ord
 
 register_stk_cont_version('columns')
 
-# %% ../nbs/03_plots.ipynb 21
+# %% ../nbs/03_plots.ipynb 24
 @stk_plot('diff_columns', data_format='longform', draws=False, requires_factor=True, args={'sort_descending':'bool'})
 def diff_columns(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, val_format='%', sort_descending=False):
     
@@ -253,7 +275,7 @@ def diff_columns(data, cat_col, value_col='value', color_scale=alt.Undefined, ca
 
 register_stk_cont_version('diff_columns')
 
-# %% ../nbs/03_plots.ipynb 23
+# %% ../nbs/03_plots.ipynb 26
 @stk_plot('massplot', data_format='longform', draws=False, group_sizes=True)
 def massplot(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, n_datapoints=1, val_format='%', width=800):
 
@@ -294,7 +316,7 @@ def massplot(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_or
 
 register_stk_cont_version('massplot')
 
-# %% ../nbs/03_plots.ipynb 25
+# %% ../nbs/03_plots.ipynb 28
 # Make the likert bar pieces
 def make_start_end(x,value_col,cat_col,cat_order):
     #print("######################")
@@ -349,7 +371,7 @@ def likert_bars(data, cat_col, cat_order=alt.Undefined, value_col='value', quest
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 27
+# %% ../nbs/03_plots.ipynb 30
 # Calculate KDE ourselves using a fast libary. This gets around having to do sampling which is unstable
 def kde_1d(vc, value_col):
     ls = np.linspace(vc.min()-1e-10,vc.max()+1e-10,200)
@@ -370,7 +392,7 @@ def density(data, value_col='value',factor_col=None, factor_color_scale=alt.Unde
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 29
+# %% ../nbs/03_plots.ipynb 32
 @stk_plot('matrix', data_format='longform', requires_factor=True, aspect_ratio=(1/0.8))
 def matrix(data, cat_col, value_col='value', cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, val_format='%'):
     
@@ -404,7 +426,7 @@ def matrix(data, cat_col, value_col='value', cat_order=alt.Undefined, factor_col
 
 register_stk_cont_version('matrix')
 
-# %% ../nbs/03_plots.ipynb 32
+# %% ../nbs/03_plots.ipynb 35
 @stk_plot('lines',data_format='longform', question=False, draws=False, ordered_factor=True, requires_factor=True, args={'smooth':'bool'})
 def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, smooth=False, width=800):
     if smooth:
@@ -426,7 +448,7 @@ def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order
     return plot
 
 
-# %% ../nbs/03_plots.ipynb 34
+# %% ../nbs/03_plots.ipynb 37
 @stk_plot('area_smooth',data_format='longform', question=False, draws=False, ordered=False, ordered_factor=True, requires_factor=True)
 def area_smooth(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, width=800):
     ldict = dict(zip(cat_order, range(len(cat_order))))
@@ -448,7 +470,7 @@ def area_smooth(data, cat_col, value_col='value', color_scale=alt.Undefined, cat
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 36
+# %% ../nbs/03_plots.ipynb 39
 def likert_aggregate(x, cat_col, cat_order, value_col):
     
     cc, vc = x[cat_col], x[value_col]
@@ -497,7 +519,7 @@ def likert_rad_pol(data, cat_col, cat_order=alt.Undefined, value_col='value', fa
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 40
+# %% ../nbs/03_plots.ipynb 43
 @stk_plot('barbell', data_format='longform', draws=False)
 def barbell(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, n_datapoints=1, val_format='%', width=800):
     
@@ -534,7 +556,7 @@ def barbell(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_ord
     
 register_stk_cont_version('barbell')
 
-# %% ../nbs/03_plots.ipynb 43
+# %% ../nbs/03_plots.ipynb 46
 @stk_plot('geoplot', data_format='longform', continuous=True, requires_factor=True, factor_meta=['topo_feature'],aspect_ratio=(4.0/3.0))
 def geoplot(data, topo_feature, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, val_format='.2f'):
     
