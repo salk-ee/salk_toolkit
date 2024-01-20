@@ -25,6 +25,9 @@ from KDEpy import FFTKDE
 from salk_toolkit.utils import *
 from salk_toolkit.io import extract_column_meta, read_json
 
+from matplotlib import font_manager
+from PIL import ImageFont
+
 # %% ../nbs/03_plots.ipynb 5
 registry = {}
 registry_meta = {}
@@ -124,6 +127,12 @@ def register_stk_cont_version(cat_fn_name):
         return cat_fn(**clean_kwargs(cat_fn,kwargs))
     return cont
 
+# %% ../nbs/03_plots.ipynb 15
+# Find a sensible approximation to the font used in vega/altair
+font = font_manager.FontProperties(family='sans-serif', weight='regular')
+font_file = font_manager.findfont(font)
+legend_font = ImageFont.truetype(font_file,10)
+
 # %% ../nbs/03_plots.ipynb 16
 # Legends are not wrapped, nor is there a good way of doing accurately it in vega/altair
 # This attempts to estimate a reasonable value for columns which induces wrapping
@@ -135,6 +144,7 @@ def estimate_legend_columns_horiz_naive(cats, width):
     return int(math.ceil(len(cats)/n_rows))
 
 # More sophisticated version that looks at lengths of individual strings across multiple rows
+# ToDo: it should max over each column separately not just look at max(sum(row)). This is close enough though.
 def estimate_legend_columns_horiz(cats, width):
     max_cols, restart = len(cats), True
     lens = list(map(lambda s: 15+legend_font.getlength(s),cats))
@@ -501,12 +511,12 @@ def likert_rad_pol(data, cat_col, cat_order=alt.Undefined, value_col='value', fa
     
     if normalise: likert_indices.loc[:,['polarisation','radicalisation']] = likert_indices[['polarisation','radicalisation']].apply(sps.zscore)
     
-    plot = alt.Chart(likert_indices).mark_circle().encode(
+    plot = alt.Chart(likert_indices).mark_point().encode(
         x=alt.X('polarisation:Q'),
         y=alt.Y('radicalisation:Q'),
         size=alt.Size('relevance:Q', legend=None, scale=alt.Scale(range=[100, 500])),
         opacity=alt.value(1.0),
-        stroke=alt.value('#777'),
+        #stroke=alt.value('#777'),
         tooltip=[
             *([alt.Tooltip(f'{factor_col}:N')] if factor_col else []),
             alt.Tooltip('radicalisation:Q', format='.2'),

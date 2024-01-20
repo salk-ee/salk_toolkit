@@ -4,7 +4,7 @@
 __all__ = ['warn', 'default_color', 'vod', 'factorize_w_codes', 'batch', 'loc2iloc', 'match_sum_round', 'min_diff', 'continify',
            'match_data', 'replace_constants', 'index_encoder', 'to_alt_scale', 'multicol_to_vals_cats',
            'gradient_to_discrete_color_scale', 'is_datetime', 'rel_wave_times', 'stable_draws', 'deterministic_draws',
-           'clean_kwargs']
+           'clean_kwargs', 'censor_dict']
 
 # %% ../nbs/10_utils.ipynb 3
 import json, os, warnings, math, inspect
@@ -211,3 +211,7 @@ def deterministic_draws(df, n_draws, uid, n_total=None):
 def clean_kwargs(fn, kwargs):
     aspec = inspect.getfullargspec(fn)
     return { k:v for k,v in kwargs.items() if k in aspec.args } if aspec.varkw is None else kwargs
+
+# %% ../nbs/10_utils.ipynb 30
+def censor_dict(d,vs):
+    return { k:v for k,v in d.items() if k not in vs }

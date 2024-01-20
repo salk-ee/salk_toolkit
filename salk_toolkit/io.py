@@ -103,7 +103,12 @@ def process_annotated_data(meta_fname=None, multilevel=False, meta=None, data_fi
             if 'categories' in cd: 
                 na_sum = s.isna().sum()
                 if vod(cd,'ordered',False) and cd['categories']=='infer': warn(f"Ordered category {cn} had category: infer. This only works correctly if you want lexicographic ordering!")
-                cats = cd['categories'] if cd['categories']!='infer' else [ c for c in s.sort_values().unique() if pd.notna(c) ]
+                
+                if cd['categories'] == 'infer':
+                    cd['categories'] = [ c for c in s.sort_values().unique() if pd.notna(c) ] # Also propagates it into meta (unless shared scale)
+                    
+                cats = cd['categories']
+                
                 ns = pd.Series(pd.Categorical(s,categories=cats,ordered=cd['ordered'] if 'ordered' in cd else False), name=cn, index=raw_data.index)
                 # Check if the category list provided was comprehensive
                 new_nas = ns.isna().sum() - na_sum
