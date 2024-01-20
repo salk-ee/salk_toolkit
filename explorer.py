@@ -160,8 +160,15 @@ with st.sidebar: #.expander("Select dimensions"):
 
     args['plot_args'] = plot_args
 
+    def ms_reset(cn, all_vals):
+        def reset_ms():
+            #print("SB",cn,st.session_state[f"{cn}_multiselect"])
+            st.session_state[f"{cn}_multiselect"] = all_vals
+            #print("SS",cn,st.session_state[f"{cn}_multiselect"])
+        return reset_ms
 
 
+    f_info = st.sidebar.empty()
     with st.sidebar.expander('Filters'):
         detailed = st.toggle('Fine-grained filter', False)
         filter_vals = { col: list(first_data[col].unique()) for col in all_dims if col in first_data.columns }
@@ -174,8 +181,10 @@ with st.sidebar: #.expander("Select dimensions"):
             col = first_data[cn]
             if col.dtype.name=='category' and len(col.dtype.categories)==1: continue
             elif detailed and col.dtype.name=='category':
-                filters[cn] = st.multiselect(cn, list(col.dtype.categories), list(col.dtype.categories))
+                all_vals = list(col.dtype.categories)
+                filters[cn] = st.multiselect(cn, all_vals, all_vals, key=f"{cn}_multiselect")
                 if set(filters[cn]) == set(list(col.dtype.categories)): del filters[cn]
+                else: st.button("Reset",key=f"{cn}_reset",on_click=ms_reset(cn,all_vals))
             elif col.dtype.name=='category' and not col.dtype.ordered:
                 filters[cn] = st.selectbox(cn,
                     ['All'] + list(vod(c_meta[cn],'groups',{}).keys()) + list(col.dtype.categories))
@@ -190,7 +199,11 @@ with st.sidebar: #.expander("Select dimensions"):
                 filters[cn] = st.slider(cn,*mima,value=mima)
                 if filters[cn] == mima: del filters[cn]
 
-        args['filter'] = filters
+        if filters:
+            args['filter'] = filters
+            f_info.warning('⚠️ Filters active ⚠️')
+        else: args['filter'] = {}
+
         #print(args['filter'])
 
     with st.expander('Plot desc'):
