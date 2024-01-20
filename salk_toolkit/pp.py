@@ -82,6 +82,7 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
     inds = True if lazy else np.full(len(df),True) 
     for k, v in filter_dict.items():
         
+        # Handle continuous variables separately
         if isinstance(v,tuple) and (vod(c_meta[k],'continuous') or vod(c_meta[k],'datetime')): # Only special case where we actually need a range
             if lazy: inds = (((pl.col(k)>=v[0]) & (pl.col(k)<=v[1])) | pl.col(k).is_null()) & inds
             else: inds = (((df[k]>=v[0]) & (df[k]<=v[1])) | df[k].isna()) & inds

@@ -41,7 +41,7 @@ with st.spinner("Loading libraries.."):
     from salk_toolkit.pp import *
     from salk_toolkit.plots import matching_plots, get_plot_meta
     from salk_toolkit.utils import vod
-    from salk_toolkit.dashboard import draw_plot_matrix
+    from salk_toolkit.dashboard import draw_plot_matrix, facet_ui, filter_ui
 
     tqdm = lambda x: x # So we can freely copy-paste from notebooks
 
@@ -140,13 +140,7 @@ with st.sidebar: #.expander("Select dimensions"):
     facet_dims = all_dims
     if len(input_files)>1: facet_dims = ['input_file'] + facet_dims
 
-    facet_dim = st.sidebar.selectbox('Facet:', ['None'] + facet_dims)
-
-    args['factor_cols'] = [facet_dim] if facet_dim != 'None' else []
-
-    if facet_dim != 'None':
-        second_dim = st.sidebar.selectbox('Facet 2:', ['None'] + all_dims)
-        if second_dim != 'None':  args['factor_cols'] = [facet_dim, second_dim]
+    args['factor_cols'] = facet_ui(facet_dims,two=True)
 
     args['internal_facet'] = st.toggle('Internal facet?',True)
 
@@ -161,72 +155,14 @@ with st.sidebar: #.expander("Select dimensions"):
 
     args['plot_args'] = plot_args
 
-    def ms_reset(cn, all_vals):
-        def reset_ms():
-            #print("SB",cn,st.session_state[f"{cn}_multiselect"])
-            st.session_state[f"{cn}_multiselect"] = all_vals
-            #print("SS",cn,st.session_state[f"{cn}_multiselect"])
-        return reset_ms
+    detailed = st.toggle('Fine-grained filter', False)    
+    args['filter'] = filter_ui(first_data,first_data_meta,
+                        dims=all_dims,detailed=detailed)
 
-
-    f_info = st.sidebar.empty()
-    with st.sidebar.expander('Filters'):
-        detailed = st.toggle('Fine-grained filter', False)
-        filter_vals = { col: list(first_data[col].unique()) for col in all_dims if col in first_data.columns }
-        filters = {}
-
-        # Different selector for different category types
-        # Also - make sure filter is clean and only applies when it is changed from the default 'all' value
-        # This has considerable speed and efficiency implications
-        for cn in all_dims:
-            col = first_data[cn]
-            if col.dtype.name=='category' and len(col.dtype.categories)==1: continue
-            elif detailed and col.dtype.name=='category':
-                all_vals = list(col.dtype.categories)
-                filters[cn] = st.multiselect(cn, all_vals, all_vals, key=f"{cn}_multiselect")
-                if set(filters[cn]) == set(list(col.dtype.categories)): del filters[cn]
-                else: st.button("Reset",key=f"{cn}_reset",on_click=ms_reset(cn,all_vals))
-            elif col.dtype.name=='category' and not col.dtype.ordered:
-                filters[cn] = st.selectbox(cn,
-                    ['All'] + list(vod(c_meta[cn],'groups',{}).keys()) + list(col.dtype.categories))
-                if filters[cn] == 'All': del filters[cn]
-            elif col.dtype.name=='category':
-                cats = list(col.dtype.categories)
-                filters[cn] = st.select_slider(cn,cats,value=(cats[0],cats[-1]))
-                if filters[cn] == (cats[0],cats[-1]): del filters[cn]
-            elif is_numeric_dtype(col) and col.dtype!='bool':
-                mima = (col.min(),col.max())
-                if mima[0]==mima[1]: continue
-                filters[cn] = st.slider(cn,*mima,value=mima)
-                if filters[cn] == mima: del filters[cn]
-
-        if filters:
-            args['filter'] = filters
-            f_info.warning('⚠️ Filters active ⚠️')
-        else: args['filter'] = {}
-
-        #print(args['filter'])
 
     with st.expander('Plot desc'):
         st.json(args)
 
-
-    x='''
-    gcols = group_columns_dict(data_meta)
-    for g in data_meta['structure']:
-        with st.sidebar.expander(g['name']):
-            for cn in gcols[g['name']]:
-                if cn not in all_dims: continue
-                col = first_data[cn]
-                if col.dtype.name=='category' and not col.dtype.ordered:
-                    filters[cn] = st.selectbox(cn, ['All'] + list(col.dtype.categories))
-                elif col.dtype.name=='category':
-                    cats = col.dtype.categories
-                    filters[cn] = st.select_slider(cn,cats,value=(cats[0],cats[-1]))
-                elif col.dtype!='bool':
-                    mima = (col.min(),col.max())
-                    filters[cn] = st.slider(cn,*mima,value=mima)
-    '''
 
 
 # Check if any facet dims match observation dim or each other
@@ -249,6 +185,7 @@ st.markdown("""___""")
 matrix_form = (args['plot'] == 'geoplot')
 
 # Create columns, one per input file
+facet_dim = args['factor_cols'][0] if len(args['factor_cols'])>0 else None
 if len(input_files)>1 and facet_dim != 'input_file':
     cols = st.columns(len(input_files))
 else: cols = [contextlib.suppress()]
