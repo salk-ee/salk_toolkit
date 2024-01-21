@@ -391,7 +391,7 @@ def kde_1d(vc, value_col):
 @stk_plot('density', data_format='raw', continuous=True, factor_columns=3,aspect_ratio=(1.0/1.0))
 def density(data, value_col='value',factor_col=None, factor_color_scale=alt.Undefined):
     gb_cols = list(set(data.columns)-{ value_col }) # Assume we groupby over everything except value
-    ndata = data.groupby(gb_cols,observed=True)[value_col].apply(kde_1d,value_col=value_col).reset_index()
+    ndata = data.groupby(gb_cols,observed=False)[value_col].apply(kde_1d,value_col=value_col).reset_index()
     
     plot = alt.Chart(
             ndata
