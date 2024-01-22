@@ -2,10 +2,6 @@ import streamlit as st
 from streamlit_dimensions import st_dimensions
 import warnings
 
-def get_plot_width(key):
-    wobj = st_dimensions(key=key) or { 'width': 900 }# Can return none so handle that
-    return int(0.85*wobj['width']) # Needs to be adjusted to leave margin
-
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 profile = False
@@ -19,6 +15,9 @@ st.set_page_config(
     #page_icon="./s-model.png",
     initial_sidebar_state="expanded",
 )
+
+def get_plot_width(str):
+    return 800
 
 info = st.empty()
 
@@ -41,7 +40,7 @@ with st.spinner("Loading libraries.."):
     from salk_toolkit.pp import *
     from salk_toolkit.plots import matching_plots, get_plot_meta
     from salk_toolkit.utils import vod
-    from salk_toolkit.dashboard import draw_plot_matrix, facet_ui, filter_ui
+    from salk_toolkit.dashboard import draw_plot_matrix, facet_ui, filter_ui, get_plot_width
 
     tqdm = lambda x: x # So we can freely copy-paste from notebooks
 
@@ -155,9 +154,10 @@ with st.sidebar: #.expander("Select dimensions"):
 
     args['plot_args'] = plot_args
 
-    detailed = st.toggle('Fine-grained filter', False)    
-    args['filter'] = filter_ui(first_data,first_data_meta,
-                        dims=all_dims,detailed=detailed)
+    #detailed = st.toggle('Fine-grained filter', False)    
+    #args['filter'] = filter_ui(first_data,first_data_meta,
+    #                    dims=all_dims,detailed=detailed)
+    args['filter'] = {}
 
 
     with st.expander('Plot desc'):
@@ -191,30 +191,31 @@ if len(input_files)>1 and facet_dim != 'input_file':
 else: cols = [contextlib.suppress()]
 
 if facet_dim == 'input_file':
-    with st.spinner('Filtering data...'):
-        # This is a bit hacky because of the lazy data frames
-        dfs = []
-        for ifile in input_files:
-            df, fargs = loaded[ifile]['data'], args.copy()
-            fargs['filter'] = { k:v for k,v in fargs['filter'].items() if k in df.columns }
-            fargs['factor_cols'] = [ f for f in fargs['factor_cols'] if f!='input_file' ]
-            pparams = get_filtered_data(df, first_data_meta, fargs)
-            dfs.append(pparams['data'])
+    #with st.spinner('Filtering data...'):
+    
+    # This is a bit hacky because of the lazy data frames
+    dfs = []
+    for ifile in input_files:
+        df, fargs = loaded[ifile]['data'], args.copy()
+        fargs['filter'] = { k:v for k,v in fargs['filter'].items() if k in df.columns }
+        fargs['factor_cols'] = [ f for f in fargs['factor_cols'] if f!='input_file' ]
+        pparams = get_filtered_data(df, first_data_meta, fargs)
+        dfs.append(pparams['data'])
 
-        fdf = pd.concat(dfs)
+    fdf = pd.concat(dfs)
 
-        # Fix categories to match the first file in case there are discrepancies (like only one being ordered)
-        for c in fdf.columns:
-            if fdf[c].dtype.name!='category' and dfs[0][c].dtype.name=='category':
-                fdf[c] = pd.Categorical(fdf[c],dtype=dfs[0][c].dtype)
+    # Fix categories to match the first file in case there are discrepancies (like only one being ordered)
+    for c in fdf.columns:
+        if fdf[c].dtype.name!='category' and dfs[0][c].dtype.name=='category':
+            fdf[c] = pd.Categorical(fdf[c],dtype=dfs[0][c].dtype)
 
-        fdf['input_file'] = pd.Categorical(
-            [ v for i,f in enumerate(input_files) for v in [f]*len(dfs[i]) ],input_files)
+    fdf['input_file'] = pd.Categorical(
+        [ v for i,f in enumerate(input_files) for v in [f]*len(dfs[i]) ],input_files)
 
-        pparams['data'] = fdf
-        plot = create_plot(pparams,first_data_meta,args,
-                            width=min(get_plot_width('full'),800),
-                            return_matrix_of_plots=matrix_form)
+    pparams['data'] = fdf
+    plot = create_plot(pparams,first_data_meta,args,
+                        width=get_plot_width('full'),
+                        return_matrix_of_plots=matrix_form)
 
     draw_plot_matrix(plot,matrix_form=matrix_form)
     #st.altair_chart(plot)#,use_container_width=True)
@@ -222,8 +223,8 @@ if facet_dim == 'input_file':
 else:
     # Iterate over input files
     for i, ifile in enumerate(input_files):
-
         with cols[i]:
+            
             # Heading:
             st.header(os.path.splitext(ifile.replace('_',' '))[0])
 
@@ -235,13 +236,13 @@ else:
                 st.write(f"'{args['res_col']}' not present")
                 continue
 
-            with st.spinner('Filtering data...'):
-                fargs = args.copy()
-                fargs['filter'] = { k:v for k,v in args['filter'].items() if k in loaded[ifile]['data'].columns }
-                pparams = get_filtered_data(loaded[ifile]['data'], data_meta, fargs)
-                plot = create_plot(pparams,data_meta,fargs,
-                                    width=min(get_plot_width(f'{i}_{ifile}'),800),
-                                    return_matrix_of_plots=matrix_form)
+            #with st.spinner('Filtering data...'):
+            fargs = args.copy()
+            fargs['filter'] = { k:v for k,v in args['filter'].items() if k in loaded[ifile]['data'].columns }
+            pparams = get_filtered_data(loaded[ifile]['data'], data_meta, fargs)
+            plot = create_plot(pparams,data_meta,fargs,
+                                width=get_plot_width(f'{i}_{ifile}'),
+                                return_matrix_of_plots=matrix_form)
 
             #n_questions = pparams['data']['question'].nunique() if 'question' in pparams['data'] else 1
             #st.write('Based on %.1f%% of data' % (100*pparams['n_datapoints']/(len(loaded[ifile]['data_n'])*n_questions)))

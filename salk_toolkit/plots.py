@@ -5,7 +5,8 @@ __all__ = ['registry', 'registry_meta', 'stk_plot_defaults', 'priority_weights',
            'get_plot_meta', 'calculate_priority', 'calculate_impossibilities', 'matching_plots',
            'register_stk_cont_version', 'estimate_legend_columns_horiz_naive', 'estimate_legend_columns_horiz',
            'boxplots', 'columns', 'diff_columns', 'massplot', 'make_start_end', 'likert_bars', 'kde_1d', 'density',
-           'matrix', 'lines', 'area_smooth', 'likert_aggregate', 'likert_rad_pol', 'barbell', 'geoplot']
+           'cluster_based_reorder', 'matrix', 'lines', 'area_smooth', 'likert_aggregate', 'likert_rad_pol', 'barbell',
+           'geoplot']
 
 # %% ../nbs/03_plots.ipynb 3
 import json, os, math
@@ -19,7 +20,9 @@ import datetime as dt
 from typing import List, Tuple, Dict, Union, Optional
 
 import altair as alt
+import scipy as sp
 import scipy.stats as sps
+from scipy.cluster import hierarchy
 from KDEpy import FFTKDE
 
 from salk_toolkit.utils import *
@@ -60,7 +63,7 @@ def get_plot_fn(plot_name):
     return registry[plot_name]
 
 def get_plot_meta(plot_name):
-    return registry_meta[plot_name]
+    return registry_meta[plot_name].copy()
 
 # %% ../nbs/03_plots.ipynb 8
 # First is weight if not matching, second if match
@@ -286,6 +289,8 @@ def diff_columns(data, cat_col, value_col='value', color_scale=alt.Undefined, ca
 register_stk_cont_version('diff_columns')
 
 # %% ../nbs/03_plots.ipynb 26
+# The idea was to also visualize the size of each cluster. Currently not very useful, may need to be rethought
+
 @stk_plot('massplot', data_format='longform', draws=False, group_sizes=True)
 def massplot(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, n_datapoints=1, val_format='%', width=800):
 
@@ -403,8 +408,23 @@ def density(data, value_col='value',factor_col=None, factor_color_scale=alt.Unde
     return plot
 
 # %% ../nbs/03_plots.ipynb 32
-@stk_plot('matrix', data_format='longform', requires_factor=True, aspect_ratio=(1/0.8))
-def matrix(data, cat_col, value_col='value', cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, val_format='%'):
+# Cluster-based reordering
+def cluster_based_reorder(X):
+    pd = sp.spatial.distance.pdist(X)#,metric='cosine')
+    return hierarchy.leaves_list(hierarchy.optimal_leaf_ordering(hierarchy.ward(pd), pd))
+
+@stk_plot('matrix', data_format='longform', requires_factor=True, aspect_ratio=(1/0.8), args={'reorder':'bool','row_normalize':'bool'})
+def matrix(data, cat_col, value_col='value', cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, val_format='%', reorder=False, row_normalize=False):
+    
+    fcols = [c for c in data.columns if c not in [value_col,cat_col]]
+    
+    if row_normalize:         
+        data = sps.zscore(data.pivot(columns=cat_col,index=fcols),axis=0).reset_index().melt(id_vars=fcols).drop(columns=[None]).rename(columns={'value':value_col})
+    
+    if len(fcols)==1 and reorder: # Reordering only works if no external facets
+        X = data.pivot(columns=factor_col,index=cat_col).to_numpy()
+        cat_order = np.array(cat_order)[cluster_based_reorder(X)]
+        factor_order = np.array(factor_order)[cluster_based_reorder(X.T)]
     
     # Find max absolute value to keep color scale symmetric
     dmax = max(-data[value_col].min(),data[value_col].max())
@@ -436,7 +456,7 @@ def matrix(data, cat_col, value_col='value', cat_order=alt.Undefined, factor_col
 
 register_stk_cont_version('matrix')
 
-# %% ../nbs/03_plots.ipynb 35
+# %% ../nbs/03_plots.ipynb 36
 @stk_plot('lines',data_format='longform', question=False, draws=False, ordered_factor=True, requires_factor=True, args={'smooth':'bool'})
 def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, smooth=False, width=800):
     if smooth:
@@ -458,7 +478,7 @@ def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order
     return plot
 
 
-# %% ../nbs/03_plots.ipynb 37
+# %% ../nbs/03_plots.ipynb 38
 @stk_plot('area_smooth',data_format='longform', question=False, draws=False, ordered=False, ordered_factor=True, requires_factor=True)
 def area_smooth(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, width=800):
     ldict = dict(zip(cat_order, range(len(cat_order))))
@@ -480,7 +500,7 @@ def area_smooth(data, cat_col, value_col='value', color_scale=alt.Undefined, cat
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 39
+# %% ../nbs/03_plots.ipynb 40
 def likert_aggregate(x, cat_col, cat_order, value_col):
     
     cc, vc = x[cat_col], x[value_col]
@@ -529,7 +549,7 @@ def likert_rad_pol(data, cat_col, cat_order=alt.Undefined, value_col='value', fa
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 43
+# %% ../nbs/03_plots.ipynb 44
 @stk_plot('barbell', data_format='longform', draws=False)
 def barbell(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, n_datapoints=1, val_format='%', width=800):
     
@@ -566,7 +586,7 @@ def barbell(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_ord
     
 register_stk_cont_version('barbell')
 
-# %% ../nbs/03_plots.ipynb 46
+# %% ../nbs/03_plots.ipynb 47
 @stk_plot('geoplot', data_format='longform', continuous=True, requires_factor=True, factor_meta=['topo_feature'],aspect_ratio=(4.0/3.0))
 def geoplot(data, topo_feature, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, val_format='.2f'):
     

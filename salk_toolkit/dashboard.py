@@ -33,8 +33,8 @@ import streamlit_authenticator as stauth
 
 # %% ../nbs/05_dashboard.ipynb 4
 def get_plot_width(key):
-    wobj = st_dimensions(key=key) or { 'width': 900 }# Can return none so handle that
-    return int(0.85*wobj['width']) # Needs to be adjusted down  to leave margin for plots
+    wobj = st_dimensions(key=key) or { 'width': 800 }# Can return none so handle that
+    return min(800,int(0.85*wobj['width'])) # Needs to be adjusted down  to leave margin for plots
 
 # %% ../nbs/05_dashboard.ipynb 5
 # Open either a local or an s3 file
@@ -109,6 +109,7 @@ class SalkDashboardBuilder:
         self.sb_info = st.sidebar.empty()
         self.info = st.empty()
         
+        self.p_widths = {}
         
         # Set up authentication
         with st.spinner("Setting up authentication..."):
@@ -125,9 +126,14 @@ class SalkDashboardBuilder:
         log_event(event, username or st.session_state['username'], self.log_path, s3_fs=self.s3fs)
 
     # pos_id is for plot_width to work in columns
-    def plot(self, pp_desc, pos_id=None, **kwargs):
+    def plot(self, pp_desc, pos_id='main', **kwargs):
+        # Find or reuse width
+        width = self.p_widths[pos_id] if pos_id in self.p_widths else get_plot_width(pos_id)
+        self.p_widths[pos_id] = width
+        
+        # Draw plot
         st_plot(pp_desc,
-                width=min(get_plot_width(pos_id or 'full'),800),
+                width=width,
                 full_df=self.df,data_meta=self.meta,**kwargs)
         
     def filter_ui(self, dims, detailed=False, raw=False):
