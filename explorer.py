@@ -134,6 +134,11 @@ with st.sidebar: #.expander("Select dimensions"):
     obs_name = st.selectbox('Observation', obs_dims)
     args['res_col'] = obs_name
 
+    res_cont = not vod(c_meta[args['res_col']],'categories') or vod(args,'convert_res') == 'continuous'
+    if res_cont:
+        cont_transform = st.selectbox('Transform', ['None', 'center', 'zscore'])
+        if cont_transform != 'None': args['cont_transform'] = cont_transform
+
     all_dims = vod(c_meta[obs_name],'modifiers', []) + all_dims
 
     facet_dims = all_dims

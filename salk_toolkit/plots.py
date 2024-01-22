@@ -413,14 +413,10 @@ def cluster_based_reorder(X):
     pd = sp.spatial.distance.pdist(X)#,metric='cosine')
     return hierarchy.leaves_list(hierarchy.optimal_leaf_ordering(hierarchy.ward(pd), pd))
 
-@stk_plot('matrix', data_format='longform', requires_factor=True, aspect_ratio=(1/0.8), args={'reorder':'bool','row_normalize':'bool'})
+@stk_plot('matrix', data_format='longform', requires_factor=True, aspect_ratio=(1/0.8), args={'reorder':'bool'})
 def matrix(data, cat_col, value_col='value', cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, val_format='%', reorder=False, row_normalize=False):
     
     fcols = [c for c in data.columns if c not in [value_col,cat_col]]
-    
-    if row_normalize:         
-        data = sps.zscore(data.pivot(columns=cat_col,index=fcols),axis=0).reset_index().melt(id_vars=fcols).drop(columns=[None]).rename(columns={'value':value_col})
-    
     if len(fcols)==1 and reorder: # Reordering only works if no external facets
         X = data.pivot(columns=factor_col,index=cat_col).to_numpy()
         cat_order = np.array(cat_order)[cluster_based_reorder(X)]

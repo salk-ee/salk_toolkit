@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import polars as pl
 import datetime as dt
+import scipy.stats as sps
 
 from typing import List, Tuple, Dict, Union, Optional
 
@@ -21,7 +22,7 @@ from salk_toolkit.plots import stk_plot, stk_deregister, matching_plots, get_plo
 from salk_toolkit.utils import *
 from salk_toolkit.io import load_parquet_with_metadata, extract_column_meta, group_columns_dict, list_aliases, read_annotated_data, read_json
 
-# %% ../nbs/02_pp.ipynb 6
+# %% ../nbs/02_pp.ipynb 7
 # Augment each draw with bootstrap data from across whole population to make sure there are at least <threshold> samples
 def augment_draws(data, factors=None, n_draws=None, threshold=50):
     if n_draws == None: n_draws = data.draw.max()+1
@@ -47,13 +48,19 @@ def augment_draws(data, factors=None, n_draws=None, threshold=50):
     
     return pd.concat([data, new_rows])
 
-# %% ../nbs/02_pp.ipynb 7
+# %% ../nbs/02_pp.ipynb 8
 # Get the categories that are in use
 def get_cats(col, cats=None):
     if cats is None or len(set(col.dtype.categories)-set(cats))>0: cats = col.dtype.categories
     return [ c for c in cats if c in col.unique() ]
 
-# %% ../nbs/02_pp.ipynb 8
+def transform_cont(data, transform):
+    if not transform: return data
+    elif transform == 'center': return data - data.mean(skipna=True)
+    elif transform == 'zscore': return sps.zscore(data,nan_policy='omit')
+    else: raise Exception(f"Unknown transform '{transform}'")
+
+# %% ../nbs/02_pp.ipynb 9
 # Get all data required for a given graph
 # Only return columns and rows that are needed
 # This can handle either a pandas DataFrame or a polars LazyDataFrame (to allow for loading only needed data)
@@ -118,20 +125,28 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
             filtered_df = filtered_df[filtered_df['training_subsample']]
     
     n_datapoints = len(filtered_df)
+
+    # Convert ordered categorical to continuous if we can
+    res_meta = c_meta[pp_desc['res_col']]
+    if vod(pp_desc,'convert_res') == 'continuous' and vod(res_meta,'ordered') and vod(res_meta,'categories','infer') != 'infer':
+        cmap = dict(zip(res_meta['categories'],vod(res_meta,'num_values',range(len(res_meta['categories'])))))
+        rc = gc_dict[pp_desc['res_col']] if pp_desc['res_col'] in gc_dict else [pp_desc['res_col']]
+        for col in rc:
+            filtered_df[col] = pd.to_numeric(filtered_df[col].replace(cmap))
     
     # If res_col is a group of questions
     # This might move to wrangle but currently easier to do here as we have gc_dict handy
     if pp_desc['res_col'] in gc_dict:
         value_vars = [ c for c in gc_dict[pp_desc['res_col']] if c in cols ]
+        
+        if filtered_df[value_vars[0]].dtype.name != 'category':
+            filtered_df.loc[:,value_vars] = filtered_df.loc[:,value_vars].apply(transform_cont,axis=0,transform=vod(pp_desc,'cont_transform'))
+        
         id_vars = [ c for c in cols if c not in value_vars ]
         filtered_df = filtered_df.melt(id_vars=id_vars, value_vars=value_vars, var_name='question', value_name=pp_desc['res_col'])
         filtered_df['question'] = pd.Categorical(filtered_df['question'],gc_dict[pp_desc['res_col']])
-    
-    # Convert ordered categorical to continuous if we can
-    res_meta = c_meta[pp_desc['res_col']]
-    if vod(pp_desc,'convert_res') == 'continuous' and vod(res_meta,'ordered') and vod(res_meta,'categories','infer') != 'infer':
-        cmap = dict(zip(res_meta['categories'],vod(res_meta,'num_values',range(len(res_meta['categories'])))))
-        filtered_df[pp_desc['res_col']] = pd.to_numeric(filtered_df[pp_desc['res_col']].replace(cmap))
+    elif filtered_df[pp_desc['res_col']].dtype.name != 'category':
+        filtered_df[pp_desc['res_col']] = transform_cont(filtered_df[pp_desc['res_col']],transform=vod(pp_desc,'cont_transform'))
         
     # Filter out the unused categories so plots are cleaner
     for k in filtered_df.columns:
@@ -150,7 +165,7 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
     
     return pparams
 
-# %% ../nbs/02_pp.ipynb 9
+# %% ../nbs/02_pp.ipynb 10
 # Groupby if needed - this simplifies the wrangle considerably :)
 def gb_in(df, gb_cols):
     return df.groupby(gb_cols,observed=False) if len(gb_cols)>0 else df
@@ -224,7 +239,7 @@ def wrangle_data(raw_df, data_meta, pp_desc):
     pparams['data'] = data
     return pparams
 
-# %% ../nbs/02_pp.ipynb 11
+# %% ../nbs/02_pp.ipynb 12
 # Create a color scale
 ordered_gradient = ["#c30d24", "#f3a583", "#94c6da", "#1770ab"]
 def meta_color_scale(cmeta,argname='colors',column=None):
@@ -234,7 +249,7 @@ def meta_color_scale(cmeta,argname='colors',column=None):
         scale = dict(zip(cats,gradient_to_discrete_color_scale(ordered_gradient, len(cats))))
     return to_alt_scale(scale,cats)
 
-# %% ../nbs/02_pp.ipynb 12
+# %% ../nbs/02_pp.ipynb 13
 # Function that takes filtered raw data and plot information and outputs the plot
 # Handles all of the data wrangling and parameter formatting
 def create_plot(pparams, data_meta, pp_desc, alt_properties={}, dry_run=False, width=200, return_matrix_of_plots=False):
@@ -332,7 +347,7 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, dry_run=False, w
 
     return plot
 
-# %% ../nbs/02_pp.ipynb 16
+# %% ../nbs/02_pp.ipynb 17
 # A convenience function to draw a plot straight from a dataset
 def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, check_match=True,lazy=True,**kwargs):
     if data_file is None and full_df is None:
