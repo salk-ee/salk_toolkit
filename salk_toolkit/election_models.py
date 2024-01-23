@@ -117,7 +117,9 @@ def simulate_election_pp(data, mandates, electoral_system, cat_col, value_col, f
 # %% ../nbs/04_election_models.ipynb 11
 # This fits into the pp framework as: cat_col=party_pref, factor=electoral_district, hence the as_is and hidden flags
 @stk_plot('coalition_applet', data_format='longform', draws=True, requires_factor=True, agg_fn='sum', factor_meta=['mandates','electoral_system'], as_is=True)#, hidden=True)
-def coalition_applet(data, mandates, electoral_system, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, width=None, alt_properties={}, outer_factors=[]):
+def coalition_applet(data, mandates, electoral_system, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, width=None, alt_properties={}, outer_factors=[], translate=None):
+    
+    tf = translate if translate else (lambda s: s)
     
     if outer_factors: raise Exception("This plot does not work with extra factors")
     
@@ -129,14 +131,14 @@ def coalition_applet(data, mandates, electoral_system, cat_col, value_col='value
 
     parties = list(adf[cat_col].unique()) # Leave only parties that have mandates
 
-    coalition = st.multiselect('Select the coalition:',
+    coalition = st.multiselect(tf('Select the coalition:'),
         cat_order,
-        help='Choose the parties whose coalition to model')
+        help=tf('Choose the parties whose coalition to model'))
 
     st.markdown("""___""")
 
     col1, col2 = st.columns((9, 9), gap='large')
-    col1.markdown('**Party mandate distributions**')
+    col1.markdown(tf('**Party mandate distributions**'))
 
     # Individual parties plot
     ddf = adf.groupby(cat_col)['mandates'].value_counts().rename('count').reset_index()
@@ -154,8 +156,8 @@ def coalition_applet(data, mandates, electoral_system, cat_col, value_col='value
 
     total_mandates = sum(mandates.values())
 
-    col2.markdown('**Coalition simulation**')
-    n = col2.number_input('Choose mandate cutoff:', min_value=0, max_value=total_mandates, value=(total_mandates//2) + 1, step=1, help='...')
+    col2.markdown(tf('**Coalition simulation**'))
+    n = col2.number_input(tf('Choose mandate cutoff:'), min_value=0, max_value=total_mandates, value=(total_mandates//2) + 1, step=1, help='...')
 
     if len(coalition)>0:
         # Coalition plot
@@ -171,7 +173,7 @@ def coalition_applet(data, mandates, electoral_system, cat_col, value_col='value
         rule = alt.Chart(pd.DataFrame({'x': [n]})).mark_rule(color='red', size=1.25, strokeDash=[5, 2]).encode(x='x')
         col2.altair_chart((k_plot+rule).configure_view(strokeWidth=0), use_container_width=True)
 
-        col2.write(f"Probability of at least  **{n}** mandates: **{(cdf['mandates'] > n-1).mean():.1%}**")
+        col2.write(tf("Probability of at least  **{0:.0f}** mandates: **{1:.1%}**").format(n, (cdf['mandates'] > n-1).mean()))
         #col3.write('Distributsiooni mediaan: **{:d}**'.format(int((d_dist[koalitsioon].sum(1)).median())))
         #m, l, h = hdi(sim_data['riigikogu'][koalitsioon], 0.9)
         #col2.write('Distributsiooni mediaan on **{:.0f}** mandaati. 90% tõenäosusega jääb mandaatide arv **{:.0f}** ning **{:.0f}** vahele.'.format(m, l, h))

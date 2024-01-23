@@ -133,7 +133,7 @@ def index_encoder(z):
         raise TypeError(f"Object of type {type_name} is not serializable")
 
 # %% ../nbs/10_utils.ipynb 19
-default_color = 'lime' # Something that stands out so it is easy to notice a missing color
+default_color = 'lightgrey' # Something that stands out so it is easy to notice a missing color
 
 # Helper function to turn a dictionary into an Altair scale (or None into alt.Undefined)
 # Also: preserving order matters because scale order overrides sort argument

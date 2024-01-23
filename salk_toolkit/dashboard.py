@@ -3,10 +3,11 @@
 # %% auto 0
 __all__ = ['get_plot_width', 'open_fn', 'exists_fn', 'read_annotated_data_cached', 'load_json', 'load_json_cached', 'save_json',
            'alias_file', 'SalkDashboardBuilder', 'UserAuthenticationManager', 'draw_plot_matrix', 'st_plot', 'facet_ui',
-           'filter_ui']
+           'filter_ui', 'translate_with_dict', 'log_missing_translations', 'clean_missing_translations',
+           'add_missing_to_dict']
 
 # %% ../nbs/05_dashboard.ipynb 3
-import json, os, inspect, csv
+import json, os, csv, re
 import itertools as it
 from collections import defaultdict
 
@@ -60,7 +61,7 @@ def read_annotated_data_cached(data_source,**kwargs):
 
 # Load json uncached - useful for admin pages
 def load_json(fname, _s3_fs=None, **kwargs):
-    with open_fn(fname,'r',s3_fs=_s3_fs) as jf:
+    with open_fn(fname,'r',s3_fs=_s3_fs,encoding='utf8') as jf:
         return json.load(jf)
 
 # This is cached very short term (1 minute) to avoid downloading it on every page change
@@ -71,8 +72,8 @@ def load_json_cached(fname, _s3_fs=None, **kwargs):
 
 # For saving json back 
 def save_json(d, fname, _s3_fs=None, **kwargs):
-    with open_fn(fname,'w',s3_fs=_s3_fs) as jf:
-        json.dump(d,jf)
+    with open_fn(fname,'w',s3_fs=_s3_fs,encoding='utf8') as jf:
+        json.dump(d,jf,indent=2,ensure_ascii=False)
         
 def alias_file(fname, file_map):
     if fname[:3]!='s3:' and fname in file_map and not os.path.exists(fname):
@@ -91,7 +92,7 @@ def log_event(event, username, path, s3_fs=None):
 # Main dashboard wrapper - WIP
 class SalkDashboardBuilder:
 
-    def __init__(self, data_source, auth_conf, logfile, groups=['guest','user','admin'], public=False):
+    def __init__(self, data_source, auth_conf, logfile, groups=['guest','user','admin'], public=False, translate=None):
         
         # Allow deployment.json to redirect files from local to s3 if local missing (i.e. in deployment scenario)
         if os.path.exists('deployment.json'):
@@ -109,11 +110,14 @@ class SalkDashboardBuilder:
         self.sb_info = st.sidebar.empty()
         self.info = st.empty()
         
+        # Set up translation
+        self.tf = translate if translate else (lambda s: s)
+        
         self.p_widths = {}
         
         # Set up authentication
-        with st.spinner("Setting up authentication..."):
-            self.uam = UserAuthenticationManager(auth_conf, groups, s3_fs=self.s3fs, info=self.info, logger=self.log_event)
+        with st.spinner(self.tf("Setting up authentication...")):
+            self.uam = UserAuthenticationManager(auth_conf, groups, s3_fs=self.s3fs, info=self.info, logger=self.log_event, translate_func=self.tf)
 
         if not public:
             self.uam.login_screen()
@@ -133,7 +137,7 @@ class SalkDashboardBuilder:
         
         # Draw plot
         st_plot(pp_desc,
-                width=width,
+                width=width, translate=self.tf,
                 full_df=self.df,data_meta=self.meta,**kwargs)
         
     def filter_ui(self, dims, detailed=False, raw=False):
@@ -159,18 +163,20 @@ class SalkDashboardBuilder:
         if self.user:  self.pages.append( ('Settings',user_settings_page,{'icon': 'sliders'}) )
         
         # Add admin page for admins
-        if vod(self.user,'group')=='admin':  self.pages.append( ('Administration',admin_page,{'icon': 'terminal'}) )
+        if vod(self.user,'group')=='admin':  self.pages.append( ('Administration', admin_page,{'icon': 'terminal'}) )
         
         # Draw the menu listing pages
         pnames = [t[0] for t in self.pages]
         with st.sidebar:
             
-            if st.session_state["authentication_status"]:
-                self.sb_info.info(f'Logged in as **{self.user["name"]}**')
-                self.uam.auth.logout('Logout', 'sidebar')
+            if self.user:
+                self.sb_info.info(self.tf('Logged in as **%s**') % self.user["name"])
+                self.uam.auth.logout(self.tf('Log out'), 'sidebar')
             
+            t_pnames = [ self.tf(pn) for pn in pnames]
             menu_choice = option_menu("Pages",
-                pnames, icons=[vod(t[2],'icon') for t in self.pages],
+                t_pnames,
+                icons=[vod(t[2],'icon') for t in self.pages],
                 styles={
                     "container": {"padding": "5!important"}, #, "background-color": "#fafafa"},
                     #"icon": {"color": "red", "font-size": "15px"},
@@ -180,11 +186,11 @@ class SalkDashboardBuilder:
                 })
             
         # Find the page
-        pname, pfunc, meta = self.pages[pnames.index(menu_choice)]
+        pname, pfunc, meta = self.pages[t_pnames.index(menu_choice)]
         
         # Load data
         self.data_source = vod(meta,'data_source',self.data_source)
-        with st.spinner("Loading data..."):
+        with st.spinner(self.tf("Loading data...")):
             self.df, self.meta = read_annotated_data_cached(alias_file(self.data_source,self.filemap))
         
         # Render the chosen page
@@ -202,7 +208,7 @@ class SalkDashboardBuilder:
 # %% ../nbs/05_dashboard.ipynb 11
 class UserAuthenticationManager():
     
-    def __init__(self,auth_conf_file,groups,s3_fs,info,logger):
+    def __init__(self,auth_conf_file,groups,s3_fs,info,logger,translate_func):
         self.groups, self.s3fs, self.info  = groups, s3_fs, info
         
         config = load_json_cached(auth_conf_file, _s3_fs = self.s3fs)
@@ -217,6 +223,7 @@ class UserAuthenticationManager():
         self.users = config['credentials']['usernames']
         self.user = {} # Filled on login
         self.log_event = logger
+        self.tf = translate_func
         
         # Mark that we should log the next login
         if 'log_event' not in st.session_state: st.session_state['log_event'] = True
@@ -229,13 +236,13 @@ class UserAuthenticationManager():
         self.users = self.conf['credentials']['usernames']
     
     def login_screen(self):
-        _, _, username = self.auth.login('Login', 'main')
+        _, _, username = self.auth.login(self.tf('Log in'), 'main')
         
         if st.session_state["authentication_status"] is False:
-            st.error('Username/password is incorrect')
+            st.error(self.tf('Username/password is incorrect'))
             self.log_event('login-fail', username=username)
         if st.session_state["authentication_status"] is None:
-            st.warning('Please enter your username and password')
+            st.warning(self.tf('Please enter your username and password'))
             st.session_state['log_event'] = True 
         elif st.session_state["authentication_status"]:
             self.user = {'name': st.session_state['name'], 
@@ -260,7 +267,6 @@ class UserAuthenticationManager():
             user_data['password'] = stauth.Hasher([password]).generate()[0]
             self.users[username] = user_data
             self.info.success(f'User {username} successfully added.')
-            print(f"Add user {username}")
             self.log_event(f'add-user: {username}')
             self.update_conf()
             return True
@@ -306,9 +312,9 @@ class UserAuthenticationManager():
 def user_settings_page(sdb):
     if not sdb.user: return
     try:
-        if sdb.uam.auth.reset_password(st.session_state["username"], 'Reset password'):
+        if sdb.uam.auth.reset_password(st.session_state["username"], sdb.tf('Reset password')):
             sdb.uam.update_conf()
-            st.success('Password modified successfully')
+            st.success(sdb.tf('Password modified successfully'))
     except Exception as e:
         st.error(e)
 
@@ -504,3 +510,21 @@ def filter_ui(data, dmeta=None, dims=None, detailed=False, raw=False):
             
     return filters
 
+
+# %% ../nbs/05_dashboard.ipynb 24
+def translate_with_dict(d):
+    return (lambda s: d[s] if s in d else s)
+
+def log_missing_translations(tf, nonchanged_set):
+    def ntf(s):
+        ns = tf(s)
+        if ns==s: nonchanged_set.add(s)
+        return ns
+    return ntf
+
+def clean_missing_translations(nonchanged_set, tdict={}):
+    # Filter out numbers that come in from data sometimes
+    return { s for s in nonchanged_set if s not in tdict and isinstance(s,str) and not re.fullmatch('[\.\d]+',s) }
+
+def add_missing_to_dict(missing_set, tdict):
+    return {**tdict, **{ s:s for s in missing_set}}

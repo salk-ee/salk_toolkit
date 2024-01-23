@@ -122,10 +122,10 @@ def matching_plots(args, df, data_meta, details=False, list_hidden=False):
 def register_stk_cont_version(cat_fn_name):
     cat_fn, cat_fn_meta = get_plot_fn(cat_fn_name), get_plot_meta(cat_fn_name)
     @stk_plot(f'{cat_fn_name}-cont', **{**cat_fn_meta, **{'continuous':True, 'question':True} })
-    def cont(data, value_col='value', question_color_scale=alt.Undefined, question_order=alt.Undefined, **kwargs):
+    def cont(data, value_col='value', question_col='question', question_color_scale=alt.Undefined, question_order=alt.Undefined, **kwargs):
         
         # Remap certain args while keeping everything else intact
-        kwargs = {**kwargs, **{'data':data, 'cat_col':'question', 'cat_order': question_order, 'value_col':value_col, 'color_scale':question_color_scale}}
+        kwargs = {**kwargs, **{'data':data, 'cat_col':question_col, 'cat_order': question_order, 'value_col':value_col, 'color_scale':question_color_scale}}
         
         return cat_fn(**clean_kwargs(cat_fn,kwargs))
     return cont
@@ -358,7 +358,7 @@ def make_start_end(x,value_col,cat_col,cat_order):
     return pd.concat([x_other] + x_mid).dropna() # drop any na rows added in the filling in step
 
 @stk_plot('likert_bars',data_format='longform',question=True,draws=False,likert=True)
-def likert_bars(data, cat_col, cat_order=alt.Undefined, value_col='value', question_order=alt.Undefined, color_scale=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined):
+def likert_bars(data, cat_col, cat_order=alt.Undefined, value_col='value', question_col='question', question_order=alt.Undefined, color_scale=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined):
     gb_cols = list(set(data.columns)-{ cat_col, value_col }) # Assume all other cols still in data will be used for factoring
     
     options_cols = list(data[cat_col].dtype.categories) # Get likert scale names
@@ -368,9 +368,9 @@ def likert_bars(data, cat_col, cat_order=alt.Undefined, value_col='value', quest
         .encode(
             x=alt.X('start:Q', axis=alt.Axis(title=None, format = '%')),
             x2=alt.X2('end:Q'),
-            y=alt.Y(f'question:N', axis=alt.Axis(title=None, offset=5, ticks=False, minExtent=60, domain=False), sort=question_order),
+            y=alt.Y(f'{question_col}:N', axis=alt.Axis(title=None, offset=5, ticks=False, minExtent=60, domain=False), sort=question_order),
             tooltip=[*([alt.Tooltip(f'{factor_col}:N')] if factor_col else []),
-                    alt.Tooltip('question:N'), alt.Tooltip(f'{cat_col}:N'), alt.Tooltip(f'{value_col}:Q', title=value_col, format='.1%')],
+                    alt.Tooltip(f'{question_col}:N'), alt.Tooltip(f'{cat_col}:N'), alt.Tooltip(f'{value_col}:Q', title=value_col, format='.1%')],
             color=alt.Color(
                 f'{cat_col}:N',
                 legend=alt.Legend(
