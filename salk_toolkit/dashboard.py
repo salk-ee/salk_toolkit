@@ -156,10 +156,10 @@ class SalkDashboardBuilder:
                 full_df=self.df,data_meta=self.meta,**kwargs)
         
     def filter_ui(self, dims, detailed=False, raw=False):
-        return filter_ui(self.df, self.meta, dims=dims, detailed=detailed, raw=raw)
+        return filter_ui(self.df, self.meta, dims=dims, detailed=detailed, raw=raw, translate=self.tf)
     
     def facet_ui(self, dims, two=False, raw=False):
-        return facet_ui(dims, two=two, raw=raw)
+        return facet_ui(dims, two=two, raw=raw, translate=self.tf)
 
     def page(self, name, **kwargs):
         def decorator(pfunc):
@@ -463,16 +463,21 @@ def st_plot(pp_desc,**kwargs):
 
 # %% ../nbs/05_dashboard.ipynb 21
 def facet_ui(dims, two=False, raw=False, translate=None):
+    
+    # Set up translation
     tf = translate if translate else (lambda s: s)
+    tdims = [ tf(d) for d in dims ]
+    r_map = dict(zip(tdims,dims))
+    
     none = tf('None')
     stc = st.sidebar if not raw else st
-    facet_dim = stc.selectbox(tf('Facet:'), [none] + dims)
+    facet_dim = stc.selectbox(tf('Facet:'), [none] + tdims)
     fcols = [facet_dim] if facet_dim != none else []
     if two and facet_dim != none:
-        second_dim = stc.selectbox(tf('Facet 2:'), [none] + dims)
+        second_dim = stc.selectbox(tf('Facet 2:'), [none] + tdims)
         if second_dim not in [none,facet_dim]:  fcols = [facet_dim, second_dim]
         
-    return fcols
+    return [ r_map[d] for d in fcols ]
 
 # %% ../nbs/05_dashboard.ipynb 22
 # Function that creates reset functions for multiselects in filter
@@ -505,20 +510,29 @@ def filter_ui(data, dmeta=None, dims=None, detailed=False, raw=False, translate=
     filters = {}
     for cn in dims:
         col = data[cn]
-        if col.dtype.name=='category' and len(col.dtype.categories)==1: continue
-        elif detailed and col.dtype.name=='category':
-            all_vals = list(col.dtype.categories)
+        if col.dtype.name=='category':
+            if len(col.dtype.categories)==1: continue
+            
+            # Do some prep for translations
+            r_map = dict(zip([tf(c) for c in col.dtype.categories],col.dtype.categories))
+            all_vals = list(r_map.keys()) # translated categories
+            grp_names = vod(c_meta[cn],'groups',{}).keys()
+            r_map.update(dict(zip([tf(c) for c in grp_names],grp_names)))
+            
+        if detailed and col.dtype.name=='category':
             filters[cn] = stc.multiselect(tf(cn), all_vals, all_vals, key=f"{cn}_multiselect")
-            if set(filters[cn]) == set(list(col.dtype.categories)): del filters[cn]
+            if set(filters[cn]) == set(all_vals): del filters[cn]
             else: stc.button(tf("Reset"),key=f"{cn}_reset",on_click=ms_reset(cn,all_vals))
+            filters[cn] = [ r_map[c] for c in filters[cn] ]
         elif col.dtype.name=='category' and not col.dtype.ordered:
             filters[cn] = stc.selectbox(cn,
-                [tf('All')] + list(vod(c_meta[cn],'groups',{}).keys()) + list(col.dtype.categories))
+                [tf('All')] + [gt for gt,g in r_map.items() if g in grp_names] + all_vals)
             if filters[cn] == tf('All'): del filters[cn]
+            else: filters[cn] = r_map[filters[cn]]
         elif col.dtype.name=='category':
-            cats = list(col.dtype.categories)
-            filters[cn] = stc.select_slider(cn,cats,value=(cats[0],cats[-1]))
-            if filters[cn] == (cats[0],cats[-1]): del filters[cn]
+            filters[cn] = stc.select_slider(cn,all_vals,value=(all_vals[0],all_vals[-1]))
+            if filters[cn] == (all_vals[0],all_vals[-1]): del filters[cn]
+            else: filters[cn] = (r_map[filters[cn][0]],r_map[filters[cn][1]])
         elif is_numeric_dtype(col) and col.dtype!='bool':
             mima = (col.min(),col.max())
             if mima[0]==mima[1]: continue
