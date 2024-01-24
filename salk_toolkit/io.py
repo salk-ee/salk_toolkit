@@ -53,7 +53,7 @@ def process_annotated_data(meta_fname=None, multilevel=False, meta=None, data_fi
     
     if data_file[-3:] == 'csv':
         raw_data = pd.read_csv(data_file, **opts)
-    elif data_file[-3:] == 'sav':
+    elif data_file[-3:] in ['sav','dta']:
         raw_data, _ = pyreadstat.read_sav(data_file, **{ 'apply_value_formats':True, 'dates_as_pandas_datetime':True },**opts)
     elif data_file[-7:] == 'parquet':
         raw_data = pd.read_parquet(data_file, **opts)
@@ -280,13 +280,9 @@ def infer_meta(data_file=None, meta_file=True, read_opts={}, df=None, translate_
         meta['file'] = fname
         if data_file[-3:] == 'csv':
             df = pd.read_csv(data_file, **read_opts)
-        elif data_file[-3:] == 'sav':
+        elif data_file[-3:] in ['sav','dta']:
             df, sav_meta = pyreadstat.read_sav(data_file, **{ 'apply_value_formats':True, 'dates_as_pandas_datetime':True },**read_opts)
             col_labels = dict(zip(sav_meta.column_names, sav_meta.column_labels)) # Make this data easy to access by putting it in meta as constant
-            if translate_fn: col_labels = { k:translate_fn(v) for k,v in col_labels.items() }
-        elif data_file[-3:] == 'dta':
-            df, sav_meta = pyreadstat.read_dta(data_file, **{ 'apply_value_formats':True, 'dates_as_pandas_datetime':True },**read_opts)
-            col_labels = dict(zip(sav_meta.column_names, sav_meta.column_labels))
             if translate_fn: col_labels = { k:translate_fn(v) for k,v in col_labels.items() }
         elif data_file[-7:] == 'parquet':
             df = pd.read_parquet(data_file, **read_opts)
