@@ -89,6 +89,13 @@ def log_event(event, username, path, s3_fs=None):
         writer.writerow([timestamp, event, username])
 
 # %% ../nbs/05_dashboard.ipynb 8
+# wrap the first parameter of streamlit function with self.translate
+# has to be a separate function instead of in a for loop for scoping reasons
+def wrap_st_with_translate(fn,self):
+    func = getattr(st,fn)
+    setattr(self, fn, lambda s, *args, **kwargs: func(self.tf(s),*args,**kwargs) )
+
+# %% ../nbs/05_dashboard.ipynb 9
 # Main dashboard wrapper - WIP
 class SalkDashboardBuilder:
 
@@ -121,6 +128,14 @@ class SalkDashboardBuilder:
 
         if not public:
             self.uam.login_screen()
+            
+        # Wrap some streamlit functions with translate
+        wrap_list = ['write','markdown','title','header','subheader','caption','text','divider',
+                     'button','download_button','link_button','checkbox','toggle','radio','selectbox',
+                     'multiselect','slider','select_slider','text_input','number_input','text_area',
+                     'date_input','time_input','file_uploader','camera_input','color_picker']
+        for fn in wrap_list:
+            wrap_st_with_translate(fn,self)
 
     @property
     def user(self):
@@ -205,7 +220,7 @@ class SalkDashboardBuilder:
     def __exit__(self, exc_type, exc_value, exc_tb):
         self.build()
 
-# %% ../nbs/05_dashboard.ipynb 11
+# %% ../nbs/05_dashboard.ipynb 12
 class UserAuthenticationManager():
     
     def __init__(self,auth_conf_file,groups,s3_fs,info,logger,translate_func):
@@ -307,7 +322,7 @@ class UserAuthenticationManager():
         return [ censor_dict({'username': k, **v},['password']) for k,v in self.users.items() ]
 
 
-# %% ../nbs/05_dashboard.ipynb 13
+# %% ../nbs/05_dashboard.ipynb 14
 # Password reset
 def user_settings_page(sdb):
     if not sdb.user: return
@@ -318,7 +333,7 @@ def user_settings_page(sdb):
     except Exception as e:
         st.error(e)
 
-# %% ../nbs/05_dashboard.ipynb 14
+# %% ../nbs/05_dashboard.ipynb 15
 # Helper function to highlight log rows
 def highlight_cells(val):
     if 'fail' in val:
@@ -332,7 +347,7 @@ def highlight_cells(val):
         color = ''
     return 'color: {}'.format(color)
 
-# %% ../nbs/05_dashboard.ipynb 15
+# %% ../nbs/05_dashboard.ipynb 16
 # Admin page to manage users
 
 def admin_page(sdb):
@@ -427,7 +442,7 @@ def admin_page(sdb):
                     sdb.uam.delete_user(username)
 
 
-# %% ../nbs/05_dashboard.ipynb 19
+# %% ../nbs/05_dashboard.ipynb 20
 # This is a horrible workaround to get faceting to work with altair geoplots that do not play well with streamlit
 # See https://github.com/altair-viz/altair/issues/2369 -> https://github.com/vega/vega-lite/issues/3729
 
@@ -446,27 +461,31 @@ def st_plot(pp_desc,**kwargs):
     plots = e2e_plot(pp_desc, return_matrix_of_plots=matrix_form, **kwargs)
     draw_plot_matrix(plots, matrix_form=matrix_form)
 
-# %% ../nbs/05_dashboard.ipynb 20
-def facet_ui(dims, two=False, raw=False):
+# %% ../nbs/05_dashboard.ipynb 21
+def facet_ui(dims, two=False, raw=False, translate=None):
+    tf = translate if translate else (lambda s: s)
+    none = tf('None')
     stc = st.sidebar if not raw else st
-    facet_dim = stc.selectbox('Facet:', ['None'] + dims)
-    fcols = [facet_dim] if facet_dim != 'None' else []
-    if two and facet_dim != 'None':
-        second_dim = stc.selectbox('Facet 2:', ['None'] + dims)
-        if second_dim not in ['None',facet_dim]:  fcols = [facet_dim, second_dim]
+    facet_dim = stc.selectbox(tf('Facet:'), [none] + dims)
+    fcols = [facet_dim] if facet_dim != none else []
+    if two and facet_dim != none:
+        second_dim = stc.selectbox(tf('Facet 2:'), [none] + dims)
+        if second_dim not in [none,facet_dim]:  fcols = [facet_dim, second_dim]
         
     return fcols
 
-# %% ../nbs/05_dashboard.ipynb 21
+# %% ../nbs/05_dashboard.ipynb 22
 # Function that creates reset functions for multiselects in filter
 def ms_reset(cn, all_vals):
     def reset_ms():
         st.session_state[f"{cn}_multiselect"] = all_vals
     return reset_ms
 
-# %% ../nbs/05_dashboard.ipynb 22
+# %% ../nbs/05_dashboard.ipynb 23
 # User interface that outputs a filter for the pp_desc
-def filter_ui(data, dmeta=None, dims=None, detailed=False, raw=False):
+def filter_ui(data, dmeta=None, dims=None, detailed=False, raw=False, translate=None):
+    
+    tf = translate if translate else (lambda s: s)
     
     if dims is None:
         dims = [c for c in data.columns if c not in ['draw', 'weight', 'training_subsample'] ]  
@@ -478,7 +497,7 @@ def filter_ui(data, dmeta=None, dims=None, detailed=False, raw=False):
     
     f_info = st.sidebar.empty() if not raw else st.empty()
     
-    stc = st.sidebar.expander('Filters') if not raw else st
+    stc = st.sidebar.expander(tf('Filters')) if not raw else st
     
     # Different selector for different category types
     # Also - make sure filter is clean and only applies when it is changed from the default 'all' value
@@ -489,13 +508,13 @@ def filter_ui(data, dmeta=None, dims=None, detailed=False, raw=False):
         if col.dtype.name=='category' and len(col.dtype.categories)==1: continue
         elif detailed and col.dtype.name=='category':
             all_vals = list(col.dtype.categories)
-            filters[cn] = stc.multiselect(cn, all_vals, all_vals, key=f"{cn}_multiselect")
+            filters[cn] = stc.multiselect(tf(cn), all_vals, all_vals, key=f"{cn}_multiselect")
             if set(filters[cn]) == set(list(col.dtype.categories)): del filters[cn]
-            else: stc.button("Reset",key=f"{cn}_reset",on_click=ms_reset(cn,all_vals))
+            else: stc.button(tf("Reset"),key=f"{cn}_reset",on_click=ms_reset(cn,all_vals))
         elif col.dtype.name=='category' and not col.dtype.ordered:
             filters[cn] = stc.selectbox(cn,
-                ['All'] + list(vod(c_meta[cn],'groups',{}).keys()) + list(col.dtype.categories))
-            if filters[cn] == 'All': del filters[cn]
+                [tf('All')] + list(vod(c_meta[cn],'groups',{}).keys()) + list(col.dtype.categories))
+            if filters[cn] == tf('All'): del filters[cn]
         elif col.dtype.name=='category':
             cats = list(col.dtype.categories)
             filters[cn] = stc.select_slider(cn,cats,value=(cats[0],cats[-1]))
@@ -506,25 +525,27 @@ def filter_ui(data, dmeta=None, dims=None, detailed=False, raw=False):
             filters[cn] = stc.slider(cn,*mima,value=mima)
             if filters[cn] == mima: del filters[cn]
             
-    if filters: f_info.warning('⚠️ Filters active ⚠️')
+    if filters: f_info.warning(tf('⚠️ Filters active ⚠️'))
             
     return filters
 
 
-# %% ../nbs/05_dashboard.ipynb 24
-def translate_with_dict(d):
-    return (lambda s: d[s] if s in d else s)
+# %% ../nbs/05_dashboard.ipynb 25
+# Use dict here as dicts are ordered as of Python 3.7 and preserving order groups things together better
 
-def log_missing_translations(tf, nonchanged_set):
+def translate_with_dict(d):
+    return (lambda s: d[s] if isinstance(s,str) and s in d and d[s] is not None else s)
+
+def log_missing_translations(tf, nonchanged_dict):
     def ntf(s):
         ns = tf(s)
-        if ns==s: nonchanged_set.add(s)
+        if ns==s: nonchanged_dict[s]=None
         return ns
     return ntf
 
-def clean_missing_translations(nonchanged_set, tdict={}):
+def clean_missing_translations(nonchanged_dict, tdict={}):
     # Filter out numbers that come in from data sometimes
-    return { s for s in nonchanged_set if s not in tdict and isinstance(s,str) and not re.fullmatch('[\.\d]+',s) }
+    return { s:v for s,v in nonchanged_dict.items() if s not in tdict and isinstance(s,str) and not re.fullmatch('[\.\d]+',s) }
 
-def add_missing_to_dict(missing_set, tdict):
-    return {**tdict, **{ s:s for s in missing_set}}
+def add_missing_to_dict(missing_dict, tdict):
+    return {**tdict, **{ s:s for s in missing_dict}}

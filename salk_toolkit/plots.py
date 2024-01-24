@@ -370,7 +370,7 @@ def likert_bars(data, cat_col, cat_order=alt.Undefined, value_col='value', quest
             x2=alt.X2('end:Q'),
             y=alt.Y(f'{question_col}:N', axis=alt.Axis(title=None, offset=5, ticks=False, minExtent=60, domain=False), sort=question_order),
             tooltip=[*([alt.Tooltip(f'{factor_col}:N')] if factor_col else []),
-                    alt.Tooltip(f'{question_col}:N'), alt.Tooltip(f'{cat_col}:N'), alt.Tooltip(f'{value_col}:Q', title=value_col, format='.1%')],
+                    alt.Tooltip('question:N'), alt.Tooltip(f'{cat_col}:N'), alt.Tooltip(f'{value_col}:Q', title=value_col, format='.1%')],
             color=alt.Color(
                 f'{cat_col}:N',
                 legend=alt.Legend(

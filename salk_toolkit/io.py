@@ -46,24 +46,48 @@ def process_annotated_data(meta_fname=None, multilevel=False, meta=None, data_fi
     constants = meta['constants'] if 'constants' in meta else {}
     meta = replace_constants(meta)
     
-    # Read datafile
-    if not data_file:
-        data_file = os.path.join(os.path.dirname(meta_fname),meta['file'])
+    # Read datafile(s)
     opts = meta['read_opts'] if'read_opts' in meta else {}
+    if data_file: data_files = [{ 'file': data_file, 'opts': opts}]
+    elif 'file' in meta: data_files = [{ 'file': meta['file'], 'opts': opts }]
+    elif 'files' in meta:
+        data_files = [ {'opts': opts, **f } if isinstance(f,dict) else
+                       {'opts': opts, 'file': f } for f in meta['files'] ]
+    else: raise Exception("No files provided in metafile")
     
-    if data_file[-3:] == 'csv':
-        raw_data = pd.read_csv(data_file, **opts)
-    elif data_file[-3:] in ['sav','dta']:
-        raw_data, _ = pyreadstat.read_sav(data_file, **{ 'apply_value_formats':True, 'dates_as_pandas_datetime':True },**opts)
-    elif data_file[-7:] == 'parquet':
-        raw_data = pd.read_parquet(data_file, **opts)
-    elif data_file[-4:] in ['.xls', 'xlsx', 'xlsm', 'xlsb', '.odf', '.ods', '.odt']:
-        raw_data = pd.read_excel(data_file, **opts)
-    else:
-        raise Exception(f"Not a known file format {data_file}")
+    raw_dfs = []
+    for fi, fd in enumerate(data_files):
         
-    # If data is multi-indexed, flatten the index
-    if isinstance(raw_data.columns,pd.MultiIndex): raw_data.columns = [" | ".join(tpl) for tpl in raw_data.columns]
+        data_file, opts = fd['file'], fd['opts']
+        if meta_fname: data_file = os.path.join(os.path.dirname(meta_fname),data_file)
+        
+        if data_file[-3:] == 'csv':
+            raw_data = pd.read_csv(data_file, **opts)
+        elif data_file[-3:] in ['sav','dta']:
+            read_fn = getattr(pyreadstat,'read_'+data_file[-3:])
+            raw_data, _ = read_fn(data_file, **{ 'apply_value_formats':True, 'dates_as_pandas_datetime':True },**opts)
+        elif data_file[-7:] == 'parquet':
+            raw_data = pd.read_parquet(data_file, **opts)
+        elif data_file[-4:] in ['.xls', 'xlsx', 'xlsm', 'xlsb', '.odf', '.ods', '.odt']:
+            raw_data = pd.read_excel(data_file, **opts)
+        elif data_file[-4:] == 'json': # Allow metafile to load other metafiles as input
+            raw_data, _ = read_annotated_data(data_file)
+        else:
+            raise Exception(f"Not a known file format for {data_file}")
+        
+        # If data is multi-indexed, flatten the index
+        if isinstance(raw_data.columns,pd.MultiIndex): raw_data.columns = [" | ".join(tpl) for tpl in raw_data.columns]
+        
+        # Add extra columns to raw data that contain info about the file. Always includes column 'file' with filename and file_ind with index
+        # Can be used to add survey_date or other useful metainfo
+        raw_data['file_ind'] = fi
+        for k,v in fd.items():
+            if k in ['opts']: continue
+            raw_data[k] = v
+            
+        raw_dfs.append(raw_data)
+        
+    raw_data = pd.concat(raw_dfs)
     
     res = []
     
@@ -281,7 +305,8 @@ def infer_meta(data_file=None, meta_file=True, read_opts={}, df=None, translate_
         if data_file[-3:] == 'csv':
             df = pd.read_csv(data_file, **read_opts)
         elif data_file[-3:] in ['sav','dta']:
-            df, sav_meta = pyreadstat.read_sav(data_file, **{ 'apply_value_formats':True, 'dates_as_pandas_datetime':True },**read_opts)
+            read_fn = getattr(pyreadstat,'read_'+data_file[-3:])
+            df, sav_meta = read_fn(data_file, **{ 'apply_value_formats':True, 'dates_as_pandas_datetime':True },**read_opts)
             col_labels = dict(zip(sav_meta.column_names, sav_meta.column_labels)) # Make this data easy to access by putting it in meta as constant
             if translate_fn: col_labels = { k:translate_fn(v) for k,v in col_labels.items() }
         elif data_file[-7:] == 'parquet':
