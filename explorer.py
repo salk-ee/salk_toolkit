@@ -162,7 +162,7 @@ with st.sidebar: #.expander("Select dimensions"):
     detailed = st.toggle('Fine-grained filter', False)    
     args['filter'] = filter_ui(first_data,first_data_meta,
                         dims=all_dims,detailed=detailed)
-    args['filter'] = {}
+    #args['filter'] = {}
 
 
     with st.expander('Plot desc'):
