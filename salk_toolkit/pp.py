@@ -102,9 +102,9 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
             if set(v) & set(cats) != set(v): raise Exception(f'Column {k} values {v} not found in {cats}')
             bi, ei = cats.index(v[0]), cats.index(v[1])
             flst = cats[bi:ei+1] # 
+        elif isinstance(v,list): flst = v # List indicates a set of values
         elif 'groups' in c_meta[k] and v in c_meta[k]['groups']:
             flst = c_meta[k]['groups'][v]
-        elif isinstance(v,list): flst = v # List indicates a set of values
         else: flst = [v] # Just filter on single value    
             
         inds =  (pl.col(k).is_in(flst) if lazy else df[k].isin(flst)) & inds

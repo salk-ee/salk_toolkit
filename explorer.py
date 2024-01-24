@@ -75,6 +75,7 @@ input_files = st.sidebar.multiselect('Select files:',input_file_choices)
 
 @st.cache_resource(show_spinner=False)
 def load_file(input_file, lazy=False):
+    lazy=False # Lazy loading pipeline is buggy
     full_df, meta = load_parquet_with_metadata(path+input_file,lazy=lazy)
     n = full_df.select(pl.count()).collect()[0,0] if lazy else len(full_df)
     if meta is None: meta = {}
