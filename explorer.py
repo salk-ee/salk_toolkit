@@ -159,9 +159,9 @@ with st.sidebar: #.expander("Select dimensions"):
 
     args['plot_args'] = plot_args
 
-    #detailed = st.toggle('Fine-grained filter', False)    
-    #args['filter'] = filter_ui(first_data,first_data_meta,
-    #                    dims=all_dims,detailed=detailed)
+    detailed = st.toggle('Fine-grained filter', False)    
+    args['filter'] = filter_ui(first_data,first_data_meta,
+                        dims=all_dims,detailed=detailed)
     args['filter'] = {}
 
 
