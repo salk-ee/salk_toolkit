@@ -55,7 +55,7 @@ def process_annotated_data(meta_fname=None, multilevel=False, meta=None, data_fi
                        {'opts': opts, 'file': f } for f in meta['files'] ]
     else: raise Exception("No files provided in metafile")
     
-    raw_dfs = []
+    raw_dfs, meta_inputs = [], False
     for fi, fd in enumerate(data_files):
         
         data_file, opts = fd['file'], fd['opts']
@@ -71,7 +71,9 @@ def process_annotated_data(meta_fname=None, multilevel=False, meta=None, data_fi
         elif data_file[-4:] in ['.xls', 'xlsx', 'xlsm', 'xlsb', '.odf', '.ods', '.odt']:
             raw_data = pd.read_excel(data_file, **opts)
         elif data_file[-4:] == 'json': # Allow metafile to load other metafiles as input
+            warn(f"Processing {data_file}") # Print this to separate warnings for input jsons from main 
             raw_data, _ = read_annotated_data(data_file)
+            meta_inputs = True
         else:
             raise Exception(f"Not a known file format for {data_file}")
         
@@ -87,6 +89,8 @@ def process_annotated_data(meta_fname=None, multilevel=False, meta=None, data_fi
             
         raw_dfs.append(raw_data)
         
+    if meta_inputs: warn(f"Processing main meta file") # Print this to separate warnings for input jsons from main 
+        
     raw_data = pd.concat(raw_dfs)
     
     res = []
@@ -99,8 +103,8 @@ def process_annotated_data(meta_fname=None, multilevel=False, meta=None, data_fi
         for tpl in group['columns']:
             if type(tpl)==list:
                 cn = tpl[0] # column name
-                sn = tpl[1] if type(tpl[1])==str else cn # source column
-                cd = tpl[2] if len(tpl)==3 else tpl[1] if type(tpl[1])==dict else {} # metadata
+                sn = tpl[1] if len(tpl)>1 and type(tpl[1])==str else cn # source column
+                cd = tpl[2] if len(tpl)==3 else tpl[1] if len(tpl)==2 and type(tpl[1])==dict else {} # metadata
             else:
                 cn = sn = tpl
                 cd = {}
