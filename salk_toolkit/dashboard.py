@@ -522,8 +522,9 @@ def filter_ui(data, dmeta=None, dims=None, detailed=False, raw=False, translate=
         if detailed and col.dtype.name=='category':
             filters[cn] = stc.multiselect(tf(cn), all_vals, all_vals, key=f"{cn}_multiselect")
             if set(filters[cn]) == set(all_vals): del filters[cn]
-            else: stc.button(tf("Reset"),key=f"{cn}_reset",on_click=ms_reset(cn,all_vals))
-            filters[cn] = [ r_map[c] for c in filters[cn] ]
+            else: 
+                stc.button(tf("Reset"),key=f"{cn}_reset",on_click=ms_reset(cn,all_vals))
+                filters[cn] = [ r_map[c] for c in filters[cn] ]
         elif col.dtype.name=='category' and not col.dtype.ordered:
             filters[cn] = stc.selectbox(cn,
                 [tf('All')] + [gt for gt,g in r_map.items() if g in grp_names] + all_vals)

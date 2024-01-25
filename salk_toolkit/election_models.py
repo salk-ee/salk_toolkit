@@ -77,11 +77,11 @@ def simulate_election(support, nmandates, threshold=0.0, ed_threshold=0.0, quota
 
 # %% ../nbs/04_election_models.ipynb 6
 # Basic wrapper around simulate elections that goes from dataframe to dataframe
-def simulate_election_e2e(sdf, parties, mandates_dict, **kwargs):
+def simulate_election_e2e(sdf, parties, mandates_dict, ed_col='electoral_district', **kwargs):
     
     # Convert data frame to a numpy tensor for fast vectorized processing
     parties = [ p for p in parties if p in sdf.columns ]
-    ed_df = sdf.groupby(['draw','electoral_district'])[parties].sum()
+    ed_df = sdf.groupby(['draw',ed_col])[parties].sum()
     districts = list(sdf.electoral_district.unique())
     support = ed_df.reset_index(drop=True).to_numpy().reshape( (-1,len(districts),len(parties)) )    
     nmandates = np.array([ mandates_dict[d] for d in districts ])
@@ -92,7 +92,7 @@ def simulate_election_e2e(sdf, parties, mandates_dict, **kwargs):
     
     # Shape it back into a data frame
     eddf = pd.DataFrame( edt.reshape( (-1,) ), columns=['mandates'], dtype='int')
-    eddf.loc[:, ['draw','electoral_district', 'party']] = np.array(tuple(it.product( range(edt.shape[0]), districts, parties )))
+    eddf.loc[:, ['draw', ed_col, 'party']] = np.array(tuple(it.product( range(edt.shape[0]), districts, parties )))
     return eddf
 
 # %% ../nbs/04_election_models.ipynb 10
