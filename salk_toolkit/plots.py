@@ -164,6 +164,9 @@ def estimate_legend_columns_horiz(cats, width):
             else: # Just append to existing row
                 rl += l
                 cc += 1
+                
+    # For very long labels just accept we can't do anything
+    max_cols = max(max_cols,1)
 
     # distribute them roughly equally to avoid last row being awkwardly shorter
     n_rows = int(math.ceil(len(cats)/max_cols))

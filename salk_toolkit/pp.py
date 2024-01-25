@@ -152,7 +152,7 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
     for k in filtered_df.columns:
         if filtered_df[k].dtype.name == 'category':
             m_cats = c_meta[k]['categories'] if vod(c_meta[k],'categories','infer')!='infer' else None
-            f_cats = get_cats(filtered_df[k],m_cats) if k != pp_desc['res_col'] or not vod(c_meta[k],'likert') else m_cats# Do not trim likert as plots need to be symmetric
+            f_cats = get_cats(filtered_df[k],m_cats) if k != pp_desc['res_col'] or not vod(c_meta[k],'likert') else m_cats # Do not trim likert as plots need to be symmetric
             filtered_df.loc[:,k] = pd.Categorical(filtered_df[k],f_cats,ordered=vod(c_meta[k],'ordered',False))
     
     # Aggregate the data into right shape

@@ -133,7 +133,7 @@ def process_annotated_data(meta_fname=None, multilevel=False, meta=None, data_fi
                 if vod(cd,'ordered',False) and cd['categories']=='infer': warn(f"Ordered category {cn} had category: infer. This only works correctly if you want lexicographic ordering!")
                 
                 if cd['categories'] == 'infer':
-                    cd['categories'] = [ str(c) for c in s.sort_values().unique() if pd.notna(c) ] # Also propagates it into meta (unless shared scale)
+                    cd['categories'] = [ str(c) for c in s.unique().sort_values() if pd.notna(c) ] # Also propagates it into meta (unless shared scale)
                     s = s.astype('str') 
                     
                 cats = cd['categories']
@@ -144,7 +144,7 @@ def process_annotated_data(meta_fname=None, multilevel=False, meta=None, data_fi
                 
                 if new_nas > 0: 
                     unlisted_cats = set(s.dropna().unique())-set(cats)
-                    warn(f"Column {cn} {f'({sn}) ' if cn != sn else ''}had unknown categories {unlisted_cats} for { new_nas/len(ns) :.1%} entries")
+                    warn(f"Column {cn} {f'({sn}) ' if cn != sn else ''} had unknown categories {unlisted_cats} for { new_nas/len(ns) :.1%} entries")
                     
                 s = ns
             gres.append(s)
