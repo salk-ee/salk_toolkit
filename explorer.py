@@ -139,6 +139,8 @@ with st.sidebar: #.expander("Select dimensions"):
     if res_cont:
         cont_transform = st.selectbox('Transform', ['None', 'center', 'zscore'])
         if cont_transform != 'None': args['cont_transform'] = cont_transform
+        agg_fn = st.selectbox('Aggregation', ['mean', 'median', 'sum'])
+        if agg_fn!='mean': args['agg_fn'] = agg_fn
 
     all_dims = vod(c_meta[obs_name],'modifiers', []) + all_dims
 
@@ -164,7 +166,6 @@ with st.sidebar: #.expander("Select dimensions"):
     args['filter'] = filter_ui(first_data,first_data_meta,
                         dims=all_dims,detailed=detailed)
     #args['filter'] = {}
-
 
     with st.expander('Plot desc'):
         st.json(args)
