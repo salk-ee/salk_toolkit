@@ -4,7 +4,7 @@
 __all__ = ['warn', 'default_color', 'vod', 'factorize_w_codes', 'batch', 'loc2iloc', 'match_sum_round', 'min_diff', 'continify',
            'match_data', 'replace_constants', 'index_encoder', 'to_alt_scale', 'multicol_to_vals_cats',
            'gradient_to_discrete_color_scale', 'is_datetime', 'rel_wave_times', 'stable_draws', 'deterministic_draws',
-           'clean_kwargs', 'censor_dict']
+           'clean_kwargs', 'censor_dict', 'cut_nice']
 
 # %% ../nbs/10_utils.ipynb 3
 import json, os, warnings, math, inspect
@@ -213,5 +213,22 @@ def clean_kwargs(fn, kwargs):
     return { k:v for k,v in kwargs.items() if k in aspec.args } if aspec.varkw is None else kwargs
 
 # %% ../nbs/10_utils.ipynb 30
+# Simple one-liner to remove certain keys from a dict
 def censor_dict(d,vs):
     return { k:v for k,v in d.items() if k not in vs }
+
+# %% ../nbs/10_utils.ipynb 31
+# A nicer behaving wrapper around pd.cut
+def cut_nice(s, breaks, ints=True):
+    s = np.array(s)
+    
+    # Extend breaks if needed
+    if s.max()>breaks[-1]:
+        breaks += [s.max()+1]
+    if s.min()<breaks[0]:
+        breaks = [s.min()] + breaks
+    
+    labels = [ f'{breaks[i]} - {breaks[i+1] + (-1 if ints else 0)}' for i in range(len(breaks)-2) ] + [f'{breaks[-2]}+']
+    
+    return pd.cut(s,breaks,right=False,labels=labels)
+    

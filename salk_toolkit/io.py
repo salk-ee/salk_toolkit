@@ -87,6 +87,13 @@ def process_annotated_data(meta_fname=None, multilevel=False, meta=None, data_fi
             if k in ['opts']: continue
             raw_data[k] = v
             
+        # Re-align the categoricals to the first file, as pandas fails to concatenate if one is ordered and other is not
+        if fi>0:
+            fdf = raw_dfs[0]
+            for c in raw_data.columns:
+                if c in fdf.columns and raw_data[c].dtype.name == 'category' and fdf[c].dtype.name == 'category':
+                    raw_data[c] = pd.Categorical(raw_data[c],dtype=fdf[c].dtype)
+            
         raw_dfs.append(raw_data)
         
     if meta_inputs: warn(f"Processing main meta file") # Print this to separate warnings for input jsons from main 

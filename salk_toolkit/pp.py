@@ -266,7 +266,7 @@ def translate_df(df, translate):
 # %% ../nbs/02_pp.ipynb 14
 # Function that takes filtered raw data and plot information and outputs the plot
 # Handles all of the data wrangling and parameter formatting
-def create_plot(pparams, data_meta, pp_desc, alt_properties={}, dry_run=False, width=200, return_matrix_of_plots=False, translate=None):
+def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=False, width=200, return_matrix_of_plots=False, translate=None):
     
     data = pparams['data']
 
@@ -360,6 +360,8 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, dry_run=False, w
     plot_fn = get_plot_fn(pp_desc['plot'])
     pparams = clean_kwargs(plot_fn,pparams)
     
+    
+    if alt_wrapper is None: alt_wrapper = lambda p: p
     if vod(plot_meta,'as_is'): # if as_is set, just return the plot as-is
         return plot_fn(**pparams)
     elif factor_cols:
@@ -369,13 +371,13 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, dry_run=False, w
             #print( [ data[(data[factor_cols]==c).all(axis=1)] for c in combs ] )
             #print(list(combs))
             return list(batch([
-                plot_fn(data[(data[factor_cols]==c).all(axis=1)],**pparams).properties(title='-'.join(map(str,c)),**dims, **alt_properties)
+                alt_wrapper(plot_fn(data[(data[factor_cols]==c).all(axis=1)],**pparams).properties(title='-'.join(map(str,c)),**dims, **alt_properties))
                 for c in combs
                 ], n_facet_cols))
         else: # Use faceting:
-            plot = plot_fn(**pparams).properties(**dims, **alt_properties).facet(f'{factor_cols[0]}:O',columns=n_facet_cols)
+            plot = alt_wrapper(plot_fn(**pparams).properties(**dims, **alt_properties).facet(f'{factor_cols[0]}:O',columns=n_facet_cols))
     else:
-        plot = plot_fn(**pparams).properties(**dims, **alt_properties)
+        plot = alt_wrapper(plot_fn(**pparams).properties(**dims, **alt_properties))
         if return_matrix_of_plots: plot = [[plot]]
 
     return plot
