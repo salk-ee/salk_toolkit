@@ -453,6 +453,7 @@ def draw_plot_matrix(pmat,matrix_form = False):
     cols = st.columns(len(pmat[0]))
     for j,c in enumerate(cols):
         for i, row in enumerate(pmat):
+            if j>=len(pmat[i]): continue
             c.altair_chart(pmat[i][j])
 
 # Draw the plot described by pp_desc 

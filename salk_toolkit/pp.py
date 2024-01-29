@@ -214,7 +214,11 @@ def wrangle_data(raw_df, data_meta, pp_desc):
         if raw_df[res_col].dtype == 'category':  #'categories' in rc_meta: # categorical
             pparams['cat_col'] = res_col 
             pparams['value_col'] = 'percent'
-            data = (raw_df.groupby(gb_dims+[res_col],observed=False)['weight'].sum()/gb_in(raw_df,gb_dims)['weight'].sum()).rename(pparams['value_col']).dropna().reset_index()
+            
+            # Aggregate the data
+            data = raw_df.groupby(gb_dims+[res_col],observed=False)['weight'].sum()
+            if vod(plot_meta,'agg_fn')!='sum': data /= gb_in(raw_df,gb_dims)['weight'].sum()
+            data = data.rename(pparams['value_col']).dropna().reset_index()
             
         else: # Continuous
             agg_fn = vod(pp_desc,'agg_fn','mean') # We may want to try median vs mean or plot sd-s or whatever
