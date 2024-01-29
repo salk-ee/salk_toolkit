@@ -153,7 +153,9 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
         if filtered_df[k].dtype.name == 'category':
             m_cats = c_meta[k]['categories'] if vod(c_meta[k],'categories','infer')!='infer' else None
             f_cats = get_cats(filtered_df[k],m_cats) if k != pp_desc['res_col'] or not vod(c_meta[k],'likert') else m_cats # Do not trim likert as plots need to be symmetric
-            filtered_df.loc[:,k] = pd.Categorical(filtered_df[k],f_cats,ordered=vod(c_meta[k],'ordered',False))
+            
+            #vals = filtered_df[k]
+            filtered_df[k] = pd.Categorical(filtered_df[k],f_cats,ordered=vod(c_meta[k],'ordered',False))
     
     # Aggregate the data into right shape
     pparams = wrangle_data(filtered_df, data_meta, pp_desc)
@@ -165,7 +167,7 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
     
     return pparams
 
-# %% ../nbs/02_pp.ipynb 10
+# %% ../nbs/02_pp.ipynb 11
 # Groupby if needed - this simplifies the wrangle considerably :)
 def gb_in(df, gb_cols):
     return df.groupby(gb_cols,observed=False) if len(gb_cols)>0 else df
@@ -236,14 +238,14 @@ def wrangle_data(raw_df, data_meta, pp_desc):
         if c in ['group_size']: continue # bypass some columns added above
         if data[c].dtype.name != 'category' and c!=pparams['value_col']:
             if vod(vod(col_meta,c,{}),'continuous'):
-                data.loc[:,c] = discretize_continuous(data[c],vod(col_meta,c,{}))
+                data[c] = discretize_continuous(data[c],vod(col_meta,c,{}))
             else: # Just assume it's categorical by any other name
-                data.loc[:,c] = pd.Categorical(data[c])
+                data[c] = pd.Categorical(data[c])
             
     pparams['data'] = data
     return pparams
 
-# %% ../nbs/02_pp.ipynb 12
+# %% ../nbs/02_pp.ipynb 13
 # Create a color scale
 ordered_gradient = ["#c30d24", "#f3a583", "#94c6da", "#1770ab"]
 def meta_color_scale(cmeta,argname='colors',column=None, translate=None):
@@ -257,7 +259,7 @@ def meta_color_scale(cmeta,argname='colors',column=None, translate=None):
         cats = [ remap[c] for c in cats ]
     return to_alt_scale(scale,cats)
 
-# %% ../nbs/02_pp.ipynb 13
+# %% ../nbs/02_pp.ipynb 14
 def translate_df(df, translate):
     df.columns = [ translate(c) for c in df.columns ]
     for c in df.columns:
@@ -267,7 +269,7 @@ def translate_df(df, translate):
             df[c] = df[c].replace(remap)
     return df
 
-# %% ../nbs/02_pp.ipynb 14
+# %% ../nbs/02_pp.ipynb 15
 # Function that takes filtered raw data and plot information and outputs the plot
 # Handles all of the data wrangling and parameter formatting
 def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=False, width=200, return_matrix_of_plots=False, translate=None):
@@ -386,7 +388,7 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
 
     return plot
 
-# %% ../nbs/02_pp.ipynb 18
+# %% ../nbs/02_pp.ipynb 19
 # A convenience function to draw a plot straight from a dataset
 def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, check_match=True,lazy=True,**kwargs):
     if data_file is None and full_df is None:

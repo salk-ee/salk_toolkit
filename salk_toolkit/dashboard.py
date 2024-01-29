@@ -328,7 +328,11 @@ class UserAuthenticationManager():
 def user_settings_page(sdb):
     if not sdb.user: return
     try:
-        if sdb.uam.auth.reset_password(st.session_state["username"], sdb.tf('Reset password')):
+        tf = sdb.tf
+        if sdb.uam.auth.reset_password(st.session_state["username"], 
+                                       fields={'Form name':tf('Reset password'), 'Current password':tf('Current password'), 
+                                               'New password':tf('New password'), 'Repeat password': tf('Repeat password'), 
+                                               'Reset':tf('Reset')}):
             sdb.uam.update_conf()
             st.success(sdb.tf('Password modified successfully'))
     except Exception as e:
@@ -362,13 +366,13 @@ def admin_page(sdb):
     if menu_choice=='Log management':
         log_data=pd.read_csv(alias_file(sdb.log_path,sdb.filemap),names=['timestamp','event','username'])
         st.dataframe(log_data.sort_index(ascending=False
-            ).style.applymap(highlight_cells, subset=['event']), width=1200) #use_container_width=True
+            ).style.map(highlight_cells, subset=['event']), width=1200) #use_container_width=True
         
     elif menu_choice=='List users':
         # Read log to get last login:
         log_data = pd.read_csv(alias_file(sdb.log_path,sdb.filemap),names=['timestamp','event','username'])
         log_data = log_data[log_data['event']=='login-success']
-        log_data['timestamp'] = pd.to_datetime(log_data['timestamp'])
+        log_data['timestamp'] = pd.to_datetime(log_data['timestamp'], utc=True, format='%d-%m-%Y, %H:%M:%S')
         
         # Add last login to users
         users = sdb.uam.list_users()
