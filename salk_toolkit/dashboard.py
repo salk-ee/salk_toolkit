@@ -102,8 +102,8 @@ class SalkDashboardBuilder:
     def __init__(self, data_source, auth_conf, logfile, groups=['guest','user','admin'], public=False, translate=None):
         
         # Allow deployment.json to redirect files from local to s3 if local missing (i.e. in deployment scenario)
-        if os.path.exists('deployment.json'):
-            dep_meta = load_json_cached('deployment.json')
+        if os.path.exists('./deployment.json'):
+            dep_meta = load_json_cached('./deployment.json')
             self.filemap = vod(dep_meta,'files',{})
             data_source = alias_file(data_source,self.filemap)
             auth_conf = alias_file(auth_conf,self.filemap)
@@ -251,13 +251,14 @@ class UserAuthenticationManager():
         self.users = self.conf['credentials']['usernames']
     
     def login_screen(self):
-        _, _, username = self.auth.login(self.tf('Log in'), 'main')
+        tf = self.tf
+        _, _, username = self.auth.login('main', fields={'Form name':tf('Login page'), 'Username':tf('Username'), 'Password':tf('Password'), 'Log in':tf('Log in')})
         
         if st.session_state["authentication_status"] is False:
-            st.error(self.tf('Username/password is incorrect'))
+            st.error(tf('Username/password is incorrect'))
             self.log_event('login-fail', username=username)
         if st.session_state["authentication_status"] is None:
-            st.warning(self.tf('Please enter your username and password'))
+            st.warning(tf('Please enter your username and password'))
             st.session_state['log_event'] = True 
         elif st.session_state["authentication_status"]:
             self.user = {'name': st.session_state['name'], 
