@@ -57,7 +57,7 @@
         "name": "survey",
         "columns": [
             ["methods", { "categories": "infer" , "translate": {"WISE": "Cati"} }],
-            ["wave", "laine",{ "categories": "infer" , "ordered": true }]
+            ["wave", "laine",{ "categories": "infer", "ordered": true }]
         ]
     }, {
         "name": "demographics",

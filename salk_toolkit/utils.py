@@ -4,7 +4,7 @@
 __all__ = ['warn', 'default_color', 'vod', 'factorize_w_codes', 'batch', 'loc2iloc', 'match_sum_round', 'min_diff', 'continify',
            'match_data', 'replace_constants', 'index_encoder', 'to_alt_scale', 'multicol_to_vals_cats',
            'gradient_to_discrete_color_scale', 'is_datetime', 'rel_wave_times', 'stable_draws', 'deterministic_draws',
-           'clean_kwargs', 'censor_dict', 'cut_nice']
+           'clean_kwargs', 'censor_dict', 'cut_nice', 'rename_cats']
 
 # %% ../nbs/10_utils.ipynb 3
 import json, os, warnings, math, inspect
@@ -232,3 +232,10 @@ def cut_nice(s, breaks, ints=True):
     
     return pd.cut(s,breaks,right=False,labels=labels)
     
+
+# %% ../nbs/10_utils.ipynb 32
+# Utility function to rename categories in pre/post processing steps as pandas made .replace unusable with categories
+def rename_cats(df, col, cat_map):
+    if df[col].dtype.name == 'category': 
+        df[col] = df[col].cat.rename_categories(cat_map)
+    else: df[col] = df[col].replace(cat_map)

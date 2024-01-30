@@ -62,7 +62,7 @@ def process_annotated_data(meta_fname=None, multilevel=False, meta=None, data_fi
         if meta_fname: data_file = os.path.join(os.path.dirname(meta_fname),data_file)
         
         if data_file[-3:] == 'csv':
-            raw_data = pd.read_csv(data_file, **opts)
+            raw_data = pd.read_csv(data_file, low_memory=False, **opts)
         elif data_file[-3:] in ['sav','dta']:
             read_fn = getattr(pyreadstat,'read_'+data_file[-3:])
             raw_data, _ = read_fn(data_file, **{ 'apply_value_formats':True, 'dates_as_pandas_datetime':True },**opts)
@@ -134,15 +134,22 @@ def process_annotated_data(meta_fname=None, multilevel=False, meta=None, data_fi
                 if s.dtype.name=='category': s = s.astype('object') # This makes it easier to use common ops like replace and fillna
                 if 'translate' in cd: s.replace(cd['translate'],inplace=True)
                 if 'transform' in cd: s = eval(cd['transform'],{ 's':s, 'df':raw_data, 'pd':pd, 'np':np, 'stk':stk , **constants })
-                if vod(cd,'continuous'): s = pd.to_numeric(s)
+                
+                if vod(cd,'datetime'): s = pd.to_datetime(s)
+                elif vod(cd,'continuous'): s = pd.to_numeric(s)
 
             if 'categories' in cd: 
                 na_sum = s.isna().sum()
-                if vod(cd,'ordered',False) and cd['categories']=='infer': warn(f"Ordered category {cn} had category: infer. This only works correctly if you want lexicographic ordering!")
                 
                 if cd['categories'] == 'infer':
-                    cd['categories'] = [ str(c) for c in np.sort(s.unique().astype('str')) if pd.notna(c) ] # Also propagates it into meta (unless shared scale)
-                    s = s.astype('str') 
+                    if pd.api.types.is_numeric_dtype(s): cd['categories'] = list(np.sort(s.unique()))
+                    elif s.dtype=='category': cd['categories'] = list(s.dtype.categories) # Categories come from data file
+                    elif 'translate' in cd and 'transform' not in cd and set(cd['translate'].values()) >= set(s.unique()): # Infer order from translation dict
+                        cd['categories'] = list(pd.unique(np.array(list(cd['translate'].values()))))
+                    else: # Just use lexicographic ordering
+                        if vod(cd,'ordered',False): warn(f"Ordered category {cn} had category: infer. This only works correctly if you want lexicographic ordering!")
+                        cd['categories'] = [ str(c) for c in np.sort(s.unique().astype('str')) if pd.notna(c) ] # Also propagates it into meta (unless shared scale)
+                        s = s.astype('str') 
                     
                 cats = cd['categories']
                 
@@ -316,7 +323,7 @@ def infer_meta(data_file=None, meta_file=True, read_opts={}, df=None, translate_
         path, fname = os.path.split(data_file)
         meta['file'] = fname
         if data_file[-3:] == 'csv':
-            df = pd.read_csv(data_file, **read_opts)
+            df = pd.read_csv(data_file, low_memory=False, **read_opts)
         elif data_file[-3:] in ['sav','dta']:
             read_fn = getattr(pyreadstat,'read_'+data_file[-3:])
             df, sav_meta = read_fn(data_file, **{ 'apply_value_formats':True, 'dates_as_pandas_datetime':True },**read_opts)
@@ -380,7 +387,8 @@ def infer_meta(data_file=None, meta_file=True, read_opts={}, df=None, translate_
     for cn in main_cols:
         if cn in cats: cdesc = cat_meta(cn)
         else: 
-            cdesc = {'continuous':True}
+            if is_datetime(df[cn]): cdesc = {'datetime':True}
+            else: cdesc = {'continuous':True}
             if is_datetime(df[cn]): cdesc['date'] = True
         if cn in col_labels: cdesc['label'] = col_labels[cn]
         main_grp['columns'].append([cn,cdesc] if translate_fn is None else [translate_fn(cn),cn,cdesc])
