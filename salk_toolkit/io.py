@@ -131,6 +131,7 @@ def process_annotated_data(meta_fname=None, multilevel=False, meta=None, data_fi
             s = raw_data[sn].rename(cn)
             
             if not only_fix_categories:
+                if s.dtype.name=='category': s = s.astype('object') # This makes it easier to use common ops like replace and fillna
                 if 'translate' in cd: s.replace(cd['translate'],inplace=True)
                 if 'transform' in cd: s = eval(cd['transform'],{ 's':s, 'df':raw_data, 'pd':pd, 'np':np, 'stk':stk , **constants })
                 if vod(cd,'continuous'): s = pd.to_numeric(s)
