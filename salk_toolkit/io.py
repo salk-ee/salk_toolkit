@@ -61,9 +61,7 @@ def process_annotated_data(meta_fname=None, multilevel=False, meta=None, data_fi
         data_file, opts = fd['file'], fd['opts']
         if meta_fname: data_file = os.path.join(os.path.dirname(meta_fname),data_file)
         
-        if data_file[-3:] == 'csv':
-            raw_data = pd.read_csv(data_file, low_memory=False, **opts)
-        elif data_file[-2:] == 'gz':
+        if data_file[-3:] in ['csv', '.gz']:
             raw_data = pd.read_csv(data_file, low_memory=False, **opts)
         elif data_file[-3:] in ['sav','dta']:
             read_fn = getattr(pyreadstat,'read_'+data_file[-3:])
@@ -324,9 +322,7 @@ def infer_meta(data_file=None, meta_file=True, read_opts={}, df=None, translate_
     if data_file is not None:
         path, fname = os.path.split(data_file)
         meta['file'] = fname
-        if data_file[-3:] == 'csv':
-            df = pd.read_csv(data_file, low_memory=False, **read_opts)
-        elif data_file[-2:] == 'gz':
+        if data_file[-3:] in ['csv', '.gz']:
             df = pd.read_csv(data_file, low_memory=False, **read_opts)
         elif data_file[-3:] in ['sav','dta']:
             read_fn = getattr(pyreadstat,'read_'+data_file[-3:])
