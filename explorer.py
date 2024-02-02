@@ -153,7 +153,7 @@ with st.sidebar: #.expander("Select dimensions"):
 
     args['plot'] = st.selectbox('Plot type',matching_plots(args, first_data, first_data_meta))
 
-    plot_args = {}
+    #plot_args = { 'n_facet_cols':2 }
     for k, v in vod(get_plot_meta(args['plot']),'args',{}).items():
         if v=='bool':
             plot_args[k] = st.toggle(k)

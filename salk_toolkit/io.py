@@ -65,7 +65,9 @@ def process_annotated_data(meta_fname=None, multilevel=False, meta=None, data_fi
             raw_data = pd.read_csv(data_file, low_memory=False, **opts)
         elif data_file[-3:] in ['sav','dta']:
             read_fn = getattr(pyreadstat,'read_'+data_file[-3:])
-            raw_data, _ = read_fn(data_file, **{ 'apply_value_formats':True, 'dates_as_pandas_datetime':True },**opts)
+            with warnings.catch_warnings(): # While pyreadstat has not been updated to pandas 2.2 standards
+                warnings.simplefilter("ignore")
+                raw_data, _ = read_fn(data_file, **{ 'apply_value_formats':True, 'dates_as_pandas_datetime':True },**opts)
         elif data_file[-7:] == 'parquet':
             raw_data = pd.read_parquet(data_file, **opts)
         elif data_file[-4:] in ['.xls', 'xlsx', 'xlsm', 'xlsb', '.odf', '.ods', '.odt']:

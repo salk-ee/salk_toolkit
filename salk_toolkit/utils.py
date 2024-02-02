@@ -23,36 +23,39 @@ from hashlib import sha256
 from typing import List, Tuple, Dict, Union, Optional
 
 # %% ../nbs/10_utils.ipynb 4
+pd.set_option('future.no_silent_downcasting', True)
+
+# %% ../nbs/10_utils.ipynb 5
 # Value or Default - returns key value in dict if key in dict, otherwise Mone
 def vod(d,k,default=None): return d[k] if k in d else default
 
-# %% ../nbs/10_utils.ipynb 5
+# %% ../nbs/10_utils.ipynb 6
 # convenience for warnings that gives a more useful stack frame (fn calling the warning, not warning fn itself)
 warn = lambda msg,*args: warnings.warn(msg,*args,stacklevel=3)
 
-# %% ../nbs/10_utils.ipynb 6
+# %% ../nbs/10_utils.ipynb 7
 # I'm surprised pandas does not have this function but I could not find it. 
 def factorize_w_codes(s, codes):
-    res = s.replace(dict(zip(codes,range(len(codes)))))
+    res = s.astype('object').replace(dict(zip(codes,range(len(codes)))))
     if not s.isin(codes).all(): # Throw an exception if all values were not replaced
         vals = set(s) - set(codes)
         raise Exception(f'Codes for {s.name} do not match all values: {vals}')
     return res.to_numpy(dtype='int')
 
-# %% ../nbs/10_utils.ipynb 7
+# %% ../nbs/10_utils.ipynb 8
 # Simple batching of an iterable
 def batch(iterable, n=1):
     l = len(iterable)
     for ndx in range(0, l, n):
         yield iterable[ndx:min(ndx + n, l)]
 
-# %% ../nbs/10_utils.ipynb 8
+# %% ../nbs/10_utils.ipynb 9
 # turn index values into order indices
 def loc2iloc(index, vals):
     d = dict(zip(np.array(index),range(len(index))))
     return [ d[v] for v in vals ]
 
-# %% ../nbs/10_utils.ipynb 9
+# %% ../nbs/10_utils.ipynb 10
 # Round in a way that preserves total sum
 def match_sum_round(s):
     s = np.array(s)
@@ -62,7 +65,7 @@ def match_sum_round(s):
     fs[residues] = fs[residues]+1
     return fs.astype('int')
 
-# %% ../nbs/10_utils.ipynb 11
+# %% ../nbs/10_utils.ipynb 12
 # Find the minimum difference between two values in the array
 def min_diff(arr):
     b = np.diff(np.sort(arr))
@@ -79,11 +82,11 @@ def continify(ar, bounded=False):
         res[res<mi] = mi + (mi - res[res<mi])
     return res
 
-# %% ../nbs/10_utils.ipynb 13
+# %% ../nbs/10_utils.ipynb 14
 from scipy.spatial.distance import cdist
 from scipy.optimize import linear_sum_assignment
 
-# %% ../nbs/10_utils.ipynb 14
+# %% ../nbs/10_utils.ipynb 15
 # Match data1 with data2 on columns cols as closely as possible
 def match_data(data1,data2,cols=None):
     d1 = data1[cols].copy().dropna()
@@ -105,7 +108,7 @@ def match_data(data1,data2,cols=None):
     ind1, ind2 = d1.index[i1], d2.index[i2]
     return ind1, ind2
 
-# %% ../nbs/10_utils.ipynb 16
+# %% ../nbs/10_utils.ipynb 17
 # Allow 'constants' entries in the dict to provide replacement mappings
 # This leads to much more readable jsons as repetitions can be avoided
 def replace_constants(d, constants = {}, inplace=False):
@@ -123,7 +126,7 @@ def replace_constants(d, constants = {}, inplace=False):
             
     return d
 
-# %% ../nbs/10_utils.ipynb 18
+# %% ../nbs/10_utils.ipynb 19
 # JSON encoder needed to convert pandas indices into lists for serialization
 def index_encoder(z):
     if isinstance(z, pd.Index):
@@ -132,7 +135,7 @@ def index_encoder(z):
         type_name = z.__class__.__name__
         raise TypeError(f"Object of type {type_name} is not serializable")
 
-# %% ../nbs/10_utils.ipynb 19
+# %% ../nbs/10_utils.ipynb 20
 default_color = 'lightgrey' # Something that stands out so it is easy to notice a missing color
 
 # Helper function to turn a dictionary into an Altair scale (or None into alt.Undefined)
@@ -145,7 +148,7 @@ def to_alt_scale(scale, order=None):
         scale = alt.Scale(domain=list(order),range=[ (scale[c] if c in scale else default_color) for c in order ])
     return scale
 
-# %% ../nbs/10_utils.ipynb 20
+# %% ../nbs/10_utils.ipynb 21
 # Turn a question with multiple variants all of which are in distinct columns into a two columns - one with response, the other with which question variant was used
 
 def multicol_to_vals_cats(df, cols=None, col_prefix=None, reverse_cols=[], reverse_suffixes=None, cat_order=None, vals_name='vals', cats_name='cats', inplace=False):
@@ -166,19 +169,19 @@ def multicol_to_vals_cats(df, cols=None, col_prefix=None, reverse_cols=[], rever
     df.loc[:,cats_name] = np.array(tdf.columns)[cinds]
     return df
 
-# %% ../nbs/10_utils.ipynb 22
+# %% ../nbs/10_utils.ipynb 23
 # Grad is a list of colors
 def gradient_to_discrete_color_scale( grad, num_colors):
     cmap = mpc.LinearSegmentedColormap.from_list('grad',grad)
     return [mpc.to_hex(cmap(i)) for i in np.linspace(0, 1, num_colors)]
 
-# %% ../nbs/10_utils.ipynb 24
+# %% ../nbs/10_utils.ipynb 25
 def is_datetime(col):
     with warnings.catch_warnings():
         warnings.simplefilter(action='ignore', category=UserWarning)
         return pd.api.types.is_datetime64_any_dtype(col) or (col.dtype.name in ['str','object'] and pd.to_datetime(col,errors='coerce').notna().any())
 
-# %% ../nbs/10_utils.ipynb 25
+# %% ../nbs/10_utils.ipynb 26
 # Convert a series of wave indices and a series of survey dates into a time series usable by our gp model
 def rel_wave_times(ws, dts, dt0=None):
     df = pd.DataFrame({'wave':ws, 'dt': pd.to_datetime(dts)})
@@ -189,7 +192,7 @@ def rel_wave_times(ws, dts, dt0=None):
     
     return pd.Series(df['wave'].replace(w_to_time),name='t')
 
-# %% ../nbs/10_utils.ipynb 27
+# %% ../nbs/10_utils.ipynb 28
 # Generate a random draws column that is deterministic in n, n_draws and uid
 def stable_draws(n, n_draws, uid):
     # Initialize a random generator with a hash of uid
@@ -206,18 +209,18 @@ def deterministic_draws(df, n_draws, uid, n_total=None):
     df.loc[:,'draw'] = pd.Series(stable_draws(n_total, n_draws, uid), index = np.arange(n_total))
     return df
 
-# %% ../nbs/10_utils.ipynb 29
+# %% ../nbs/10_utils.ipynb 30
 # Clean kwargs leaving only parameters fn can digest
 def clean_kwargs(fn, kwargs):
     aspec = inspect.getfullargspec(fn)
     return { k:v for k,v in kwargs.items() if k in aspec.args } if aspec.varkw is None else kwargs
 
-# %% ../nbs/10_utils.ipynb 30
+# %% ../nbs/10_utils.ipynb 31
 # Simple one-liner to remove certain keys from a dict
 def censor_dict(d,vs):
     return { k:v for k,v in d.items() if k not in vs }
 
-# %% ../nbs/10_utils.ipynb 31
+# %% ../nbs/10_utils.ipynb 32
 # A nicer behaving wrapper around pd.cut
 def cut_nice(s, breaks, ints=True):
     s = np.array(s)
@@ -233,7 +236,7 @@ def cut_nice(s, breaks, ints=True):
     return pd.cut(s,breaks,right=False,labels=labels)
     
 
-# %% ../nbs/10_utils.ipynb 32
+# %% ../nbs/10_utils.ipynb 33
 # Utility function to rename categories in pre/post processing steps as pandas made .replace unusable with categories
 def rename_cats(df, col, cat_map):
     if df[col].dtype.name == 'category': 
