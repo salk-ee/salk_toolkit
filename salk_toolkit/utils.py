@@ -2,9 +2,10 @@
 
 # %% auto 0
 __all__ = ['warn', 'default_color', 'vod', 'factorize_w_codes', 'batch', 'loc2iloc', 'match_sum_round', 'min_diff', 'continify',
-           'match_data', 'replace_constants', 'index_encoder', 'to_alt_scale', 'multicol_to_vals_cats',
-           'gradient_to_discrete_color_scale', 'is_datetime', 'rel_wave_times', 'stable_draws', 'deterministic_draws',
-           'clean_kwargs', 'censor_dict', 'cut_nice', 'rename_cats']
+           'match_data', 'replace_constants', 'approx_str_match', 'index_encoder', 'to_alt_scale',
+           'multicol_to_vals_cats', 'gradient_to_discrete_color_scale', 'is_datetime', 'rel_wave_times', 'stable_draws',
+           'deterministic_draws', 'clean_kwargs', 'censor_dict', 'cut_nice', 'rename_cats', 'str_replace',
+           'merge_series']
 
 # %% ../nbs/10_utils.ipynb 3
 import json, os, warnings, math, inspect
@@ -13,6 +14,7 @@ from collections import defaultdict
 
 import numpy as np
 import pandas as pd
+import scipy
 import datetime as dt
 
 import altair as alt
@@ -21,6 +23,7 @@ from copy import deepcopy
 from hashlib import sha256
 
 from typing import List, Tuple, Dict, Union, Optional
+import Levenshtein
 
 # %% ../nbs/10_utils.ipynb 4
 pd.set_option('future.no_silent_downcasting', True)
@@ -126,7 +129,14 @@ def replace_constants(d, constants = {}, inplace=False):
             
     return d
 
-# %% ../nbs/10_utils.ipynb 19
+# %% ../nbs/10_utils.ipynb 18
+# Little function to do approximate string matching between two lists. Useful if things have multiple spellings. 
+def approx_str_match(frm,to):
+    dmat = scipy.spatial.distance.cdist(np.array(frm)[:,None],np.array(to)[:,None],lambda x,y: Levenshtein.distance(x[0],y[0]))
+    t1,t2 = scipy.optimize.linear_sum_assignment(dmat)
+    return dict(zip([frm[i] for i in t1],[to[i] for i in t2]))
+
+# %% ../nbs/10_utils.ipynb 21
 # JSON encoder needed to convert pandas indices into lists for serialization
 def index_encoder(z):
     if isinstance(z, pd.Index):
@@ -135,7 +145,7 @@ def index_encoder(z):
         type_name = z.__class__.__name__
         raise TypeError(f"Object of type {type_name} is not serializable")
 
-# %% ../nbs/10_utils.ipynb 20
+# %% ../nbs/10_utils.ipynb 22
 default_color = 'lightgrey' # Something that stands out so it is easy to notice a missing color
 
 # Helper function to turn a dictionary into an Altair scale (or None into alt.Undefined)
@@ -148,7 +158,7 @@ def to_alt_scale(scale, order=None):
         scale = alt.Scale(domain=list(order),range=[ (scale[c] if c in scale else default_color) for c in order ])
     return scale
 
-# %% ../nbs/10_utils.ipynb 21
+# %% ../nbs/10_utils.ipynb 23
 # Turn a question with multiple variants all of which are in distinct columns into a two columns - one with response, the other with which question variant was used
 
 def multicol_to_vals_cats(df, cols=None, col_prefix=None, reverse_cols=[], reverse_suffixes=None, cat_order=None, vals_name='vals', cats_name='cats', inplace=False):
@@ -169,19 +179,19 @@ def multicol_to_vals_cats(df, cols=None, col_prefix=None, reverse_cols=[], rever
     df.loc[:,cats_name] = np.array(tdf.columns)[cinds]
     return df
 
-# %% ../nbs/10_utils.ipynb 23
+# %% ../nbs/10_utils.ipynb 25
 # Grad is a list of colors
 def gradient_to_discrete_color_scale( grad, num_colors):
     cmap = mpc.LinearSegmentedColormap.from_list('grad',grad)
     return [mpc.to_hex(cmap(i)) for i in np.linspace(0, 1, num_colors)]
 
-# %% ../nbs/10_utils.ipynb 25
+# %% ../nbs/10_utils.ipynb 27
 def is_datetime(col):
     with warnings.catch_warnings():
         warnings.simplefilter(action='ignore', category=UserWarning)
         return pd.api.types.is_datetime64_any_dtype(col) or (col.dtype.name in ['str','object'] and pd.to_datetime(col,errors='coerce').notna().any())
 
-# %% ../nbs/10_utils.ipynb 26
+# %% ../nbs/10_utils.ipynb 28
 # Convert a series of wave indices and a series of survey dates into a time series usable by our gp model
 def rel_wave_times(ws, dts, dt0=None):
     df = pd.DataFrame({'wave':ws, 'dt': pd.to_datetime(dts)})
@@ -192,7 +202,7 @@ def rel_wave_times(ws, dts, dt0=None):
     
     return pd.Series(df['wave'].replace(w_to_time),name='t')
 
-# %% ../nbs/10_utils.ipynb 28
+# %% ../nbs/10_utils.ipynb 30
 # Generate a random draws column that is deterministic in n, n_draws and uid
 def stable_draws(n, n_draws, uid):
     # Initialize a random generator with a hash of uid
@@ -209,18 +219,18 @@ def deterministic_draws(df, n_draws, uid, n_total=None):
     df.loc[:,'draw'] = pd.Series(stable_draws(n_total, n_draws, uid), index = np.arange(n_total))
     return df
 
-# %% ../nbs/10_utils.ipynb 30
+# %% ../nbs/10_utils.ipynb 32
 # Clean kwargs leaving only parameters fn can digest
 def clean_kwargs(fn, kwargs):
     aspec = inspect.getfullargspec(fn)
     return { k:v for k,v in kwargs.items() if k in aspec.args } if aspec.varkw is None else kwargs
 
-# %% ../nbs/10_utils.ipynb 31
+# %% ../nbs/10_utils.ipynb 33
 # Simple one-liner to remove certain keys from a dict
 def censor_dict(d,vs):
     return { k:v for k,v in d.items() if k not in vs }
 
-# %% ../nbs/10_utils.ipynb 32
+# %% ../nbs/10_utils.ipynb 34
 # A nicer behaving wrapper around pd.cut
 def cut_nice(s, breaks, ints=True):
     s = np.array(s)
@@ -230,15 +240,40 @@ def cut_nice(s, breaks, ints=True):
         breaks += [s.max()+1]
     if s.min()<breaks[0]:
         breaks = [s.min()] + breaks
+        
+    if ints: breaks = list(map(int,breaks))
     
     labels = [ f'{breaks[i]} - {breaks[i+1] + (-1 if ints else 0)}' for i in range(len(breaks)-2) ] + [f'{breaks[-2]}+']
     
     return pd.cut(s,breaks,right=False,labels=labels)
     
 
-# %% ../nbs/10_utils.ipynb 33
+# %% ../nbs/10_utils.ipynb 36
 # Utility function to rename categories in pre/post processing steps as pandas made .replace unusable with categories
 def rename_cats(df, col, cat_map):
     if df[col].dtype.name == 'category': 
         df[col] = df[col].cat.rename_categories(cat_map)
     else: df[col] = df[col].replace(cat_map)
+
+# %% ../nbs/10_utils.ipynb 37
+# Simplify doing multiple replace's on a column
+def str_replace(s,d):
+    s = s.astype('object')
+    for k,v in d.items():
+        s = s.str.replace(k,v)
+    return s
+
+# %% ../nbs/10_utils.ipynb 39
+# Merge values from multiple columns, iteratively replacing values
+# lst contains either a series or a tuple of (series, whitelist)
+def merge_series(*lst):
+    s = lst[0].astype('object').copy()
+    for t in lst[1:]:
+        if isinstance(t,tuple):
+            ns, whitelist = t
+            inds = ~ns.isna() & ns.isin(whitelist)
+            s.loc[inds] = ns[inds]
+        else: 
+            ns = t
+            s.loc[~ns.isna()] = ns[~ns.isna()]
+    return s

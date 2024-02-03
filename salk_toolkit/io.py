@@ -106,9 +106,10 @@ def process_annotated_data(meta_fname=None, multilevel=False, meta=None, data_fi
     
     if 'preprocessing' in meta and not only_fix_categories:
         exec(meta['preprocessing'],{'pd':pd, 'np':np, 'stk':stk, 'df':raw_data, **constants })
-        
+    
     for group in meta['structure']:
-        gres = []
+        #gres = []
+        ndf = None
         for tpl in group['columns']:
             if type(tpl)==list:
                 cn = tpl[0] # column name
@@ -135,7 +136,7 @@ def process_annotated_data(meta_fname=None, multilevel=False, meta=None, data_fi
             if not only_fix_categories:
                 if s.dtype.name=='category': s = s.astype('object') # This makes it easier to use common ops like replace and fillna
                 if 'translate' in cd: s.replace(cd['translate'],inplace=True)
-                if 'transform' in cd: s = eval(cd['transform'],{ 's':s, 'df':raw_data, 'pd':pd, 'np':np, 'stk':stk , **constants })
+                if 'transform' in cd: s = eval(cd['transform'],{ 's':s, 'df':raw_data, 'ndf':ndf, 'pd':pd, 'np':np, 'stk':stk , **constants })
                 
                 if vod(cd,'datetime'): s = pd.to_datetime(s)
                 elif vod(cd,'continuous'): s = pd.to_numeric(s)
@@ -151,7 +152,7 @@ def process_annotated_data(meta_fname=None, multilevel=False, meta=None, data_fi
                     else: # Just use lexicographic ordering
                         if vod(cd,'ordered',False): warn(f"Ordered category {cn} had category: infer. This only works correctly if you want lexicographic ordering!")
                         cd['categories'] = [ str(c) for c in np.sort(s.unique().astype('str')) if pd.notna(c) ] # Also propagates it into meta (unless shared scale)
-                        s = s.astype('str') 
+                        s = s.astype('str')
                     
                 cats = cd['categories']
                 
@@ -164,11 +165,14 @@ def process_annotated_data(meta_fname=None, multilevel=False, meta=None, data_fi
                     warn(f"Column {cn} {f'({sn}) ' if cn != sn else ''} had unknown categories {unlisted_cats} for { new_nas/len(ns) :.1%} entries")
                     
                 s = ns
-            gres.append(s)
-        if len(gres)==0: continue
-        gdf = pd.concat(gres,axis=1)
-        gdf.columns = pd.MultiIndex.from_arrays([[group['name']]*len(gdf.columns),gdf.columns])
-        res.append(gdf)
+            
+            # Update ndf in real-time
+            ndf = pd.concat([ndf,s],axis=1) if ndf is not None else pd.concat([s])
+            #gres.append(s)
+        #if len(gres)==0: continue
+        #ndf = pd.concat(gres,axis=1)
+        ndf.columns = pd.MultiIndex.from_arrays([[group['name']]*len(ndf.columns),ndf.columns])
+        res.append(ndf)
     
     df = pd.concat(res,axis=1)
     

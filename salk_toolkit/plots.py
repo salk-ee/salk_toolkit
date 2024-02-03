@@ -581,7 +581,7 @@ def likert_rad_pol(data, cat_col, cat_order=alt.Undefined, value_col='value', fa
     return plot
 
 # %% ../nbs/03_plots.ipynb 48
-@stk_plot('barbell', data_format='longform', draws=False)
+@stk_plot('barbell', data_format='longform', draws=False, requires_factor=True)
 def barbell(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, n_datapoints=1, val_format='%', width=800):
     
     chart_base = alt.Chart(data).encode(
