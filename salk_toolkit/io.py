@@ -145,7 +145,7 @@ def process_annotated_data(meta_fname=None, multilevel=False, meta=None, data_fi
                 na_sum = s.isna().sum()
                 
                 if cd['categories'] == 'infer':
-                    if pd.api.types.is_numeric_dtype(s): cd['categories'] = list(np.sort(s.unique()))
+                    if pd.api.types.is_numeric_dtype(s): cd['categories'] = list(map(lambda v: v.item(),np.sort(s.unique()))) # map to list of native int/float
                     elif s.dtype=='category': cd['categories'] = list(s.dtype.categories) # Categories come from data file
                     elif 'translate' in cd and 'transform' not in cd and set(cd['translate'].values()) >= set(s.unique()): # Infer order from translation dict
                         cd['categories'] = list(pd.unique(np.array(list(cd['translate'].values()))))
