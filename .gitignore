@@ -13,6 +13,10 @@ _tmp*
 tmp*
 tags
 *.pkg
+*.sav
+*.csv
+*.json
+*.parquet
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
