@@ -103,8 +103,8 @@ def match_data(data1,data2,cols=None):
         
         md = d1 if len(s2-s1)==0 else d2
         mdict = dict(zip(md[c].dtype.categories, range(len(md[c].dtype.categories))))
-        d1[c] = d1[c].replace(mdict)
-        d2[c] = d2[c].replace(mdict)
+        d1[c] = d1[c].astype('object').replace(mdict)
+        d2[c] = d2[c].astype('object').replace(mdict)
 
     dmat = cdist(d1, d2, 'mahalanobis')
     i1, i2 = linear_sum_assignment(dmat, maximize=False)
@@ -171,7 +171,7 @@ def multicol_to_vals_cats(df, cols=None, col_prefix=None, reverse_cols=[], rever
     if len(reverse_cols)>0:
         #print("RC",reverse_cols)
         remap = dict(zip(cat_order,reversed(cat_order)))
-        df.loc[:,reverse_cols] = df.loc[:,reverse_cols].replace(remap)
+        df.loc[:,reverse_cols] = df.loc[:,reverse_cols].astype('object').replace(remap)
     
     tdf = df[cols]
     cinds = np.argmax(tdf.notna(),axis=1)
