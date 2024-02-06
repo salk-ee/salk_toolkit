@@ -1,0 +1,159 @@
+{
+    "file": "master.csv",
+    "preprocessing": "df.loc[df.D4 == 'Tartu linn', 'T6'] = 'Tartu linn'; df.loc[df.D4 == 'Tallinn (L)', 'T6'] = df.D4b",
+    "constants": {
+        "districts": {
+            "Tallinn": "Tallinn",
+            "Harjumaa (välja arvatud Tallinn)": "Harju- ja Raplamaa",
+            "Harjumaa": "Harju- ja Raplamaa",
+            "Läänemaa": "Hiiu-, Lääne- ja Saaremaa",
+            "Hiiumaa": "Hiiu-, Lääne- ja Saaremaa",
+            "Pärnumaa": "Pärnumaa",
+            "Võrumaa": "Võru-, Valga- ja Põlvamaa",
+            "Ida-Virumaa": "Ida-Virumaa",
+            "Tartumaa": "Jõgeva- ja Tartumaa",
+            "Järvamaa": "Järva- ja Viljandimaa",
+            "Põlvamaa": "Võru-, Valga- ja Põlvamaa",
+            "Valgamaa": "Võru-, Valga- ja Põlvamaa",
+            "Viljandimaa": "Järva- ja Viljandimaa",
+            "Raplamaa": "Harju- ja Raplamaa",
+            "Jõgevamaa": "Jõgeva- ja Tartumaa",
+            "Lääne-Virumaa": "Lääne-Virumaa",
+            "Saaremaa": "Hiiu-, Lääne- ja Saaremaa",
+            "Haabersti": "Haabersti, Põhja-Tallinn ja Kristiine",
+            "Põhja-Tallinn": "Haabersti, Põhja-Tallinn ja Kristiine",
+            "Kristiine": "Haabersti, Põhja-Tallinn ja Kristiine",
+            "Kesklinn": "Kesklinn, Lasnamäe ja Pirita",
+            "Lasnamäe": "Kesklinn, Lasnamäe ja Pirita",
+            "Pirita": "Kesklinn, Lasnamäe ja Pirita",
+            "Mustamäe": "Mustamäe ja Nõmme",
+            "Nõmme": "Mustamäe ja Nõmme",
+            "Tartu linn": "Tartu linn"
+        },
+        "party_colors": {
+            "EKRE": "#8B4513",
+            "Eesti 200": "#31758A",
+            "Isamaa": "#009BDF",
+            "Keskerakond": "#007557",
+            "Reformierakond": "#FFE200",
+            "Rohelised": "#88AF47",
+            "SDE": "#E10600",
+            "Parempoolsed": "orange",
+            "None of the parties": "grey",
+            "No opinion": "lightgrey",
+            "Other": "lightgrey"
+        }
+    },
+    "structure": [
+    {
+        "name": "internals",
+        "columns": [
+            ["t", "laine", { "transform": "s.replace(dict(((df.groupby('laine')['date'].apply(lambda s: pd.to_datetime(s).median() ) - pd.to_datetime('2023-03-05')).dt.days/30).items()))"    }],
+            ["date", { "transform": "pd.to_datetime(s)" }],
+            ["weight", { "continuous":true }]
+        ],
+        "hidden": true
+    }, {
+        "name": "survey",
+        "columns": [
+            ["methods", { "categories": "infer" , "translate": {"WISE": "Cati"} }],
+            ["wave", "laine",{ "categories": "infer", "ordered": true }]
+        ]
+    }, {
+        "name": "demographics",
+        "columns": [
+            ["age",{"continuous":true}],
+            ["age_group", { 
+                "categories": ["16-24", "25-34", "35-44", "45-54", "55-64", "65-74", "75+"],    "ordered": true ,
+                "num_values": [20,30,40,50,60,70,80]
+            }],
+            ["education", "T8", {
+                "categories": ["Basic education", "Secondary education", "Higher education"], "ordered": true,
+                "translate": { "Põhiharidus": "Basic education", "Keskharidus": "Secondary education", "Kõrgharidus": "Higher education" }
+            }],
+            ["gender", {
+                "categories": ["Male", "Female"],
+                "translate": {    "Mees": "Male",    "Naine": "Female" },
+                "colors": { "Male": "blue", "Female": "red" }
+            }],
+            ["nationality", "T3c", {
+                "categories": ["Estonian", "Other"],
+                "translate": { "Eestlane": "Estonian", "Muu": "Other", "Venelane": "Other" },
+                "colors": { "Estonian": "blue", "Other": "grey" }
+            }],
+            ["electoral_district", "T6", { "categories": "infer", "translate": "districts",
+              "topo_feature": ["https://dl.dropboxusercontent.com/scl/fi/ciunedliwyvlafpm5nlos/estonia.topojson?rlkey=0g56uexaos1v59yghmikv09xi&dl=0","data","VNIMI"] }],
+            ["unit", "T6", { "categories": "infer", "translate": { "Harjumaa (välja arvatud Tallinn)": "Harjumaa" }, 
+             "topo_feature": ["https://dl.dropboxusercontent.com/scl/fi/ciunedliwyvlafpm5nlos/estonia.topojson?rlkey=0g56uexaos1v59yghmikv09xi&dl=0","data","MNIMI"] }],
+            ["citizen", "K0", {    "transform": "s=='Jah'" }]
+        ]
+    }, {
+        "name": "wedge",
+        "scale": {
+            "categories": ["Strongly disagree", "Disagree", "Neither agree nor disagree", "Agree", "Strongly agree"], "ordered": true, "likert": true,
+            "num_values": [-2,-1,null,1,2],
+            "translate": { "Ei oska öelda": "Neither agree nor disagree", "Täiesti nõus": "Strongly agree", "Üldse ei nõustu": "Strongly disagree", "Pigem nõus": "Agree", "Pigem ei ole nõus": "Disagree" }
+        },
+        "columns": [
+            ["e-valimised", "Q1r1"],
+            ["rahvahääletus", "Q1r2"],
+            ["sisseränne", "Q1r3"],
+            ["Euroopa Liit", "Q1r5"],
+            ["eestikeelne haridus", "Q1r6"],
+            ["kliimamuutus", "Q1r7"],
+            ["metsaraie", "Q1r8"],
+            ["abieluvõrdsus", "Q1r10"],
+            ["abort", "Q1r12"],
+            ["sõnavabadus", "Q1r13"],
+            ["maksud", "Q1r14"],
+            ["sündimus", "Q1r15"],
+            ["NATO", "Q1r16"],
+            ["ip usaldus", "Q1r17"]
+        ]
+    }, {
+        "name": "trust",
+        "scale": {
+            "categories": ["Completely distrust", "Distrust", "Neither trust nor distrust", "Trust", "Trust completely"], "ordered": true, "likert": true,
+            "num_values": [-2,-1,null,1,2],
+            "translate": { "Ei oska öelda": "Neither trust nor distrust", "Pigem ei usalda": "Distrust", "Usaldan täiesti": "Trust completely", "Pigem usaldan": "Trust", "Üldse ei usalda": "Completely distrust" }
+        },
+        "columns": [
+            ["valitsus", "Q3r1"],
+            ["riigikogu", "Q3r2"],
+            ["meedia", "Q3r4"]
+        ]
+    }, {
+        "name": "voting_behavior",
+        "columns": [
+            ["party_preference", "Q4r1", {
+                "categories": ["Keskerakond", "EKRE", "Reformierakond", "Isamaa", "SDE", "Rohelised", "Eesti 200", "Parempoolsed", "Other", "None of the parties", "No opinion"],
+                "translate": { "Eesti Keskerakond": "Keskerakond", "Eesti Reformierakond": "Reformierakond", "Eesti Konservatiivne Rahvaerakond (EKRE)": "EKRE", "ISAMAA Erakond": "Isamaa", "Erakond Eesti 200": "Eesti 200", "Sotsiaaldemokraatlik Erakond": "SDE", "Erakond Eestimaa Rohelised": "Rohelised", "Erakond Parempoolsed": "Parempoolsed", "Mitte ükski erakond": "None of the parties", "Ei oska öelda": "No opinion", "Muu": "Other" },
+                "colors": "party_colors"
+            }],
+            ["voting_intent", "Q5", {
+                "categories": ["No", "No opinion", "Yes"], "ordered": true,
+                "translate": { "Ei": "No", "Ei soovi avaldada": "No opinion", "Jah": "Yes" }
+            }]
+        ]
+    }, {
+        "name": "thermometer",
+        "scale": { "continuous": true, "question_colors": "party_colors" },
+        "columns": ["Keskerakond", "EKRE", "Reformierakond", "Isamaa", "SDE", "Rohelised", "Eesti 200", "Parempoolsed"]
+    }, {
+        "name": "extras",
+        "columns": [
+            ["income", "T10", {
+                "categories": ["No opinion", "<500 €", "501-1000 €", "1001-1500 €", "1501-2000 €", ">2000 €"], "ordered": true,
+                "translate": { "Ei soovi avaldada": "No opinion", "Kuni 500 €": "<500 €", "Üle 2000 €": ">2000 €" }
+            }],
+            ["children", "T5", {
+                "categories": ["No opinion", "0", "1", "2", "3+"],    "ordered": true,
+                "translate": {    "Ei soovi avaldada": "No opinion", "Ei ole lapsi": "0", "1 laps": "1",    "2 last": "2", "3 või rohkem last": "3+" }
+            }],
+            ["occupation", "T9", {
+                "categories": "infer",
+                "translate": { "Õpilane või üliõpilane": "Student",    "Tööline": "Worker", "Juht": "Manager",    "Töötu, tööd otsiv": "Unemployed, looking for work", "Spetsialist": "Specialist", "Ettevõtja või füüsilisest isikust ettevõtja (FIE)": "Entrepreneur or self-employed person (FIE)", "Kodune või mittetöötav": "Domestic or non-working", "Pensionär": "Pensioner" }
+            }]
+        ]
+    }]
+}
