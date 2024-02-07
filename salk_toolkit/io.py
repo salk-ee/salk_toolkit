@@ -36,7 +36,7 @@ def read_json(fname,replace_const=True):
 # %% ../nbs/01_io.ipynb 5
 # Default usage with mature metafile: process_annotated_data(<metafile name>)
 # When figuring out the metafile, it can also be run as: process_annotated_data(meta=<dict>, data_file=<>)
-def process_annotated_data(meta_fname=None, multilevel=False, meta=None, data_file=None, return_meta=False, only_fix_categories=False):
+def process_annotated_data(meta_fname=None, meta=None, data_file=None, return_meta=False, only_fix_categories=False):
     
     # Read metafile
     if meta_fname:
@@ -102,13 +102,10 @@ def process_annotated_data(meta_fname=None, multilevel=False, meta=None, data_fi
         
     raw_data = pd.concat(raw_dfs)
     
-    res = []
-    
     if 'preprocessing' in meta and not only_fix_categories:
         exec(meta['preprocessing'],{'pd':pd, 'np':np, 'stk':stk, 'df':raw_data, **constants })
     
     for group in meta['structure']:
-        #gres = []
         ndf = None
         for tpl in group['columns']:
             if type(tpl)==list:
@@ -166,24 +163,13 @@ def process_annotated_data(meta_fname=None, multilevel=False, meta=None, data_fi
                     
                 s = ns
             
-            # Update ndf in real-time
-            ndf = pd.concat([ndf,s],axis=1) if ndf is not None else pd.concat([s])
-            #gres.append(s)
-        #if len(gres)==0: continue
-        #ndf = pd.concat(gres,axis=1)
-        ndf.columns = pd.MultiIndex.from_arrays([[group['name']]*len(ndf.columns),ndf.columns])
-        res.append(ndf)
-    
-    df = pd.concat(res,axis=1)
-    
-    if not multilevel:
-        df.columns = df.columns.get_level_values(1)    
-    
-    if 'postprocessing' in meta and not only_fix_categories:
-        exec(meta['postprocessing'],{'pd':pd, 'np':np, 'stk':stk, 'df':df, **constants  })
-    
-    return (df, meta) if return_meta else df
+            # Update ndf in real-time so it would be usable in transforms for next columns
+            ndf = pd.concat([ndf,s],axis=1) if ndf is not None else pd.DataFrame(s)
 
+    if 'postprocessing' in meta and not only_fix_categories:
+        exec(meta['postprocessing'],{'pd':pd, 'np':np, 'stk':stk, 'df':ndf, **constants  })
+    
+    return (ndf, meta) if return_meta else ndf
 
 # %% ../nbs/01_io.ipynb 6
 # Read either a json annotation and process the data, or a processed parquet with the annotation attached
