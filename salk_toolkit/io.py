@@ -105,8 +105,8 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, return_me
     if 'preprocessing' in meta and not only_fix_categories:
         exec(meta['preprocessing'],{'pd':pd, 'np':np, 'stk':stk, 'df':raw_data, **constants })
     
+    ndf = None
     for group in meta['structure']:
-        ndf = None
         for tpl in group['columns']:
             if type(tpl)==list:
                 cn = tpl[0] # column name
