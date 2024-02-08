@@ -7,7 +7,7 @@ __all__ = ['get_plot_width', 'open_fn', 'exists_fn', 'read_annotated_data_cached
            'add_missing_to_dict']
 
 # %% ../nbs/05_dashboard.ipynb 3
-import json, os, csv, re
+import json, os, csv, re, time
 import itertools as it
 from collections import defaultdict
 
@@ -252,7 +252,7 @@ class UserAuthenticationManager():
     
     def login_screen(self):
         tf = self.tf
-        _, _, username = self.auth.login('main', fields={'Form name':tf('Login page'), 'Username':tf('Username'), 'Password':tf('Password'), 'Log in':tf('Log in')})
+        _, _, username = self.auth.login('sidebar', fields={'Form name':tf('Login page'), 'Username':tf('Username'), 'Password':tf('Password'), 'Log in':tf('Log in')})
         
         if st.session_state["authentication_status"] is False:
             st.error(tf('Username/password is incorrect'))
@@ -275,6 +275,7 @@ class UserAuthenticationManager():
     def update_conf(self):
         with open_fn(self.conf_file,'w',s3_fs=self.s3fs) as jf:
             json.dump(self.conf,jf)
+        time.sleep(3) # Give some time for messages to display etc
         st.rerun() # Force a rerun to reload the new file
             
     def add_user(self, username, password, user_data):
@@ -398,6 +399,7 @@ def admin_page(sdb):
                 user_data['name'] = st.text_input("Name:")
                 st.markdown("""---""")
                 user_data['email'] = st.text_input("E-mail:")
+                user_data['organization'] = st.text_input("Organization:")
             st.markdown("""---""")
             submitted = st.form_submit_button("Submit")
             if submitted:
@@ -426,6 +428,8 @@ def admin_page(sdb):
                 user_data['password'] = st.text_input("Password:", type='password')
                 st.markdown("""---""")
                 user_data['email'] = st.text_input("E-mail:", value=user_data['email'])
+                user_data['organization'] = st.text_input("Organization:", value=vod(user_data,'organization',''))
+                
             st.markdown("""---""")
             submitted = st.form_submit_button("Submit")
             if submitted:
@@ -468,7 +472,7 @@ def st_plot(pp_desc,**kwargs):
     draw_plot_matrix(plots, matrix_form=matrix_form)
 
 # %% ../nbs/05_dashboard.ipynb 21
-def facet_ui(dims, two=False, raw=False, translate=None):
+def facet_ui(dims, two=False, raw=False, translate=None, force_choice=False):
     
     # Set up translation
     tf = translate if translate else (lambda s: s)
@@ -477,10 +481,10 @@ def facet_ui(dims, two=False, raw=False, translate=None):
     
     none = tf('None')
     stc = st.sidebar if not raw else st
-    facet_dim = stc.selectbox(tf('Facet:'), [none] + tdims)
+    facet_dim = stc.selectbox(tf('Facet:'), tdims if force_choice else [none] + tdims )
     fcols = [facet_dim] if facet_dim != none else []
     if two and facet_dim != none:
-        second_dim = stc.selectbox(tf('Facet 2:'), [none] + tdims)
+        second_dim = stc.selectbox(tf('Facet 2:'), tdims if force_choice else [none] + tdims)
         if second_dim not in [none,facet_dim]:  fcols = [facet_dim, second_dim]
         
     return [ r_map[d] for d in fcols ]
@@ -494,7 +498,7 @@ def ms_reset(cn, all_vals):
 
 # %% ../nbs/05_dashboard.ipynb 23
 # User interface that outputs a filter for the pp_desc
-def filter_ui(data, dmeta=None, dims=None, detailed=False, raw=False, translate=None):
+def filter_ui(data, dmeta=None, dims=None, detailed=False, raw=False, translate=None, force_choice=False,):
     
     tf = translate if translate else (lambda s: s)
     
@@ -532,8 +536,9 @@ def filter_ui(data, dmeta=None, dims=None, detailed=False, raw=False, translate=
                 stc.button(tf("Reset"),key=f"{cn}_reset",on_click=ms_reset(cn,all_vals))
                 filters[cn] = [ r_map[c] for c in filters[cn] ]
         elif col.dtype.name=='category' and not col.dtype.ordered:
-            filters[cn] = stc.selectbox(cn,
-                [tf('All')] + [gt for gt,g in r_map.items() if g in grp_names] + all_vals)
+            choices = [gt for gt,g in r_map.items() if g in grp_names] + all_vals
+            if not force_choice: choices = [tf('All')] + choices
+            filters[cn] = stc.selectbox(cn,choices)
             if filters[cn] == tf('All'): del filters[cn]
             else: filters[cn] = r_map[filters[cn]]
         elif col.dtype.name=='category':
@@ -546,7 +551,7 @@ def filter_ui(data, dmeta=None, dims=None, detailed=False, raw=False, translate=
             filters[cn] = stc.slider(cn,*mima,value=mima)
             if filters[cn] == mima: del filters[cn]
             
-    if filters: f_info.warning(tf('⚠️ Filters active ⚠️'))
+    if filters and not force_choice: f_info.warning(tf('⚠️ Filters active ⚠️'))
             
     return filters
 
