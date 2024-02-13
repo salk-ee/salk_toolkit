@@ -174,7 +174,7 @@ def estimate_legend_columns_horiz(cats, width):
 
 # %% ../nbs/03_plots.ipynb 20
 @stk_plot('boxplots', data_format='longform', draws=True)
-def boxplots(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, val_format='%', width=800):
+def boxplots(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, val_format='%', width=800, tooltip=[]):
     if val_format[-1] == '%': # Boxplots being a compound plot, this workaround is needed for axis & tooltips to be proper
         data[value_col]*=100
         val_format = val_format[:-1]+'f'
@@ -196,11 +196,7 @@ def boxplots(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_or
     # This plot is here because boxplot does not draw if variance is very low, so this is the backup
     tick_plot = base.mark_tick(thickness=3).encode(
         x=alt.X(f'mean({value_col}):Q'),
-        tooltip=[
-            alt.Tooltip(f'mean({value_col}):Q'),
-            *([alt.Tooltip(f'{factor_col}:N')] if factor_col else []),
-            alt.Tooltip(f'{cat_col}:N')
-        ],
+        tooltip=[alt.Tooltip(f'mean({value_col}):Q')] + tooltip[1:],
         **shared
     )
     
@@ -214,11 +210,7 @@ def boxplots(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_or
             title=value_col,
             axis=alt.Axis(format=val_format)
             ),
-        tooltip=[
-            *([alt.Tooltip(f'{factor_col}:N')] if factor_col else []),
-            alt.Tooltip(f'{cat_col}:N'),
-            #alt.Tooltip(f'median({value_col}:Q)',format=val_format)
-        ],
+        tooltip=tooltip[1:],
         **shared,
     )
     return tick_plot + box_plot
@@ -227,7 +219,7 @@ register_stk_cont_version('boxplots')
 
 # %% ../nbs/03_plots.ipynb 22
 @stk_plot('columns', data_format='longform', draws=False)
-def columns(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, val_format='%', width=800):
+def columns(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, val_format='%', width=800, tooltip=[]):
     plot = alt.Chart(round(data, 3), width = 'container' \
     ).mark_bar().encode(
         x=alt.X(
@@ -237,11 +229,7 @@ def columns(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_ord
             #scale=alt.Scale(domain=[0,30]) #see lõikab mõnedes jaotustes parema ääre ära
         ),
         y=alt.Y(f'{cat_col}:N', title=None, sort=cat_order),
-        tooltip = [
-            *([alt.Tooltip(f'{factor_col}:N')] if factor_col else []),
-            alt.Tooltip(f'{cat_col}:N'),
-            alt.Tooltip(f'{value_col}:Q',format=val_format)
-        ],
+        tooltip = tooltip,
         **({
                 'color': alt.Color(f'{cat_col}:N', scale=color_scale, legend=None)    
             } if not factor_col else {
@@ -254,9 +242,9 @@ def columns(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_ord
 
 register_stk_cont_version('columns')
 
-# %% ../nbs/03_plots.ipynb 24
+# %% ../nbs/03_plots.ipynb 25
 @stk_plot('stacked_columns', data_format='longform', draws=False, requires_factor=True, agg_fn='sum', args={'normalized':'bool'})
-def stacked_columns(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, n_datapoints=1, val_format='%', width=800, normalized=False):
+def stacked_columns(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, n_datapoints=1, val_format='%', width=800, normalized=False, tooltip=[]):
     
     odims = [ c for c in data.columns if c not in [value_col,cat_col,factor_col] ]
     data[value_col] = data[value_col]/n_datapoints
@@ -274,11 +262,7 @@ def stacked_columns(data, cat_col, value_col='value', color_scale=alt.Undefined,
             #scale=alt.Scale(domain=[0,30]) #see lõikab mõnedes jaotustes parema ääre ära
         ),
         y=alt.Y(f'{cat_col}:N', title=None, sort=cat_order),
-        tooltip = [
-            *([alt.Tooltip(f'{factor_col}:N')] if factor_col else []),
-            alt.Tooltip(f'{cat_col}:N'),
-            alt.Tooltip(f'{value_col}:Q',format=val_format)
-        ],
+        tooltip = tooltip,
         **({
                 'color': alt.Color(f'{cat_col}:N', scale=color_scale, legend=None)    
             } if not factor_col else {
@@ -291,9 +275,9 @@ def stacked_columns(data, cat_col, value_col='value', color_scale=alt.Undefined,
 
 register_stk_cont_version('stacked_columns')
 
-# %% ../nbs/03_plots.ipynb 29
+# %% ../nbs/03_plots.ipynb 30
 @stk_plot('diff_columns', data_format='longform', draws=False, requires_factor=True, args={'sort_descending':'bool'})
-def diff_columns(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, val_format='%', sort_descending=False):
+def diff_columns(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, val_format='%', sort_descending=False, tooltip=[]):
     
     ind_cols = list(set(data.columns)-{value_col,factor_col})
     factors = data[factor_col].unique() # use unique instead of categories to allow filters to select the two that remain
@@ -323,11 +307,11 @@ def diff_columns(data, cat_col, value_col='value', color_scale=alt.Undefined, ca
 
 register_stk_cont_version('diff_columns')
 
-# %% ../nbs/03_plots.ipynb 31
+# %% ../nbs/03_plots.ipynb 32
 # The idea was to also visualize the size of each cluster. Currently not very useful, may need to be rethought
 
 @stk_plot('massplot', data_format='longform', draws=False, group_sizes=True, hidden=True)
-def massplot(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, n_datapoints=1, val_format='%', width=800):
+def massplot(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, n_datapoints=1, val_format='%', width=800, tooltip=[]):
 
     data['group_size']=(data['group_size']/n_datapoints)#.round(2)
 
@@ -343,13 +327,7 @@ def massplot(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_or
         size=alt.Size('group_size:Q', legend=None, scale=alt.Scale(range=[100, 500])),
         opacity=alt.value(1.0),
         stroke=alt.value('#777'),
-        tooltip = [
-            *([alt.Tooltip(f'{factor_col}:N')] if factor_col else []),
-            alt.Tooltip(f'{cat_col}:N'),
-            alt.Tooltip(f'{value_col}:Q',format=val_format),
-            alt.Tooltip('group_size:N',format='.1%',title='Group size'),
-        ],
-        
+        tooltip = tooltip + [ alt.Tooltip('group_size:N',format='.1%',title='Group size') ],
         #tooltip=[
         #    'response:N',
             #alt.Tooltip('mean(support):Q',format='.1%')
@@ -366,7 +344,7 @@ def massplot(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_or
 
 register_stk_cont_version('massplot')
 
-# %% ../nbs/03_plots.ipynb 33
+# %% ../nbs/03_plots.ipynb 34
 # Make the likert bar pieces
 def make_start_end(x,value_col,cat_col,cat_order):
     #print("######################")
@@ -377,7 +355,7 @@ def make_start_end(x,value_col,cat_col,cat_order):
     mid = len(x)//2
         
     if len(x)%2==1: # odd:
-        scale_start=1
+        scale_start=1.0
         x_mid = x.iloc[[mid],:]
         x_mid.loc[:,['start','end']] = -scale_start
         x_mid.loc[:,'end'] = -scale_start+x_mid[value_col]
@@ -387,25 +365,25 @@ def make_start_end(x,value_col,cat_col,cat_order):
         nonmid = np.arange(len(x))
         x_mid = []
     
-    x_other = x.iloc[nonmid,:]
+    x_other = x.iloc[nonmid,:].copy()
     x_other.loc[:,'end'] = x_other[value_col].cumsum() - x_other[:mid][value_col].sum()
     x_other.loc[:,'start'] = (x_other[value_col][::-1].cumsum()[::-1] - x_other[mid:][value_col].sum())*-1
-    return pd.concat([x_other] + x_mid).dropna() # drop any na rows added in the filling in step
+    res = pd.concat([x_other] + x_mid).dropna() # drop any na rows added in the filling in step
+    #print(res)
+    return res
 
 @stk_plot('likert_bars',data_format='longform',question=True,draws=False,likert=True)
-def likert_bars(data, cat_col, cat_order=alt.Undefined, value_col='value', question_col='question', question_order=alt.Undefined, color_scale=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined):
-    gb_cols = list(set(data.columns)-{ cat_col, value_col }) # Assume all other cols still in data will be used for factoring
-    
+def likert_bars(data, cat_col, cat_order=alt.Undefined, value_col='value', question_col='question', question_order=alt.Undefined, color_scale=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, tooltip=[], outer_factors=[]):
+    gb_cols = outer_factors+[question_col,factor_col] # There can be other extra cols (like labels) that should be ignored
     options_cols = list(data[cat_col].dtype.categories) # Get likert scale names
-    bar_data = data.groupby(gb_cols, group_keys=False, observed=False).apply(make_start_end,value_col=value_col,cat_col=cat_col,cat_order=cat_order)
+    bar_data = data.groupby(gb_cols, group_keys=False, observed=False)[gb_cols+[cat_col,value_col]].apply(make_start_end, value_col=value_col,cat_col=cat_col,cat_order=cat_order,include_groups=False)
     
     plot = alt.Chart(bar_data).mark_bar() \
         .encode(
             x=alt.X('start:Q', axis=alt.Axis(title=None, format = '%')),
             x2=alt.X2('end:Q'),
             y=alt.Y(f'{question_col}:N', axis=alt.Axis(title=None, offset=5, ticks=False, minExtent=60, domain=False), sort=question_order),
-            tooltip=[*([alt.Tooltip(f'{factor_col}:N')] if factor_col else []),
-                    alt.Tooltip('question:N'), alt.Tooltip(f'{cat_col}:N'), alt.Tooltip(f'{value_col}:Q', title=value_col, format='.1%')],
+            tooltip=tooltip,
             color=alt.Color(
                 f'{cat_col}:N',
                 legend=alt.Legend(
@@ -421,7 +399,7 @@ def likert_bars(data, cat_col, cat_order=alt.Undefined, value_col='value', quest
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 35
+# %% ../nbs/03_plots.ipynb 36
 # Calculate KDE ourselves using a fast libary. This gets around having to do sampling which is unstable
 def kde_1d(vc, value_col):
     ls = np.linspace(vc.min()-1e-10,vc.max()+1e-10,200)
@@ -429,8 +407,10 @@ def kde_1d(vc, value_col):
     return pd.DataFrame({'density': y, value_col: ls})
 
 @stk_plot('density', data_format='raw', continuous=True, factor_columns=3,aspect_ratio=(1.0/1.0))
-def density(data, value_col='value',factor_col=None, factor_color_scale=alt.Undefined):
-    gb_cols = list(set(data.columns)-{ value_col }) # Assume we groupby over everything except value
+def density(data, value_col='value',factor_col=None, factor_color_scale=alt.Undefined, tooltip=[], outer_factors=[]):
+    #gb_cols = list(set(data.columns)-{ value_col }) # Assume we groupby over everything except value
+    gb_cols = outer_factors+[factor_col] # There can be other extra cols (like labels) that should be ignored
+    
     ndata = data.groupby(gb_cols,observed=False)[value_col].apply(kde_1d,value_col=value_col).reset_index()
     
     plot = alt.Chart(
@@ -438,18 +418,19 @@ def density(data, value_col='value',factor_col=None, factor_color_scale=alt.Unde
         ).mark_line().encode(
             x=alt.X(f"{value_col}:Q"),
             y=alt.Y('density:Q',axis=alt.Axis(title=None, format = '%')),
+            tooltip = tooltip[1:],
             **({'color': alt.Color(f'{factor_col}:N', scale=factor_color_scale, legend=alt.Legend(orient='top'))} if factor_col else {})
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 37
+# %% ../nbs/03_plots.ipynb 38
 # Cluster-based reordering
 def cluster_based_reorder(X):
     pd = sp.spatial.distance.pdist(X)#,metric='cosine')
     return hierarchy.leaves_list(hierarchy.optimal_leaf_ordering(hierarchy.ward(pd), pd))
 
 @stk_plot('matrix', data_format='longform', requires_factor=True, aspect_ratio=(1/0.8), args={'reorder':'bool'})
-def matrix(data, cat_col, value_col='value', cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, val_format='%', reorder=False, row_normalize=False):
+def matrix(data, cat_col, value_col='value', cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, val_format='%', reorder=False, row_normalize=False, tooltip=[]):
     
     fcols = [c for c in data.columns if c not in [value_col,cat_col]]
     if len(fcols)==1 and reorder: # Reordering only works if no external facets
@@ -466,7 +447,7 @@ def matrix(data, cat_col, value_col='value', cat_order=alt.Undefined, factor_col
             y=alt.Y(f'{cat_col}:N', title=None, sort=cat_order),
             color=alt.Color(f'{value_col}:Q', scale=alt.Scale(scheme='redyellowgreen', domainMid=0, domainMin=-dmax, domainMax=dmax),
                 legend=alt.Legend(title=None)),
-            tooltip=[*([factor_col] if factor_col else []), alt.Tooltip(f'{cat_col}:N'), alt.Tooltip(f'{value_col}:Q', title=None, format=val_format)],
+            tooltip=tooltip,
         )
     
     # Add in numerical values
@@ -477,19 +458,16 @@ def matrix(data, cat_col, value_col='value', cat_order=alt.Undefined, factor_col
             alt.value('white'),
             alt.value('black')
         ),
-        tooltip=[
-            alt.Tooltip(f'{cat_col}:N'),
-            *([alt.Tooltip(f'{factor_col}:N')] if factor_col else []),
-            alt.Tooltip(f'{value_col}:Q', format=val_format)]
+        tooltip=tooltip
     )
     
     return base+text
 
 register_stk_cont_version('matrix')
 
-# %% ../nbs/03_plots.ipynb 41
+# %% ../nbs/03_plots.ipynb 42
 @stk_plot('lines',data_format='longform', question=False, draws=False, ordered_factor=True, requires_factor=True, args={'smooth':'bool'})
-def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, smooth=False, width=800):
+def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, smooth=False, width=800, tooltip=[]):
     if smooth:
         smoothing = 'basis'
         points = 'transparent'
@@ -500,18 +478,16 @@ def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order
     plot = alt.Chart(data).mark_line(point=points, interpolate=smoothing).encode(
         alt.X(f'{factor_col}:O', title=None, sort=factor_order),
         alt.Y(f'{value_col}:Q', title=None, axis=alt.Axis(format='%')),
-        tooltip=[
-            *([alt.Tooltip(f'{factor_col}:N')] if factor_col else []),
-            alt.Tooltip(f'{value_col}:Q', format='.1%')],
+        tooltip=tooltip,
         color=alt.Color(f'{cat_col}:N', scale=color_scale, sort=cat_order,
                         legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(cat_order,width)))
     )
     return plot
 
 
-# %% ../nbs/03_plots.ipynb 43
+# %% ../nbs/03_plots.ipynb 44
 @stk_plot('area_smooth',data_format='longform', question=False, draws=False, ordered=False, ordered_factor=True, requires_factor=True)
-def area_smooth(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, width=800):
+def area_smooth(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, width=800, tooltip=[]):
     ldict = dict(zip(cat_order, range(len(cat_order))))
     data.loc[:,'order'] = data[cat_col].astype('object').replace(ldict).astype('int')
     #print(data[[cat_col,'order']])
@@ -526,12 +502,11 @@ def area_smooth(data, cat_col, value_col='value', color_scale=alt.Undefined, cat
                 legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(cat_order,width)),
                 sort=cat_order, scale=color_scale
                 ),
-            #tooltip=[alt.Tooltip(teema, title='vastus'), 'laine',
-            #    alt.Tooltip('pct:Q', title='osakaal', format='.1%')]
+            tooltip=tooltip
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 45
+# %% ../nbs/03_plots.ipynb 46
 def likert_aggregate(x, cat_col, cat_order, value_col):
     
     cc, vc = x[cat_col], x[value_col]
@@ -555,10 +530,12 @@ def likert_aggregate(x, cat_col, cat_order, value_col):
     return pd.Series({ 'polarisation': pol, 'radicalisation':rad, 'relevance':rel})
 
 @stk_plot('likert_rad_pol',data_format='longform', question=False, draws=False, likert=True, requires_factor=True, args={'normalise':'bool'})
-def likert_rad_pol(data, cat_col, cat_order=alt.Undefined, value_col='value', factor_col=None, factor_order=alt.Undefined, factor_color_scale=alt.Undefined, normalise=True, width=800):
-    gb_cols = list(set(data.columns)-{ cat_col, value_col }) # Assume all other cols still in data will be used for factoring
+def likert_rad_pol(data, cat_col, cat_order=alt.Undefined, value_col='value', factor_col=None, factor_order=alt.Undefined, factor_color_scale=alt.Undefined, normalise=True, width=800, outer_factors=[]):
+    #gb_cols = list(set(data.columns)-{ cat_col, value_col }) # Assume all other cols still in data will be used for factoring
+    gb_cols = outer_factors+[factor_col] # There can be other extra cols (like labels) that should be ignored
+    
     options_cols = list(data[cat_col].dtype.categories) # Get likert scale names
-    likert_indices = data.groupby(gb_cols, group_keys=False, observed=False).apply(likert_aggregate,cat_col=cat_col,cat_order=cat_order,value_col=value_col).reset_index()
+    likert_indices = data.groupby(gb_cols, group_keys=False, observed=False).apply(likert_aggregate,cat_col=cat_col,cat_order=cat_order,value_col=value_col,include_groups=False).reset_index()
     
     if normalise: likert_indices.loc[:,['polarisation','radicalisation']] = likert_indices[['polarisation','radicalisation']].apply(sps.zscore)
     
@@ -580,16 +557,14 @@ def likert_rad_pol(data, cat_col, cat_order=alt.Undefined, value_col='value', fa
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 48
+# %% ../nbs/03_plots.ipynb 49
 @stk_plot('barbell', data_format='longform', draws=False, requires_factor=True)
-def barbell(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, n_datapoints=1, val_format='%', width=800):
+def barbell(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, n_datapoints=1, val_format='%', width=800, tooltip=[]):
     
     chart_base = alt.Chart(data).encode(
         alt.X(f'{value_col}:Q', title=None, axis=alt.Axis(format=val_format)),
         alt.Y(f'{cat_col}:N', title=None, sort=cat_order),
-        tooltip=[alt.Tooltip(f'{cat_col}:N'),
-                 alt.Tooltip(f'{value_col}:Q', format=val_format),
-                alt.Tooltip(f'{factor_col}:N')]
+        tooltip=tooltip
     )
 
     chart = chart_base.mark_line(color='lightgrey', size=1, opacity=1.0).encode(
@@ -617,9 +592,9 @@ def barbell(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_ord
     
 register_stk_cont_version('barbell')
 
-# %% ../nbs/03_plots.ipynb 51
+# %% ../nbs/03_plots.ipynb 52
 @stk_plot('geoplot', data_format='longform', continuous=True, requires_factor=True, factor_meta=['topo_feature'],aspect_ratio=(4.0/3.0))
-def geoplot(data, topo_feature, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, val_format='.2f'):
+def geoplot(data, topo_feature, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, val_format='.2f',tooltip=[]):
     
     tjson_url, tjson_meta, tjson_col = topo_feature
     source = alt.topo_feature(tjson_url, tjson_meta)
@@ -629,11 +604,11 @@ def geoplot(data, topo_feature, value_col='value', color_scale=alt.Undefined, ca
         from_ = alt.LookupData(
             data=data,
             key=factor_col,
-            fields=[value_col]
+            fields=[value_col,factor_col]
         ),
     ).encode(
-        tooltip=[alt.Tooltip(f'properties.{tjson_col}:N', title=factor_col),
-                alt.Tooltip(f'{value_col}:Q', title=value_col, format=val_format)],
+        tooltip=tooltip, #[alt.Tooltip(f'properties.{tjson_col}:N', title=factor_col),
+                #alt.Tooltip(f'{value_col}:Q', title=value_col, format=val_format)],
         color=alt.Color(
             f'{value_col}:Q',
             scale=alt.Scale(scheme="reds"), # To use color scale, consider switching to opacity for value

@@ -75,6 +75,9 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
     gc_dict = group_columns_dict(data_meta)
     c_meta = extract_column_meta(data_meta)
     
+    # Dict to remap (short) category names to longer descriptions in tooltips
+    label_dict = {}
+    
     cols = [ c for c in np.unique(list_aliases(cols,gc_dict)) if c in full_df.columns ]
     
     #print("C",cols)
@@ -132,7 +135,7 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
         cmap = dict(zip(res_meta['categories'],vod(res_meta,'num_values',range(len(res_meta['categories'])))))
         rc = gc_dict[pp_desc['res_col']] if pp_desc['res_col'] in gc_dict else [pp_desc['res_col']]
         for col in rc:
-            filtered_df[col] = pd.to_numeric(filtered_df[col].replace(cmap))
+            filtered_df[col] = pd.to_numeric(filtered_df[col].astype('object').replace(cmap))
     
     # If res_col is a group of questions
     # This might move to wrangle but currently easier to do here as we have gc_dict handy
@@ -144,7 +147,10 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
         
         id_vars = [ c for c in cols if c not in value_vars ]
         filtered_df = filtered_df.melt(id_vars=id_vars, value_vars=value_vars, var_name='question', value_name=pp_desc['res_col'])
+                
+        # Convert to proper category with correct order
         filtered_df['question'] = pd.Categorical(filtered_df['question'],gc_dict[pp_desc['res_col']])
+        
     elif filtered_df[pp_desc['res_col']].dtype.name != 'category':
         filtered_df[pp_desc['res_col']] = transform_cont(filtered_df[pp_desc['res_col']],transform=vod(pp_desc,'cont_transform'))
         
@@ -270,6 +276,39 @@ def translate_df(df, translate):
     return df
 
 # %% ../nbs/02_pp.ipynb 15
+def create_tooltip(pparams,c_meta):
+    
+    data, tfn = pparams['data'], pparams['translate']
+    print(len(data))
+    
+    label_dict = {}
+    
+    # Determine the columns we need tooltips for:
+    ttcols = ['question_col', 'cat_col', 'factor_col']
+    tcols = [ pparams[ct] for ct in ttcols if ct in pparams and pparams[ct] is not None and pparams[ct] in data.columns ] 
+            
+    # Find labels mappings for regular columns
+    for cn in tcols:
+        if cn in c_meta and 'labels' in c_meta[cn]: label_dict[cn] = c_meta[cn]['labels']
+    
+    # Find a mapping for multi-column questions
+    if 'question' in data.columns and any([ 'label' in c_meta[c] for c in data['question'].unique() if c in c_meta ]):
+        label_dict['question'] = { c: vod(c_meta[c],'label','') for c in data['question'].unique() if c in c_meta and 'label' in c_meta[c] }
+    
+    # Create the tooltips
+    tooltips = [ alt.Tooltip(f"{pparams['value_col']}:Q", format=pparams['val_format']) ]
+    for cn in tcols:
+        if cn in label_dict:
+            data[cn+'_label'] = data[cn].astype('object').replace({ k:tfn(v) for k,v in label_dict[cn].items() })
+            t = alt.Tooltip(f"{cn}_label:N",title=cn)
+        else:
+            t = alt.Tooltip(f"{cn}:N")
+        tooltips.append(t)
+            
+    return tooltips
+    
+
+# %% ../nbs/02_pp.ipynb 16
 # Function that takes filtered raw data and plot information and outputs the plot
 # Handles all of the data wrangling and parameter formatting
 def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=False, width=200, return_matrix_of_plots=False, translate=None):
@@ -285,6 +324,7 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
         pparams['cat_order'] = list(data[pp_desc['res_col']].dtype.categories) 
         
     pparams['val_format'] = '.1%' if pparams['value_col'] == 'percent' else '.1f'
+    pparams['translate'] = translate if translate is not None else (lambda s: s)
 
     # Handle factor columns 
     factor_cols = vod(pp_desc,'factor_cols',[])
@@ -319,6 +359,9 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
             factor_cols = factor_cols[1:] # Leave rest for external faceting
             if 'factor_meta' in plot_meta: 
                 for kw in plot_meta['factor_meta']: pparams[kw] = vod(col_meta[pparams['factor_col']],kw)
+                
+    # Handle tooltip
+    pparams['tooltip'] = create_tooltip(pparams,col_meta)
     
     # Handle translations
     if translate:
@@ -334,11 +377,6 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
                 
         # Translate facets too
         factor_cols = [ translate(c) for c in factor_cols ]
-        
-        # Pass translation function to plot in case it has new strings
-        pparams['translate'] = translate
-    else:
-        pparams['translate'] = lambda s: s # Make sure function is given even if it does nothing
     
     # If we still have more than 1 factor - merge the rest
     if len(factor_cols)>1:
@@ -388,7 +426,7 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
 
     return plot
 
-# %% ../nbs/02_pp.ipynb 19
+# %% ../nbs/02_pp.ipynb 20
 # A convenience function to draw a plot straight from a dataset
 def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, check_match=True,lazy=True,**kwargs):
     if data_file is None and full_df is None:
