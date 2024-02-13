@@ -279,7 +279,6 @@ def translate_df(df, translate):
 def create_tooltip(pparams,c_meta):
     
     data, tfn = pparams['data'], pparams['translate']
-    print(len(data))
     
     label_dict = {}
     

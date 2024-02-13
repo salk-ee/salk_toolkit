@@ -374,9 +374,9 @@ def make_start_end(x,value_col,cat_col,cat_order):
 
 @stk_plot('likert_bars',data_format='longform',question=True,draws=False,likert=True)
 def likert_bars(data, cat_col, cat_order=alt.Undefined, value_col='value', question_col='question', question_order=alt.Undefined, color_scale=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, tooltip=[], outer_factors=[]):
-    gb_cols = outer_factors+[question_col,factor_col] # There can be other extra cols (like labels) that should be ignored
+    gb_cols = [ c for c in outer_factors+[question_col,factor_col] if c is not None ] # There can be other extra cols (like labels) that should be ignored
     options_cols = list(data[cat_col].dtype.categories) # Get likert scale names
-    bar_data = data.groupby(gb_cols, group_keys=False, observed=False)[gb_cols+[cat_col,value_col]].apply(make_start_end, value_col=value_col,cat_col=cat_col,cat_order=cat_order,include_groups=False)
+    bar_data = data.groupby(gb_cols, group_keys=False, observed=False)[data.columns].apply(make_start_end, value_col=value_col,cat_col=cat_col,cat_order=cat_order,include_groups=False)
     
     plot = alt.Chart(bar_data).mark_bar() \
         .encode(
@@ -399,7 +399,7 @@ def likert_bars(data, cat_col, cat_order=alt.Undefined, value_col='value', quest
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 36
+# %% ../nbs/03_plots.ipynb 37
 # Calculate KDE ourselves using a fast libary. This gets around having to do sampling which is unstable
 def kde_1d(vc, value_col):
     ls = np.linspace(vc.min()-1e-10,vc.max()+1e-10,200)
@@ -408,8 +408,7 @@ def kde_1d(vc, value_col):
 
 @stk_plot('density', data_format='raw', continuous=True, factor_columns=3,aspect_ratio=(1.0/1.0))
 def density(data, value_col='value',factor_col=None, factor_color_scale=alt.Undefined, tooltip=[], outer_factors=[]):
-    #gb_cols = list(set(data.columns)-{ value_col }) # Assume we groupby over everything except value
-    gb_cols = outer_factors+[factor_col] # There can be other extra cols (like labels) that should be ignored
+    gb_cols = [ c for c in outer_factors+[factor_col] if c is not None ] # There can be other extra cols (like labels) that should be ignored
     
     ndata = data.groupby(gb_cols,observed=False)[value_col].apply(kde_1d,value_col=value_col).reset_index()
     
@@ -423,7 +422,7 @@ def density(data, value_col='value',factor_col=None, factor_color_scale=alt.Unde
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 38
+# %% ../nbs/03_plots.ipynb 39
 # Cluster-based reordering
 def cluster_based_reorder(X):
     pd = sp.spatial.distance.pdist(X)#,metric='cosine')
@@ -465,7 +464,7 @@ def matrix(data, cat_col, value_col='value', cat_order=alt.Undefined, factor_col
 
 register_stk_cont_version('matrix')
 
-# %% ../nbs/03_plots.ipynb 42
+# %% ../nbs/03_plots.ipynb 43
 @stk_plot('lines',data_format='longform', question=False, draws=False, ordered_factor=True, requires_factor=True, args={'smooth':'bool'})
 def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, smooth=False, width=800, tooltip=[]):
     if smooth:
@@ -485,7 +484,7 @@ def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order
     return plot
 
 
-# %% ../nbs/03_plots.ipynb 44
+# %% ../nbs/03_plots.ipynb 45
 @stk_plot('area_smooth',data_format='longform', question=False, draws=False, ordered=False, ordered_factor=True, requires_factor=True)
 def area_smooth(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, width=800, tooltip=[]):
     ldict = dict(zip(cat_order, range(len(cat_order))))
@@ -506,7 +505,7 @@ def area_smooth(data, cat_col, value_col='value', color_scale=alt.Undefined, cat
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 46
+# %% ../nbs/03_plots.ipynb 47
 def likert_aggregate(x, cat_col, cat_order, value_col):
     
     cc, vc = x[cat_col], x[value_col]
@@ -532,7 +531,7 @@ def likert_aggregate(x, cat_col, cat_order, value_col):
 @stk_plot('likert_rad_pol',data_format='longform', question=False, draws=False, likert=True, requires_factor=True, args={'normalise':'bool'})
 def likert_rad_pol(data, cat_col, cat_order=alt.Undefined, value_col='value', factor_col=None, factor_order=alt.Undefined, factor_color_scale=alt.Undefined, normalise=True, width=800, outer_factors=[]):
     #gb_cols = list(set(data.columns)-{ cat_col, value_col }) # Assume all other cols still in data will be used for factoring
-    gb_cols = outer_factors+[factor_col] # There can be other extra cols (like labels) that should be ignored
+    gb_cols = [ c for c in outer_factors+[factor_col] if c is not None ] # There can be other extra cols (like labels) that should be ignored
     
     options_cols = list(data[cat_col].dtype.categories) # Get likert scale names
     likert_indices = data.groupby(gb_cols, group_keys=False, observed=False).apply(likert_aggregate,cat_col=cat_col,cat_order=cat_order,value_col=value_col,include_groups=False).reset_index()
@@ -557,7 +556,7 @@ def likert_rad_pol(data, cat_col, cat_order=alt.Undefined, value_col='value', fa
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 49
+# %% ../nbs/03_plots.ipynb 50
 @stk_plot('barbell', data_format='longform', draws=False, requires_factor=True)
 def barbell(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, n_datapoints=1, val_format='%', width=800, tooltip=[]):
     
@@ -592,7 +591,7 @@ def barbell(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_ord
     
 register_stk_cont_version('barbell')
 
-# %% ../nbs/03_plots.ipynb 52
+# %% ../nbs/03_plots.ipynb 53
 @stk_plot('geoplot', data_format='longform', continuous=True, requires_factor=True, factor_meta=['topo_feature'],aspect_ratio=(4.0/3.0))
 def geoplot(data, topo_feature, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, val_format='.2f',tooltip=[]):
     
