@@ -5,8 +5,8 @@ __all__ = ['registry', 'registry_meta', 'stk_plot_defaults', 'priority_weights',
            'get_plot_meta', 'calculate_priority', 'calculate_impossibilities', 'matching_plots',
            'register_stk_cont_version', 'estimate_legend_columns_horiz_naive', 'estimate_legend_columns_horiz',
            'boxplots', 'columns', 'stacked_columns', 'diff_columns', 'massplot', 'make_start_end', 'likert_bars',
-           'kde_1d', 'density', 'cluster_based_reorder', 'matrix', 'lines', 'area_smooth', 'likert_aggregate',
-           'likert_rad_pol', 'barbell', 'geoplot']
+           'kde_1d', 'density', 'cluster_based_reorder', 'matrix', 'lines', 'draws_to_hdi', 'lines_hdi', 'area_smooth',
+           'likert_aggregate', 'likert_rad_pol', 'barbell', 'geoplot']
 
 # %% ../nbs/03_plots.ipynb 3
 import json, os, math
@@ -24,6 +24,7 @@ import scipy as sp
 import scipy.stats as sps
 from scipy.cluster import hierarchy
 from KDEpy import FFTKDE
+import arviz as az
 
 from salk_toolkit.utils import *
 from salk_toolkit.io import extract_column_meta, read_json
@@ -399,7 +400,7 @@ def likert_bars(data, cat_col, cat_order=alt.Undefined, value_col='value', quest
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 37
+# %% ../nbs/03_plots.ipynb 36
 # Calculate KDE ourselves using a fast libary. This gets around having to do sampling which is unstable
 def kde_1d(vc, value_col):
     ls = np.linspace(vc.min()-1e-10,vc.max()+1e-10,200)
@@ -422,7 +423,7 @@ def density(data, value_col='value',factor_col=None, factor_color_scale=alt.Unde
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 39
+# %% ../nbs/03_plots.ipynb 38
 # Cluster-based reordering
 def cluster_based_reorder(X):
     pd = sp.spatial.distance.pdist(X)#,metric='cosine')
@@ -464,7 +465,7 @@ def matrix(data, cat_col, value_col='value', cat_order=alt.Undefined, factor_col
 
 register_stk_cont_version('matrix')
 
-# %% ../nbs/03_plots.ipynb 43
+# %% ../nbs/03_plots.ipynb 42
 @stk_plot('lines',data_format='longform', question=False, draws=False, ordered_factor=True, requires_factor=True, args={'smooth':'bool'})
 def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, smooth=False, width=800, tooltip=[]):
     if smooth:
@@ -484,7 +485,62 @@ def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order
     return plot
 
 
-# %% ../nbs/03_plots.ipynb 45
+# %% ../nbs/03_plots.ipynb 44
+def draws_to_hdi(data,vc):
+    gbc = [ c for c in data.columns if c not in [vc,'draw'] ]
+    ldf = data.groupby(gbc)[vc].apply(lambda s: pd.Series( 
+                                            list(az.hdi(s.to_numpy()))+list(az.hdi(s.to_numpy(),hdi_prob=0.5)),
+                                            index=['hdi94_lo','hdi94_hi','hdi50_lo','hdi50_hi'])).reset_index()
+    df = ldf.pivot(index=gbc, columns=ldf.columns[-2],values=vc).reset_index()
+    return df
+
+@stk_plot('lines_hdi',data_format='longform', question=False, draws=True, ordered_factor=True, requires_factor=True)
+def lines_hdi(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, width=800, tooltip=[], val_format='.2f',):
+    
+    hdf = draws_to_hdi(data,value_col)
+
+    p1 = alt.Chart(hdf).mark_area(opacity=0.25, interpolate='basis').encode(
+        alt.X(f'{factor_col}:O', title=None, sort=factor_order),
+        y=alt.Y('hdi94_lo:Q',
+            axis=alt.Axis(format=val_format),
+            title=value_col
+            ),
+        y2=alt.Y2('hdi94_hi:Q'),
+        color=alt.Color(
+            f'{cat_col}:N',
+            legend=None,
+            sort=cat_order,
+            scale=color_scale
+            ),
+        tooltip=[
+            alt.Tooltip(f'{cat_col}:N'),
+            alt.Tooltip(f'{factor_col}:N'),
+            alt.Tooltip('hdi94_lo:Q', title='94% HDI lower', format=val_format),
+            alt.Tooltip('hdi94_hi:Q', title='94% HDI upper', format=val_format),]
+        )
+
+    p2 = alt.Chart(hdf).mark_area(opacity=0.75,interpolate='basis').encode(
+        alt.X(f'{factor_col}:O', title=None, sort=factor_order),
+        y=alt.Y('hdi50_lo:Q', axis=alt.Axis(format=val_format)),
+        y2=alt.Y2('hdi50_hi:Q'),
+        color=alt.Color(
+            f'{cat_col}:N',
+            sort=cat_order,
+            scale=color_scale,
+            legend=alt.Legend(title=None)
+            ),
+        tooltip=[
+            alt.Tooltip(f'{cat_col}:N'),
+            alt.Tooltip(f'{factor_col}:N'),
+            alt.Tooltip('hdi50_lo:Q', title='50% HDI lower', format=val_format),
+            alt.Tooltip('hdi50_hi:Q', title='50% HDI upper', format=val_format),
+        ]
+    )
+
+    return (p1 + p2).resolve_legend(color='independent')
+
+
+# %% ../nbs/03_plots.ipynb 46
 @stk_plot('area_smooth',data_format='longform', question=False, draws=False, ordered=False, ordered_factor=True, requires_factor=True)
 def area_smooth(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, width=800, tooltip=[]):
     ldict = dict(zip(cat_order, range(len(cat_order))))
@@ -505,7 +561,7 @@ def area_smooth(data, cat_col, value_col='value', color_scale=alt.Undefined, cat
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 47
+# %% ../nbs/03_plots.ipynb 48
 def likert_aggregate(x, cat_col, cat_order, value_col):
     
     cc, vc = x[cat_col], x[value_col]
@@ -556,7 +612,7 @@ def likert_rad_pol(data, cat_col, cat_order=alt.Undefined, value_col='value', fa
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 50
+# %% ../nbs/03_plots.ipynb 51
 @stk_plot('barbell', data_format='longform', draws=False, requires_factor=True)
 def barbell(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, n_datapoints=1, val_format='%', width=800, tooltip=[]):
     
@@ -591,7 +647,7 @@ def barbell(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_ord
     
 register_stk_cont_version('barbell')
 
-# %% ../nbs/03_plots.ipynb 53
+# %% ../nbs/03_plots.ipynb 54
 @stk_plot('geoplot', data_format='longform', continuous=True, requires_factor=True, factor_meta=['topo_feature'],aspect_ratio=(4.0/3.0))
 def geoplot(data, topo_feature, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, val_format='.2f',tooltip=[]):
     

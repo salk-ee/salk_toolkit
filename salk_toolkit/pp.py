@@ -143,7 +143,9 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
         value_vars = [ c for c in gc_dict[pp_desc['res_col']] if c in cols ]
         
         if filtered_df[value_vars[0]].dtype.name != 'category':
-            filtered_df.loc[:,value_vars] = filtered_df.loc[:,value_vars].apply(transform_cont,axis=0,transform=vod(pp_desc,'cont_transform'))
+            #filtered_df.loc[:,value_vars] = filtered_df.loc[:,value_vars].apply(transform_cont,axis=0,transform=vod(pp_desc,'cont_transform'))
+            for cn in value_vars:
+                filtered_df[cn] = transform_cont(filtered_df[cn],transform=vod(pp_desc,'cont_transform'))
         
         id_vars = [ c for c in cols if c not in value_vars ]
         filtered_df = filtered_df.melt(id_vars=id_vars, value_vars=value_vars, var_name='question', value_name=pp_desc['res_col'])
@@ -272,7 +274,7 @@ def translate_df(df, translate):
         if df[c].dtype.name == 'category':
             cats = df[c].dtype.categories
             remap = dict(zip(cats,[ translate(c) for c in cats ]))
-            df[c] = df[c].replace(remap)
+            df[c] = df[c].cat.rename_categories(remap)
     return df
 
 # %% ../nbs/02_pp.ipynb 15
