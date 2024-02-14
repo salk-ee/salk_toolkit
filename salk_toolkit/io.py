@@ -103,7 +103,9 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, return_me
     raw_data = pd.concat(raw_dfs)
     
     if 'preprocessing' in meta and not only_fix_categories:
-        exec(meta['preprocessing'],{'pd':pd, 'np':np, 'stk':stk, 'df':raw_data, **constants })
+        globs = {'pd':pd, 'np':np, 'stk':stk, 'df':raw_data, **constants }
+        exec(meta['preprocessing'],globs)
+        raw_data = globs['df']
     
     ndf = None
     for group in meta['structure']:
@@ -167,7 +169,9 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, return_me
             ndf = pd.concat([ndf,s],axis=1) if ndf is not None else pd.DataFrame(s)
 
     if 'postprocessing' in meta and not only_fix_categories:
-        exec(meta['postprocessing'],{'pd':pd, 'np':np, 'stk':stk, 'df':ndf, **constants  })
+        globs['df'] = ndf
+        exec(meta['postprocessing'],globs)
+        ndf = globs['df']
     
     return (ndf, meta) if return_meta else ndf
 
@@ -409,9 +413,11 @@ def read_and_process_data(desc, return_meta=False, constants={}):
     df, meta = read_annotated_data(desc['file'])
     
     # Perform transformation and filtering
-    if 'preprocessing' in desc:  exec(desc['preprocessing'], {'pd':pd, 'np':np, 'stk':stk, 'df':df, **constants})
-    if 'filter' in desc: df = df[eval(desc['filter'],    {'pd':pd, 'np':np, 'stk':stk, 'df':df, **constants})]
-    if 'postprocessing' in desc: exec(desc['postprocessing'],{'pd':pd, 'np':np, 'stk':stk, 'df':df, **constants})
+    globs = {'pd':pd, 'np':np, 'stk':stk, 'df':df, **constants}
+    if 'preprocessing' in desc:  exec(desc['preprocessing'], globs)
+    if 'filter' in desc: df = df[eval(desc['filter'], globs)]
+    if 'postprocessing' in desc: exec(desc['postprocessing'],globs)
+    df = globs['df']
     
     return (df, meta) if return_meta else df
 

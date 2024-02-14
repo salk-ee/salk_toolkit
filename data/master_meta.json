@@ -155,5 +155,6 @@
                 "translate": { "Õpilane või üliõpilane": "Student",    "Tööline": "Worker", "Juht": "Manager",    "Töötu, tööd otsiv": "Unemployed, looking for work", "Spetsialist": "Specialist", "Ettevõtja või füüsilisest isikust ettevõtja (FIE)": "Entrepreneur or self-employed person (FIE)", "Kodune või mittetöötav": "Domestic or non-working", "Pensionär": "Pensioner" }
             }]
         ]
-    }]
+    }],
+    "postprocessing": "df=df.iloc[:11,:]"
 }
