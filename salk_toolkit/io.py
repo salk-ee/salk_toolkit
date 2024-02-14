@@ -102,8 +102,8 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, return_me
         
     raw_data = pd.concat(raw_dfs)
     
+    globs = {'pd':pd, 'np':np, 'stk':stk, 'df':raw_data, **constants }
     if 'preprocessing' in meta and not only_fix_categories:
-        globs = {'pd':pd, 'np':np, 'stk':stk, 'df':raw_data, **constants }
         exec(meta['preprocessing'],globs)
         raw_data = globs['df']
     
