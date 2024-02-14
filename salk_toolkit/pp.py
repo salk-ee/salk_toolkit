@@ -132,7 +132,9 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
     # Convert ordered categorical to continuous if we can
     res_meta = c_meta[pp_desc['res_col']]
     if vod(pp_desc,'convert_res') == 'continuous' and vod(res_meta,'ordered') and vod(res_meta,'categories','infer') != 'infer':
-        cmap = dict(zip(res_meta['categories'],vod(res_meta,'num_values',range(len(res_meta['categories'])))))
+        nvals = vod(res_meta,'num_values',range(len(res_meta['categories'])))
+        if 'num_values' in pp_desc: nvals = pp_desc['num_values'] # Allow manually specifying them for exploring all sorts of interesting aggregation options
+        cmap = dict(zip(res_meta['categories'],nvals))
         rc = gc_dict[pp_desc['res_col']] if pp_desc['res_col'] in gc_dict else [pp_desc['res_col']]
         for col in rc:
             filtered_df[col] = pd.to_numeric(filtered_df[col].astype('object').replace(cmap))
@@ -324,7 +326,7 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
     if data[pp_desc['res_col']].dtype.name=='category':
         pparams['cat_order'] = list(data[pp_desc['res_col']].dtype.categories) 
         
-    pparams['val_format'] = '.1%' if pparams['value_col'] == 'percent' else '.1f'
+    pparams['val_format'] = vod(pp_desc,'value_format','.1%' if pparams['value_col'] == 'percent' else '.1f')
     pparams['translate'] = translate if translate is not None else (lambda s: s)
 
     # Handle factor columns 
@@ -361,6 +363,12 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
             if 'factor_meta' in plot_meta: 
                 for kw in plot_meta['factor_meta']: pparams[kw] = vod(col_meta[pparams['factor_col']],kw)
                 
+        # If needed, use the next facet to replace the question dimension
+        if vod(plot_meta,'question') and factor_cols and vod(pp_desc,'replace_question'):
+            pparams['question_col'] = factor_cols[0]
+            pparams['question_color_scale'] = meta_color_scale(col_meta[factor_cols[0]],'colors',data[factor_cols[0]],translate=translate)
+            factor_cols = factor_cols[1:]
+                
     # Handle tooltip
     pparams['tooltip'] = create_tooltip(pparams,col_meta)
     
@@ -390,6 +398,11 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
             factor_cols = [factor_col]
     else:
         n_facet_cols = vod(plot_meta,'factor_columns',1)
+        
+    # Allow value col name to be changed. This can be useful in distinguishing different aggregation options for a column
+    if 'value_name' in pp_desc: 
+        pparams['data'] = pparams['data'].rename(columns={pparams['value_col']:pp_desc['value_name']})
+        pparams['value_col'] = pp_desc['value_name']
     
     # Create the plot using it's function
     if dry_run: return pparams
@@ -427,9 +440,10 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
 
     return plot
 
+
 # %% ../nbs/02_pp.ipynb 20
 # A convenience function to draw a plot straight from a dataset
-def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, check_match=True,lazy=True,**kwargs):
+def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, check_match=True,lazy=False,**kwargs):
     if data_file is None and full_df is None:
         raise Exception('Data must be provided either as data_file or full_df')
     if data_file is None and data_meta is None:

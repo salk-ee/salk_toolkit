@@ -484,11 +484,12 @@ def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order
     )
     return plot
 
+register_stk_cont_version('lines')
 
 # %% ../nbs/03_plots.ipynb 44
 def draws_to_hdi(data,vc):
     gbc = [ c for c in data.columns if c not in [vc,'draw'] ]
-    ldf = data.groupby(gbc)[vc].apply(lambda s: pd.Series( 
+    ldf = data.groupby(gbc,observed=False)[vc].apply(lambda s: pd.Series( 
                                             list(az.hdi(s.to_numpy()))+list(az.hdi(s.to_numpy(),hdi_prob=0.5)),
                                             index=['hdi94_lo','hdi94_hi','hdi50_lo','hdi50_hi'])).reset_index()
     df = ldf.pivot(index=gbc, columns=ldf.columns[-2],values=vc).reset_index()
@@ -539,6 +540,7 @@ def lines_hdi(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_o
 
     return (p1 + p2).resolve_legend(color='independent')
 
+register_stk_cont_version('lines_hdi')
 
 # %% ../nbs/03_plots.ipynb 46
 @stk_plot('area_smooth',data_format='longform', question=False, draws=False, ordered=False, ordered_factor=True, requires_factor=True)
