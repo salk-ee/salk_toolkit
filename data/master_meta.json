@@ -57,7 +57,7 @@
         "name": "survey",
         "columns": [
             ["methods", { "categories": "infer" , "translate": {"WISE": "Cati"} }],
-            ["wave", "laine",{ "categories": "infer", "ordered": true }]
+            ["wave", "laine",{ "continuous":true }]
         ]
     }, {
         "name": "demographics",
@@ -155,6 +155,5 @@
                 "translate": { "Õpilane või üliõpilane": "Student",    "Tööline": "Worker", "Juht": "Manager",    "Töötu, tööd otsiv": "Unemployed, looking for work", "Spetsialist": "Specialist", "Ettevõtja või füüsilisest isikust ettevõtja (FIE)": "Entrepreneur or self-employed person (FIE)", "Kodune või mittetöötav": "Domestic or non-working", "Pensionär": "Pensioner" }
             }]
         ]
-    }],
-    "postprocessing": "df=df.iloc[:11,:]"
+    }]
 }

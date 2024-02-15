@@ -5,7 +5,7 @@ __all__ = ['registry', 'registry_meta', 'stk_plot_defaults', 'priority_weights',
            'get_plot_meta', 'calculate_priority', 'calculate_impossibilities', 'matching_plots',
            'register_stk_cont_version', 'estimate_legend_columns_horiz_naive', 'estimate_legend_columns_horiz',
            'boxplots', 'columns', 'stacked_columns', 'diff_columns', 'massplot', 'make_start_end', 'likert_bars',
-           'kde_1d', 'density', 'cluster_based_reorder', 'matrix', 'lines', 'draws_to_hdi', 'lines_hdi', 'area_smooth',
+           'kde_1d', 'density', 'cluster_based_reorder', 'matrix', 'lines', 'draws_to_hdis', 'lines_hdi', 'area_smooth',
            'likert_aggregate', 'likert_rad_pol', 'barbell', 'geoplot']
 
 # %% ../nbs/03_plots.ipynb 3
@@ -487,58 +487,44 @@ def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order
 register_stk_cont_version('lines')
 
 # %% ../nbs/03_plots.ipynb 44
-def draws_to_hdi(data,vc):
+def draws_to_hdis(data,vc,hdi_vals):
     gbc = [ c for c in data.columns if c not in [vc,'draw'] ]
-    ldf = data.groupby(gbc,observed=False)[vc].apply(lambda s: pd.Series( 
-                                            list(az.hdi(s.to_numpy()))+list(az.hdi(s.to_numpy(),hdi_prob=0.5)),
-                                            index=['hdi94_lo','hdi94_hi','hdi50_lo','hdi50_hi'])).reset_index()
-    df = ldf.pivot(index=gbc, columns=ldf.columns[-2],values=vc).reset_index()
+    ldfs = []
+    for hdiv in hdi_vals:
+        ldf_v = data.groupby(gbc,observed=False)[vc].apply(lambda s: pd.Series(list(az.hdi(s.to_numpy(),hdi_prob=hdiv)),index=['lo','hi'])).reset_index()
+        ldf_v['hdi']=hdiv
+        ldfs.append(ldf_v)
+    ldf = pd.concat(ldfs).reset_index(drop=True)
+    df = ldf.pivot(index=gbc+['hdi'], columns=ldf.columns[-3],values=vc).reset_index()
     return df
 
-@stk_plot('lines_hdi',data_format='longform', question=False, draws=True, ordered_factor=True, requires_factor=True)
-def lines_hdi(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, width=800, tooltip=[], val_format='.2f',):
+@stk_plot('lines_hdi',data_format='longform', question=False, draws=True, ordered_factor=True, requires_factor=True, args={'hdi1':'float','hdi2':'float'})
+def lines_hdi(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, width=800, tooltip=[], val_format='.2f', hdi1=0.94, hdi2=0.5):
     
-    hdf = draws_to_hdi(data,value_col)
+    hdf = draws_to_hdis(data,value_col,[hdi1,hdi2])
+    # Draw them in reverse order so the things that are first (i.e. most important) are drawn last (i.e. on top of others)
+    # Also draw wider hdi before the narrower
+    hdf.sort_values(['party_preference','hdi'],ascending=[False,False],inplace=True)
 
-    p1 = alt.Chart(hdf).mark_area(opacity=0.25, interpolate='basis').encode(
+    plot = alt.Chart(hdf).mark_area(interpolate='basis').encode(
         alt.X(f'{factor_col}:O', title=None, sort=factor_order),
-        y=alt.Y('hdi94_lo:Q',
+        y=alt.Y('lo:Q',
             axis=alt.Axis(format=val_format),
             title=value_col
             ),
-        y2=alt.Y2('hdi94_hi:Q'),
+        y2=alt.Y2('hi:Q'),
         color=alt.Color(
             f'{cat_col}:N',
-            legend=None,
             sort=cat_order,
             scale=color_scale
             ),
+        opacity=alt.Opacity('hdi:N',legend=None,scale=to_alt_scale({0.5:0.75,0.94:0.25})),
         tooltip=[
-            alt.Tooltip(f'{cat_col}:N'),
-            alt.Tooltip(f'{factor_col}:N'),
-            alt.Tooltip('hdi94_lo:Q', title='94% HDI lower', format=val_format),
-            alt.Tooltip('hdi94_hi:Q', title='94% HDI upper', format=val_format),]
+            alt.Tooltip('hdi:N', title='HDI', format='.0%'),
+            alt.Tooltip('lo:Q', title='HDI lower', format=val_format),
+            alt.Tooltip('hi:Q', title='HDI upper', format=val_format),] + tooltip[1:]
         )
-
-    p2 = alt.Chart(hdf).mark_area(opacity=0.75,interpolate='basis').encode(
-        alt.X(f'{factor_col}:O', title=None, sort=factor_order),
-        y=alt.Y('hdi50_lo:Q', axis=alt.Axis(format=val_format)),
-        y2=alt.Y2('hdi50_hi:Q'),
-        color=alt.Color(
-            f'{cat_col}:N',
-            sort=cat_order,
-            scale=color_scale,
-            legend=alt.Legend(title=None)
-            ),
-        tooltip=[
-            alt.Tooltip(f'{cat_col}:N'),
-            alt.Tooltip(f'{factor_col}:N'),
-            alt.Tooltip('hdi50_lo:Q', title='50% HDI lower', format=val_format),
-            alt.Tooltip('hdi50_hi:Q', title='50% HDI upper', format=val_format),
-        ]
-    )
-
-    return (p1 + p2).resolve_legend(color='independent')
+    return plot
 
 register_stk_cont_version('lines_hdi')
 
