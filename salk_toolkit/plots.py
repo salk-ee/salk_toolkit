@@ -504,7 +504,7 @@ def lines_hdi(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_o
     hdf = draws_to_hdis(data,value_col,[hdi1,hdi2])
     # Draw them in reverse order so the things that are first (i.e. most important) are drawn last (i.e. on top of others)
     # Also draw wider hdi before the narrower
-    hdf.sort_values(['party_preference','hdi'],ascending=[False,False],inplace=True)
+    hdf.sort_values([cat_col,'hdi'],ascending=[False,False],inplace=True)
 
     plot = alt.Chart(hdf).mark_area(interpolate='basis').encode(
         alt.X(f'{factor_col}:O', title=None, sort=factor_order),

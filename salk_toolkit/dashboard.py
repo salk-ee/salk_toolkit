@@ -99,7 +99,7 @@ def wrap_st_with_translate(fn,self):
 # Main dashboard wrapper - WIP
 class SalkDashboardBuilder:
 
-    def __init__(self, data_source, auth_conf, logfile, groups=['guest','user','admin'], public=False, translate=None):
+    def __init__(self, data_source, auth_conf, logfile, groups=['guest','user','admin'], public=False, pre_translate={}, translate=None):
         
         # Allow deployment.json to redirect files from local to s3 if local missing (i.e. in deployment scenario)
         if os.path.exists('./deployment.json'):
@@ -119,6 +119,9 @@ class SalkDashboardBuilder:
         
         # Set up translation
         self.tf = translate if translate else (lambda s: s)
+        
+        # Set up pre-translate to prettify plot names/labels without a full translation needed
+        if pre_translate: self.tf = lambda s: self.tf(pre_translate[s]) if s in pre_translate else self.tf(s)
         
         self.p_widths = {}
         
@@ -209,7 +212,7 @@ class SalkDashboardBuilder:
             self.df, self.meta = read_annotated_data_cached(alias_file(self.data_source,self.filemap))
         
         # Render the chosen page
-        st.subheader(pname)
+        st.title(pname)
         pfunc(**clean_kwargs(pfunc,{'sdb':self}))
         
     # Add enter and exit so it can be used as a context
