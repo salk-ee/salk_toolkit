@@ -415,7 +415,7 @@ def read_and_process_data(desc, return_meta=False, constants={}):
     # Perform transformation and filtering
     globs = {'pd':pd, 'np':np, 'stk':stk, 'df':df, **constants}
     if 'preprocessing' in desc:  exec(desc['preprocessing'], globs)
-    if 'filter' in desc: df = df[eval(desc['filter'], globs)]
+    if 'filter' in desc: globs['df'] = globs['df'][eval(desc['filter'], globs)]
     if 'postprocessing' in desc: exec(desc['postprocessing'],globs)
     df = globs['df']
     
