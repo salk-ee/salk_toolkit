@@ -467,17 +467,16 @@ register_stk_cont_version('matrix')
 
 # %% ../nbs/03_plots.ipynb 42
 @stk_plot('lines',data_format='longform', question=False, draws=False, ordered_factor=True, requires_factor=True, args={'smooth':'bool'})
-def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, smooth=False, width=800, tooltip=[]):
+def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, smooth=False, width=800, tooltip=[], val_format='.2f',):
     if smooth:
         smoothing = 'basis'
         points = 'transparent'
     else:
         smoothing = 'natural'
         points = True
-
     plot = alt.Chart(data).mark_line(point=points, interpolate=smoothing).encode(
-        alt.X(f'{factor_col}:O', title=None, sort=factor_order),
-        alt.Y(f'{value_col}:Q', title=None, axis=alt.Axis(format='%')),
+        alt.X(f'{factor_col}:N', title=None, sort=factor_order),
+        alt.Y(f'{value_col}:Q', title=None, axis=alt.Axis(format=val_format)),
         tooltip=tooltip,
         color=alt.Color(f'{cat_col}:N', scale=color_scale, sort=cat_order,
                         legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(cat_order,width)))
@@ -647,7 +646,7 @@ def geoplot(data, topo_feature, value_col='value', color_scale=alt.Undefined, ca
         from_ = alt.LookupData(
             data=data,
             key=factor_col,
-            fields=[value_col,factor_col]
+            fields=list(data.columns)
         ),
     ).encode(
         tooltip=tooltip, #[alt.Tooltip(f'properties.{tjson_col}:N', title=factor_col),

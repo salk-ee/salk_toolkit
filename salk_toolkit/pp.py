@@ -366,6 +366,7 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
         # If needed, use the next facet to replace the question dimension
         if vod(plot_meta,'question') and factor_cols and vod(pp_desc,'replace_question'):
             pparams['question_col'] = factor_cols[0]
+            pparams['question_order'] = list(data[factor_cols[0]].dtype.categories)
             pparams['question_color_scale'] = meta_color_scale(col_meta[factor_cols[0]],'colors',data[factor_cols[0]],translate=translate)
             factor_cols = factor_cols[1:]
                 
