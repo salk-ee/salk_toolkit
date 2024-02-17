@@ -123,7 +123,8 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, return_me
             if 'scale' in group: cd = {**group['scale'],**cd}
             
             if sn not in raw_data:
-                warn(f"Column {sn} not found")
+                if not vod(cd,'generated'): # bypass warning for columns marked as being generated later
+                    warn(f"Column {sn} not found")
                 continue
             
             if raw_data[sn].isna().all():
