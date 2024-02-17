@@ -423,9 +423,8 @@ def data_with_inferred_meta(data_file, **kwargs):
     meta = infer_meta(data_file,meta_file=False, **kwargs)
     return process_annotated_data(meta=meta, data_file=data_file, return_meta=True)
 
-infer_meta('../../salk_internal_package/data/maxdiff2023_short.csv',ordinal_ranking=['Q2_1best'])
 
-# %% ../nbs/01_io.ipynb 15
+# %% ../nbs/01_io.ipynb 14
 def read_and_process_data(desc, return_meta=False, constants={}):
     df, meta = read_annotated_data(desc['file'])
     
@@ -438,7 +437,7 @@ def read_and_process_data(desc, return_meta=False, constants={}):
     
     return (df, meta) if return_meta else df
 
-# %% ../nbs/01_io.ipynb 17
+# %% ../nbs/01_io.ipynb 16
 def save_population_h5(fname,pdf):
     hdf = pd.HDFStore(fname,complevel=9, complib='zlib')
     hdf.put('population',pdf,format='table')
@@ -450,7 +449,7 @@ def load_population_h5(fname):
     hdf.close()
     return res
 
-# %% ../nbs/01_io.ipynb 18
+# %% ../nbs/01_io.ipynb 17
 def save_sample_h5(fname,trace,COORDS = None, filter_df = None):
     odims = [d for d in trace.predictions.dims if d not in ['chain','draw','obs_idx']]
     
@@ -491,7 +490,7 @@ def save_sample_h5(fname,trace,COORDS = None, filter_df = None):
     hdf.close()
 
 
-# %% ../nbs/01_io.ipynb 19
+# %% ../nbs/01_io.ipynb 18
 # These two very helpful functions are borrowed from https://towardsdatascience.com/saving-metadata-with-dataframes-71f51f558d8e
 
 custom_meta_key = 'salk-toolkit-meta'

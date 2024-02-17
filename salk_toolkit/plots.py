@@ -6,7 +6,7 @@ __all__ = ['registry', 'registry_meta', 'stk_plot_defaults', 'priority_weights',
            'register_stk_cont_version', 'estimate_legend_columns_horiz_naive', 'estimate_legend_columns_horiz',
            'boxplots', 'columns', 'stacked_columns', 'diff_columns', 'massplot', 'make_start_end', 'likert_bars',
            'kde_1d', 'density', 'cluster_based_reorder', 'matrix', 'lines', 'draws_to_hdis', 'lines_hdi', 'area_smooth',
-           'likert_aggregate', 'likert_rad_pol', 'barbell', 'geoplot']
+           'likert_aggregate', 'likert_rad_pol', 'barbell', 'geoplot', 'ordered_population']
 
 # %% ../nbs/03_plots.ipynb 3
 import json, os, math
@@ -657,4 +657,137 @@ def geoplot(data, topo_feature, value_col='value', color_scale=alt.Undefined, ca
             legend=alt.Legend(format=val_format, title=None, orient='top-left',gradientThickness=6),
         )
     ).project('mercator')
+    return plot
+
+# %% ../nbs/03_plots.ipynb 56
+# Helper function to avoid showing 20k points on a graph
+def aggregate_evenly(ns,ar,n_points):
+    # if equal weights, this can all be vectorized
+    if len(ar)>=n_points and (ns==ns[0]).all():
+        gl = len(ar)//n_points
+        return ar[:gl*n_points,:].reshape( (n_points,gl,-1) ).mean(axis=1)
+
+    gs = max(ns.sum(),0.01)/n_points # Max is here if ns.sum() == 0 i.e. no values are given
+
+    ci, cn, cids, cws = 0, 0.0, [], []
+    res = np.zeros( (n_points,ar.shape[-1]) )
+    for i,n in enumerate(ns):
+        if cn+n < gs:
+            cids.append(i); cws.append(n)
+            cn+=n
+        else:
+            steps = 0.0
+            while cn+n-steps >= gs:
+                pre = gs-cn
+                cids.append(i); cws.append(pre)
+                #print(ci,cids,cws,ar[cids,:].T,steps)
+                res[ci] = (ar[cids,:]*np.array(cws)[:,None]).sum(axis=0) / gs
+                ci += 1
+                cn, cids, cws = 0.0, [], []
+                steps += pre
+            cn, cids, cws = n-steps, [i], [n-steps]
+
+    if ci<n_points:
+        res[ci] = (ar[cids,:]*np.array(cws)[:,None]).sum(axis=0) / gs
+
+    return res
+
+# Vectorized multinomial sampling. Should be slightly faster
+def vectorized_mn(prob_matrix):
+    s = prob_matrix.cumsum(axis=1)
+    s = s/s[:,-1][:,None]
+    r = np.random.rand(prob_matrix.shape[0])[:,None]
+    return (s < r).sum(axis=1)
+
+# %% ../nbs/03_plots.ipynb 57
+def linevals(data, value_col, density, dim, cats, boost_signal=True,group_categories=False):
+    ns = np.ones(len(data)) # or weight
+    
+    qs = data[[value_col]+cats].to_numpy()
+    order = np.lexsort((qs[:,0],data[dim])) if dim and group_categories else np.argsort(qs[:,0])
+
+    pdf = pd.DataFrame(aggregate_evenly(ns[order], qs[order], density),
+        columns=[value_col]+list(cats))
+
+    if dim:
+        ref_p = data[cats].to_numpy().mean(axis=0)+1e-10
+        np.random.seed(0) # So they don't change every re-render
+
+        signal = pdf[cats].to_numpy() + 1e-10 # So even if values are zero, log and vectorized_mn would work
+        if boost_signal: # Boost with K-L, leaving only categories that grew in probability boosted by how much they did
+            klv = signal*(np.log(signal/ref_p[None,:]))
+            signal = np.maximum(1e-10,klv)
+            pdf['kld'] = np.sum(klv,axis=1)
+
+        #pdf[dim] = cats[signal.apply(lambda r: np.random.multinomial(1,r/r.sum()).argmax() if r.sum()>0.0 else 0,axis=1)]
+        pdf[dim] = np.array(cats)[vectorized_mn(signal)]
+
+        #pdf[dim] = pdf[cats].idxmax(axis=1)
+        #pdf['weight'] = np.minimum(pdf[cats].max(axis=1),pdf['matches'])
+
+    pdf['pos'] = np.arange(0,1,1.0/len(pdf))
+    
+    return pdf
+
+# %% ../nbs/03_plots.ipynb 58
+@stk_plot('ordered_population', data_format='raw', continuous=True, factor_columns=3,aspect_ratio=(1.0/1.0),plot_args={'group_categories':'bool'})
+def ordered_population(data, value_col='value', factor_col=None, factor_order=alt.Undefined, factor_color_scale=alt.Undefined, tooltip=[], outer_factors=[], group_categories=False):
+    dim = False
+    
+    density = 200
+
+    if factor_col:
+        cat_idx, cats = pd.factorize(data[factor_col])
+        cats = list(cats)
+        one_hot = np.identity(len(cats))[cat_idx]
+    else:
+        one_hot, cats = np.zeros( (len(data),1) ), ['dummy']
+        
+    data[cats] = one_hot
+    
+    if outer_factors:
+        tdf = data.groupby(outer_factors,observed=True).apply(linevals,value_col=value_col,dim=factor_col,cats=cats,density=density,include_groups=False,group_categories=group_categories).reset_index()
+    else:
+        tdf = linevals(data,value_col=value_col,cats=cats,dim=factor_col,density=density,group_categories=group_categories)
+        
+    #if boost_signal:
+    #    tdf['matches'] = np.minimum(tdf['matches'],tdf['kld']/tdf['kld'].quantile(0.75))
+
+    #alt.data_transformers.disable_max_rows()
+    base = alt.Chart(tdf).encode(
+        x=alt.X("pos:Q",
+            title="",
+            axis=alt.Axis(
+                labels=False,
+                ticks=False,
+                #grid=False
+            )
+        ),
+        tooltip=alt.Tooltip()
+    )
+    #selection = alt.selection_multi(fields=[dim], bind='legend')
+    line = base.mark_circle(size=10).encode(
+        y=alt.Y(f"{value_col}:Q",impute={'value':None}, title='', axis=alt.Axis(grid=True)),
+        #opacity=alt.condition(selection, alt.Opacity("matches:Q",scale=None), alt.value(0.1)),
+        color=alt.Color(
+            f"{factor_col}",
+            sort=factor_order, #if dim=='education' else alt.Undefined,
+            scale=factor_color_scale
+            ) if factor_col else alt.value('red'),
+        tooltip=tooltip
+    )#.add_selection(selection)
+
+
+    rule = alt.Chart().mark_rule(color='red', strokeDash=[2, 3]).encode(
+        y=alt.Y('mv:Q')
+    ).transform_joinaggregate(
+        mv = f'mean({value_col}):Q',
+        groupby=['issue']
+    )
+
+    plot = alt.layer(
+        rule,
+        line,
+        data=tdf,
+    )
     return plot
