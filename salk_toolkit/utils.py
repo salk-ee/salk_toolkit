@@ -40,10 +40,10 @@ warn = lambda msg,*args: warnings.warn(msg,*args,stacklevel=3)
 # I'm surprised pandas does not have this function but I could not find it. 
 def factorize_w_codes(s, codes):
     res = s.astype('object').replace(dict(zip(codes,range(len(codes)))))
-    if not s.isin(codes).all(): # Throw an exception if all values were not replaced
+    if not s.dropna().isin(codes).all(): # Throw an exception if all values were not replaced
         vals = set(s) - set(codes)
         raise Exception(f'Codes for {s.name} do not match all values: {vals}')
-    return res.to_numpy(dtype='int')
+    return res.fillna(-1).to_numpy(dtype='int')
 
 # %% ../nbs/10_utils.ipynb 8
 # Simple batching of an iterable

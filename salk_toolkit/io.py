@@ -311,7 +311,7 @@ max_cats = 50
 
 # Create a very basic metafile for a dataset based on it's contents
 # This is not meant to be directly used, rather to speed up the annotation process
-def infer_meta(data_file=None, meta_file=True, read_opts={}, df=None, translate_fn=None, translation_blacklist=[]):
+def infer_meta(data_file=None, meta_file=True, read_opts={}, df=None, translate_fn=None, translation_blacklist=[], ordinal_ranking=[]):
     meta = { 'constants': {}, 'read_opts': read_opts }
     
     # Read datafile
@@ -348,12 +348,21 @@ def infer_meta(data_file=None, meta_file=True, read_opts={}, df=None, translate_
     for cn in cols:
         if not is_categorical(df[cn]): continue
         cats[cn] = sorted(list(df[cn].dropna().unique())) if df[cn].dtype.name != 'category' else list(df[cn].dtype.categories)
-        grps[str(cats[cn])].append(cn)
+        
+        for cs in grps:
+            #if cn.startswith('Q2_'): print(len(set(cats[cn]) & cs)/len(cs),set(cats[cn]),cs)
+            if len(set(cats[cn]) & cs)/len(cs) > 0.75: # match to group if most of the values match
+                lst = grps[cs]
+                del grps[cs]
+                grps[frozenset(cs | set(cats[cn]))] = lst + [cn]
+                break
+        else:
+            grps[frozenset(cats[cn])].append(cn)
         
     # Fn to create the meta for a categorical column
     def cat_meta(cn):
         m = { 'categories': cats[cn] if len(cats[cn])<=max_cats else 'infer' }
-        if df[cn].dtype=='category' and df[cn].dtype.ordered: m['ordered'] = True
+        if cn in df.columns and df[cn].dtype=='category' and df[cn].dtype.ordered: m['ordered'] = True
         if translate_fn is not None and cn not in translation_blacklist and len(cats[cn])<=max_cats:
             tdict = { c: translate_fn(c) for c in m['categories'] }
             m['categories'] = 'infer' #[ tdict[c] for c in m['categories'] ]
@@ -374,7 +383,12 @@ def infer_meta(data_file=None, meta_file=True, read_opts={}, df=None, translate_
             if len(ce) == 1: ce = ce[0]
             m_cols.append(ce)
         
-        grp = { 'name': k, 'scale': cat_meta(g_cols[0]), 'columns': m_cols }
+        cats[str(k)] = list(k) # so cat_meta would use the full list
+        grp = { 'name': ';'.join(k), 'scale': cat_meta(str(k)), 'columns': m_cols }
+        
+        if np.isin(m_cols,ordinal_ranking).any():
+            grp['name'], grp['hidden'] = 'ordinal_ranking_raw', True # Set this group to hidden as it is generally weirdly shaped and only used as input to ordinal ranking
+            meta['structure'].append({ 'name': 'ordinal_ranking', 'scale': { 'continuous':True, 'generated':True }, 'columns': list(k) })
         
         meta['structure'].append(grp)
         handled_cols.update(g_cols)
@@ -409,7 +423,9 @@ def data_with_inferred_meta(data_file, **kwargs):
     meta = infer_meta(data_file,meta_file=False, **kwargs)
     return process_annotated_data(meta=meta, data_file=data_file, return_meta=True)
 
-# %% ../nbs/01_io.ipynb 14
+infer_meta('../../salk_internal_package/data/maxdiff2023_short.csv',ordinal_ranking=['Q2_1best'])
+
+# %% ../nbs/01_io.ipynb 15
 def read_and_process_data(desc, return_meta=False, constants={}):
     df, meta = read_annotated_data(desc['file'])
     
@@ -422,7 +438,7 @@ def read_and_process_data(desc, return_meta=False, constants={}):
     
     return (df, meta) if return_meta else df
 
-# %% ../nbs/01_io.ipynb 16
+# %% ../nbs/01_io.ipynb 17
 def save_population_h5(fname,pdf):
     hdf = pd.HDFStore(fname,complevel=9, complib='zlib')
     hdf.put('population',pdf,format='table')
@@ -434,7 +450,7 @@ def load_population_h5(fname):
     hdf.close()
     return res
 
-# %% ../nbs/01_io.ipynb 17
+# %% ../nbs/01_io.ipynb 18
 def save_sample_h5(fname,trace,COORDS = None, filter_df = None):
     odims = [d for d in trace.predictions.dims if d not in ['chain','draw','obs_idx']]
     
@@ -475,7 +491,7 @@ def save_sample_h5(fname,trace,COORDS = None, filter_df = None):
     hdf.close()
 
 
-# %% ../nbs/01_io.ipynb 18
+# %% ../nbs/01_io.ipynb 19
 # These two very helpful functions are borrowed from https://towardsdatascience.com/saving-metadata-with-dataframes-71f51f558d8e
 
 custom_meta_key = 'salk-toolkit-meta'
