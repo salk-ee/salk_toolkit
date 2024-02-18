@@ -135,11 +135,14 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, return_me
             
             if not only_fix_categories:
                 if s.dtype.name=='category': s = s.astype('object') # This makes it easier to use common ops like replace and fillna
-                if 'translate' in cd: s.replace(cd['translate'],inplace=True)
+                if 'translate' in cd: 
+                    print("pre",s)
+                    s = s.astype('str').replace(cd['translate'])
+                    print("post",s)
                 if 'transform' in cd: s = eval(cd['transform'],{ 's':s, 'df':raw_data, 'ndf':ndf, 'pd':pd, 'np':np, 'stk':stk , **constants })
                 
-                if vod(cd,'datetime'): s = pd.to_datetime(s)
-                elif vod(cd,'continuous'): s = pd.to_numeric(s)
+                if vod(cd,'datetime'): s = pd.to_datetime(s,errors='coerce')
+                elif vod(cd,'continuous'): s = pd.to_numeric(s,errors='coerce')
 
             if 'categories' in cd: 
                 na_sum = s.isna().sum()
@@ -400,7 +403,6 @@ def infer_meta(data_file=None, meta_file=True, read_opts={}, df=None, translate_
         else: 
             if is_datetime(df[cn]): cdesc = {'datetime':True}
             else: cdesc = {'continuous':True}
-            if is_datetime(df[cn]): cdesc['date'] = True
         if cn in col_labels: cdesc['label'] = col_labels[cn]
         main_grp['columns'].append([cn,cdesc] if translate_fn is None else [translate_fn(cn),cn,cdesc])
         
