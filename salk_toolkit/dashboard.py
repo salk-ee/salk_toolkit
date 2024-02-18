@@ -212,7 +212,7 @@ class SalkDashboardBuilder:
             self.df, self.meta = read_annotated_data_cached(alias_file(self.data_source,self.filemap))
         
         # Render the chosen page
-        st.title(pname)
+        st.subheader(pname)
         pfunc(**clean_kwargs(pfunc,{'sdb':self}))
         
     # Add enter and exit so it can be used as a context
