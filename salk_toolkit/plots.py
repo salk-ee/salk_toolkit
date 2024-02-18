@@ -700,60 +700,91 @@ def vectorized_mn(prob_matrix):
     return (s < r).sum(axis=1)
 
 # %% ../nbs/03_plots.ipynb 57
-def linevals(data, value_col, density, dim, cats, boost_signal=True,group_categories=False):
-    ns = np.ones(len(data)) # or weight
+def linevals(data, value_col, n_points, dim, cats, ocols=None, boost_signal=True,gc=False):
+    #qs = data[[value_col]+cats].to_numpy() # old version
+    qs = data # optimized for more numpy
     
-    qs = data[[value_col]+cats].to_numpy()
-    order = np.lexsort((qs[:,0],data[dim])) if dim and group_categories else np.argsort(qs[:,0])
-
-    pdf = pd.DataFrame(aggregate_evenly(ns[order], qs[order], density),
-        columns=[value_col]+list(cats))
+    ns = np.ones(len(qs)) # or weight
+    
+    # Sorting df before groupby is slightly faster
+    order = np.lexsort((qs[:,0],qs[:,1])) if dim and gc else np.argsort(qs[:,0])
+    aer = aggregate_evenly(ns[order], qs[order], n_points)
+    #aer = aggregate_evenly(ns, qs, n_points)
+    pdf = pd.DataFrame(aer[:,0,None], columns=[value_col])
 
     if dim:
-        ref_p = data[cats].to_numpy().mean(axis=0)+1e-10
+        ref_p = qs[:,2:].mean(axis=0)+1e-10
         np.random.seed(0) # So they don't change every re-render
 
-        signal = pdf[cats].to_numpy() + 1e-10 # So even if values are zero, log and vectorized_mn would work
+        osignal = signal = aer[:,2:] + 1e-10 # So even if values are zero, log and vectorized_mn would work
         if boost_signal: # Boost with K-L, leaving only categories that grew in probability boosted by how much they did
             klv = signal*(np.log(signal/ref_p[None,:]))
             signal = np.maximum(1e-10,klv)
             pdf['kld'] = np.sum(klv,axis=1)
 
         #pdf[dim] = cats[signal.apply(lambda r: np.random.multinomial(1,r/r.sum()).argmax() if r.sum()>0.0 else 0,axis=1)]
-        pdf[dim] = np.array(cats)[vectorized_mn(signal)]
+        cat_inds = vectorized_mn(signal)
+        pdf[dim] = np.array(cats)[cat_inds]
+        pdf['probability'] = osignal[np.arange(len(cat_inds)),cat_inds]
 
         #pdf[dim] = pdf[cats].idxmax(axis=1)
         #pdf['weight'] = np.minimum(pdf[cats].max(axis=1),pdf['matches'])
 
     pdf['pos'] = np.arange(0,1,1.0/len(pdf))
     
+    if ocols is not None:
+        for iv in ocols.index:
+            pdf[iv] = ocols[iv]
+
     return pdf
 
 # %% ../nbs/03_plots.ipynb 58
 @stk_plot('ordered_population', data_format='raw', continuous=True, factor_columns=3,aspect_ratio=(1.0/1.0),plot_args={'group_categories':'bool'})
 def ordered_population(data, value_col='value', factor_col=None, factor_order=alt.Undefined, factor_color_scale=alt.Undefined, tooltip=[], outer_factors=[], group_categories=False):
-    dim = False
     
-    density = 200
+    n_points, maxn = 200, 1000000
+    
+    # Sample down to maxn points if exceeding that
+    if len(data)>maxn: data = data.sample(maxn,replace=False)
+    
+    data = data.sort_values(outer_factors)
+    dn = data[value_col].to_numpy()[:,None]
 
     if factor_col:
         cat_idx, cats = pd.factorize(data[factor_col])
         cats = list(cats)
         one_hot = np.identity(len(cats))[cat_idx]
+        dn = np.concatenate([dn,data[factor_col].cat.codes.values[:,None], one_hot],axis=1)
+        #data[cats] = one_hot
     else:
-        one_hot, cats = np.zeros( (len(data),1) ), ['dummy']
+        cats = []
         
-    data[cats] = one_hot
-    
     if outer_factors:
-        tdf = data.groupby(outer_factors,observed=True).apply(linevals,value_col=value_col,dim=factor_col,cats=cats,density=density,include_groups=False,group_categories=group_categories).reset_index()
+        
+        # This is optimized to not use pandas.groupby as it makes it about 2x faster - which is 2+ seconds with big datasets
+        
+        # Assuming data is sorted by outer_factors, find points of transition
+        ofids = np.stack([ data[f].cat.codes.values for f in outer_factors ],axis=1)
+        unique_idxs = np.empty(len(ofids), dtype=np.bool_)
+        unique_idxs[:1] = True
+        unique_idxs[1:] = np.any(ofids[:-1, :] != ofids[1:, :], axis=-1)
+        
+        # Split dn into groups based on the transition points
+        split_inds = np.arange(len(unique_idxs))[unique_idxs][1:]
+        groups = np.split(dn,split_inds)
+        
+        # Perform the equivalent of groupby
+        ocols = data.loc[unique_idxs,outer_factors]
+        tdf = pd.concat([linevals(g,value_col=value_col,dim=factor_col,cats=cats,n_points=n_points,ocols=ocols.iloc[i,:],gc=group_categories) for i,g in enumerate(groups)])
+
+        #tdf = data.groupby(outer_factors,observed=True).apply(linevals,value_col=value_col,dim=factor_col,cats=cats,n_points=n_points,gc=group_categories,include_groups=False).reset_index()
     else:
-        tdf = linevals(data,value_col=value_col,cats=cats,dim=factor_col,density=density,group_categories=group_categories)
+        tdf = linevals(dn,value_col=value_col,cats=cats,dim=factor_col,n_points=n_points, gc=group_categories)
+        #tdf = linevals(data,value_col=value_col,cats=cats,dim=factor_col,n_points=n_points,gc=group_categories)
         
     #if boost_signal:
     #    tdf['matches'] = np.minimum(tdf['matches'],tdf['kld']/tdf['kld'].quantile(0.75))
 
-    #alt.data_transformers.disable_max_rows()
     base = alt.Chart(tdf).encode(
         x=alt.X("pos:Q",
             title="",
@@ -762,8 +793,7 @@ def ordered_population(data, value_col='value', factor_col=None, factor_order=al
                 ticks=False,
                 #grid=False
             )
-        ),
-        tooltip=alt.Tooltip()
+        )
     )
     #selection = alt.selection_multi(fields=[dim], bind='legend')
     line = base.mark_circle(size=10).encode(
@@ -771,10 +801,10 @@ def ordered_population(data, value_col='value', factor_col=None, factor_order=al
         #opacity=alt.condition(selection, alt.Opacity("matches:Q",scale=None), alt.value(0.1)),
         color=alt.Color(
             f"{factor_col}",
-            sort=factor_order, #if dim=='education' else alt.Undefined,
+            sort=factor_order,
             scale=factor_color_scale
             ) if factor_col else alt.value('red'),
-        tooltip=tooltip
+        tooltip=tooltip+([alt.Tooltip('probability:Q',format='.1%',title='category prob.')] if factor_col else [])
     )#.add_selection(selection)
 
 
@@ -782,7 +812,7 @@ def ordered_population(data, value_col='value', factor_col=None, factor_order=al
         y=alt.Y('mv:Q')
     ).transform_joinaggregate(
         mv = f'mean({value_col}):Q',
-        groupby=['issue']
+        groupby=outer_factors
     )
 
     plot = alt.layer(

@@ -393,7 +393,8 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
         n_facet_cols = len(data[factor_cols[-1]].dtype.categories)
         if not return_matrix_of_plots:
             factor_col = '+'.join(factor_cols)
-            data.loc[:,factor_col] = data[factor_cols].agg(', '.join, axis=1)
+            jfs = data[factor_cols].agg(', '.join, axis=1)
+            data.loc[:,factor_col] = pd.Categorical(jfs,jfs.unique())
             pparams['data'] = data
             n_facet_cols = len(data[factor_cols[-1]].dtype.categories)
             factor_cols = [factor_col]
