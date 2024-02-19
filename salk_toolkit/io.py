@@ -142,7 +142,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, return_me
             if not only_fix_categories:
                 if s.dtype.name=='category': s = s.astype('object') # This makes it easier to use common ops like replace and fillna
                 if 'translate' in cd: 
-                    s = s.astype('str').replace(cd['translate'])
+                    s = s.astype('str').replace(cd['translate']).replace('nan',None)
                 if 'transform' in cd: s = eval(cd['transform'],{ 's':s, 'df':raw_data, 'ndf':ndf, 'pd':pd, 'np':np, 'stk':stk , **constants })
                 
                 if vod(cd,'datetime'): s = pd.to_datetime(s,errors='coerce')
