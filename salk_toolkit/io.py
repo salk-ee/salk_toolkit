@@ -107,7 +107,8 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, return_me
         exec(meta['preprocessing'],globs)
         raw_data = globs['df']
     
-    ndf = None
+    ndf = pd.DataFrame()
+    all_cns = dict()
     for group in meta['structure']:
         for tpl in group['columns']:
             if type(tpl)==list:
@@ -117,6 +118,11 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, return_me
             else:
                 cn = sn = tpl
                 cd = {}
+            
+            # Detect duplicate columns in meta - including among those missing or generated
+            if cn in all_cns: 
+                raise Exception(f"Duplicate column name found: '{cn}' in {all_cns[cn]} and {group['name']}")
+            all_cns[cn] = group['name']
                 
             if only_fix_categories: sn = cn
 
@@ -168,7 +174,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, return_me
                 s = ns
             
             # Update ndf in real-time so it would be usable in transforms for next columns
-            ndf = pd.concat([ndf,s],axis=1) if ndf is not None else pd.DataFrame(s)
+            ndf = pd.concat([ndf,s],axis=1)
 
     if 'postprocessing' in meta and not only_fix_categories:
         globs['df'] = ndf
