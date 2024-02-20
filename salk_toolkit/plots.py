@@ -402,28 +402,43 @@ def likert_bars(data, cat_col, cat_order=alt.Undefined, value_col='value', quest
 
 # %% ../nbs/03_plots.ipynb 36
 # Calculate KDE ourselves using a fast libary. This gets around having to do sampling which is unstable
-def kde_1d(vc, value_col):
-    ls = np.linspace(vc.min()-1e-10,vc.max()+1e-10,200)
+def kde_1d(vc, value_col, ls, scale=False):
     y =  FFTKDE(kernel='gaussian').fit(vc.to_numpy()).evaluate(ls)
+    if scale: y*=len(vc)
     return pd.DataFrame({'density': y, value_col: ls})
 
-@stk_plot('density', data_format='raw', continuous=True, factor_columns=3,aspect_ratio=(1.0/1.0))
-def density(data, value_col='value',factor_col=None, factor_color_scale=alt.Undefined, tooltip=[], outer_factors=[]):
+@stk_plot('density', data_format='raw', continuous=True, factor_columns=3,aspect_ratio=(1.0/1.0),args={'stacked':'bool', 'normalized':'bool'})
+def density(data, value_col='value',factor_col=None, factor_order=alt.Undefined, factor_color_scale=alt.Undefined, tooltip=[], outer_factors=[], stacked=False,normalized=False):
     gb_cols = [ c for c in outer_factors+[factor_col] if c is not None ] # There can be other extra cols (like labels) that should be ignored
     
-    ndata = data.groupby(gb_cols,observed=False)[value_col].apply(kde_1d,value_col=value_col).reset_index()
+    ls = np.linspace(data[value_col].min()-1e-10,data[value_col].max()+1e-10,200)
+    ndata = data.groupby(gb_cols,observed=False)[value_col].apply(kde_1d,value_col=value_col,ls=ls,scale=stacked).reset_index()
     
-    plot = alt.Chart(
-            ndata
-        ).mark_line().encode(
-            x=alt.X(f"{value_col}:Q"),
-            y=alt.Y('density:Q',axis=alt.Axis(title=None, format = '%')),
-            tooltip = tooltip[1:],
-            **({'color': alt.Color(f'{factor_col}:N', scale=factor_color_scale, legend=alt.Legend(orient='top'))} if factor_col else {})
-        )
+    if stacked:
+        
+        if factor_col:
+            ldict = dict(zip(factor_order, reversed(range(len(factor_order)))))
+            ndata.loc[:,'order'] = ndata[factor_col].astype('object').replace(ldict).astype('int')
+        
+        ndata['density'] /= len(data)
+        plot=alt.Chart(ndata).mark_area(interpolate='natural').encode(
+                x=alt.X(f"{value_col}:Q"),
+                y=alt.Y('density:Q',axis=alt.Axis(title=None, format = '%'),stack='normalize' if normalized else 'zero'),
+                tooltip = tooltip[1:],
+                **({'color': alt.Color(f'{factor_col}:N', scale=factor_color_scale, legend=alt.Legend(orient='top')), 'order': alt.Order('order:O')} if factor_col else {})
+            )
+    else:
+        plot = alt.Chart(
+                ndata
+            ).mark_line().encode(
+                x=alt.X(f"{value_col}:Q"),
+                y=alt.Y('density:Q',axis=alt.Axis(title=None, format = '%')),
+                tooltip = tooltip[1:],
+                **({'color': alt.Color(f'{factor_col}:N', scale=factor_color_scale, legend=alt.Legend(orient='top'))} if factor_col else {})
+            )
     return plot
 
-# %% ../nbs/03_plots.ipynb 38
+# %% ../nbs/03_plots.ipynb 39
 # Cluster-based reordering
 def cluster_based_reorder(X):
     pd = sp.spatial.distance.pdist(X)#,metric='cosine')
@@ -465,7 +480,7 @@ def matrix(data, cat_col, value_col='value', cat_order=alt.Undefined, factor_col
 
 register_stk_cont_version('matrix')
 
-# %% ../nbs/03_plots.ipynb 42
+# %% ../nbs/03_plots.ipynb 43
 @stk_plot('lines',data_format='longform', question=False, draws=False, ordered_factor=True, requires_factor=True, args={'smooth':'bool'})
 def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, smooth=False, width=800, tooltip=[], val_format='.2f',):
     if smooth:
@@ -485,7 +500,7 @@ def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order
 
 register_stk_cont_version('lines')
 
-# %% ../nbs/03_plots.ipynb 44
+# %% ../nbs/03_plots.ipynb 45
 def draws_to_hdis(data,vc,hdi_vals):
     gbc = [ c for c in data.columns if c not in [vc,'draw'] ]
     ldfs = []
@@ -527,7 +542,7 @@ def lines_hdi(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_o
 
 register_stk_cont_version('lines_hdi')
 
-# %% ../nbs/03_plots.ipynb 46
+# %% ../nbs/03_plots.ipynb 47
 @stk_plot('area_smooth',data_format='longform', question=False, draws=False, ordered=False, ordered_factor=True, requires_factor=True)
 def area_smooth(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, width=800, tooltip=[]):
     ldict = dict(zip(cat_order, range(len(cat_order))))
@@ -548,7 +563,7 @@ def area_smooth(data, cat_col, value_col='value', color_scale=alt.Undefined, cat
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 48
+# %% ../nbs/03_plots.ipynb 49
 def likert_aggregate(x, cat_col, cat_order, value_col):
     
     cc, vc = x[cat_col], x[value_col]
@@ -571,15 +586,15 @@ def likert_aggregate(x, cat_col, cat_order, value_col):
     
     return pd.Series({ 'polarisation': pol, 'radicalisation':rad, 'relevance':rel})
 
-@stk_plot('likert_rad_pol',data_format='longform', question=False, draws=False, likert=True, requires_factor=True, args={'normalise':'bool'})
-def likert_rad_pol(data, cat_col, cat_order=alt.Undefined, value_col='value', factor_col=None, factor_order=alt.Undefined, factor_color_scale=alt.Undefined, normalise=True, width=800, outer_factors=[]):
+@stk_plot('likert_rad_pol',data_format='longform', question=False, draws=False, likert=True, requires_factor=True, args={'normalized':'bool'})
+def likert_rad_pol(data, cat_col, cat_order=alt.Undefined, value_col='value', factor_col=None, factor_order=alt.Undefined, factor_color_scale=alt.Undefined, normalized=True, width=800, outer_factors=[]):
     #gb_cols = list(set(data.columns)-{ cat_col, value_col }) # Assume all other cols still in data will be used for factoring
     gb_cols = [ c for c in outer_factors+[factor_col] if c is not None ] # There can be other extra cols (like labels) that should be ignored
     
     options_cols = list(data[cat_col].dtype.categories) # Get likert scale names
     likert_indices = data.groupby(gb_cols, group_keys=False, observed=False).apply(likert_aggregate,cat_col=cat_col,cat_order=cat_order,value_col=value_col,include_groups=False).reset_index()
     
-    if normalise: likert_indices.loc[:,['polarisation','radicalisation']] = likert_indices[['polarisation','radicalisation']].apply(sps.zscore)
+    if normalized: likert_indices.loc[:,['polarisation','radicalisation']] = likert_indices[['polarisation','radicalisation']].apply(sps.zscore)
     
     plot = alt.Chart(likert_indices).mark_point().encode(
         x=alt.X('polarisation:Q'),
@@ -599,7 +614,7 @@ def likert_rad_pol(data, cat_col, cat_order=alt.Undefined, value_col='value', fa
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 51
+# %% ../nbs/03_plots.ipynb 52
 @stk_plot('barbell', data_format='longform', draws=False, requires_factor=True)
 def barbell(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, n_datapoints=1, val_format='%', width=800, tooltip=[]):
     
@@ -634,7 +649,7 @@ def barbell(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_ord
     
 register_stk_cont_version('barbell')
 
-# %% ../nbs/03_plots.ipynb 54
+# %% ../nbs/03_plots.ipynb 55
 @stk_plot('geoplot', data_format='longform', continuous=True, requires_factor=True, factor_meta=['topo_feature'],aspect_ratio=(4.0/3.0))
 def geoplot(data, topo_feature, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, val_format='.2f',tooltip=[]):
     
@@ -659,7 +674,7 @@ def geoplot(data, topo_feature, value_col='value', color_scale=alt.Undefined, ca
     ).project('mercator')
     return plot
 
-# %% ../nbs/03_plots.ipynb 56
+# %% ../nbs/03_plots.ipynb 57
 # Helper function to avoid showing 20k points on a graph
 def aggregate_evenly(ns,ar,n_points):
     # if equal weights, this can all be vectorized
@@ -699,7 +714,7 @@ def vectorized_mn(prob_matrix):
     r = np.random.rand(prob_matrix.shape[0])[:,None]
     return (s < r).sum(axis=1)
 
-# %% ../nbs/03_plots.ipynb 57
+# %% ../nbs/03_plots.ipynb 58
 def linevals(data, value_col, n_points, dim, cats, ocols=None, boost_signal=True,gc=False):
     #qs = data[[value_col]+cats].to_numpy() # old version
     qs = data # optimized for more numpy
@@ -738,7 +753,7 @@ def linevals(data, value_col, n_points, dim, cats, ocols=None, boost_signal=True
 
     return pdf
 
-# %% ../nbs/03_plots.ipynb 58
+# %% ../nbs/03_plots.ipynb 59
 @stk_plot('ordered_population', data_format='raw', continuous=True, factor_columns=3,aspect_ratio=(1.0/1.0),plot_args={'group_categories':'bool'})
 def ordered_population(data, value_col='value', factor_col=None, factor_order=alt.Undefined, factor_color_scale=alt.Undefined, tooltip=[], outer_factors=[], group_categories=False):
     
