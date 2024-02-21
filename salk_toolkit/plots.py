@@ -6,7 +6,7 @@ __all__ = ['registry', 'registry_meta', 'stk_plot_defaults', 'priority_weights',
            'register_stk_cont_version', 'estimate_legend_columns_horiz_naive', 'estimate_legend_columns_horiz',
            'boxplots', 'columns', 'stacked_columns', 'diff_columns', 'massplot', 'make_start_end', 'likert_bars',
            'kde_1d', 'density', 'cluster_based_reorder', 'matrix', 'lines', 'draws_to_hdis', 'lines_hdi', 'area_smooth',
-           'likert_aggregate', 'likert_rad_pol', 'barbell', 'geoplot', 'ordered_population']
+           'likert_aggregate', 'likert_rad_pol', 'barbell', 'geoplot', 'fd_mangle', 'facet_dist', 'ordered_population']
 
 # %% ../nbs/03_plots.ipynb 3
 import json, os, math
@@ -407,8 +407,8 @@ def kde_1d(vc, value_col, ls, scale=False):
     if scale: y*=len(vc)
     return pd.DataFrame({'density': y, value_col: ls})
 
-@stk_plot('density', data_format='raw', continuous=True, factor_columns=3,aspect_ratio=(1.0/1.0),args={'stacked':'bool', 'normalized':'bool'})
-def density(data, value_col='value',factor_col=None, factor_order=alt.Undefined, factor_color_scale=alt.Undefined, tooltip=[], outer_factors=[], stacked=False,normalized=False):
+@stk_plot('density', data_format='raw', continuous=True, factor_columns=3,aspect_ratio=(1.0/1.0),args={'stacked':'bool'})
+def density(data, value_col='value',factor_col=None, factor_order=alt.Undefined, factor_color_scale=alt.Undefined, tooltip=[], outer_factors=[], stacked=False):
     gb_cols = [ c for c in outer_factors+[factor_col] if c is not None ] # There can be other extra cols (like labels) that should be ignored
     
     ls = np.linspace(data[value_col].min()-1e-10,data[value_col].max()+1e-10,200)
@@ -423,7 +423,7 @@ def density(data, value_col='value',factor_col=None, factor_order=alt.Undefined,
         ndata['density'] /= len(data)
         plot=alt.Chart(ndata).mark_area(interpolate='natural').encode(
                 x=alt.X(f"{value_col}:Q"),
-                y=alt.Y('density:Q',axis=alt.Axis(title=None, format = '%'),stack='normalize' if normalized else 'zero'),
+                y=alt.Y('density:Q',axis=alt.Axis(title=None, format = '%')),
                 tooltip = tooltip[1:],
                 **({'color': alt.Color(f'{factor_col}:N', scale=factor_color_scale, legend=alt.Legend(orient='top')), 'order': alt.Order('order:O')} if factor_col else {})
             )
@@ -675,38 +675,53 @@ def geoplot(data, topo_feature, value_col='value', color_scale=alt.Undefined, ca
     return plot
 
 # %% ../nbs/03_plots.ipynb 57
-# Helper function to avoid showing 20k points on a graph
-def aggregate_evenly(ns,ar,n_points):
-    # if equal weights, this can all be vectorized
-    if len(ar)>=n_points and (ns==ns[0]).all():
-        gl = len(ar)//n_points
-        return ar[:gl*n_points,:].reshape( (n_points,gl,-1) ).mean(axis=1)
+# Assuming ns is ordered by unique row values, find the split points
+def split_ordered(cvs):
+    if len(cvs.shape)==1: cvs = cvs[:,None]
+    unique_idxs = np.empty(len(cvs), dtype=np.bool_)
+    unique_idxs[:1] = False
+    unique_idxs[1:] = np.any(cvs[:-1, :] != cvs[1:, :], axis=-1)
+    return np.arange(len(unique_idxs))[unique_idxs]
 
-    gs = max(ns.sum(),0.01)/n_points # Max is here if ns.sum() == 0 i.e. no values are given
+# Split a series of weights into groups of roughly equal sum
+# This algorithm is greedy and does not split values but it is fast and should be good enough for most uses
+def split_even_weight(ws, n):
+    cws = np.cumsum(ws)
+    cws = (cws/(cws[-1]/n)).astype('int')
+    return (split_ordered(cws)+1)[:-1]
 
-    ci, cn, cids, cws = 0, 0.0, [], []
-    res = np.zeros( (n_points,ar.shape[-1]) )
-    for i,n in enumerate(ns):
-        if cn+n < gs:
-            cids.append(i); cws.append(n)
-            cn+=n
-        else:
-            steps = 0.0
-            while cn+n-steps >= gs:
-                pre = gs-cn
-                cids.append(i); cws.append(pre)
-                #print(ci,cids,cws,ar[cids,:].T,steps)
-                res[ci] = (ar[cids,:]*np.array(cws)[:,None]).sum(axis=0) / gs
-                ci += 1
-                cn, cids, cws = 0.0, [], []
-                steps += pre
-            cn, cids, cws = n-steps, [i], [n-steps]
+# %% ../nbs/03_plots.ipynb 59
+def fd_mangle(vc, value_col, factor_col, n_points=10): 
+    
+    vc = vc.sort_values(value_col)
+    
+    ws = np.ones(len(vc))
+    splits = split_even_weight(ws, n_points)
+    
+    ccodes, cats = vc[factor_col].factorize()
+    
+    ofreqs = np.stack([ np.bincount(g, weights=gw, minlength=len(cats))/gw.sum()
+                        for g,gw in zip(np.split(ccodes,splits),np.split(ws,splits)) ],axis=0)
+    
+    df = pd.DataFrame(ofreqs, columns=cats)
+    df['percentile'] = np.linspace(0,1,n_points)
+    return df.melt(id_vars='percentile',value_vars=cats,var_name=factor_col,value_name='density')
 
-    if ci<n_points:
-        res[ci] = (ar[cids,:]*np.array(cws)[:,None]).sum(axis=0) / gs
+@stk_plot('facet_dist', data_format='raw', continuous=True, factor_columns=3,aspect_ratio=(1.0/1.0),requires_factor=True)
+def facet_dist(data, value_col='value',factor_col=None, factor_order=alt.Undefined, factor_color_scale=alt.Undefined, tooltip=[], outer_factors=[]):
+    gb_cols = [ c for c in outer_factors if c is not None ] # There can be other extra cols (like labels) that should be ignored
+    ndata = data.groupby(gb_cols,observed=False)[[value_col,factor_col]].apply(fd_mangle,value_col=value_col,factor_col=factor_col).reset_index()
+    plot=alt.Chart(ndata).mark_area(interpolate='natural').encode(
+            x=alt.X(f"percentile:Q",axis=alt.Axis(format='%')),
+            y=alt.Y('density:Q',axis=alt.Axis(title=None, format = '%'),stack='normalize'),
+            tooltip = tooltip[1:],
+            color=alt.Color(f'{factor_col}:N', scale=factor_color_scale, legend=alt.Legend(orient='top')),
+            #order=alt.Order('order:O')
+    )
 
-    return res
+    return plot
 
+# %% ../nbs/03_plots.ipynb 62
 # Vectorized multinomial sampling. Should be slightly faster
 def vectorized_mn(prob_matrix):
     s = prob_matrix.cumsum(axis=1)
@@ -714,24 +729,23 @@ def vectorized_mn(prob_matrix):
     r = np.random.rand(prob_matrix.shape[0])[:,None]
     return (s < r).sum(axis=1)
 
-# %% ../nbs/03_plots.ipynb 58
-def linevals(data, value_col, n_points, dim, cats, ocols=None, boost_signal=True,gc=False):
-    #qs = data[[value_col]+cats].to_numpy() # old version
-    qs = data # optimized for more numpy
+def linevals(vals, value_col, n_points, dim, cats, ccodes=None, ocols=None, boost_signal=True,gc=False, weights=None):
+    ws = weights if weights is not None else np.ones(len(vals))
     
-    ns = np.ones(len(qs)) # or weight
+    order = np.lexsort((vals,ccodes)) if dim and gc else np.argsort(vals)
+    splits = split_even_weight(ws[order], n_points)
+    aer = np.array([ g.mean() for g in np.split(vals[order],splits) ])
+    pdf = pd.DataFrame(aer, columns=[value_col])
     
-    # Sorting df before groupby is slightly faster
-    order = np.lexsort((qs[:,0],qs[:,1])) if dim and gc else np.argsort(qs[:,0])
-    aer = aggregate_evenly(ns[order], qs[order], n_points)
-    #aer = aggregate_evenly(ns, qs, n_points)
-    pdf = pd.DataFrame(aer[:,0,None], columns=[value_col])
-
     if dim:
-        ref_p = qs[:,2:].mean(axis=0)+1e-10
+        # Find the frequency of each category in ccodes
+        osignal = np.stack([ np.bincount(g, weights=gw, minlength=len(cats))/gw.sum()
+                            for g,gw in zip(np.split(ccodes[order],splits),np.split(ws[order],splits)) ],axis=0)
+        
+        ref_p = osignal.mean(axis=0)+1e-10
         np.random.seed(0) # So they don't change every re-render
 
-        osignal = signal = aer[:,2:] + 1e-10 # So even if values are zero, log and vectorized_mn would work
+        signal = osignal + 1e-10 # So even if values are zero, log and vectorized_mn would work
         if boost_signal: # Boost with K-L, leaving only categories that grew in probability boosted by how much they did
             klv = signal*(np.log(signal/ref_p[None,:]))
             signal = np.maximum(1e-10,klv)
@@ -753,48 +767,44 @@ def linevals(data, value_col, n_points, dim, cats, ocols=None, boost_signal=True
 
     return pdf
 
-# %% ../nbs/03_plots.ipynb 59
+# %% ../nbs/03_plots.ipynb 63
 @stk_plot('ordered_population', data_format='raw', continuous=True, factor_columns=3,aspect_ratio=(1.0/1.0),plot_args={'group_categories':'bool'})
 def ordered_population(data, value_col='value', factor_col=None, factor_order=alt.Undefined, factor_color_scale=alt.Undefined, tooltip=[], outer_factors=[], group_categories=False):
     
     n_points, maxn = 200, 1000000
     
+     # TODO: use weight if available. linevals is ready for it, just needs to be fed in. 
+    
     # Sample down to maxn points if exceeding that
     if len(data)>maxn: data = data.sample(maxn,replace=False)
     
     data = data.sort_values(outer_factors)
-    dn = data[value_col].to_numpy()[:,None]
+    vals = data[value_col].to_numpy()
 
     if factor_col:
         cat_idx, cats = pd.factorize(data[factor_col])
         cats = list(cats)
-        one_hot = np.identity(len(cats))[cat_idx]
-        dn = np.concatenate([dn,data[factor_col].cat.codes.values[:,None], one_hot],axis=1)
-        #data[cats] = one_hot
     else:
-        cats = []
+        cat_idx, cats = None, []
         
     if outer_factors:
         
         # This is optimized to not use pandas.groupby as it makes it about 2x faster - which is 2+ seconds with big datasets
         
-        # Assuming data is sorted by outer_factors, find points of transition
+        # Assume data is sorted by outer_factors, split vals into groups by them
         ofids = np.stack([ data[f].cat.codes.values for f in outer_factors ],axis=1)
-        unique_idxs = np.empty(len(ofids), dtype=np.bool_)
-        unique_idxs[:1] = True
-        unique_idxs[1:] = np.any(ofids[:-1, :] != ofids[1:, :], axis=-1)
-        
-        # Split dn into groups based on the transition points
-        split_inds = np.arange(len(unique_idxs))[unique_idxs][1:]
-        groups = np.split(dn,split_inds)
+        splits = split_ordered(ofids)        
+        groups = np.split(vals,splits)
+        cgroups = np.split(cat_idx,splits) if factor_col else groups
         
         # Perform the equivalent of groupby
-        ocols = data.loc[unique_idxs,outer_factors]
-        tdf = pd.concat([linevals(g,value_col=value_col,dim=factor_col,cats=cats,n_points=n_points,ocols=ocols.iloc[i,:],gc=group_categories) for i,g in enumerate(groups)])
+        ocols = data.iloc[[0]+list(splits)][outer_factors]
+        tdf = pd.concat([linevals(g,value_col=value_col,dim=factor_col, ccodes=gc, cats=cats, n_points=n_points,ocols=ocols.iloc[i,:],gc=group_categories) 
+                         for i,(g,gc) in enumerate(zip(groups,cgroups))])
 
         #tdf = data.groupby(outer_factors,observed=True).apply(linevals,value_col=value_col,dim=factor_col,cats=cats,n_points=n_points,gc=group_categories,include_groups=False).reset_index()
     else:
-        tdf = linevals(dn,value_col=value_col,cats=cats,dim=factor_col,n_points=n_points, gc=group_categories)
+        tdf = linevals(vals,value_col=value_col,dim=factor_col,ccodes=cat_idx,cats=cats,n_points=n_points, gc=group_categories)
         #tdf = linevals(data,value_col=value_col,cats=cats,dim=factor_col,n_points=n_points,gc=group_categories)
         
     #if boost_signal:
