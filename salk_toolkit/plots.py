@@ -454,11 +454,12 @@ def density(data, value_col='value', question_col='question', question_color_sca
     plot=alt.Chart(ndata).mark_area(interpolate='natural').encode(
             x=alt.X(f"{value_col}:Q"),
             y=alt.Y('density:Q',axis=alt.Axis(title=None, labels=False, values=[0], grid=False),stack='center'),
-            row=alt.Row(f'{question_col}:N',spacing=0),#, sort=question_order),
+            row=alt.Row(f'{question_col}:N',header=alt.Header(orient='top',title=None),spacing=5,sort=question_order),
             tooltip = tooltip[1:],
             #color=alt.Color(f'{question_col}:N'),
-            **({'color': alt.Color(f'{factor_col}:N', scale=factor_color_scale, legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(factor_order,width))), 'order': alt.Order('order:O')} if factor_col else {})
-        ).properties(width=width,height=width//6)
+            **({'color': alt.Color(f'{factor_col}:N', scale=factor_color_scale, legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(factor_order,width))), 'order': alt.Order('order:O')} if factor_col else 
+               {'color': alt.Color(f'{question_col}:N', scale=question_color_scale, legend=None)})
+        ).properties(width=width,height=70)
 
     return plot
 
