@@ -178,10 +178,6 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
     return pparams
 
 # %% ../nbs/02_pp.ipynb 11
-# Groupby if needed - this simplifies the wrangle considerably :)
-def gb_in(df, gb_cols):
-    return df.groupby(gb_cols,observed=False) if len(gb_cols)>0 else df
-
 def discretize_continuous(col, col_meta={}):
     # NB! qcut might be a better default - see where testing leads us
     cut = pd.cut(col, bins = vod(col_meta,'bins',5), labels = vod(col_meta,'bin_labels',None) )
@@ -414,7 +410,7 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
     if 'aspect_ratio' in plot_meta:   dims['height'] = int(dims['width']/plot_meta['aspect_ratio'])        
     
     # Make plot properties available to plot function (mostly useful for as_is plots)
-    pparams.update(dims); pparams['alt_properties'] = alt_properties; pparams['outer_factors'] = factor_cols
+    pparams.update({'width':width}); pparams['alt_properties'] = alt_properties; pparams['outer_factors'] = factor_cols
     
     # Trim down parameters list if needed
     plot_fn = get_plot_fn(pp_desc['plot'])

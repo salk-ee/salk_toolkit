@@ -408,11 +408,11 @@ def kde_1d(vc, value_col, ls, scale=False):
     return pd.DataFrame({'density': y, value_col: ls})
 
 @stk_plot('density', data_format='raw', continuous=True, factor_columns=3,aspect_ratio=(1.0/1.0),args={'stacked':'bool'})
-def density(data, value_col='value',factor_col=None, factor_order=alt.Undefined, factor_color_scale=alt.Undefined, tooltip=[], outer_factors=[], stacked=False):
+def density(data, value_col='value',factor_col=None, factor_order=alt.Undefined, factor_color_scale=alt.Undefined, tooltip=[], outer_factors=[], stacked=False, width=800):
     gb_cols = [ c for c in outer_factors+[factor_col] if c is not None ] # There can be other extra cols (like labels) that should be ignored
     
     ls = np.linspace(data[value_col].min()-1e-10,data[value_col].max()+1e-10,200)
-    ndata = data.groupby(gb_cols,observed=False)[value_col].apply(kde_1d,value_col=value_col,ls=ls,scale=stacked).reset_index()
+    ndata = gb_in(data,gb_cols)[value_col].apply(kde_1d,value_col=value_col,ls=ls,scale=stacked).reset_index()
     
     if stacked:
         
@@ -423,9 +423,9 @@ def density(data, value_col='value',factor_col=None, factor_order=alt.Undefined,
         ndata['density'] /= len(data)
         plot=alt.Chart(ndata).mark_area(interpolate='natural').encode(
                 x=alt.X(f"{value_col}:Q"),
-                y=alt.Y('density:Q',axis=alt.Axis(title=None, format = '%')),
+                y=alt.Y('density:Q',axis=alt.Axis(title=None, format = '%'),stack='zero'),
                 tooltip = tooltip[1:],
-                **({'color': alt.Color(f'{factor_col}:N', scale=factor_color_scale, legend=alt.Legend(orient='top')), 'order': alt.Order('order:O')} if factor_col else {})
+                **({'color': alt.Color(f'{factor_col}:N', scale=factor_color_scale, legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(factor_order,width))), 'order': alt.Order('order:O')} if factor_col else {})
             )
     else:
         plot = alt.Chart(
@@ -434,11 +434,35 @@ def density(data, value_col='value',factor_col=None, factor_order=alt.Undefined,
                 x=alt.X(f"{value_col}:Q"),
                 y=alt.Y('density:Q',axis=alt.Axis(title=None, format = '%')),
                 tooltip = tooltip[1:],
-                **({'color': alt.Color(f'{factor_col}:N', scale=factor_color_scale, legend=alt.Legend(orient='top'))} if factor_col else {})
+                **({'color': alt.Color(f'{factor_col}:N', scale=factor_color_scale, legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(factor_order,width)))} if factor_col else {})
             )
     return plot
 
-# %% ../nbs/03_plots.ipynb 39
+# %% ../nbs/03_plots.ipynb 38
+@stk_plot('violin', data_format='raw', continuous=True, question=True, as_is=True)
+def density(data, value_col='value', question_col='question', question_color_scale=alt.Undefined, question_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, factor_color_scale=alt.Undefined, tooltip=[], outer_factors=[],width=800):
+    gb_cols = [ c for c in outer_factors+[question_col]+[factor_col] if c is not None ] # There can be other extra cols (like labels) that should be ignored
+    
+    ls = np.linspace(data[value_col].min()-1e-10,data[value_col].max()+1e-10,200)
+    ndata = gb_in(data,gb_cols)[value_col].apply(kde_1d,value_col=value_col,ls=ls,scale=True).reset_index()
+    
+    if factor_col:
+        ldict = dict(zip(factor_order, reversed(range(len(factor_order)))))
+        ndata.loc[:,'order'] = ndata[factor_col].astype('object').replace(ldict).astype('int')
+
+    ndata['density'] /= len(data)
+    plot=alt.Chart(ndata).mark_area(interpolate='natural').encode(
+            x=alt.X(f"{value_col}:Q"),
+            y=alt.Y('density:Q',axis=alt.Axis(title=None, labels=False, values=[0], grid=False),stack='center'),
+            row=alt.Row(f'{question_col}:N',spacing=0),#, sort=question_order),
+            tooltip = tooltip[1:],
+            #color=alt.Color(f'{question_col}:N'),
+            **({'color': alt.Color(f'{factor_col}:N', scale=factor_color_scale, legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(factor_order,width))), 'order': alt.Order('order:O')} if factor_col else {})
+        ).properties(width=width,height=width//6)
+
+    return plot
+
+# %% ../nbs/03_plots.ipynb 40
 # Cluster-based reordering
 def cluster_based_reorder(X):
     pd = sp.spatial.distance.pdist(X)#,metric='cosine')
@@ -480,7 +504,7 @@ def matrix(data, cat_col, value_col='value', cat_order=alt.Undefined, factor_col
 
 register_stk_cont_version('matrix')
 
-# %% ../nbs/03_plots.ipynb 43
+# %% ../nbs/03_plots.ipynb 44
 @stk_plot('lines',data_format='longform', question=False, draws=False, ordered_factor=True, requires_factor=True, args={'smooth':'bool'})
 def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, smooth=False, width=800, tooltip=[], val_format='.2f',):
     if smooth:
@@ -500,7 +524,7 @@ def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order
 
 register_stk_cont_version('lines')
 
-# %% ../nbs/03_plots.ipynb 45
+# %% ../nbs/03_plots.ipynb 46
 def draws_to_hdis(data,vc,hdi_vals):
     gbc = [ c for c in data.columns if c not in [vc,'draw'] ]
     ldfs = []
@@ -542,7 +566,7 @@ def lines_hdi(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_o
 
 register_stk_cont_version('lines_hdi')
 
-# %% ../nbs/03_plots.ipynb 47
+# %% ../nbs/03_plots.ipynb 48
 @stk_plot('area_smooth',data_format='longform', question=False, draws=False, ordered=False, ordered_factor=True, requires_factor=True)
 def area_smooth(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, width=800, tooltip=[]):
     ldict = dict(zip(cat_order, range(len(cat_order))))
@@ -563,7 +587,7 @@ def area_smooth(data, cat_col, value_col='value', color_scale=alt.Undefined, cat
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 49
+# %% ../nbs/03_plots.ipynb 50
 def likert_aggregate(x, cat_col, cat_order, value_col):
     
     cc, vc = x[cat_col], x[value_col]
@@ -614,7 +638,7 @@ def likert_rad_pol(data, cat_col, cat_order=alt.Undefined, value_col='value', fa
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 52
+# %% ../nbs/03_plots.ipynb 53
 @stk_plot('barbell', data_format='longform', draws=False, requires_factor=True)
 def barbell(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, n_datapoints=1, val_format='%', width=800, tooltip=[]):
     
@@ -649,7 +673,7 @@ def barbell(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_ord
     
 register_stk_cont_version('barbell')
 
-# %% ../nbs/03_plots.ipynb 55
+# %% ../nbs/03_plots.ipynb 56
 @stk_plot('geoplot', data_format='longform', continuous=True, requires_factor=True, factor_meta=['topo_feature'],aspect_ratio=(4.0/3.0))
 def geoplot(data, topo_feature, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, val_format='.2f',tooltip=[]):
     
@@ -674,7 +698,7 @@ def geoplot(data, topo_feature, value_col='value', color_scale=alt.Undefined, ca
     ).project('mercator')
     return plot
 
-# %% ../nbs/03_plots.ipynb 57
+# %% ../nbs/03_plots.ipynb 58
 # Assuming ns is ordered by unique row values, find the split points
 def split_ordered(cvs):
     if len(cvs.shape)==1: cvs = cvs[:,None]
@@ -690,7 +714,7 @@ def split_even_weight(ws, n):
     cws = (cws/(cws[-1]/n)).astype('int')
     return (split_ordered(cws)+1)[:-1]
 
-# %% ../nbs/03_plots.ipynb 59
+# %% ../nbs/03_plots.ipynb 60
 def fd_mangle(vc, value_col, factor_col, n_points=10): 
     
     vc = vc.sort_values(value_col)
@@ -710,7 +734,7 @@ def fd_mangle(vc, value_col, factor_col, n_points=10):
 @stk_plot('facet_dist', data_format='raw', continuous=True, factor_columns=3,aspect_ratio=(1.0/1.0),requires_factor=True)
 def facet_dist(data, value_col='value',factor_col=None, factor_order=alt.Undefined, factor_color_scale=alt.Undefined, tooltip=[], outer_factors=[]):
     gb_cols = [ c for c in outer_factors if c is not None ] # There can be other extra cols (like labels) that should be ignored
-    ndata = data.groupby(gb_cols,observed=False)[[value_col,factor_col]].apply(fd_mangle,value_col=value_col,factor_col=factor_col).reset_index()
+    ndata = gb_in(data,gb_cols)[[value_col,factor_col]].apply(fd_mangle,value_col=value_col,factor_col=factor_col).reset_index()
     plot=alt.Chart(ndata).mark_area(interpolate='natural').encode(
             x=alt.X(f"percentile:Q",axis=alt.Axis(format='%')),
             y=alt.Y('density:Q',axis=alt.Axis(title=None, format = '%'),stack='normalize'),
@@ -721,7 +745,7 @@ def facet_dist(data, value_col='value',factor_col=None, factor_order=alt.Undefin
 
     return plot
 
-# %% ../nbs/03_plots.ipynb 62
+# %% ../nbs/03_plots.ipynb 63
 # Vectorized multinomial sampling. Should be slightly faster
 def vectorized_mn(prob_matrix):
     s = prob_matrix.cumsum(axis=1)
@@ -767,7 +791,7 @@ def linevals(vals, value_col, n_points, dim, cats, ccodes=None, ocols=None, boos
 
     return pdf
 
-# %% ../nbs/03_plots.ipynb 63
+# %% ../nbs/03_plots.ipynb 64
 @stk_plot('ordered_population', data_format='raw', continuous=True, factor_columns=3,aspect_ratio=(1.0/1.0),plot_args={'group_categories':'bool'})
 def ordered_population(data, value_col='value', factor_col=None, factor_order=alt.Undefined, factor_color_scale=alt.Undefined, tooltip=[], outer_factors=[], group_categories=False):
     
