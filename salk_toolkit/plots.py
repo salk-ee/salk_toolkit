@@ -276,7 +276,7 @@ def stacked_columns(data, cat_col, value_col='value', color_scale=alt.Undefined,
 
 register_stk_cont_version('stacked_columns')
 
-# %% ../nbs/03_plots.ipynb 30
+# %% ../nbs/03_plots.ipynb 27
 @stk_plot('diff_columns', data_format='longform', draws=False, requires_factor=True, args={'sort_descending':'bool'})
 def diff_columns(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, val_format='%', sort_descending=False, tooltip=[]):
     
@@ -308,7 +308,7 @@ def diff_columns(data, cat_col, value_col='value', color_scale=alt.Undefined, ca
 
 register_stk_cont_version('diff_columns')
 
-# %% ../nbs/03_plots.ipynb 32
+# %% ../nbs/03_plots.ipynb 29
 # The idea was to also visualize the size of each cluster. Currently not very useful, may need to be rethought
 
 @stk_plot('massplot', data_format='longform', draws=False, group_sizes=True, hidden=True)
@@ -345,7 +345,7 @@ def massplot(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_or
 
 register_stk_cont_version('massplot')
 
-# %% ../nbs/03_plots.ipynb 34
+# %% ../nbs/03_plots.ipynb 31
 # Make the likert bar pieces
 def make_start_end(x,value_col,cat_col,cat_order):
     #print("######################")
@@ -400,7 +400,7 @@ def likert_bars(data, cat_col, cat_order=alt.Undefined, value_col='value', quest
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 36
+# %% ../nbs/03_plots.ipynb 33
 # Calculate KDE ourselves using a fast libary. This gets around having to do sampling which is unstable
 def kde_1d(vc, value_col, ls, scale=False):
     y =  FFTKDE(kernel='gaussian').fit(vc.to_numpy()).evaluate(ls)
@@ -438,7 +438,7 @@ def density(data, value_col='value',factor_col=None, factor_order=alt.Undefined,
             )
     return plot
 
-# %% ../nbs/03_plots.ipynb 38
+# %% ../nbs/03_plots.ipynb 35
 @stk_plot('violin', data_format='raw', continuous=True, question=True, as_is=True)
 def density(data, value_col='value', question_col='question', question_color_scale=alt.Undefined, question_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, factor_color_scale=alt.Undefined, tooltip=[], outer_factors=[],width=800):
     gb_cols = [ c for c in outer_factors+[question_col]+[factor_col] if c is not None ] # There can be other extra cols (like labels) that should be ignored
@@ -463,7 +463,7 @@ def density(data, value_col='value', question_col='question', question_color_sca
 
     return plot
 
-# %% ../nbs/03_plots.ipynb 40
+# %% ../nbs/03_plots.ipynb 37
 # Cluster-based reordering
 def cluster_based_reorder(X):
     pd = sp.spatial.distance.pdist(X)#,metric='cosine')
@@ -505,7 +505,7 @@ def matrix(data, cat_col, value_col='value', cat_order=alt.Undefined, factor_col
 
 register_stk_cont_version('matrix')
 
-# %% ../nbs/03_plots.ipynb 44
+# %% ../nbs/03_plots.ipynb 41
 @stk_plot('lines',data_format='longform', question=False, draws=False, ordered_factor=True, requires_factor=True, args={'smooth':'bool'})
 def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, smooth=False, width=800, tooltip=[], val_format='.2f',):
     if smooth:
@@ -525,7 +525,7 @@ def lines(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order
 
 register_stk_cont_version('lines')
 
-# %% ../nbs/03_plots.ipynb 46
+# %% ../nbs/03_plots.ipynb 43
 def draws_to_hdis(data,vc,hdi_vals):
     gbc = [ c for c in data.columns if c not in [vc,'draw'] ]
     ldfs = []
@@ -567,7 +567,7 @@ def lines_hdi(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_o
 
 register_stk_cont_version('lines_hdi')
 
-# %% ../nbs/03_plots.ipynb 48
+# %% ../nbs/03_plots.ipynb 45
 @stk_plot('area_smooth',data_format='longform', question=False, draws=False, ordered=False, ordered_factor=True, requires_factor=True)
 def area_smooth(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, width=800, tooltip=[]):
     ldict = dict(zip(cat_order, range(len(cat_order))))
@@ -588,7 +588,7 @@ def area_smooth(data, cat_col, value_col='value', color_scale=alt.Undefined, cat
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 50
+# %% ../nbs/03_plots.ipynb 47
 def likert_aggregate(x, cat_col, cat_order, value_col):
     
     cc, vc = x[cat_col], x[value_col]
@@ -639,7 +639,7 @@ def likert_rad_pol(data, cat_col, cat_order=alt.Undefined, value_col='value', fa
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 53
+# %% ../nbs/03_plots.ipynb 50
 @stk_plot('barbell', data_format='longform', draws=False, requires_factor=True)
 def barbell(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_color_scale=alt.Undefined, factor_order=alt.Undefined, n_datapoints=1, val_format='%', width=800, tooltip=[]):
     
@@ -674,7 +674,7 @@ def barbell(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_ord
     
 register_stk_cont_version('barbell')
 
-# %% ../nbs/03_plots.ipynb 56
+# %% ../nbs/03_plots.ipynb 53
 @stk_plot('geoplot', data_format='longform', continuous=True, requires_factor=True, factor_meta=['topo_feature'],aspect_ratio=(4.0/3.0))
 def geoplot(data, topo_feature, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, val_format='.2f',tooltip=[]):
     
@@ -699,7 +699,7 @@ def geoplot(data, topo_feature, value_col='value', color_scale=alt.Undefined, ca
     ).project('mercator')
     return plot
 
-# %% ../nbs/03_plots.ipynb 58
+# %% ../nbs/03_plots.ipynb 55
 # Assuming ns is ordered by unique row values, find the split points
 def split_ordered(cvs):
     if len(cvs.shape)==1: cvs = cvs[:,None]
@@ -715,7 +715,7 @@ def split_even_weight(ws, n):
     cws = (cws/(cws[-1]/n)).astype('int')
     return (split_ordered(cws)+1)[:-1]
 
-# %% ../nbs/03_plots.ipynb 60
+# %% ../nbs/03_plots.ipynb 57
 def fd_mangle(vc, value_col, factor_col, n_points=10): 
     
     vc = vc.sort_values(value_col)
@@ -746,7 +746,7 @@ def facet_dist(data, value_col='value',factor_col=None, factor_order=alt.Undefin
 
     return plot
 
-# %% ../nbs/03_plots.ipynb 63
+# %% ../nbs/03_plots.ipynb 60
 # Vectorized multinomial sampling. Should be slightly faster
 def vectorized_mn(prob_matrix):
     s = prob_matrix.cumsum(axis=1)
@@ -792,7 +792,7 @@ def linevals(vals, value_col, n_points, dim, cats, ccodes=None, ocols=None, boos
 
     return pdf
 
-# %% ../nbs/03_plots.ipynb 64
+# %% ../nbs/03_plots.ipynb 61
 @stk_plot('ordered_population', data_format='raw', continuous=True, factor_columns=3,aspect_ratio=(1.0/1.0),plot_args={'group_categories':'bool'})
 def ordered_population(data, value_col='value', factor_col=None, factor_order=alt.Undefined, factor_color_scale=alt.Undefined, tooltip=[], outer_factors=[], group_categories=False):
     

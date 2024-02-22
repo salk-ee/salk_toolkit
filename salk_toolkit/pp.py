@@ -387,13 +387,19 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
     # If we still have more than 1 factor - merge the rest
     if len(factor_cols)>1:
         n_facet_cols = len(data[factor_cols[-1]].dtype.categories)
-        if not return_matrix_of_plots:
-            factor_col = '+'.join(factor_cols)
-            jfs = data[factor_cols].agg(', '.join, axis=1)
-            data.loc[:,factor_col] = pd.Categorical(jfs,jfs.unique())
+        if not return_matrix_of_plots and len(factor_cols)>2:
+
+            # Preserve ordering of categories we combine
+            nf_order = [ ', '.join(t) for t in it.product(*[list(data[c].dtype.categories) for c in factor_cols[1:]])]
+            print(nf_order)
+            factor_col = ', '.join(factor_cols[1:])
+            jfs = data[factor_cols[1:]].agg(', '.join, axis=1)
+            data.loc[:,factor_col] = pd.Categorical(jfs,nf_order)
             pparams['data'] = data
-            n_facet_cols = len(data[factor_cols[-1]].dtype.categories)
-            factor_cols = [factor_col]
+            factor_cols = [factor_cols[0], factor_col]
+
+        if len(factor_cols)>=2:
+            n_facet_cols = len(data[factor_cols[0]].dtype.categories)
     else:
         n_facet_cols = vod(plot_meta,'factor_columns',1)
         
@@ -431,7 +437,14 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
                 for c in combs
                 ], n_facet_cols))
         else: # Use faceting:
-            plot = alt_wrapper(plot_fn(**pparams).properties(**dims, **alt_properties).facet(f'{factor_cols[0]}:O',columns=n_facet_cols))
+            if n_facet_cols==1:
+                plot = alt_wrapper(plot_fn(**pparams).properties(**dims, **alt_properties).facet(row=alt.Row(f'{factor_cols[0]}:O', sort=list(data[factor_cols[0]].dtype.categories))))
+            elif n_facet_cols==len(data[factor_cols[0]].dtype.categories):
+                plot = alt_wrapper(plot_fn(**pparams).properties(**dims, **alt_properties).facet(
+                    column=alt.Column(f'{factor_cols[0]}:O', sort=list(data[factor_cols[0]].dtype.categories)),
+                    row=alt.Row(f'{factor_cols[1]}:O', sort=list(data[factor_cols[1]].dtype.categories))))
+            else: # n_facet_cols!=1 but just one facet
+                plot = alt_wrapper(plot_fn(**pparams).properties(**dims, **alt_properties).facet(f'{factor_cols[0]}:O',columns=n_facet_cols))
     else:
         plot = alt_wrapper(plot_fn(**pparams).properties(**dims, **alt_properties))
         if return_matrix_of_plots: plot = [[plot]]
