@@ -412,7 +412,7 @@ def density(data, value_col='value',factor_col=None, factor_order=alt.Undefined,
     gb_cols = [ c for c in outer_factors+[factor_col] if c is not None ] # There can be other extra cols (like labels) that should be ignored
     
     ls = np.linspace(data[value_col].min()-1e-10,data[value_col].max()+1e-10,200)
-    ndata = gb_in(data,gb_cols)[value_col].apply(kde_1d,value_col=value_col,ls=ls,scale=stacked).reset_index()
+    ndata = gb_in_apply(data,gb_cols,cols=[value_col],fn=kde_1d,value_col=value_col,ls=ls,scale=stacked).reset_index()
     
     if stacked:
         
@@ -444,7 +444,7 @@ def density(data, value_col='value', question_col='question', question_color_sca
     gb_cols = [ c for c in outer_factors+[question_col]+[factor_col] if c is not None ] # There can be other extra cols (like labels) that should be ignored
     
     ls = np.linspace(data[value_col].min()-1e-10,data[value_col].max()+1e-10,200)
-    ndata = gb_in(data,gb_cols)[value_col].apply(kde_1d,value_col=value_col,ls=ls,scale=True).reset_index()
+    ndata = gb_in_apply(data,gb_cols,cols=[value_col],fn=kde_1d,value_col=value_col,ls=ls,scale=True).reset_index()
     
     if factor_col:
         ldict = dict(zip(factor_order, reversed(range(len(factor_order)))))
@@ -735,7 +735,7 @@ def fd_mangle(vc, value_col, factor_col, n_points=10):
 @stk_plot('facet_dist', data_format='raw', continuous=True, factor_columns=3,aspect_ratio=(1.0/1.0),requires_factor=True)
 def facet_dist(data, value_col='value',factor_col=None, factor_order=alt.Undefined, factor_color_scale=alt.Undefined, tooltip=[], outer_factors=[]):
     gb_cols = [ c for c in outer_factors if c is not None ] # There can be other extra cols (like labels) that should be ignored
-    ndata = gb_in(data,gb_cols)[[value_col,factor_col]].apply(fd_mangle,value_col=value_col,factor_col=factor_col).reset_index()
+    ndata = gb_in_apply(data,gb_cols,cols=[value_col,factor_col],fn=fd_mangle,value_col=value_col,factor_col=factor_col).reset_index()
     plot=alt.Chart(ndata).mark_area(interpolate='natural').encode(
             x=alt.X(f"percentile:Q",axis=alt.Axis(format='%')),
             y=alt.Y('density:Q',axis=alt.Axis(title=None, format = '%'),stack='normalize'),
