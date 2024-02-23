@@ -331,7 +331,7 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
     # If we have a question column not handled by the plot, add it to factors:
     pparams['question_col'] = 'question'
     if 'question' in data.columns and not vod(plot_meta,'question'):
-        factor_cols = factor_cols + ['question']
+        if 'question' not in factor_cols: factor_cols = factor_cols + ['question']
     # If we don't have a question column but need it, just fill it with res_col name
     elif 'question' not in data.columns and vod(plot_meta,'question'):
         data.loc[:,'question'] = pd.Categorical([pp_desc['res_col']]*len(pparams['data']))
@@ -438,11 +438,12 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
                 ], n_facet_cols))
         else: # Use faceting:
             if n_facet_cols==1:
-                plot = alt_wrapper(plot_fn(**pparams).properties(**dims, **alt_properties).facet(row=alt.Row(f'{factor_cols[0]}:O', sort=list(data[factor_cols[0]].dtype.categories))))
+                plot = alt_wrapper(plot_fn(**pparams).properties(**dims, **alt_properties).facet(
+                    row=alt.Row(f'{factor_cols[0]}:O', sort=list(data[factor_cols[0]].dtype.categories), header=alt.Header(labelOrient='top'))))
             elif n_facet_cols==len(data[factor_cols[0]].dtype.categories):
                 plot = alt_wrapper(plot_fn(**pparams).properties(**dims, **alt_properties).facet(
                     column=alt.Column(f'{factor_cols[0]}:O', sort=list(data[factor_cols[0]].dtype.categories)),
-                    row=alt.Row(f'{factor_cols[1]}:O', sort=list(data[factor_cols[1]].dtype.categories))))
+                    row=alt.Row(f'{factor_cols[1]}:O', sort=list(data[factor_cols[1]].dtype.categories), header=alt.Header(labelOrient='top'))))
             else: # n_facet_cols!=1 but just one facet
                 plot = alt_wrapper(plot_fn(**pparams).properties(**dims, **alt_properties).facet(f'{factor_cols[0]}:O',columns=n_facet_cols))
     else:
