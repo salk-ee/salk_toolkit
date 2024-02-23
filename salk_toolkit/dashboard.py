@@ -97,38 +97,71 @@ def wrap_st_with_translate(fn,self):
     setattr(self, fn, lambda s, *args, **kwargs: func(self.tf(s),*args,**kwargs) )
 
 # %% ../nbs/05_dashboard.ipynb 9
-def default_translate(s):
+def default_translate(s,**kwargs):
     return (s[0].upper() + s[1:]).replace('_',' ') if isinstance(s,str) else s
 
 # %% ../nbs/05_dashboard.ipynb 10
+def po_template_updater(pot_file = None):
+    if pot_file is None:
+        bname = os.path.splitext(os.path.basename(__main__.__file__))[0]
+        pot_file = f'locale/{bname}.pot'
+
+    if os.path.exists(pot_file):
+        po  = polib.pofile(pot_file)
+        td = { entry.msgid for entry in po }
+    else:
+        po = polib.POFile()
+        po.metadata = {
+            'Project-Id-Version': '1.0',
+            'Report-Msgid-Bugs-To': 'tarmo@salk.com',
+            'MIME-Version': '1.0',
+            'Content-Type': 'text/plain; charset=utf-8',
+            'Content-Transfer-Encoding': '8bit',
+        }
+        td = set()
+
+    def translate(s,**kwargs):
+        if isinstance(s,str) and s not in td:
+            po.append(polib.POEntry(msgid=s,msgstr=default_translate(s), 
+                                    **{'msgctxt': kwargs.get('context'), 'comment': kwargs.get('comment')}))
+            po.save(pot_file)
+            td.add(s)
+        return s
+    
+    return translate
+
 def translate_fn_from_po(po_file):
     po = polib.pofile(po_file)
     td = { entry.msgid: entry.msgstr for entry in po }
-    return lambda s: td.get(s,s)
+    return lambda s, **kwargs: td.get(s,s)
 
 def load_translate(translate):
 
     if translate is None: return default_translate
-    elif isinstance(translate,function): return translate
-    elif isinstance(translate,dict): return lambda s: translate.get(s,s)
+    elif callable(translate): return translate
+    elif isinstance(translate,dict): return lambda s, **kwargs: translate.get(s,s)
     elif isinstance(translate,str):
         if os.path.exists(translate):
             ext = os.path.splitext(translate)[1]
-            if ext == '.po':
+            if ext == '.po' or ext == '.pot':
                 return translate_fn_from_po(translate)
             elif ext == '.json':
                 td = load_json_cached(translate)
-                return lambda s: td.get(s,s)
+                return lambda s, **kwargs: td.get(s,s)
+            else:
+                raise ValueError(f"Unknown translation file type: {ext}")
         elif len(translate)==2: # country code
-            bname = os.path.splitext(os.path.basename(full_path))[0]
+            bname = os.path.splitext(os.path.basename(__main__.__file__))[0]
             return translate_fn_from_po(f'locale/{translate}/{bname}.po')
+        else:
+            raise ValueError(f"Translation file not found: {translate}")
 
 
 # %% ../nbs/05_dashboard.ipynb 11
 # Main dashboard wrapper - WIP
 class SalkDashboardBuilder:
 
-    def __init__(self, data_source, auth_conf, logfile, groups=['guest','user','admin'], public=False, pre_translate={}, translate=None):
+    def __init__(self, data_source, auth_conf, logfile, groups=['guest','user','admin'], public=False, translate=None):
         
         # Allow deployment.json to redirect files from local to s3 if local missing (i.e. in deployment scenario)
         if os.path.exists('./deployment.json'):
@@ -147,18 +180,16 @@ class SalkDashboardBuilder:
         self.info = st.empty()
         
         # Set up translation
-        self.tf = load_translate(translate)
-        
-        # Set up pre-translate to prettify plot names/labels without a full translation needed
-        if pre_translate: 
-            ptf = load_translate(pre_translate)
-            self.tf = lambda s: self.tf(ptf(s))
+        pot_updater = po_template_updater()
+        translate = load_translate(translate)
+        self.tf = lambda s,**kwargs: translate(pot_updater(s,**kwargs))
         
         self.p_widths = {}
         
         # Set up authentication
-        with st.spinner(self.tf("Setting up authentication...")):
-            self.uam = UserAuthenticationManager(auth_conf, groups, s3_fs=self.s3fs, info=self.info, logger=self.log_event, translate_func=self.tf)
+        with st.spinner(self.tf("Setting up authentication...",context='ui')):
+            self.uam = UserAuthenticationManager(auth_conf, groups, s3_fs=self.s3fs, info=self.info, logger=self.log_event, 
+                                                translate_func=lambda t: self.tf(t,context='ui'))
 
         if not public:
             self.uam.login_screen()
@@ -186,7 +217,7 @@ class SalkDashboardBuilder:
         
         # Draw plot
         st_plot(pp_desc,
-                width=width, translate=self.tf,
+                width=width, translate=lambda s: self.tf(s,context='data'),
                 full_df=self.df,data_meta=self.meta,**kwargs)
         
     def filter_ui(self, dims, detailed=False, raw=False):
@@ -219,10 +250,10 @@ class SalkDashboardBuilder:
         with st.sidebar:
             
             if self.user:
-                self.sb_info.info(self.tf('Logged in as **%s**') % self.user["name"])
-                self.uam.auth.logout(self.tf('Log out'), 'sidebar')
+                self.sb_info.info(self.tf('Logged in as **%s**',context='ui') % self.user["name"])
+                self.uam.auth.logout(self.tf('Log out',context='ui'), 'sidebar')
             
-            t_pnames = [ self.tf(pn) for pn in pnames]
+            t_pnames = [ self.tf(pn,context='ui') for pn in pnames]
             menu_choice = option_menu("Pages",
                 t_pnames,
                 icons=[vod(t[2],'icon') for t in self.pages],
@@ -239,11 +270,11 @@ class SalkDashboardBuilder:
         
         # Load data
         self.data_source = vod(meta,'data_source',self.data_source)
-        with st.spinner(self.tf("Loading data...")):
+        with st.spinner(self.tf("Loading data...",context='ui')):
             self.df, self.meta = read_annotated_data_cached(alias_file(self.data_source,self.filemap))
         
         # Render the chosen page
-        st.subheader(pname)
+        self.subheader(pname)
         pfunc(**clean_kwargs(pfunc,{'sdb':self}))
         
     # Add enter and exit so it can be used as a context
@@ -362,13 +393,13 @@ class UserAuthenticationManager():
 def user_settings_page(sdb):
     if not sdb.user: return
     try:
-        tf = sdb.tf
+        tf = lambda s: sdb.tf(s,context='ui')
         if sdb.uam.auth.reset_password(st.session_state["username"], 
                                        fields={'Form name':tf('Reset password'), 'Current password':tf('Current password'), 
                                                'New password':tf('New password'), 'Repeat password': tf('Repeat password'), 
                                                'Reset':tf('Reset')}):
             sdb.uam.update_conf()
-            st.success(sdb.tf('Password modified successfully'))
+            st.success(tf('Password modified successfully'))
     except Exception as e:
         st.error(e)
 
@@ -506,18 +537,19 @@ def st_plot(pp_desc,**kwargs):
 
 # %% ../nbs/05_dashboard.ipynb 23
 def facet_ui(dims, two=False, raw=False, translate=None, force_choice=False):
-    
     # Set up translation
-    tf = translate if translate else (lambda s: s)
+    tfc = translate if translate else (lambda s,**kwargs: s)
+    tf = lambda s: tfc(s,context='data')
+    
     tdims = [ tf(d) for d in dims ]
     r_map = dict(zip(tdims,dims))
     
     none = tf('None')
     stc = st.sidebar if not raw else st
-    facet_dim = stc.selectbox(tf('Facet:'), tdims if force_choice else [none] + tdims )
+    facet_dim = stc.selectbox(tfc('Facet:',context='ui'), tdims if force_choice else [none] + tdims )
     fcols = [facet_dim] if facet_dim != none else []
     if two and facet_dim != none:
-        second_dim = stc.selectbox(tf('Facet 2:'), tdims if force_choice else [none] + tdims)
+        second_dim = stc.selectbox(tfc('Facet 2:',context='ui'), tdims if force_choice else [none] + tdims)
         if second_dim not in [none,facet_dim]:  fcols = [facet_dim, second_dim]
         
     return [ r_map[d] for d in fcols ]
@@ -533,7 +565,8 @@ def ms_reset(cn, all_vals):
 # User interface that outputs a filter for the pp_desc
 def filter_ui(data, dmeta=None, dims=None, detailed=False, raw=False, translate=None, force_choice=False,):
     
-    tf = translate if translate else (lambda s: s)
+    tfc = translate if translate else (lambda s,**kwargs: s)
+    tf = lambda s: tfc(s,context='data')
     
     if dims is None:
         dims = [c for c in data.columns if c not in ['draw', 'weight', 'training_subsample'] ]  
@@ -545,7 +578,7 @@ def filter_ui(data, dmeta=None, dims=None, detailed=False, raw=False, translate=
     
     f_info = st.sidebar.container() if not raw else st.container()
     
-    stc = st.sidebar.expander(tf('Filters')) if not raw else st
+    stc = st.sidebar.expander(tfc('Filters',context='ui')) if not raw else st
     
     # Different selector for different category types
     # Also - make sure filter is clean and only applies when it is changed from the default 'all' value
@@ -571,20 +604,20 @@ def filter_ui(data, dmeta=None, dims=None, detailed=False, raw=False, translate=
         elif col.dtype.name=='category' and not col.dtype.ordered:
             choices = [gt for gt,g in r_map.items() if g in grp_names] + all_vals
             if not force_choice: choices = [tf('All')] + choices
-            filters[cn] = stc.selectbox(cn,choices)
+            filters[cn] = stc.selectbox(tf(cn),choices)
             if filters[cn] == tf('All'): del filters[cn]
             else: filters[cn] = r_map[filters[cn]]
         elif col.dtype.name=='category':
-            filters[cn] = stc.select_slider(cn,all_vals,value=(all_vals[0],all_vals[-1]))
+            filters[cn] = stc.select_slider(tf(cn),all_vals,value=(all_vals[0],all_vals[-1]))
             if filters[cn] == (all_vals[0],all_vals[-1]): del filters[cn]
             else: filters[cn] = (r_map[filters[cn][0]],r_map[filters[cn][1]])
         elif is_numeric_dtype(col) and col.dtype!='bool':
             mima = (col.min(),col.max())
             if mima[0]==mima[1]: continue
-            filters[cn] = stc.slider(cn,*mima,value=mima)
+            filters[cn] = stc.slider(tf(cn),*mima,value=mima)
             if filters[cn] == mima: del filters[cn]
             
-    if filters and not force_choice: f_info.warning(tf('⚠️ Filters active ⚠️'))
+    if filters and not force_choice: f_info.warning('⚠️ ' + tfc('Filters active',context='ui') + ' ⚠️')
             
     return filters
 
