@@ -920,7 +920,9 @@ def marimekko(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_o
             y=alt.Y(
                 "y1:Q",
                 axis=alt.Axis(
-                    zindex=1, format="%", title=f"{ycol} (% of total)", grid=False, labels=not separate)
+                    zindex=1, format="%", title=f"{ycol} (% of total)", grid=False, labels=not separate
+                    ),
+                scale=alt.Scale(domain=[0, 1])
             ),
             y2="y2:Q",
             color=alt.Color(
