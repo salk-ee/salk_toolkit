@@ -2,9 +2,9 @@
 
 # %% auto 0
 __all__ = ['get_plot_width', 'open_fn', 'exists_fn', 'read_annotated_data_cached', 'load_json', 'load_json_cached', 'save_json',
-           'alias_file', 'SalkDashboardBuilder', 'UserAuthenticationManager', 'draw_plot_matrix', 'st_plot', 'facet_ui',
-           'filter_ui', 'translate_with_dict', 'log_missing_translations', 'clean_missing_translations',
-           'add_missing_to_dict']
+           'alias_file', 'default_translate', 'SalkDashboardBuilder', 'UserAuthenticationManager', 'draw_plot_matrix',
+           'st_plot', 'facet_ui', 'filter_ui', 'translate_with_dict', 'log_missing_translations',
+           'clean_missing_translations', 'add_missing_to_dict']
 
 # %% ../nbs/05_dashboard.ipynb 3
 import json, os, csv, re, time
@@ -19,7 +19,8 @@ import datetime as dt
 from typing import List, Tuple, Dict, Union, Optional
 
 import altair as alt
-import s3fs
+import s3fs, polib
+import __main__ # to get name of py file
 
 from pandas.api.types import is_numeric_dtype
 
@@ -96,6 +97,34 @@ def wrap_st_with_translate(fn,self):
     setattr(self, fn, lambda s, *args, **kwargs: func(self.tf(s),*args,**kwargs) )
 
 # %% ../nbs/05_dashboard.ipynb 9
+def default_translate(s):
+    return (s[0].upper() + s[1:]).replace('_',' ') if isinstance(s,str) else s
+
+# %% ../nbs/05_dashboard.ipynb 10
+def translate_fn_from_po(po_file):
+    po = polib.pofile(po_file)
+    td = { entry.msgid: entry.msgstr for entry in po }
+    return lambda s: td.get(s,s)
+
+def load_translate(translate):
+
+    if translate is None: return default_translate
+    elif isinstance(translate,function): return translate
+    elif isinstance(translate,dict): return lambda s: translate.get(s,s)
+    elif isinstance(translate,str):
+        if os.path.exists(translate):
+            ext = os.path.splitext(translate)[1]
+            if ext == '.po':
+                return translate_fn_from_po(translate)
+            elif ext == '.json':
+                td = load_json_cached(translate)
+                return lambda s: td.get(s,s)
+        elif len(translate)==2: # country code
+            bname = os.path.splitext(os.path.basename(full_path))[0]
+            return translate_fn_from_po(f'locale/{translate}/{bname}.po')
+
+
+# %% ../nbs/05_dashboard.ipynb 11
 # Main dashboard wrapper - WIP
 class SalkDashboardBuilder:
 
@@ -118,10 +147,12 @@ class SalkDashboardBuilder:
         self.info = st.empty()
         
         # Set up translation
-        self.tf = translate if translate else (lambda s: s)
+        self.tf = load_translate(translate)
         
         # Set up pre-translate to prettify plot names/labels without a full translation needed
-        if pre_translate: self.tf = lambda s: self.tf(pre_translate[s]) if s in pre_translate else self.tf(s)
+        if pre_translate: 
+            ptf = load_translate(pre_translate)
+            self.tf = lambda s: self.tf(ptf(s))
         
         self.p_widths = {}
         
@@ -223,7 +254,7 @@ class SalkDashboardBuilder:
     def __exit__(self, exc_type, exc_value, exc_tb):
         self.build()
 
-# %% ../nbs/05_dashboard.ipynb 12
+# %% ../nbs/05_dashboard.ipynb 14
 class UserAuthenticationManager():
     
     def __init__(self,auth_conf_file,groups,s3_fs,info,logger,translate_func):
@@ -318,7 +349,6 @@ class UserAuthenticationManager():
         self.require_admin()
         del self.users[username]
         self.info.warning(f'User **{username}** deleted.')
-        print(f"Delete user {username}")
         self.log_event(f'delete-user: {username}')
         self.update_conf()
 
@@ -327,7 +357,7 @@ class UserAuthenticationManager():
         return [ censor_dict({'username': k, **v},['password']) for k,v in self.users.items() ]
 
 
-# %% ../nbs/05_dashboard.ipynb 14
+# %% ../nbs/05_dashboard.ipynb 16
 # Password reset
 def user_settings_page(sdb):
     if not sdb.user: return
@@ -342,7 +372,7 @@ def user_settings_page(sdb):
     except Exception as e:
         st.error(e)
 
-# %% ../nbs/05_dashboard.ipynb 15
+# %% ../nbs/05_dashboard.ipynb 17
 # Helper function to highlight log rows
 def highlight_cells(val):
     if 'fail' in val:
@@ -356,7 +386,7 @@ def highlight_cells(val):
         color = ''
     return 'color: {}'.format(color)
 
-# %% ../nbs/05_dashboard.ipynb 16
+# %% ../nbs/05_dashboard.ipynb 18
 # Admin page to manage users
 
 def admin_page(sdb):
@@ -454,7 +484,7 @@ def admin_page(sdb):
                     sdb.uam.delete_user(username)
 
 
-# %% ../nbs/05_dashboard.ipynb 20
+# %% ../nbs/05_dashboard.ipynb 22
 # This is a horrible workaround to get faceting to work with altair geoplots that do not play well with streamlit
 # See https://github.com/altair-viz/altair/issues/2369 -> https://github.com/vega/vega-lite/issues/3729
 
@@ -474,7 +504,7 @@ def st_plot(pp_desc,**kwargs):
     plots = e2e_plot(pp_desc, return_matrix_of_plots=matrix_form, **kwargs)
     draw_plot_matrix(plots, matrix_form=matrix_form)
 
-# %% ../nbs/05_dashboard.ipynb 21
+# %% ../nbs/05_dashboard.ipynb 23
 def facet_ui(dims, two=False, raw=False, translate=None, force_choice=False):
     
     # Set up translation
@@ -492,14 +522,14 @@ def facet_ui(dims, two=False, raw=False, translate=None, force_choice=False):
         
     return [ r_map[d] for d in fcols ]
 
-# %% ../nbs/05_dashboard.ipynb 22
+# %% ../nbs/05_dashboard.ipynb 24
 # Function that creates reset functions for multiselects in filter
 def ms_reset(cn, all_vals):
     def reset_ms():
         st.session_state[f"{cn}_multiselect"] = all_vals
     return reset_ms
 
-# %% ../nbs/05_dashboard.ipynb 23
+# %% ../nbs/05_dashboard.ipynb 25
 # User interface that outputs a filter for the pp_desc
 def filter_ui(data, dmeta=None, dims=None, detailed=False, raw=False, translate=None, force_choice=False,):
     
@@ -559,7 +589,7 @@ def filter_ui(data, dmeta=None, dims=None, detailed=False, raw=False, translate=
     return filters
 
 
-# %% ../nbs/05_dashboard.ipynb 25
+# %% ../nbs/05_dashboard.ipynb 27
 # Use dict here as dicts are ordered as of Python 3.7 and preserving order groups things together better
 
 def translate_with_dict(d):

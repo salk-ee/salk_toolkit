@@ -36,11 +36,12 @@ with st.spinner("Loading libraries.."):
 
     from pandas.api.types import is_numeric_dtype
 
+
     from salk_toolkit.io import load_parquet_with_metadata, read_json, extract_column_meta
     from salk_toolkit.pp import *
     from salk_toolkit.plots import matching_plots, get_plot_meta
     from salk_toolkit.utils import vod
-    from salk_toolkit.dashboard import draw_plot_matrix, facet_ui, filter_ui, get_plot_width
+    from salk_toolkit.dashboard import draw_plot_matrix, facet_ui, filter_ui, get_plot_width, default_translate
 
     tqdm = lambda x: x # So we can freely copy-paste from notebooks
 
@@ -62,6 +63,8 @@ else: global_data_meta = None
 #info.info("Libraries loaded.")
 #path = '../salk_internal_package/samples/'
 path = './samples/'
+
+translate = default_translate
 
 input_file_choices = sorted([ f for f in os.listdir(path) if f[-8:]=='.parquet' ])
 
@@ -221,8 +224,9 @@ if facet_dim == 'input_file':
 
     pparams['data'] = fdf
     plot = create_plot(pparams,first_data_meta,args,
-                        width=get_plot_width('full'),
-                        return_matrix_of_plots=matrix_form)
+                       translate=translate,
+                       width=get_plot_width('full'),
+                       return_matrix_of_plots=matrix_form)
 
     draw_plot_matrix(plot,matrix_form=matrix_form)
     #st.altair_chart(plot)#,use_container_width=True)
@@ -248,8 +252,9 @@ else:
             fargs['filter'] = { k:v for k,v in args['filter'].items() if k in loaded[ifile]['data'].columns }
             pparams = get_filtered_data(loaded[ifile]['data'], data_meta, fargs)
             plot = create_plot(pparams,data_meta,fargs,
-                                width=get_plot_width(f'{i}_{ifile}'),
-                                return_matrix_of_plots=matrix_form)
+                               translate=translate,
+                               width=get_plot_width(f'{i}_{ifile}'),
+                               return_matrix_of_plots=matrix_form)
 
             #n_questions = pparams['data']['question'].nunique() if 'question' in pparams['data'] else 1
             #st.write('Based on %.1f%% of data' % (100*pparams['n_datapoints']/(len(loaded[ifile]['data_n'])*n_questions)))
