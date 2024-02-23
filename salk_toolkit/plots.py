@@ -6,7 +6,8 @@ __all__ = ['registry', 'registry_meta', 'stk_plot_defaults', 'priority_weights',
            'register_stk_cont_version', 'estimate_legend_columns_horiz_naive', 'estimate_legend_columns_horiz',
            'boxplots', 'columns', 'stacked_columns', 'diff_columns', 'massplot', 'make_start_end', 'likert_bars',
            'kde_1d', 'density', 'cluster_based_reorder', 'matrix', 'lines', 'draws_to_hdis', 'lines_hdi', 'area_smooth',
-           'likert_aggregate', 'likert_rad_pol', 'barbell', 'geoplot', 'fd_mangle', 'facet_dist', 'ordered_population']
+           'likert_aggregate', 'likert_rad_pol', 'barbell', 'geoplot', 'fd_mangle', 'facet_dist', 'ordered_population',
+           'marimekko']
 
 # %% ../nbs/03_plots.ipynb 3
 import json, os, math
@@ -870,4 +871,69 @@ def ordered_population(data, value_col='value', factor_col=None, factor_order=al
         line,
         data=tdf,
     )
+    return plot
+
+# %% ../nbs/03_plots.ipynb 63
+@stk_plot('marimekko', data_format='longform', draws=False, group_sizes=True, requires_factor=True, args={'separate':'bool'})
+def marimekko(data, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, factor_color_scale=alt.Undefined, val_format='%', width=800, tooltip=[], outer_factors=[], separate=False):
+
+    #xcol, ycol, ycol_scale = factor_col, cat_col, color_scale
+    xcol, ycol, ycol_scale = cat_col, factor_col, factor_color_scale
+     
+    data['w'] = data['group_size']*data[value_col]
+    data.sort_values([xcol,ycol],ascending=[True,False],inplace=True)
+
+    if separate: # Split and center each ycol group so dynamics can be better tracked for all of them
+        ndata = data.groupby(outer_factors+[xcol],observed=False)[[ycol,value_col,'w']].apply(lambda df: pd.DataFrame({ ycol: df[ycol], 'yv': df['w']/df['w'].sum(), 'w': df['w']})).reset_index()
+        ndata = ndata.merge(ndata.groupby(outer_factors + [ycol],observed=True)['yv'].max().rename('ym').reset_index(),on=outer_factors + [ycol]).fillna({'ym':0.0})
+        ndata = ndata.groupby(outer_factors+[xcol],observed=False)[[ycol,'w','yv','ym']].apply(lambda df: pd.DataFrame({ ycol: df[ycol], 'yv': df['yv'], 'w': df['w'].sum(),
+                                                                                                                        'y1': (df['ym'].cumsum()- df['ym']/2 - df['yv']/2)/df['ym'].sum(),
+                                                                                                                        'y2': (df['ym'].cumsum()- df['ym']/2 + df['yv']/2)/df['ym'].sum(), })).reset_index()
+    else: # Regular marimekko
+        ndata = data.groupby(outer_factors+[xcol],observed=False)[[ycol,value_col,'w']].apply(lambda df: pd.DataFrame({ ycol: df[ycol], 'w': df['w'].sum(),
+                                                                                                                       'yv': df['w']/df['w'].sum(), 
+                                                                                                                       'y2': df['w'].cumsum()/df['w'].sum()})).reset_index()
+        ndata['y1'] = ndata['y2']-ndata['yv']
+    
+    ndata = ndata.groupby(outer_factors+[ycol],observed=False)[[xcol,'yv','y1','y2','w']].apply(lambda df: pd.DataFrame({ xcol: df[xcol], 'xv': df['w']/df['w'].sum(), 'x2': df['w'].cumsum()/df['w'].sum(), 'yv':df['yv'], 'y1':df['y1'], 'y2':df['y2']})).reset_index()
+    ndata['x1'] = ndata['x2']-ndata['xv']
+    
+
+    #selection = alt.selection_point(fields=[yvar], bind="legend")
+    STROKE = 0.25
+    plot = alt.Chart(ndata).mark_rect(
+            strokeWidth=STROKE,
+            stroke="white",
+            xOffset=STROKE / 2,
+            x2Offset=STROKE / 2,
+            yOffset=STROKE / 2,
+            y2Offset=STROKE / 2,
+        ).encode(
+            x=alt.X(
+                "x1:Q",
+                axis=alt.Axis(
+                    zindex=1, format="%", title=[f"{xcol} (% of total)", " "], grid=False
+                ),
+                scale=alt.Scale(domain=[0, 1]),
+            ),
+            x2="x2:Q",
+            y=alt.Y(
+                "y1:Q",
+                axis=alt.Axis(
+                    zindex=1, format="%", title=f"{ycol} (% of total)", grid=False, labels=not separate)
+            ),
+            y2="y2:Q",
+            color=alt.Color(
+                f"{ycol}:N",
+                legend=alt.Legend(title=None, symbolStrokeWidth=0), #title=f"{yvar}"),
+                scale=ycol_scale,
+            ),
+            tooltip=[
+                alt.Tooltip("yv:Q", title=f'{ycol} proportion', format='.1%' ),
+                alt.Tooltip("xv:Q", title=f'{xcol} proportion', format='.1%' ),
+            ]+tooltip[1:],
+            #opacity=alt.condition(selection, alt.value(1), alt.value(0.3)),
+        )
+        #.add_params(selection)
+    
     return plot
