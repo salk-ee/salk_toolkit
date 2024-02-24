@@ -154,7 +154,8 @@ with st.sidebar: #.expander("Select dimensions"):
 
     args['internal_facet'] = st.toggle('Internal facet?',True)
 
-    args['plot'] = st.selectbox('Plot type',matching_plots(args, first_data, first_data_meta))
+    args['plot'] = st.selectbox(
+        'Plot type',sorted(matching_plots(args, first_data, first_data_meta)),index=3)
 
     plot_args = {} # 'n_facet_cols':2 }
     for k, v in vod(get_plot_meta(args['plot']),'args',{}).items():
