@@ -220,11 +220,11 @@ class SalkDashboardBuilder:
                 width=width, translate=lambda s: self.tf(s,context='data'),
                 full_df=self.df,data_meta=self.meta,**kwargs)
         
-    def filter_ui(self, dims, detailed=False, raw=False):
-        return filter_ui(self.df, self.meta, dims=dims, detailed=detailed, raw=raw, translate=self.tf)
+    def filter_ui(self, dims, detailed=False, raw=False, force_choice=False):
+        return filter_ui(self.df, self.meta, dims=dims, detailed=detailed, raw=raw, translate=self.tf, force_choice=force_choice)
     
-    def facet_ui(self, dims, two=False, raw=False):
-        return facet_ui(dims, two=two, raw=raw, translate=self.tf)
+    def facet_ui(self, dims, two=False, raw=False, force_choice=False):
+        return facet_ui(dims, two=two, raw=raw, translate=self.tf,force_choice=force_choice)
 
     def page(self, name, **kwargs):
         def decorator(pfunc):
