@@ -39,7 +39,7 @@ with st.spinner("Loading libraries.."):
 
     from salk_toolkit.io import load_parquet_with_metadata, read_json, extract_column_meta
     from salk_toolkit.pp import *
-    from salk_toolkit.plots import matching_plots, get_plot_meta
+    from salk_toolkit.plots import matching_plots, get_plot_meta, get_all_plots
     from salk_toolkit.utils import vod
     from salk_toolkit.dashboard import draw_plot_matrix, facet_ui, filter_ui, get_plot_width, default_translate
 
@@ -123,9 +123,6 @@ with st.sidebar: #.expander("Select dimensions"):
     f_info = st.empty()
     st.markdown("""___""")
 
-    args['poststrat'] = st.toggle('Post-stratified?', True)
-    if args['poststrat']: del args['poststrat'] # True is default, so clean the dict from it in that case
-
     show_grouped = st.toggle('Show grouped facets', True)
 
     if st.toggle('Convert to continuous', False):
@@ -139,11 +136,7 @@ with st.sidebar: #.expander("Select dimensions"):
     args['res_col'] = obs_name
 
     res_cont = not vod(c_meta[args['res_col']],'categories') or vod(args,'convert_res') == 'continuous'
-    if res_cont:
-        cont_transform = st.selectbox('Transform', ['None', 'center', 'zscore'])
-        if cont_transform != 'None': args['cont_transform'] = cont_transform
-        agg_fn = st.selectbox('Aggregation', ['mean', 'median', 'sum'])
-        if agg_fn!='mean': args['agg_fn'] = agg_fn
+
 
     all_dims = vod(c_meta[obs_name],'modifiers', []) + all_dims
 
@@ -154,8 +147,18 @@ with st.sidebar: #.expander("Select dimensions"):
 
     args['internal_facet'] = st.toggle('Internal facet?',True)
 
-    args['plot'] = st.selectbox(
-        'Plot type',sorted(matching_plots(args, first_data, first_data_meta)),index=3)
+
+    # Plot type
+    matching = matching_plots(args, first_data, first_data_meta)
+    plot_list = ['default'] + sorted(matching)
+    if 'plot_type' in st.session_state:
+        if st.session_state['plot_type'] not in matching: st.session_state['plot_type']='default'
+        pt_ind = plot_list.index(st.session_state['plot_type'])
+    else: pt_ind = 0
+    args['plot'] = st.session_state['plot_type'] = st.selectbox(
+        'Plot type', plot_list, index=pt_ind, format_func=lambda s: f'{matching[0]} (default)' if s == 'default' else s)
+    if args['plot'] == 'default': args['plot'] = matching[0]
+
 
     plot_args = {} # 'n_facet_cols':2 }
     for k, v in vod(get_plot_meta(args['plot']),'args',{}).items():
@@ -166,7 +169,19 @@ with st.sidebar: #.expander("Select dimensions"):
 
     args['plot_args'] = plot_args
 
-    detailed = st.toggle('Fine-grained filter', False)    
+    with st.expander('Advanced'):
+        args['poststrat'] = st.toggle('Post-stratified?', True)
+        if args['poststrat']: del args['poststrat'] # True is default, so clean the dict from it in that case
+
+        detailed = st.toggle('Fine-grained filter', False)    
+
+        if res_cont: # Extra settings for continuous data 
+            cont_transform = st.selectbox('Transform', ['None', 'center', 'zscore'])
+            if cont_transform != 'None': args['cont_transform'] = cont_transform
+            agg_fn = st.selectbox('Aggregation', ['mean', 'median', 'sum'])
+            if agg_fn!='mean': args['agg_fn'] = agg_fn
+
+
     args['filter'] = filter_ui(first_data,first_data_meta,
                         dims=all_dims,detailed=detailed)
     #args['filter'] = {}

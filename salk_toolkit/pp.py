@@ -231,7 +231,8 @@ def wrangle_data(raw_df, data_meta, pp_desc):
         else: # Continuous
             agg_fn = vod(pp_desc,'agg_fn','mean') # We may want to try median vs mean or plot sd-s or whatever
             agg_fn = vod(plot_meta,'agg_fn',agg_fn) # Some plots mandate this value (election model for instance)
-            data = getattr(gb_in(raw_df,gb_dims)[res_col],agg_fn)().dropna().reset_index() 
+            if len(gb_dims)>0: data = getattr(gb_in(raw_df,gb_dims)[res_col],agg_fn)().dropna().reset_index() 
+            else: data = pd.DataFrame({res_col: [getattr(raw_df[res_col],agg_fn)()]}) # Single value data frame
             pparams['value_col'] = res_col
             
         if vod(plot_meta,'group_sizes'):
