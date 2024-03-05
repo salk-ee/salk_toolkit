@@ -115,24 +115,25 @@ def simulate_election_pp(data, mandates, electoral_system, cat_col, value_col, f
     return df
 
 # %% ../nbs/04_election_models.ipynb 11
-# This fits into the pp framework as: cat_col=party_pref, factor=electoral_district, hence the as_is and hidden flags
-@stk_plot('coalition_applet', data_format='longform', draws=True, requires_factor=True, agg_fn='sum', factor_meta=['mandates','electoral_system'], as_is=True)#, hidden=True)
-def coalition_applet(data, mandates, electoral_system, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, width=None, alt_properties={}, outer_factors=[], translate=None):
+# This fits into the pp framework as: f0['col']=party_pref, factor=electoral_district, hence the as_is and hidden flags
+@stk_plot('coalition_applet', data_format='longform', draws=True, requires_factor=True, agg_fn='sum', factor_meta=['mandates','electoral_system'], as_is=True, n_facets=(2,2))#, hidden=True)
+def coalition_applet(data, mandates, electoral_system, value_col='value', facets=[], width=None, alt_properties={}, outer_factors=[], translate=None):
     
+    f0, f1 = facets[0], facets[1]
     tf = translate if translate else (lambda s: s)
     
     if outer_factors: raise Exception("This plot does not work with extra factors")
     
-    sdf = simulate_election_pp(data, mandates, electoral_system, cat_col, value_col,factor_col,cat_order,factor_order)
+    sdf = simulate_election_pp(data, mandates, electoral_system, f0['col'], value_col, f1['col'], f0['order'], f1['order'])
 
     # Aggregate to total mandate counts
-    adf = sdf.groupby(['draw',cat_col])['mandates'].sum().reset_index()
+    adf = sdf.groupby(['draw',f0['col']])['mandates'].sum().reset_index()
     adf = adf[adf['mandates']>0]
 
-    parties = list(adf[cat_col].unique()) # Leave only parties that have mandates
+    parties = list(adf[f0['col']].unique()) # Leave only parties that have mandates
 
     coalition = st.multiselect(tf('Select the coalition:'),
-        cat_order,
+        f0["order"],
         help=tf('Choose the parties whose coalition to model'))
 
     st.markdown("""___""")
@@ -141,15 +142,15 @@ def coalition_applet(data, mandates, electoral_system, cat_col, value_col='value
     col1.markdown(tf('**Party mandate distributions**'))
 
     # Individual parties plot
-    ddf = adf.groupby(cat_col)['mandates'].value_counts().rename('count').reset_index()
+    ddf = adf.groupby(f0['col'])['mandates'].value_counts().rename('count').reset_index()
     p_plot = alt.Chart(
             ddf,
             #title=var
         ).mark_bar(opacity=0.5, stroke='black', strokeWidth=0, size=20).encode(
             alt.X('mandates:Q', title="Mandates", axis=alt.Axis(tickMinStep=1),scale=alt.Scale(domainMin=0)),
             alt.Y('count:Q', title=None, axis=None),
-            alt.Row(f'{cat_col}:N', title=None),
-            color=alt.Color(f'{cat_col}:N', legend=None, scale=color_scale),
+            alt.Row(f'{f0["col"]}:N', title=None),
+            color=alt.Color(f'{f0["col"]}:N', legend=None, scale=f0["colors"]),
             tooltip=[alt.Tooltip('mandates:Q', format=',d')]
         ).properties(height=60)
     col1.altair_chart(p_plot, use_container_width=True)
@@ -161,7 +162,7 @@ def coalition_applet(data, mandates, electoral_system, cat_col, value_col='value
 
     if len(coalition)>0:
         # Coalition plot
-        acdf = adf[adf[cat_col].isin(coalition)]
+        acdf = adf[adf[f0['col']].isin(coalition)]
         cdf = acdf.groupby('draw')['mandates'].sum().value_counts().rename('count').reset_index()
 
         mi, ma = min(cdf['mandates'].min(),n), max(cdf['mandates'].max(),n)
@@ -183,26 +184,27 @@ def coalition_applet(data, mandates, electoral_system, cat_col, value_col='value
 register_stk_cont_version('coalition_applet')
 
 # %% ../nbs/04_election_models.ipynb 12
-# This fits into the pp framework as: cat_col=party_pref, factor=electoral_district, hence the as_is and hidden flags
-@stk_plot('mandate_plot', data_format='longform', draws=True, requires_factor=True, agg_fn='sum', factor_meta=['mandates','electoral_system'], as_is=True)#, hidden=True)
-def mandate_plot(data, mandates, electoral_system, cat_col, value_col='value', color_scale=alt.Undefined, cat_order=alt.Undefined, factor_col=None, factor_order=alt.Undefined, width=None, alt_properties={}, outer_factors=[]):
+# This fits into the pp framework as: f0['col']=party_pref, factor=electoral_district, hence the as_is and hidden flags
+@stk_plot('mandate_plot', data_format='longform', draws=True, requires_factor=True, agg_fn='sum', n_facets=(2,2), factor_meta=['mandates','electoral_system'], as_is=True)#, hidden=True)
+def mandate_plot(data, mandates, electoral_system, value_col='value', facets=[], width=None, alt_properties={}, outer_factors=[]):
+    f0, f1 = facets[0], facets[1]
     
     if outer_factors: raise Exception("This plot does not work with extra factors")
     
-    df = simulate_election_pp(data, mandates, electoral_system, cat_col,value_col,factor_col,cat_order,factor_order)
+    df = simulate_election_pp(data, mandates, electoral_system, f0['col'], value_col, f1['col'], f0['order'], f1['order'])
     
     # Shape it into % values for each vote count
     maxv = df['mandates'].max()
     tv = np.arange(1,maxv+1,dtype='int')[None,:]
     dfv = df['mandates'].to_numpy()[:,None]
     dfm = pd.DataFrame((dfv>=tv).astype('int'),columns=tv[0], index=df.index)
-    dfm['draw'],dfm[cat_col], dfm[factor_col] = df['draw'], df[cat_col], df[factor_col]
-    res = dfm.groupby([cat_col,factor_col],observed=True)[tv[0]].mean().reset_index().melt(id_vars=[cat_col,factor_col],
+    dfm['draw'],dfm[f0['col']], dfm[f1['col']] = df['draw'], df[f0['col']], df[f1['col']]
+    res = dfm.groupby([f0['col'],f1['col']],observed=True)[tv[0]].mean().reset_index().melt(id_vars=[f0['col'],f1['col']],
                                                                                 var_name='mandates',value_name='percent')
     # Remove parties who have no chance of even one elector
-    eliminate = (res.groupby(cat_col,observed=True)[value_col].sum() < 0.2)
+    eliminate = (res.groupby(f0['col'],observed=True)[value_col].sum() < 0.2)
     el_cols = [i for i,v in eliminate.items() if v]
-    res = res[~res[cat_col].isin(el_cols)]
+    res = res[~res[f0['col']].isin(el_cols)]
     cat_order = list(eliminate[~eliminate].index)
     
     f_width = max(50,width/len(cat_order))
@@ -210,10 +212,10 @@ def mandate_plot(data, mandates, electoral_system, cat_col, value_col='value', c
     plot = alt.Chart(data=res).mark_bar().encode(
         x=alt.X('mandates',title=None),
         y=alt.Y(value_col,title=None,axis=alt.Axis(format='%')),
-        color=alt.Color(f'{cat_col}:N', scale=color_scale, legend=None),
+        color=alt.Color(f'{f0["col"]}:N', scale=f0["colors"], legend=None),
         tooltip=[
-            alt.Tooltip(cat_col, title='party'),
-            alt.Tooltip(factor_col),
+            alt.Tooltip(f0['col'], title='party'),
+            alt.Tooltip(f1['col']),
             alt.Tooltip('mandates'),
             alt.Tooltip(value_col, format='.1%', title='probability'),
             ]
@@ -225,13 +227,13 @@ def mandate_plot(data, mandates, electoral_system, cat_col, value_col='value', c
     ).facet(
         #header=alt.Header(labelAngle=-90),
         row=alt.X(
-            f'{factor_col}:N',
-            sort=factor_order+['Compensation'],
+            f'{f1["col"]}:N',
+            sort=f1["order"]+['Compensation'],
             title=None,
             header=alt.Header(labelOrient='top')
             ),
         column=alt.Y(
-            f'{cat_col}:N',
+            f'{f0["col"]}:N',
             sort=cat_order,
             title=None,
             header=alt.Header(labelFontWeight='bold')

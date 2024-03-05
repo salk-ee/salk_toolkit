@@ -3,7 +3,7 @@
 # %% auto 0
 __all__ = ['internal_columns', 'get_filtered_data', 'translate_df', 'create_plot', 'e2e_plot', 'test_new_plot']
 
-# %% ../nbs/02_pp.ipynb 3
+# %% ../nbs/02_pp.ipynb 4
 import json, os
 import itertools as it
 from collections import defaultdict
@@ -22,7 +22,7 @@ from salk_toolkit.plots import stk_plot, stk_deregister, matching_plots, get_plo
 from salk_toolkit.utils import *
 from salk_toolkit.io import load_parquet_with_metadata, extract_column_meta, group_columns_dict, list_aliases, read_annotated_data, read_json
 
-# %% ../nbs/02_pp.ipynb 7
+# %% ../nbs/02_pp.ipynb 8
 # Augment each draw with bootstrap data from across whole population to make sure there are at least <threshold> samples
 def augment_draws(data, factors=None, n_draws=None, threshold=50):
     if n_draws == None: n_draws = data.draw.max()+1
@@ -48,7 +48,7 @@ def augment_draws(data, factors=None, n_draws=None, threshold=50):
     
     return pd.concat([data, new_rows])
 
-# %% ../nbs/02_pp.ipynb 8
+# %% ../nbs/02_pp.ipynb 9
 # Get the categories that are in use
 def get_cats(col, cats=None):
     if cats is None or len(set(col.dtype.categories)-set(cats))>0: cats = col.dtype.categories
@@ -60,7 +60,7 @@ def transform_cont(data, transform):
     elif transform == 'zscore': return sps.zscore(data,nan_policy='omit')
     else: raise Exception(f"Unknown transform '{transform}'")
 
-# %% ../nbs/02_pp.ipynb 9
+# %% ../nbs/02_pp.ipynb 10
 # Get all data required for a given graph
 # Only return columns and rows that are needed
 # This can handle either a pandas DataFrame or a polars LazyDataFrame (to allow for loading only needed data)
@@ -177,7 +177,7 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
     
     return pparams
 
-# %% ../nbs/02_pp.ipynb 11
+# %% ../nbs/02_pp.ipynb 12
 def discretize_continuous(col, col_meta={}):
     # NB! qcut might be a better default - see where testing leads us
     cut = pd.cut(col, bins = vod(col_meta,'bins',5), labels = vod(col_meta,'bin_labels',None) )
@@ -252,7 +252,7 @@ def wrangle_data(raw_df, data_meta, pp_desc):
     pparams['data'] = data
     return pparams
 
-# %% ../nbs/02_pp.ipynb 13
+# %% ../nbs/02_pp.ipynb 14
 # Create a color scale
 ordered_gradient = ["#c30d24", "#f3a583", "#94c6da", "#1770ab"]
 def meta_color_scale(cmeta,argname='colors',column=None, translate=None):
@@ -266,7 +266,7 @@ def meta_color_scale(cmeta,argname='colors',column=None, translate=None):
         cats = [ remap[c] for c in cats ]
     return to_alt_scale(scale,cats)
 
-# %% ../nbs/02_pp.ipynb 14
+# %% ../nbs/02_pp.ipynb 15
 internal_columns = ['draw','weight','group_size'] 
 
 def translate_df(df, translate):
@@ -278,7 +278,7 @@ def translate_df(df, translate):
             df[c] = df[c].cat.rename_categories(remap)
     return df
 
-# %% ../nbs/02_pp.ipynb 15
+# %% ../nbs/02_pp.ipynb 16
 def create_tooltip(pparams,c_meta):
     
     data, tfn = pparams['data'], pparams['translate']
@@ -310,7 +310,36 @@ def create_tooltip(pparams,c_meta):
     return tooltips
     
 
-# %% ../nbs/02_pp.ipynb 16
+# %% ../nbs/02_pp.ipynb 17
+# Temporary function to aid in refactoring this code
+
+def new_pparams(pparams):
+    fac = []
+    if vod(pparams, 'cat_col'):
+        fac.append({
+            'col': pparams['cat_col'],
+            'order': pparams['cat_order'],
+            'colors': pparams['color_scale']
+        })
+
+    if vod(pparams, 'question_order'):
+        print("Found question")
+        fac.append({
+            'col': pparams['question_col'],
+            'order': pparams['question_order'],
+            'colors': pparams['question_color_scale']
+        })
+
+    if vod(pparams, 'factor_col'):
+        fac.append({
+            'col': pparams['factor_col'],
+            'order': pparams['factor_order'],
+            'colors': pparams['factor_color_scale']
+        })
+    pparams['facets'] = fac
+    return pparams
+
+# %% ../nbs/02_pp.ipynb 18
 # Function that takes filtered raw data and plot information and outputs the plot
 # Handles all of the data wrangling and parameter formatting
 def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=False, width=200, return_matrix_of_plots=False, translate=None):
@@ -423,6 +452,9 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
     
     # Trim down parameters list if needed
     plot_fn = get_plot_fn(pp_desc['plot'])
+
+    pparams = new_pparams(pparams)
+
     pparams = clean_kwargs(plot_fn,pparams)
     
     
@@ -455,7 +487,7 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
 
     return plot
 
-# %% ../nbs/02_pp.ipynb 19
+# %% ../nbs/02_pp.ipynb 21
 # A convenience function to draw a plot straight from a dataset
 def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, check_match=True,lazy=False,**kwargs):
     if data_file is None and full_df is None:
