@@ -19,7 +19,7 @@ import scipy.stats as sps
 
 from salk_toolkit.utils import *
 from salk_toolkit.io import extract_column_meta, read_json
-from salk_toolkit.plots import stk_plot, register_stk_cont_version
+from salk_toolkit.plots import stk_plot
 
 import streamlit as st
 
@@ -116,7 +116,7 @@ def simulate_election_pp(data, mandates, electoral_system, cat_col, value_col, f
 
 # %% ../nbs/04_election_models.ipynb 11
 # This fits into the pp framework as: f0['col']=party_pref, factor=electoral_district, hence the as_is and hidden flags
-@stk_plot('coalition_applet', data_format='longform', draws=True, requires_factor=True, agg_fn='sum', factor_meta=['mandates','electoral_system'], as_is=True, n_facets=(2,2))#, hidden=True)
+@stk_plot('coalition_applet', data_format='longform', draws=True, requires_factor=True, agg_fn='sum', requires=[{},{'mandates':'pass','electoral_system':'pass'}], as_is=True, n_facets=(2,2), priority=-1000)#, hidden=True)
 def coalition_applet(data, mandates, electoral_system, value_col='value', facets=[], width=None, alt_properties={}, outer_factors=[], translate=None):
     
     f0, f1 = facets[0], facets[1]
@@ -181,11 +181,9 @@ def coalition_applet(data, mandates, electoral_system, value_col='value', facets
         
     return None
 
-register_stk_cont_version('coalition_applet')
-
 # %% ../nbs/04_election_models.ipynb 12
 # This fits into the pp framework as: f0['col']=party_pref, factor=electoral_district, hence the as_is and hidden flags
-@stk_plot('mandate_plot', data_format='longform', draws=True, requires_factor=True, agg_fn='sum', n_facets=(2,2), factor_meta=['mandates','electoral_system'], as_is=True)#, hidden=True)
+@stk_plot('mandate_plot', data_format='longform', draws=True, requires_factor=True, agg_fn='sum', n_facets=(2,2), requires=[{},{'mandates':'pass','electoral_system':'pass'}], as_is=True, priority=-500)#, hidden=True)
 def mandate_plot(data, mandates, electoral_system, value_col='value', facets=[], width=None, alt_properties={}, outer_factors=[]):
     f0, f1 = facets[0], facets[1]
     
@@ -240,5 +238,3 @@ def mandate_plot(data, mandates, electoral_system, value_col='value', facets=[],
             ),
     )
     return plot
-
-register_stk_cont_version('mandate_plot')

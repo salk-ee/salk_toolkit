@@ -2,12 +2,12 @@
 
 # %% auto 0
 __all__ = ['registry', 'registry_meta', 'stk_plot_defaults', 'n_a', 'priority_weights', 'stk_plot', 'stk_deregister',
-           'get_plot_fn', 'get_plot_meta', 'get_all_plots', 'calculate_priority', 'calculate_impossibilities',
-           'matching_plots', 'register_stk_cont_version', 'estimate_legend_columns_horiz_naive',
-           'estimate_legend_columns_horiz', 'boxplots', 'columns', 'stacked_columns', 'diff_columns', 'massplot',
-           'make_start_end', 'likert_bars', 'kde_1d', 'density', 'violin', 'cluster_based_reorder', 'matrix', 'lines',
-           'draws_to_hdis', 'lines_hdi', 'area_smooth', 'likert_aggregate', 'likert_rad_pol', 'barbell', 'geoplot',
-           'fd_mangle', 'facet_dist', 'ordered_population', 'marimekko']
+           'get_plot_fn', 'get_plot_meta', 'get_all_plots', 'impute_factor_cols', 'calculate_priority',
+           'matching_plots', 'estimate_legend_columns_horiz_naive', 'estimate_legend_columns_horiz', 'boxplots',
+           'columns', 'stacked_columns', 'diff_columns', 'massplot', 'make_start_end', 'likert_bars', 'kde_1d',
+           'density', 'violin', 'cluster_based_reorder', 'matrix', 'lines', 'draws_to_hdis', 'lines_hdi', 'area_smooth',
+           'likert_aggregate', 'likert_rad_pol', 'barbell', 'geoplot', 'fd_mangle', 'facet_dist', 'ordered_population',
+           'marimekko']
 
 # %% ../nbs/03_plots.ipynb 3
 import json, os, math
@@ -51,7 +51,7 @@ def stk_plot(plot_name, **r_kwargs):
 
         # Register the function
         registry[plot_name] = gfunc
-        registry_meta[plot_name] = { **stk_plot_defaults, **r_kwargs }
+        registry_meta[plot_name] = { 'name': plot_name, **stk_plot_defaults, **r_kwargs }
         
         return gfunc
     
@@ -71,70 +71,94 @@ def get_all_plots():
     return sorted(list(registry.keys()))
 
 # %% ../nbs/03_plots.ipynb 8
+# Compute the full factor_cols list, including question and res_col as needed
+def impute_factor_cols(pp_desc, col_meta):
+    plot_meta = get_plot_meta(pp_desc['plot'])
+    factor_cols = vod(pp_desc,'factor_cols',[]).copy()
+
+    # Add res_col if we are working with a categorical input (and not converting it to continuous)
+    if 'categories' in col_meta[pp_desc['res_col']] and vod(pp_desc,'convert_res')!='continuous' and pp_desc['res_col'] not in factor_cols: 
+        factor_cols.insert(0,pp_desc['res_col'])
+
+    # Determine if we have 'question' as a column
+    has_q = 'columns' in col_meta[pp_desc['res_col']] # Check if res_col is a group of questions
+    n_min_f, _ = vod(plot_meta,'n_facets',(0,0))
+    if len(factor_cols)==n_min_f-1 and not has_q: has_q = True # Create 'question' as a dummy dimension to pad out the factors    
+
+    # If we need to, add question as a factor to list
+    if has_q and 'question' not in factor_cols:
+        if 'categories' in col_meta[pp_desc['res_col']] or vod(plot_meta,'no_question_facet'): factor_cols.append('question') # Put it last for categorical values
+        else: factor_cols.insert(0,'question') # And first for continuous values, as it then often represents the "category"
+
+    return factor_cols
+
+# %% ../nbs/03_plots.ipynb 9
 # First is weight if not matching, second if match
 # This is very much a placeholder right now
 n_a = -1000000
 priority_weights = {
-    'likert': [n_a, 100],
-    'continuous': [0, 100],
-    'draws': [n_a, 0],
-    'question': [0, 100],
+    'draws': [n_a, 50],
+    'nonnegative': [n_a, 50],
+    'hidden': [n_a, 0],
+    
     'ordered': [n_a, 100],
-    'ordered_factor':[n_a, 100],
-    'requires_factor':[n_a, 0],
-    'factor_meta':[n_a, 0]
+    'likert': [n_a, 200],
+    'required_meta': [n_a, 500],
 }
 
-def calculate_priority(plot_meta, match):
-    base = vod(plot_meta,'priority',0)
-    if 'factor_meta' in plot_meta: # Somewhat hacky way of adding this but it works
-        if len(set(plot_meta['factor_meta']) - set(match['factor_meta']))>0: base += priority_weights['factor_meta'][0]
-                                                                 
-    return base + sum([ priority_weights[k][vod(match,k) or 0] for k, v in plot_meta.items() if k not in ['factor_meta'] and k in priority_weights and v ])
+def calculate_priority(plot_meta, match, args, col_meta):
+    priority, reasons = vod(plot_meta,'priority',0), []
 
-def calculate_impossibilities(plot_meta, match):
-    return [ k for k, v in plot_meta.items() if k not in ['factor_meta'] and k in priority_weights and v and priority_weights[k][vod(match,k) or 0]<0 ]
+    args = { **args, 'plot': plot_meta['name']}
+    facet_metas = [ col_meta[cn] for cn in impute_factor_cols(args, col_meta)]
+
+    if len(facet_metas)<vod(plot_meta,'n_facets',(0,0))[0]: 
+        return n_a, ['n_facets'] # Not enough factors
+    else: # Prioritize plots that have the right number of factors
+        priority += 10*abs(len(facet_metas)-vod(plot_meta,'n_facets',(0,0))[1])
+
+    for k in ['draws','nonnegative','hidden']:
+        if vod(plot_meta,k):
+            val = priority_weights[k][1 if vod(match,k) else 0]
+            if val < 0: reasons.append(k)
+            priority += val
+
+    for i, d in enumerate(vod(plot_meta,'requires',[])):
+        md = facet_metas[i]
+        for k, v in d.items():
+            if v!='pass': val = priority_weights[k][1 if vod(md,k)==v else 0]
+            else: val = priority_weights['required_meta'][1 if k in md else 0] # Use these weights for things plots require from metadata
+            
+            if k == 'ordered' and vod(md,'continuous'): val = priority_weights[k][1] # Continuous is turned into ordered categoricals for facets
+            if val < 0: reasons.append(k)
+            priority += val
+                                     
+    return priority, reasons
+
 
 # Get a list of plot types matching required spec
 def matching_plots(args, df, data_meta, details=False, list_hidden=False):
-    
-    rc = args['res_col']
     col_meta = extract_column_meta(data_meta)
     
+    rc = args['res_col']
+    rcm = col_meta[rc]
+
+
+    # Determine if values are non-negative
+    nonneg = ('categories' in col_meta[rc]) or df[ rcm['columns'] if 'columns' in rcm else rc ].min(axis=None)>=0
+    if vod(args,'convert_res')=='continuous' and ('categories' in col_meta[rc]):
+        nonneg = min(vod(col_meta[rc],'num_values',[0]))>=0
+
     match = {
         'draws': ('draw' in df.columns),
-        'likert': vod(col_meta[rc],'likert'),
-        'question': (rc not in df.columns),
-        'continuous': ('categories' not in col_meta[rc]),
-        'ordered': vod(col_meta[rc],'ordered'),
-        'ordered_factor': (vod(args,'factor_cols',[])==[]) or not vod(args,'internal_facet') or vod(col_meta[args['factor_cols'][0]],'ordered'),
-        'requires_factor': (vod(args,'factor_cols',[])!=[]) and vod(args,'internal_facet'),
+        'nonnegative': nonneg,
         'hidden': list_hidden
     }
     
-    if vod(args,'convert_res')=='continuous' and vod(col_meta[rc],'ordered'):
-        match = {**match,'continuous':True,'ordered':False,'likert':False}
-    
-    match['factor_meta'] = col_meta[args['factor_cols'][0]] if match['requires_factor'] else []
-    
-    res = [ ( pn, calculate_priority(get_plot_meta(pn),match), calculate_impossibilities(get_plot_meta(pn),match)) for pn in registry.keys() ]
+    res = [ ( pn, *calculate_priority(get_plot_meta(pn),match,args,col_meta)) for pn in registry.keys() ]
     
     if details: return { n: (p, i) for (n, p, i) in res } # Return dict with priorities and failure reasons
     else: return [ n for (n,p,i) in sorted(res,key=lambda t: t[1], reverse=True) if p >= 0 ] # Return list of possibilities in decreasing order of fit
-
-# %% ../nbs/03_plots.ipynb 13
-# Create and register a continuous version of the cat_fn_name plot with 'question' dimension replacing category
-# This assumes the plot can display not just percentages but all real numbers
-def register_stk_cont_version(cat_fn_name):
-    cat_fn, cat_fn_meta = get_plot_fn(cat_fn_name), get_plot_meta(cat_fn_name)
-    @stk_plot(f'{cat_fn_name}-cont', **{**cat_fn_meta, **{'continuous':True, 'question':True} })
-    def cont(*args,**kwargs): #data, value_col='value', question_col='question', question_f0["colors"]=alt.Undefined, question_order=alt.Undefined, **kwargs):
-        
-        # Remap certain args while keeping everything else intact
-        #kwargs = {**kwargs, **{'data':data, 'f0["col"]':question_col, 'f0["order"]': question_order, 'value_col':value_col, 'f0["colors"]':question_f0["colors"]}}
-        
-        return cat_fn(*args, **clean_kwargs(cat_fn,kwargs))
-    return cont
 
 # %% ../nbs/03_plots.ipynb 15
 # Find a sensible approximation to the font used in vega/altair
@@ -223,8 +247,6 @@ def boxplots(data, value_col='value', facets=[], val_format='%', width=800, tool
     )
     return tick_plot + box_plot
 
-register_stk_cont_version('boxplots')
-
 # %% ../nbs/03_plots.ipynb 22
 @stk_plot('columns', data_format='longform', draws=False, n_facets=(1,2))
 def columns(data, value_col='value', facets=[], val_format='%', width=800, tooltip=[]):
@@ -248,10 +270,8 @@ def columns(data, value_col='value', facets=[], val_format='%', width=800, toolt
     )
     return plot
 
-register_stk_cont_version('columns')
-
 # %% ../nbs/03_plots.ipynb 25
-@stk_plot('stacked_columns', data_format='longform', draws=False, requires_factor=True, n_facets=(2,2), agg_fn='sum', args={'normalized':'bool'})
+@stk_plot('stacked_columns', data_format='longform', draws=False, nonnegative=True, n_facets=(2,2), agg_fn='sum', args={'normalized':'bool'})
 def stacked_columns(data, value_col='value', facets=[], n_datapoints=1, val_format='%', width=800, normalized=False, tooltip=[]):
     f0, f1 = facets[0], facets[1]
     
@@ -281,10 +301,8 @@ def stacked_columns(data, value_col='value', facets=[], n_datapoints=1, val_form
     )
     return plot
 
-register_stk_cont_version('stacked_columns')
-
 # %% ../nbs/03_plots.ipynb 27
-@stk_plot('diff_columns', data_format='longform', draws=False, requires_factor=True, n_facets=(2,2), args={'sort_descending':'bool'})
+@stk_plot('diff_columns', data_format='longform', draws=False, n_facets=(2,2), args={'sort_descending':'bool'})
 def diff_columns(data, value_col='value', facets=[], val_format='%', sort_descending=False, tooltip=[]):
     f0, f1 = facets[0], facets[1]
     
@@ -314,12 +332,10 @@ def diff_columns(data, value_col='value', facets=[], val_format='%', sort_descen
     )
     return plot
 
-register_stk_cont_version('diff_columns')
-
 # %% ../nbs/03_plots.ipynb 29
 # The idea was to also visualize the size of each cluster. Currently not very useful, may need to be rethought
 
-@stk_plot('massplot', data_format='longform', draws=False, group_sizes=True, hidden=True, n_facets=(1,2))
+@stk_plot('massplot', data_format='longform', draws=False, group_sizes=True, n_facets=(1,2), hidden=True)
 def massplot(data, value_col='value', facets=[], n_datapoints=1, val_format='%', width=800, tooltip=[]):
     f0, f1 = facets[0], facets[1] if len(facets)>1 else None
 
@@ -352,8 +368,6 @@ def massplot(data, value_col='value', facets=[], n_datapoints=1, val_format='%',
     )
     return plot
 
-register_stk_cont_version('massplot')
-
 # %% ../nbs/03_plots.ipynb 31
 # Make the likert bar pieces
 def make_start_end(x,value_col,cat_col,cat_order):
@@ -382,9 +396,11 @@ def make_start_end(x,value_col,cat_col,cat_order):
     #print(res)
     return res
 
-@stk_plot('likert_bars',data_format='longform',question=True,draws=False,likert=True,priority=50)
-def likert_bars(data, value_col='value', facets=[],  tooltip=[], n_facets=(2,3), outer_factors=[]):
-    f0, f1, f2 = facets[0], facets[1], facets[2] if len(facets)>2 else None
+@stk_plot('likert_bars', data_format='longform', draws=False, requires=[{'likert':True}], n_facets=(2,3), priority=50)
+def likert_bars(data, value_col='value', facets=[],  tooltip=[], outer_factors=[]):
+    # First facet is likert, second is labeled question, third is offset. Second is better for question which usually goes last, hence reorder
+    if len(facets)>=3: f0, f1, f2 = facets[0], facets[2], facets[1]
+    else: f0, f1, f2 = facets[0], facets[1], None
     gb_cols = outer_factors+[f["col"] for f in facets[1:]] # There can be other extra cols (like labels) that should be ignored
     options_cols = list(data[f0["col"]].dtype.categories) # Get likert scale names
     bar_data = data.groupby(gb_cols, group_keys=False, observed=False)[data.columns].apply(make_start_end, value_col=value_col,cat_col=f0["col"],cat_order=f0["order"],include_groups=False)
@@ -416,7 +432,7 @@ def kde_1d(vc, value_col, ls, scale=False):
     if scale: y*=len(vc)
     return pd.DataFrame({'density': y, value_col: ls})
 
-@stk_plot('density', data_format='raw', continuous=True, factor_columns=3, aspect_ratio=(1.0/1.0), n_facets=(0,1), args={'stacked':'bool'})
+@stk_plot('density', data_format='raw', factor_columns=3, aspect_ratio=(1.0/1.0), n_facets=(0,1), args={'stacked':'bool'}, no_question_facet=True)
 def density(data, value_col='value', facets=[], tooltip=[], outer_factors=[], stacked=False, width=800):
     f0 = facets[0] if len(facets)>0 else None
     gb_cols = [ c for c in outer_factors+[f['col'] for f in facets] if c is not None ] # There can be other extra cols (like labels) that should be ignored
@@ -449,7 +465,7 @@ def density(data, value_col='value', facets=[], tooltip=[], outer_factors=[], st
     return plot
 
 # %% ../nbs/03_plots.ipynb 35
-@stk_plot('violin', data_format='raw', continuous=True, question=True, n_facets=(1,2), as_is=True)
+@stk_plot('violin', data_format='raw', n_facets=(1,2), as_is=True)
 def violin(data, value_col='value', facets=[], tooltip=[], outer_factors=[],width=800):
     f0, f1 = facets[0], facets[1] if len(facets)>1 else None
     gb_cols = outer_factors + [ f['col'] for f in facets ] # There can be other extra cols (like labels) that should be ignored
@@ -480,7 +496,7 @@ def cluster_based_reorder(X):
     pd = sp.spatial.distance.pdist(X)#,metric='cosine')
     return hierarchy.leaves_list(hierarchy.optimal_leaf_ordering(hierarchy.ward(pd), pd))
 
-@stk_plot('matrix', data_format='longform', requires_factor=True, aspect_ratio=(1/0.8), n_facets=(2,2), args={'reorder':'bool'})
+@stk_plot('matrix', data_format='longform', aspect_ratio=(1/0.8), n_facets=(2,2), args={'reorder':'bool'})
 def matrix(data, value_col='value', facets=[], val_format='%', reorder=False, row_normalize=False, tooltip=[]):
     f0, f1 = facets[0], facets[1]
     
@@ -515,10 +531,8 @@ def matrix(data, value_col='value', facets=[], val_format='%', reorder=False, ro
     
     return base+text
 
-register_stk_cont_version('matrix')
-
 # %% ../nbs/03_plots.ipynb 41
-@stk_plot('lines',data_format='longform', question=False, draws=False, ordered_factor=True, requires_factor=True, n_facets=(2,2), args={'smooth':'bool'})
+@stk_plot('lines',data_format='longform', draws=False, requires=[{},{'ordered':True}], n_facets=(2,2), args={'smooth':'bool'})
 def lines(data, value_col='value', facets=[], smooth=False, width=800, tooltip=[], val_format='.2f',):
     f0, f1 = facets[0], facets[1]
     if smooth:
@@ -536,8 +550,6 @@ def lines(data, value_col='value', facets=[], smooth=False, width=800, tooltip=[
     )
     return plot
 
-register_stk_cont_version('lines')
-
 # %% ../nbs/03_plots.ipynb 43
 def draws_to_hdis(data,vc,hdi_vals):
     gbc = [ c for c in data.columns if c not in [vc,'draw'] ]
@@ -550,7 +562,7 @@ def draws_to_hdis(data,vc,hdi_vals):
     df = ldf.pivot(index=gbc+['hdi'], columns=ldf.columns[-3],values=vc).reset_index()
     return df
 
-@stk_plot('lines_hdi',data_format='longform', question=False, draws=True, ordered_factor=True, requires_factor=True, n_facets=(2,2), args={'hdi1':'float','hdi2':'float'})
+@stk_plot('lines_hdi',data_format='longform', draws=True, requires=[{},{'ordered':True}], n_facets=(2,2), args={'hdi1':'float','hdi2':'float'})
 def lines_hdi(data, value_col='value', facets=[], width=800, tooltip=[], val_format='.2f', hdi1=0.94, hdi2=0.5):
     f0, f1 = facets[0], facets[1]
     
@@ -579,10 +591,8 @@ def lines_hdi(data, value_col='value', facets=[], width=800, tooltip=[], val_for
         )
     return plot
 
-register_stk_cont_version('lines_hdi')
-
 # %% ../nbs/03_plots.ipynb 45
-@stk_plot('area_smooth',data_format='longform', question=False, draws=False, ordered=False, ordered_factor=True, requires_factor=True, n_facets=(2,2))
+@stk_plot('area_smooth',data_format='longform', draws=False, nonnegative=True, requires=[{},{'ordered':True}], n_facets=(2,2))
 def area_smooth(data, value_col='value', facets=[], width=800, tooltip=[]):
     f0, f1 = facets[0], facets[1]
     ldict = dict(zip(f0["order"], range(len(f0["order"]))))
@@ -625,11 +635,11 @@ def likert_aggregate(x, cat_col, cat_order, value_col):
     
     return pd.Series({ 'polarisation': pol, 'radicalisation':rad, 'relevance':rel})
 
-@stk_plot('likert_rad_pol',data_format='longform', question=False, draws=False, likert=True, requires_factor=True, args={'normalized':'bool'}, n_facets=(1,2))
-def likert_rad_pol(data, value_col='value', facets=[], normalized=True, width=800, outer_factors=[]):
+@stk_plot('likert_rad_pol',data_format='longform', requires=[{'likert':True}], args={'normalized':'bool'}, n_facets=(1,2))
+def likert_rad_pol(data, value_col='value', facets=[], normalized=True, width=800, outer_factors=[], tooltip=[]):
     f0, f1 = facets[0], facets[1] if len(facets)>1 else None
     #gb_cols = list(set(data.columns)-{ f0["col"], value_col }) # Assume all other cols still in data will be used for factoring
-    gb_cols = [ c for c in outer_factors+[f1["col"]] if c is not None ] # There can be other extra cols (like labels) that should be ignored
+    gb_cols = outer_factors + [f['col'] for f in facets[1:]] # There can be other extra cols (like labels) that should be ignored
     
     options_cols = list(data[f0["col"]].dtype.categories) # Get likert scale names
     likert_indices = data.groupby(gb_cols, group_keys=False, observed=False).apply(likert_aggregate,cat_col=f0["col"],cat_order=f0["order"],value_col=value_col,include_groups=False).reset_index()
@@ -643,19 +653,18 @@ def likert_rad_pol(data, value_col='value', facets=[], normalized=True, width=80
         opacity=alt.value(1.0),
         #stroke=alt.value('#777'),
         tooltip=[
-            *([alt.Tooltip(f'{f1["col"]}:N')] if f1 else []),
             alt.Tooltip('radicalisation:Q', format='.2'),
             alt.Tooltip('polarisation:Q', format='.2'),
             alt.Tooltip('relevance:Q', format='.2')
-        ],
+        ] + tooltip[2:],
         **({'color': alt.Color(f'{f1["col"]}:N', scale=f1["colors"], 
                                legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f1["order"],width)))
             } if f1 else {})
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 50
-@stk_plot('barbell', data_format='longform', draws=False, requires_factor=True, n_facets=(2,2))
+# %% ../nbs/03_plots.ipynb 49
+@stk_plot('barbell', data_format='longform', draws=False, n_facets=(2,2))
 def barbell(data, value_col='value', facets=[], n_datapoints=1, val_format='%', width=800, tooltip=[]):
     f0, f1 = facets[0], facets[1]
     
@@ -687,11 +696,9 @@ def barbell(data, value_col='value', facets=[], n_datapoints=1, val_format='%', 
     )#.interactive()
     
     return chart
-    
-register_stk_cont_version('barbell')
 
-# %% ../nbs/03_plots.ipynb 53
-@stk_plot('geoplot', data_format='longform', continuous=True, requires_factor=True, n_facets=(1,1), factor_meta=['topo_feature'],aspect_ratio=(4.0/3.0))
+# %% ../nbs/03_plots.ipynb 52
+@stk_plot('geoplot', data_format='longform', n_facets=(1,1), requires=[{'topo_feature':'pass'}], aspect_ratio=(4.0/3.0), no_question_facet=True)
 def geoplot(data, topo_feature, value_col='value', facets=[], val_format='.2f',tooltip=[]):
     f0 = facets[0]
 
@@ -716,7 +723,7 @@ def geoplot(data, topo_feature, value_col='value', facets=[], val_format='.2f',t
     ).project('mercator')
     return plot
 
-# %% ../nbs/03_plots.ipynb 55
+# %% ../nbs/03_plots.ipynb 54
 # Assuming ns is ordered by unique row values, find the split points
 def split_ordered(cvs):
     if len(cvs.shape)==1: cvs = cvs[:,None]
@@ -732,7 +739,7 @@ def split_even_weight(ws, n):
     cws = (cws/(cws[-1]/n)).astype('int')
     return (split_ordered(cws)+1)[:-1]
 
-# %% ../nbs/03_plots.ipynb 57
+# %% ../nbs/03_plots.ipynb 56
 def fd_mangle(vc, value_col, factor_col, n_points=10): 
     
     vc = vc.sort_values(value_col)
@@ -749,7 +756,7 @@ def fd_mangle(vc, value_col, factor_col, n_points=10):
     df['percentile'] = np.linspace(0,1,n_points)
     return df.melt(id_vars='percentile',value_vars=cats,var_name=factor_col,value_name='density')
 
-@stk_plot('facet_dist', data_format='raw', continuous=True, factor_columns=3,aspect_ratio=(1.0/1.0),requires_factor=True, n_facets=(1,1))
+@stk_plot('facet_dist', data_format='raw', factor_columns=3,aspect_ratio=(1.0/1.0), n_facets=(1,1), no_question_facet=True)
 def facet_dist(data, value_col='value',facets=[], tooltip=[], outer_factors=[]):
     f0 = facets[0]
     gb_cols = [ c for c in outer_factors if c is not None ] # There can be other extra cols (like labels) that should be ignored
@@ -764,7 +771,7 @@ def facet_dist(data, value_col='value',facets=[], tooltip=[], outer_factors=[]):
 
     return plot
 
-# %% ../nbs/03_plots.ipynb 59
+# %% ../nbs/03_plots.ipynb 58
 # Vectorized multinomial sampling. Should be slightly faster
 def vectorized_mn(prob_matrix):
     s = prob_matrix.cumsum(axis=1)
@@ -810,8 +817,8 @@ def linevals(vals, value_col, n_points, dim, cats, ccodes=None, ocols=None, boos
 
     return pdf
 
-# %% ../nbs/03_plots.ipynb 60
-@stk_plot('ordered_population', data_format='raw', continuous=True, factor_columns=3, aspect_ratio=(1.0/1.0),plot_args={'group_categories':'bool'}, n_facets=(0,1))
+# %% ../nbs/03_plots.ipynb 59
+@stk_plot('ordered_population', data_format='raw', factor_columns=3, aspect_ratio=(1.0/1.0), plot_args={'group_categories':'bool'}, n_facets=(0,1), no_question_facet=True)
 def ordered_population(data, value_col='value', facets=[], tooltip=[], outer_factors=[], group_categories=False):
     f0 = facets[0] if len(facets)>0 else None
     
@@ -893,8 +900,8 @@ def ordered_population(data, value_col='value', facets=[], tooltip=[], outer_fac
     )
     return plot
 
-# %% ../nbs/03_plots.ipynb 62
-@stk_plot('marimekko', data_format='longform', draws=False, group_sizes=True, requires_factor=True, args={'separate':'bool'}, n_facets=(2,2))
+# %% ../nbs/03_plots.ipynb 61
+@stk_plot('marimekko', data_format='longform', draws=False, group_sizes=True, args={'separate':'bool'}, n_facets=(2,2))
 def marimekko(data, value_col='value', facets=[], val_format='%', width=800, tooltip=[], outer_factors=[], separate=False):
     f0, f1 = facets[0], facets[1]
 

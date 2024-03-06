@@ -18,7 +18,7 @@ from typing import List, Tuple, Dict, Union, Optional
 
 import altair as alt
 
-from salk_toolkit.plots import stk_plot, stk_deregister, matching_plots, get_plot_fn, get_plot_meta
+from salk_toolkit.plots import stk_plot, stk_deregister, matching_plots, get_plot_fn, get_plot_meta, impute_factor_cols
 from salk_toolkit.utils import *
 from salk_toolkit.io import load_parquet_with_metadata, extract_column_meta, group_columns_dict, list_aliases, read_annotated_data, read_json
 
@@ -194,7 +194,7 @@ def wrangle_data(raw_df, data_meta, pp_desc):
     
     draws, continuous, data_format = (vod(plot_meta, n, False) for n in ['draws','continuous','data_format'])
     
-    gb_dims = (['draw'] if draws else []) + (factor_cols if factor_cols else []) + (['question'] if 'question' in raw_df.columns else [])
+    gb_dims = (['draw'] if draws else []) + (factor_cols if factor_cols else []) + (['question'] if 'question' in raw_df.columns and 'question' not in factor_cols else [])
     
     if 'weight' not in raw_df.columns: raw_df = raw_df.assign(weight=1.0) # This also works for empty df-s
     else: raw_df.loc[:,'weight'] = raw_df['weight'].fillna(1.0)
@@ -255,8 +255,7 @@ def wrangle_data(raw_df, data_meta, pp_desc):
 # %% ../nbs/02_pp.ipynb 14
 # Create a color scale
 ordered_gradient = ["#c30d24", "#f3a583", "#94c6da", "#1770ab"]
-def meta_color_scale(cmeta,argname='colors',column=None, translate=None):
-    scale = vod(cmeta,argname)
+def meta_color_scale(scale : Dict, column=None, translate=None):
     cats = column.dtype.categories if column.dtype.name=='category' else None
     if scale is None and column is not None and column.dtype.name=='category' and column.dtype.ordered:
         scale = dict(zip(cats,gradient_to_discrete_color_scale(ordered_gradient, len(cats))))
@@ -286,8 +285,7 @@ def create_tooltip(pparams,c_meta):
     label_dict = {}
     
     # Determine the columns we need tooltips for:
-    ttcols = ['question_col', 'cat_col', 'factor_col']
-    tcols = [ pparams[ct] for ct in ttcols if ct in pparams and pparams[ct] is not None and pparams[ct] in data.columns ] 
+    tcols = [ f['col'] for f in pparams['facets'] if f['col'] in data.columns ]
             
     # Find labels mappings for regular columns
     for cn in tcols:
@@ -311,112 +309,67 @@ def create_tooltip(pparams,c_meta):
     
 
 # %% ../nbs/02_pp.ipynb 17
-# Temporary function to aid in refactoring this code
-
-def new_pparams(pparams):
-    fac = []
-    if vod(pparams, 'cat_col'):
-        fac.append({
-            'col': pparams['cat_col'],
-            'order': pparams['cat_order'],
-            'colors': pparams['color_scale']
-        })
-
-    if vod(pparams, 'question_order'):
-        print("Found question")
-        fac.append({
-            'col': pparams['question_col'],
-            'order': pparams['question_order'],
-            'colors': pparams['question_color_scale']
-        })
-
-    if vod(pparams, 'factor_col'):
-        fac.append({
-            'col': pparams['factor_col'],
-            'order': pparams['factor_order'],
-            'colors': pparams['factor_color_scale']
-        })
-    pparams['facets'] = fac
-    return pparams
-
-# %% ../nbs/02_pp.ipynb 18
 # Function that takes filtered raw data and plot information and outputs the plot
 # Handles all of the data wrangling and parameter formatting
 def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=False, width=200, return_matrix_of_plots=False, translate=None):
-    
     data = pparams['data']
-
     plot_meta = get_plot_meta(pp_desc['plot'])
     col_meta = extract_column_meta(data_meta)
-    
-    if 'plot_args' in pp_desc: pparams.update(pp_desc['plot_args'])
-    pparams['color_scale'] = meta_color_scale(col_meta[pp_desc['res_col']],'colors',data[pp_desc['res_col']],translate=translate)
-    if data[pp_desc['res_col']].dtype.name=='category':
-        pparams['cat_order'] = list(data[pp_desc['res_col']].dtype.categories) 
-        
-    pparams['val_format'] = vod(pp_desc,'value_format','.1%' if pparams['value_col'] == 'percent' else '.1f')
-    pparams['translate'] = translate if translate is not None else (lambda s: s)
 
-    # Handle factor columns 
-    factor_cols = vod(pp_desc,'factor_cols',[])
+    if 'question' in data.columns: # TODO: this should be in io.py already, probably
+      col_meta['question']['colors'] = vod(col_meta[pp_desc['res_col']],'question_colors',None)
+  
+    plot_args = vod(pp_desc,'plot_args',{})
+    pparams.update(plot_args)
     
-    # If we have a question column not handled by the plot, add it to factors:
-    pparams['question_col'] = 'question'
-    if 'question' in data.columns and not vod(plot_meta,'question'):
-        if 'question' not in factor_cols: factor_cols = factor_cols + ['question']
-    # If we don't have a question column but need it, just fill it with res_col name
-    elif 'question' not in data.columns and vod(plot_meta,'question'):
+    # Handle value format
+    pparams['val_format'] = vod(pp_desc,'value_format','.1%' if pparams['value_col'] == 'percent' else '.1f')
+
+    # Get list of factor columns (adding question and category if needed)
+    factor_cols = impute_factor_cols(pp_desc,col_meta)
+    if 'question' in factor_cols and 'question' not in data.columns: # Create 'question' as a dummy dimension
         data.loc[:,'question'] = pd.Categorical([pp_desc['res_col']]*len(pparams['data']))
-        
-    if vod(plot_meta,'question'):
-        pparams['question_color_scale'] = meta_color_scale(col_meta[pp_desc['res_col']],'question_colors',data['question'],translate=translate)
-        pparams['question_order'] = list(data['question'].dtype.categories) 
     
-    if vod(plot_meta,'continuous') and 'cat_col' in pparams:
-        to_ind = 1 if len(factor_cols)>0 and vod(pp_desc,'internal_facet') else 0
-        factor_cols = factor_cols.copy()
-        factor_cols.insert(to_ind,pparams['cat_col'])
-    
-    if factor_cols:
-        # See if we should use it as an internal facet?
-        plot_args = vod(pp_desc,'plot_args',{})
-        if vod(pp_desc,'internal_facet'):
-            pparams['factor_col'] = factor_cols[0]
-            if factor_cols[0] == 'question':
-                pparams['factor_color_scale'] = meta_color_scale(col_meta[pp_desc['res_col']],'question_colors',data['question'],translate=translate)
-            else:
-                pparams['factor_color_scale'] = meta_color_scale(col_meta[factor_cols[0]],'colors',data[factor_cols[0]],translate=translate)
-            pparams['factor_order'] = list(data[factor_cols[0]].dtype.categories) 
-            factor_cols = factor_cols[1:] # Leave rest for external faceting
-            if 'factor_meta' in plot_meta: 
-                for kw in plot_meta['factor_meta']: pparams[kw] = vod(col_meta[pparams['factor_col']],kw)
-                
-        # If needed, use the next facet to replace the question dimension
-        if vod(plot_meta,'question') and factor_cols and vod(pp_desc,'replace_question'):
-            pparams['question_col'] = factor_cols[0]
-            pparams['question_order'] = list(data[factor_cols[0]].dtype.categories)
-            pparams['question_color_scale'] = meta_color_scale(col_meta[factor_cols[0]],'colors',data[factor_cols[0]],translate=translate)
-            factor_cols = factor_cols[1:]
-                
-    # Handle translations
-    if translate:
-        # Translate data - column names, categorical columns
-        pparams['data'] = data = translate_df(data,translate)
+    # Determine how many factors to use as inner facets
+    in_f = vod(pp_desc,'internal_facet',False)
+    n_min_f, n_rec_f = vod(get_plot_meta(pp_desc['plot']),'n_facets',(0,0))
+    n_inner =  (n_rec_f if in_f else n_min_f) if isinstance(in_f,bool) else in_f
+    if n_inner>len(factor_cols): n_inner = len(factor_cols)
+    if vod(plot_meta,'no_question_facet') and n_inner>0 and factor_cols[n_inner-1]=='question': n_inner -= 1
+
+    #print(factor_cols, n_min_f, n_rec_f, n_inner, in_f)
+
+    # Handle translation funcion
+    if translate is None: translate = (lambda s: s)
+    pparams['translate'] = translate
+    translate = lambda s: s
+
+    # Handle internal facets (and translate as needed)
+    pparams['facets'] = []
+    if n_inner>0:
+        for cn in factor_cols[:n_inner]:
+            fd = {
+                'col': translate(cn),
+                'order': [ translate(c) for c in data[cn].dtype.categories ],
+                'colors': meta_color_scale(vod(col_meta[cn],'colors',None), data[cn], translate=translate), 
+            }
+            pparams['facets'].append(fd)
+
+        # Pass on data from facet column meta if specified by plot
+        for i,d in enumerate(vod(plot_meta,'requires',[])):
+            for k, v in d.items():
+                if v=='pass': pparams[k] = vod(col_meta[pparams['facets'][i]['col']],k)
         
-        # Provide a list of translated params - translate either direct if string or elemwise if list
-        translate_list = ['res_col','cat_col','value_col','factor_col', 'question_col', 'cat_order', 'factor_order', 'question_order']
-        for k, v in pparams.items():
-            if k not in translate_list: continue
-            if isinstance(v,str): pparams[k] = translate(v)
-            else: pparams[k] = [ translate(c) for c in v ]
-                
-        # Translate facets too
-        factor_cols = [ translate(c) for c in factor_cols ]
+        factor_cols = factor_cols[n_inner:] # Leave rest for external faceting
+
+    # Translate the data itself
+    pparams['data'] = data = translate_df(data,translate)    
+    factor_cols = [ translate(c) for c in factor_cols ]
 
     # Handle tooltip
     pparams['tooltip'] = create_tooltip(pparams,col_meta)
     
-    # If we still have more than 1 factor - merge the rest
+    # If we still have more than 1 factor left, merge the rest into one so we have a 2d facet
     if len(factor_cols)>1:
         n_facet_cols = len(data[factor_cols[-1]].dtype.categories)
         if not return_matrix_of_plots and len(factor_cols)>2:
@@ -440,29 +393,26 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
         pparams['data'] = pparams['data'].rename(columns={pparams['value_col']:pp_desc['value_name']})
         pparams['value_col'] = pp_desc['value_name']
     
-    # Create the plot using it's function
-    if dry_run: return pparams
-
+    # Do width/height calculations
     if factor_cols: n_facet_cols = vod(plot_args,'n_facet_cols',n_facet_cols) # Allow plot_args to override col nr
     dims = {'width': width//n_facet_cols if factor_cols else width}
     if 'aspect_ratio' in plot_meta:   dims['height'] = int(dims['width']/plot_meta['aspect_ratio'])        
     
     # Make plot properties available to plot function (mostly useful for as_is plots)
     pparams.update({'width':width}); pparams['alt_properties'] = alt_properties; pparams['outer_factors'] = factor_cols
+
+    # Create the plot using it's function
+    if dry_run: return pparams
     
     # Trim down parameters list if needed
     plot_fn = get_plot_fn(pp_desc['plot'])
-
-    pparams = new_pparams(pparams)
-
     pparams = clean_kwargs(plot_fn,pparams)
-    
     
     if alt_wrapper is None: alt_wrapper = lambda p: p
     if vod(plot_meta,'as_is'): # if as_is set, just return the plot as-is
         return plot_fn(**pparams)
     elif factor_cols:
-        if return_matrix_of_plots: 
+        if return_matrix_of_plots: # return a 2d list of plots which can be rendeed one plot at a time
             del pparams['data']
             combs = it.product( *[data[fc].dtype.categories for fc in factor_cols ])
             #print( [ data[(data[factor_cols]==c).all(axis=1)] for c in combs ] )
@@ -487,7 +437,8 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
 
     return plot
 
-# %% ../nbs/02_pp.ipynb 21
+
+# %% ../nbs/02_pp.ipynb 20
 # A convenience function to draw a plot straight from a dataset
 def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, check_match=True,lazy=False,**kwargs):
     if data_file is None and full_df is None:
@@ -501,16 +452,16 @@ def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, c
             dm = full_meta['data']
         else: full_df, dm = read_annotated_data(data_file)
         if data_meta is None: data_meta = dm
-    
-    matches = matching_plots(pp_desc, full_df, data_meta, details=True, list_hidden=True)
-    
-    if pp_desc['plot'] not in matches: 
-        raise Exception(f"Plot not registered: {pp_desc['plot']}")
-    
-    fit, imp = matches[pp_desc['plot']]
-    if  fit<0:
-        raise Exception(f"Plot {pp_desc['plot']} not applicable in this situation because of flags {imp}")
+
+    if check_match:
+        matches = matching_plots(pp_desc, full_df, data_meta, details=True, list_hidden=True)    
+        if pp_desc['plot'] not in matches: 
+            raise Exception(f"Plot not registered: {pp_desc['plot']}")
         
+        fit, imp = matches[pp_desc['plot']]
+        if  fit<0:
+            raise Exception(f"Plot {pp_desc['plot']} not applicable in this situation because of flags {imp}")
+            
     pparams = get_filtered_data(full_df, data_meta, pp_desc)
     return create_plot(pparams, data_meta, pp_desc, width=width,**kwargs)
 
