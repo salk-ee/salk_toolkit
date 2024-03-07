@@ -206,13 +206,14 @@ def extract_column_meta(data_meta):
     res = defaultdict(lambda: {})
     for g in data_meta['structure']:
         base = g['scale'] if 'scale' in g else {}
-        res[g['name']] = base
+        res[g['name']] = {**base, 'columns': [(t[0] if type(t)!=str else t) for t in g['columns']] }
         for cd in g['columns']:
             if isinstance(cd,str): cd = [cd]
             res[cd[0]] = {**base,**cd[-1]} if isinstance(cd[-1],dict) else base
     return res
 
 # Convert data_meta into a dict of group_name -> [column names]
+# TODO: deprecate - info available in extract_column_meta
 def group_columns_dict(data_meta):
     return { g['name'] : [(t[0] if type(t)!=str else t) for t in g['columns']] for g in data_meta['structure'] }
 
