@@ -149,7 +149,33 @@ with st.sidebar: #.expander("Select dimensions"):
         st.markdown("""Please choose facets different from observation dimension""")
         st.stop()
 
-    args['internal_facet'] = st.toggle('Internal facet?',True)   
+    args['internal_facet'] = st.toggle('Internal facet?',True)
+
+    # Make all dimensions explicit
+    args['factor_cols'] = impute_factor_cols(args, c_meta)
+
+    # Plot type
+    matching = matching_plots(args, first_data, first_data_meta)
+    plot_list = ['default'] + sorted(matching)
+    if 'plot_type' in st.session_state:
+        if st.session_state['plot_type'] not in matching: st.session_state['plot_type']='default'
+        pt_ind = plot_list.index(st.session_state['plot_type'])
+    else: pt_ind = 0
+    args['plot'] = st.session_state['plot_type'] = st.selectbox(
+        'Plot type', plot_list, index=pt_ind, format_func=lambda s: f'{matching[0]} (default)' if s == 'default' else s)
+    if args['plot'] == 'default': args['plot'] = matching[0]
+
+    plot_meta = get_plot_meta(args['plot'])
+
+    # Plot arguments
+    plot_args = {} # 'n_facet_cols':2 }
+    for k, v in vod(plot_meta,'args',{}).items():
+        if v=='bool':
+            plot_args[k] = st.toggle(k)
+        elif isinstance(v, list):
+            plot_args[k] = st.selectbox(k,v)
+
+    args['plot_args'] = {**vod(args,'plot_args',{}),**plot_args}
 
     with st.expander('Advanced'):
         args['poststrat'] = st.toggle('Post-stratified?', True)
@@ -169,29 +195,9 @@ with st.sidebar: #.expander("Select dimensions"):
     args['filter'] = filter_ui(first_data,first_data_meta,
                                 dims=all_dims,detailed=detailed)
 
-    # Make all dimensions explicit
-    args['factor_cols'] = impute_factor_cols(args, c_meta)
 
-    # Plot type
-    matching = matching_plots(args, first_data, first_data_meta)
-    plot_list = ['default'] + sorted(matching)
-    if 'plot_type' in st.session_state:
-        if st.session_state['plot_type'] not in matching: st.session_state['plot_type']='default'
-        pt_ind = plot_list.index(st.session_state['plot_type'])
-    else: pt_ind = 0
-    args['plot'] = st.session_state['plot_type'] = st.selectbox(
-        'Plot type', plot_list, index=pt_ind, format_func=lambda s: f'{matching[0]} (default)' if s == 'default' else s)
-    if args['plot'] == 'default': args['plot'] = matching[0]
-
-    # Plot arguments
-    plot_args = {} # 'n_facet_cols':2 }
-    for k, v in vod(get_plot_meta(args['plot']),'args',{}).items():
-        if v=='bool':
-            plot_args[k] = st.toggle(k)
-        elif isinstance(v, list):
-            plot_args[k] = st.selectbox(k,v)
-
-    args['plot_args'] = {**vod(args,'plot_args',{}),**plot_args}
+    # Make all dimensions explicit now that plot is selected (as that can affect the factor columns)
+    args['factor_cols'] = impute_factor_cols(args, c_meta, plot_meta)    
 
     with st.expander('Plot desc'):
         st.json(args)

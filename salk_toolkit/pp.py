@@ -6,7 +6,7 @@ __all__ = ['registry', 'registry_meta', 'stk_plot_defaults', 'n_a', 'priority_we
            'matching_plots', 'get_filtered_data', 'translate_df', 'create_plot', 'impute_factor_cols', 'e2e_plot',
            'test_new_plot']
 
-# %% ../nbs/02_pp.ipynb 4
+# %% ../nbs/02_pp.ipynb 3
 import json, os
 import itertools as it
 from collections import defaultdict
@@ -24,7 +24,7 @@ import altair as alt
 from salk_toolkit.utils import *
 from salk_toolkit.io import load_parquet_with_metadata, extract_column_meta, group_columns_dict, list_aliases, read_annotated_data, read_json
 
-# %% ../nbs/02_pp.ipynb 7
+# %% ../nbs/02_pp.ipynb 6
 # Augment each draw with bootstrap data from across whole population to make sure there are at least <threshold> samples
 def augment_draws(data, factors=None, n_draws=None, threshold=50):
     if n_draws == None: n_draws = data.draw.max()+1
@@ -50,14 +50,14 @@ def augment_draws(data, factors=None, n_draws=None, threshold=50):
     
     return pd.concat([data, new_rows])
 
-# %% ../nbs/02_pp.ipynb 8
+# %% ../nbs/02_pp.ipynb 7
 # Get the numerical values to map categories to
 def get_cat_num_vals(res_meta,pp_desc):
     nvals = vod(res_meta,'num_values',range(len(res_meta['categories'])))
     if 'num_values' in pp_desc: nvals = pp_desc['num_values'] 
     return nvals
 
-# %% ../nbs/02_pp.ipynb 10
+# %% ../nbs/02_pp.ipynb 9
 registry = {}
 registry_meta = {}
 
@@ -113,7 +113,10 @@ def calculate_priority(plot_meta, match):
 
     facet_metas = match['facet_metas']
     if vod(plot_meta,'no_question_facet'):
-        facet_metas = [ f for f in facet_metas if f['name']!='question']
+        facet_metas = [ f for f in facet_metas if f['name'] not in ['question',match['res_col']]]
+
+    # Plots with raw data assume numerical values so remove them as options
+    if match['categorical'] and vod(plot_meta,'data_format')=='raw': return n_a, ['raw_data']
 
     if len(facet_metas)<vod(plot_meta,'n_facets',(0,0))[0]: 
         return n_a, ['n_facets'] # Not enough factors
@@ -147,14 +150,17 @@ def matching_plots(pp_desc, df, data_meta, details=False, list_hidden=False):
     rcm = col_meta[rc]
 
     # Determine if values are non-negative
-    nonneg = ('categories' in col_meta[rc]) or df[ rcm['columns'] if 'columns' in rcm else rc ].min(axis=None)>=0
-    if vod(pp_desc,'convert_res')=='continuous' and ('categories' in col_meta[rc]):
+    nonneg = ('categories' in rcm) or df[ rcm['columns'] if 'columns' in rcm else rc ].min(axis=None)>=0
+    if vod(pp_desc,'convert_res')=='continuous' and ('categories' in rcm):
         nonneg = min([ v for v in get_cat_num_vals(rcm,pp_desc) if v is not None ])>=0
 
     match = {
         'draws': ('draw' in df.columns),
         'nonnegative': nonneg,
         'hidden': list_hidden,
+
+        'res_col': rc,
+        'categorical': ('categories' in rcm) and vod(pp_desc,'convert_res')!='continuous',
         'facet_metas': [ {'name':cn, **col_meta[cn]} for cn in pp_desc['factor_cols']]
     }
     
@@ -163,7 +169,7 @@ def matching_plots(pp_desc, df, data_meta, details=False, list_hidden=False):
     if details: return { n: (p, i) for (n, p, i) in res } # Return dict with priorities and failure reasons
     else: return [ n for (n,p,i) in sorted(res,key=lambda t: t[1], reverse=True) if p >= 0 ] # Return list of possibilities in decreasing order of fit
 
-# %% ../nbs/02_pp.ipynb 17
+# %% ../nbs/02_pp.ipynb 18
 # Get the categories that are in use
 def get_cats(col, cats=None):
     if cats is None or len(set(col.dtype.categories)-set(cats))>0: cats = col.dtype.categories
@@ -175,7 +181,7 @@ def transform_cont(data, transform):
     elif transform == 'zscore': return sps.zscore(data,nan_policy='omit')
     else: raise Exception(f"Unknown transform '{transform}'")
 
-# %% ../nbs/02_pp.ipynb 18
+# %% ../nbs/02_pp.ipynb 19
 # Get all data required for a given graph
 # Only return columns and rows that are needed
 # This can handle either a pandas DataFrame or a polars LazyDataFrame (to allow for loading only needed data)
@@ -293,7 +299,7 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
     
     return pparams
 
-# %% ../nbs/02_pp.ipynb 20
+# %% ../nbs/02_pp.ipynb 21
 def discretize_continuous(col, col_meta={}):
     # NB! qcut might be a better default - see where testing leads us
     cut = pd.cut(col, bins = vod(col_meta,'bins',5), labels = vod(col_meta,'bin_labels',None) )
@@ -363,7 +369,7 @@ def wrangle_data(raw_df, data_meta, pp_desc):
     pparams['data'] = data
     return pparams
 
-# %% ../nbs/02_pp.ipynb 21
+# %% ../nbs/02_pp.ipynb 22
 # Create a color scale
 ordered_gradient = ["#c30d24", "#f3a583", "#94c6da", "#1770ab"]
 def meta_color_scale(scale : Dict, column=None, translate=None):
@@ -376,7 +382,7 @@ def meta_color_scale(scale : Dict, column=None, translate=None):
         cats = [ remap[c] for c in cats ]
     return to_alt_scale(scale,cats)
 
-# %% ../nbs/02_pp.ipynb 22
+# %% ../nbs/02_pp.ipynb 23
 internal_columns = ['draw','weight','group_size'] 
 
 def translate_df(df, translate):
@@ -388,7 +394,7 @@ def translate_df(df, translate):
             df[c] = df[c].cat.rename_categories(remap)
     return df
 
-# %% ../nbs/02_pp.ipynb 23
+# %% ../nbs/02_pp.ipynb 24
 def create_tooltip(pparams,c_meta):
     
     data, tfn = pparams['data'], pparams['translate']
@@ -419,7 +425,30 @@ def create_tooltip(pparams,c_meta):
     return tooltips
     
 
-# %% ../nbs/02_pp.ipynb 24
+# %% ../nbs/02_pp.ipynb 25
+# Small helper function to move columns from internal to external columns
+def remove_from_internal_fcols(cname, factor_cols, n_inner):
+    if cname not in factor_cols: return n_inner
+    factor_cols.remove(cname)
+    if n_inner>len(factor_cols): n_inner-=1
+    factor_cols.insert(n_inner,cname)
+    return n_inner
+
+def inner_outer_factors(factor_cols, pp_desc, plot_meta):
+    # Determine how many factors to use as inner facets
+    in_f = vod(pp_desc,'internal_facet',False)
+    n_min_f, n_rec_f = vod(plot_meta,'n_facets',(0,0))
+    n_inner =  (n_rec_f if in_f else n_min_f) if isinstance(in_f,bool) else in_f
+    if n_inner>len(factor_cols): n_inner = len(factor_cols)
+
+    # If question facet as inner facet for a no_question_facet plot, just move it out
+    if vod(plot_meta,'no_question_facet'):
+        n_inner = remove_from_internal_fcols('question',factor_cols,n_inner)
+        n_inner = remove_from_internal_fcols(pp_desc['res_col'],factor_cols,n_inner)
+    
+    return factor_cols, n_inner
+
+# %% ../nbs/02_pp.ipynb 26
 # Function that takes filtered raw data and plot information and outputs the plot
 # Handles all of the data wrangling and parameter formatting
 def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=False, width=200, return_matrix_of_plots=False, translate=None):
@@ -437,22 +466,8 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
     pparams['val_format'] = vod(pp_desc,'value_format','.1%' if pparams['value_col'] == 'percent' else '.1f')
 
     # Get list of factor columns (adding question and category if needed)
-    factor_cols = pp_desc['factor_cols']
-    
-    # Determine how many factors to use as inner facets
-    in_f = vod(pp_desc,'internal_facet',False)
-    n_min_f, n_rec_f = vod(get_plot_meta(pp_desc['plot']),'n_facets',(0,0))
-    n_inner =  (n_rec_f if in_f else n_min_f) if isinstance(in_f,bool) else in_f
-    if n_inner>len(factor_cols): n_inner = len(factor_cols)
-
-    # If question facet as inner facet for a no_question_facet plot, just move it out
-    if vod(plot_meta,'no_question_facet') and 'question' in factor_cols[:n_inner]:
-        factor_cols.remove('question')
-        if n_inner>len(factor_cols): n_inner-=1
-        factor_cols.insert(n_inner,'question')
+    factor_cols, n_inner = inner_outer_factors(pp_desc['factor_cols'], pp_desc, plot_meta)
         
-    #print(factor_cols, n_min_f, n_rec_f, n_inner, in_f)
-
     # Handle translation funcion
     if translate is None: translate = (lambda s: s)
     pparams['translate'] = translate
@@ -554,9 +569,9 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
     return plot
 
 
-# %% ../nbs/02_pp.ipynb 26
+# %% ../nbs/02_pp.ipynb 28
 # Compute the full factor_cols list, including question and res_col as needed
-def impute_factor_cols(pp_desc, col_meta):
+def impute_factor_cols(pp_desc, col_meta, plot_meta=None):
     factor_cols = vod(pp_desc,'factor_cols',[]).copy()
 
     # Determine if res is categorical
@@ -575,9 +590,12 @@ def impute_factor_cols(pp_desc, col_meta):
         if cat_res: factor_cols.append('question') # Put it last for categorical values
         else: factor_cols.insert(0,'question') # And first for continuous values, as it then often represents the "category"
 
+    # Pass the factor_cols through the same changes done inside plot pipeline to make more explicit what happens
+    if plot_meta: factor_cols, _ = inner_outer_factors(factor_cols, pp_desc, plot_meta)
+
     return factor_cols
 
-# %% ../nbs/02_pp.ipynb 27
+# %% ../nbs/02_pp.ipynb 29
 # A convenience function to draw a plot straight from a dataset
 def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, check_match=True,lazy=False,impute=True,**kwargs):
     if data_file is None and full_df is None:
@@ -593,7 +611,7 @@ def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, c
         if data_meta is None: data_meta = dm
 
     pp_desc = pp_desc.copy()
-    if impute: pp_desc['factor_cols'] = impute_factor_cols(pp_desc, extract_column_meta(data_meta))
+    if impute: pp_desc['factor_cols'] = impute_factor_cols(pp_desc, extract_column_meta(data_meta), get_plot_meta(pp_desc['plot']))
 
     if check_match:
         matches = matching_plots(pp_desc, full_df, data_meta, details=True, list_hidden=True)    
