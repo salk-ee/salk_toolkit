@@ -110,6 +110,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, return_me
     ndf = pd.DataFrame()
     all_cns = dict()
     for group in meta['structure']:
+        all_cns[group['name']] = group['name'] 
         for tpl in group['columns']:
             if type(tpl)==list:
                 cn = tpl[0] # column name
@@ -118,6 +119,11 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, return_me
             else:
                 cn = sn = tpl
                 cd = {}
+
+            if 'scale' in group: cd = {**group['scale'],**cd}
+
+            # Col prefix is used to avoid name clashes when different groups naturally share same column names
+            if 'col_prefix' in cd: cn, sn = cd['col_prefix']+cn, cd['col_prefix']+sn
             
             # Detect duplicate columns in meta - including among those missing or generated
             if cn in all_cns: 
@@ -125,8 +131,6 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, return_me
             all_cns[cn] = group['name']
                 
             if only_fix_categories: sn = cn
-
-            if 'scale' in group: cd = {**group['scale'],**cd}
             
             if sn not in raw_data:
                 if not vod(cd,'generated'): # bypass warning for columns marked as being generated later
@@ -142,7 +146,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, return_me
             if not only_fix_categories:
                 if s.dtype.name=='category': s = s.astype('object') # This makes it easier to use common ops like replace and fillna
                 if 'translate' in cd: 
-                    s = s.astype('str').replace(cd['translate']).replace('nan',None)
+                    s = s.astype('str').replace(cd['translate']).replace('nan',None).replace('None',None)
                 if 'transform' in cd: s = eval(cd['transform'],{ 's':s, 'df':raw_data, 'ndf':ndf, 'pd':pd, 'np':np, 'stk':stk , **constants })
                 
                 if vod(cd,'datetime'): s = pd.to_datetime(s,errors='coerce')
@@ -206,7 +210,7 @@ def extract_column_meta(data_meta):
     res = defaultdict(lambda: {})
     for g in data_meta['structure']:
         base = g['scale'] if 'scale' in g else {}
-        res[g['name']] = {**base, 'columns': [(t[0] if type(t)!=str else t) for t in g['columns']] }
+        res[g['name']] = {**base, 'columns': [vod(base,'col_prefix','')+(t[0] if type(t)!=str else t) for t in g['columns']] }
         for cd in g['columns']:
             if isinstance(cd,str): cd = [cd]
             res[cd[0]] = {**base,**cd[-1]} if isinstance(cd[-1],dict) else base
@@ -215,7 +219,9 @@ def extract_column_meta(data_meta):
 # Convert data_meta into a dict of group_name -> [column names]
 # TODO: deprecate - info available in extract_column_meta
 def group_columns_dict(data_meta):
-    return { g['name'] : [(t[0] if type(t)!=str else t) for t in g['columns']] for g in data_meta['structure'] }
+    return { k: d['columns'] for k,d in extract_column_meta(data_meta).items() if 'columns' in d }
+
+    #return { g['name'] : [(t[0] if type(t)!=str else t) for t in g['columns']] for g in data_meta['structure'] }
 
 # Take a list and a dict and replace all dict keys in list with their corresponding lists in-place
 def list_aliases(lst, da):

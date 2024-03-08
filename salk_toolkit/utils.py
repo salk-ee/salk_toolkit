@@ -5,7 +5,7 @@ __all__ = ['warn', 'default_color', 'vod', 'factorize_w_codes', 'batch', 'loc2il
            'match_data', 'replace_constants', 'approx_str_match', 'index_encoder', 'to_alt_scale',
            'multicol_to_vals_cats', 'gradient_to_discrete_color_scale', 'is_datetime', 'rel_wave_times', 'stable_draws',
            'deterministic_draws', 'clean_kwargs', 'censor_dict', 'cut_nice', 'rename_cats', 'str_replace',
-           'merge_series', 'gb_in', 'gb_in_apply']
+           'merge_series', 'aggregate_multiselect', 'gb_in', 'gb_in_apply']
 
 # %% ../nbs/10_utils.ipynb 3
 import json, os, warnings, math, inspect
@@ -279,6 +279,15 @@ def merge_series(*lst):
     return s
 
 # %% ../nbs/10_utils.ipynb 41
+# Turn a list of selected/not seleced into a list of selected values in the same dataframe
+def aggregate_multiselect(df, prefix, out_prefix, na_vals=[]):
+    cols = [ c for c in df.columns if c.startswith(prefix) ]
+    lst = list(map(lambda l: [ v for v in l if v is not None ],
+         df[cols].astype('object').replace(dict(zip(na_vals,[None]*len(na_vals)))).values.tolist()))
+    n_res = max(map(len,lst))
+    df[[f'{out_prefix}{i+1}' for i in range(n_res)]] = pd.DataFrame(lst)
+
+# %% ../nbs/10_utils.ipynb 42
 # Groupby if needed - this simplifies things quite often
 def gb_in(df, gb_cols):
     return df.groupby(gb_cols,observed=False) if len(gb_cols)>0 else df

@@ -271,9 +271,15 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
         
         id_vars = [ c for c in cols if c not in value_vars ]
         filtered_df = filtered_df.melt(id_vars=id_vars, value_vars=value_vars, var_name='question', value_name=pp_desc['res_col'])
+
+        # Remove prefix from question names in plots
+        if 'col_prefix' in c_meta[pp_desc['res_col']]:
+            prefix = c_meta[pp_desc['res_col']]['col_prefix']
+            filtered_df['question'] = filtered_df['question'].str.replace(prefix,'')
+            value_vars = [ v.replace(prefix,'') for v in value_vars ]
                 
         # Convert to proper category with correct order
-        filtered_df['question'] = pd.Categorical(filtered_df['question'],gc_dict[pp_desc['res_col']])
+        filtered_df['question'] = pd.Categorical(filtered_df['question'],value_vars)
     elif 'question' in pp_desc['factor_cols']: # Create 'question' as a dummy dimension
         filtered_df['question'] = pd.Categorical([pp_desc['res_col']]*len(filtered_df))
         
