@@ -576,7 +576,7 @@ def filter_ui(data, dmeta=None, dims=None, detailed=False, raw=False, translate=
         c_meta = extract_column_meta(dmeta) # mainly for groups defined in meta
     else: c_meta = defaultdict(lambda: {})
     
-    f_info = st.sidebar.container() if not raw else st.container()
+    if not force_choice: f_info = st.sidebar.container()
     
     stc = st.sidebar.expander(tfc('Filters',context='ui')) if not raw else st
     
