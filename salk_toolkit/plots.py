@@ -267,11 +267,15 @@ def make_start_end(x,value_col,cat_col,cat_order):
     #print(res)
     return res
 
-@stk_plot('likert_bars', data_format='longform', draws=False, requires=[{'likert':True}], n_facets=(2,3), priority=50)
+@stk_plot('likert_bars', data_format='longform', draws=False, requires=[{'likert':True}], n_facets=(1,3), priority=50)
 def likert_bars(data, value_col='value', facets=[],  tooltip=[], outer_factors=[]):
     # First facet is likert, second is labeled question, third is offset. Second is better for question which usually goes last, hence reorder
     if len(facets)>=3: f0, f1, f2 = facets[0], facets[2], facets[1]
-    else: f0, f1, f2 = facets[0], facets[1], None
+    elif len(facets)==2: f0, f1, f2 = facets[0], facets[1], None
+    else: # Create a dummy second facet
+        f0, f1, f2 = facets[0], { 'col': 'question', 'order': [value_col], 'colors': alt.Undefined }, None
+        data['question'] = value_col
+    
     gb_cols = outer_factors+[f["col"] for f in facets[1:]] # There can be other extra cols (like labels) that should be ignored
     options_cols = list(data[f0["col"]].dtype.categories) # Get likert scale names
     bar_data = data.groupby(gb_cols, group_keys=False, observed=False)[data.columns].apply(make_start_end, value_col=value_col,cat_col=f0["col"],cat_order=f0["order"],include_groups=False)
@@ -513,9 +517,12 @@ def likert_rad_pol(data, value_col='value', facets=[], normalized=True, width=80
     gb_cols = outer_factors + [f['col'] for f in facets[1:]] # There can be other extra cols (like labels) that should be ignored
     
     options_cols = list(data[f0["col"]].dtype.categories) # Get likert scale names
-    likert_indices = data.groupby(gb_cols, group_keys=False, observed=False).apply(likert_aggregate,cat_col=f0["col"],cat_order=f0["order"],value_col=value_col,include_groups=False).reset_index()
+    if len(gb_cols)>0:
+        likert_indices = data.groupby(gb_cols, group_keys=False, observed=False).apply(likert_aggregate,cat_col=f0["col"],cat_order=f0["order"],value_col=value_col,include_groups=False).reset_index()
+    else: likert_indices = pd.DataFrame(likert_aggregate(data,cat_col=f0["col"],cat_order=f0["order"],value_col=value_col)).T
+    print(likert_indices)
     
-    if normalized: likert_indices.loc[:,['polarisation','radicalisation']] = likert_indices[['polarisation','radicalisation']].apply(sps.zscore)
+    if normalized and len(likert_indices)>1: likert_indices.loc[:,['polarisation','radicalisation']] = likert_indices[['polarisation','radicalisation']].apply(sps.zscore)
     
     plot = alt.Chart(likert_indices).mark_point().encode(
         x=alt.X('polarisation:Q'),

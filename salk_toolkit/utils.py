@@ -295,5 +295,8 @@ def gb_in(df, gb_cols):
 # Groupby apply if needed - similar to gb_in but for apply
 def gb_in_apply(df, gb_cols, fn, cols=None, **kwargs):
     if cols is None: cols = list(df.columns)
-    if len(gb_cols)==0: return fn(df[cols],**kwargs)
-    else: return df.groupby(gb_cols,observed=False)[cols].apply(fn,**kwargs)
+    if len(gb_cols)==0: 
+        res = fn(df[cols],**kwargs)
+        if type(res)==pd.Series: res = pd.DataFrame(res).T
+    else: res = df.groupby(gb_cols,observed=False)[cols].apply(fn,**kwargs)
+    return res

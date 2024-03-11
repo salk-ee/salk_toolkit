@@ -272,12 +272,7 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
         id_vars = [ c for c in cols if c not in value_vars ]
         filtered_df = filtered_df.melt(id_vars=id_vars, value_vars=value_vars, var_name='question', value_name=pp_desc['res_col'])
 
-        # Remove prefix from question names in plots
-        if 'col_prefix' in c_meta[pp_desc['res_col']]:
-            prefix = c_meta[pp_desc['res_col']]['col_prefix']
-            filtered_df['question'] = filtered_df['question'].str.replace(prefix,'')
-            value_vars = [ v.replace(prefix,'') for v in value_vars ]
-                
+
         # Convert to proper category with correct order
         filtered_df['question'] = pd.Categorical(filtered_df['question'],value_vars)
     elif 'question' in pp_desc['factor_cols']: # Create 'question' as a dummy dimension
@@ -297,6 +292,13 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
     
     # Aggregate the data into right shape
     pparams = wrangle_data(filtered_df, data_meta, pp_desc)
+
+    # Remove prefix from question names in plots
+    if 'col_prefix' in c_meta[pp_desc['res_col']] and pp_desc['res_col'] in gc_dict:
+        prefix = c_meta[pp_desc['res_col']]['col_prefix']
+        cmap = { c: c.replace(prefix,'') for c in pparams['data']['question'].dtype.categories }
+        pparams['data']['question'] = pparams['data']['question'].cat.rename_categories(cmap)
+            
     
     # How many datapoints the plot is based on. This is useful metainfo to display sometimes
     pparams['n_datapoints'] = n_datapoints
