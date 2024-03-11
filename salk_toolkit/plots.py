@@ -270,12 +270,12 @@ def make_start_end(x,value_col,cat_col,cat_order):
 @stk_plot('likert_bars', data_format='longform', draws=False, requires=[{'likert':True}], n_facets=(1,3), priority=50)
 def likert_bars(data, value_col='value', facets=[],  tooltip=[], outer_factors=[]):
     # First facet is likert, second is labeled question, third is offset. Second is better for question which usually goes last, hence reorder
+    if len(facets)==1: # Create a dummy second facet
+        facets.append({ 'col': 'question', 'order': [facets[0]['col']], 'colors': alt.Undefined })
+        data['question'] = facets[0]['col']
     if len(facets)>=3: f0, f1, f2 = facets[0], facets[2], facets[1]
     elif len(facets)==2: f0, f1, f2 = facets[0], facets[1], None
-    else: # Create a dummy second facet
-        f0, f1, f2 = facets[0], { 'col': 'question', 'order': [value_col], 'colors': alt.Undefined }, None
-        data['question'] = value_col
-    
+
     gb_cols = outer_factors+[f["col"] for f in facets[1:]] # There can be other extra cols (like labels) that should be ignored
     options_cols = list(data[f0["col"]].dtype.categories) # Get likert scale names
     bar_data = data.groupby(gb_cols, group_keys=False, observed=False)[data.columns].apply(make_start_end, value_col=value_col,cat_col=f0["col"],cat_order=f0["order"],include_groups=False)
@@ -300,7 +300,7 @@ def likert_bars(data, value_col='value', facets=[],  tooltip=[], outer_factors=[
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 25
+# %% ../nbs/03_plots.ipynb 26
 # Calculate KDE ourselves using a fast libary. This gets around having to do sampling which is unstable
 def kde_1d(vc, value_col, ls, scale=False):
     y =  FFTKDE(kernel='gaussian').fit(vc.to_numpy()).evaluate(ls)
@@ -339,7 +339,7 @@ def density(data, value_col='value', facets=[], tooltip=[], outer_factors=[], st
             )
     return plot
 
-# %% ../nbs/03_plots.ipynb 27
+# %% ../nbs/03_plots.ipynb 28
 @stk_plot('violin', data_format='raw', n_facets=(1,2), as_is=True)
 def violin(data, value_col='value', facets=[], tooltip=[], outer_factors=[],width=800):
     f0, f1 = facets[0], facets[1] if len(facets)>1 else None
@@ -365,7 +365,7 @@ def violin(data, value_col='value', facets=[], tooltip=[], outer_factors=[],widt
 
     return plot
 
-# %% ../nbs/03_plots.ipynb 29
+# %% ../nbs/03_plots.ipynb 30
 # Cluster-based reordering
 def cluster_based_reorder(X):
     pd = sp.spatial.distance.pdist(X)#,metric='cosine')
@@ -406,7 +406,7 @@ def matrix(data, value_col='value', facets=[], val_format='%', reorder=False, ro
     
     return base+text
 
-# %% ../nbs/03_plots.ipynb 33
+# %% ../nbs/03_plots.ipynb 34
 @stk_plot('lines',data_format='longform', draws=False, requires=[{},{'ordered':True}], n_facets=(2,2), args={'smooth':'bool'})
 def lines(data, value_col='value', facets=[], smooth=False, width=800, tooltip=[], val_format='.2f',):
     f0, f1 = facets[0], facets[1]
@@ -425,7 +425,7 @@ def lines(data, value_col='value', facets=[], smooth=False, width=800, tooltip=[
     )
     return plot
 
-# %% ../nbs/03_plots.ipynb 35
+# %% ../nbs/03_plots.ipynb 36
 def draws_to_hdis(data,vc,hdi_vals):
     gbc = [ c for c in data.columns if c not in [vc,'draw'] ]
     ldfs = []
@@ -466,7 +466,7 @@ def lines_hdi(data, value_col='value', facets=[], width=800, tooltip=[], val_for
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 37
+# %% ../nbs/03_plots.ipynb 38
 @stk_plot('area_smooth',data_format='longform', draws=False, nonnegative=True, requires=[{},{'ordered':True}], n_facets=(2,2))
 def area_smooth(data, value_col='value', facets=[], width=800, tooltip=[]):
     f0, f1 = facets[0], facets[1]
@@ -487,7 +487,7 @@ def area_smooth(data, value_col='value', facets=[], width=800, tooltip=[]):
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 39
+# %% ../nbs/03_plots.ipynb 40
 def likert_aggregate(x, cat_col, cat_order, value_col):
     
     cc, vc = x[cat_col], x[value_col]
@@ -515,12 +515,7 @@ def likert_rad_pol(data, value_col='value', facets=[], normalized=True, width=80
     f0, f1 = facets[0], facets[1] if len(facets)>1 else None
     #gb_cols = list(set(data.columns)-{ f0["col"], value_col }) # Assume all other cols still in data will be used for factoring
     gb_cols = outer_factors + [f['col'] for f in facets[1:]] # There can be other extra cols (like labels) that should be ignored
-    
-    options_cols = list(data[f0["col"]].dtype.categories) # Get likert scale names
-    if len(gb_cols)>0:
-        likert_indices = data.groupby(gb_cols, group_keys=False, observed=False).apply(likert_aggregate,cat_col=f0["col"],cat_order=f0["order"],value_col=value_col,include_groups=False).reset_index()
-    else: likert_indices = pd.DataFrame(likert_aggregate(data,cat_col=f0["col"],cat_order=f0["order"],value_col=value_col)).T
-    print(likert_indices)
+    likert_indices = gb_in_apply(data,gb_cols,likert_aggregate,cat_col=f0["col"],cat_order=f0["order"],value_col=value_col).reset_index()
     
     if normalized and len(likert_indices)>1: likert_indices.loc[:,['polarisation','radicalisation']] = likert_indices[['polarisation','radicalisation']].apply(sps.zscore)
     
@@ -541,7 +536,7 @@ def likert_rad_pol(data, value_col='value', facets=[], normalized=True, width=80
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 41
+# %% ../nbs/03_plots.ipynb 42
 @stk_plot('barbell', data_format='longform', draws=False, n_facets=(2,2))
 def barbell(data, value_col='value', facets=[], n_datapoints=1, val_format='%', width=800, tooltip=[]):
     f0, f1 = facets[0], facets[1]
@@ -575,7 +570,7 @@ def barbell(data, value_col='value', facets=[], n_datapoints=1, val_format='%', 
     
     return chart
 
-# %% ../nbs/03_plots.ipynb 44
+# %% ../nbs/03_plots.ipynb 45
 @stk_plot('geoplot', data_format='longform', n_facets=(1,1), requires=[{'topo_feature':'pass'}], aspect_ratio=(4.0/3.0), no_question_facet=True)
 def geoplot(data, topo_feature, value_col='value', facets=[], val_format='.2f',tooltip=[]):
     f0 = facets[0]
@@ -601,7 +596,7 @@ def geoplot(data, topo_feature, value_col='value', facets=[], val_format='.2f',t
     ).project('mercator')
     return plot
 
-# %% ../nbs/03_plots.ipynb 48
+# %% ../nbs/03_plots.ipynb 49
 # Assuming ns is ordered by unique row values, find the split points
 def split_ordered(cvs):
     if len(cvs.shape)==1: cvs = cvs[:,None]
@@ -617,7 +612,7 @@ def split_even_weight(ws, n):
     cws = (cws/(cws[-1]/n)).astype('int')
     return (split_ordered(cws)+1)[:-1]
 
-# %% ../nbs/03_plots.ipynb 50
+# %% ../nbs/03_plots.ipynb 51
 def fd_mangle(vc, value_col, factor_col, n_points=10): 
     
     vc = vc.sort_values(value_col)
@@ -649,7 +644,7 @@ def facet_dist(data, value_col='value',facets=[], tooltip=[], outer_factors=[]):
 
     return plot
 
-# %% ../nbs/03_plots.ipynb 52
+# %% ../nbs/03_plots.ipynb 53
 # Vectorized multinomial sampling. Should be slightly faster
 def vectorized_mn(prob_matrix):
     s = prob_matrix.cumsum(axis=1)
@@ -695,7 +690,7 @@ def linevals(vals, value_col, n_points, dim, cats, ccodes=None, ocols=None, boos
 
     return pdf
 
-# %% ../nbs/03_plots.ipynb 53
+# %% ../nbs/03_plots.ipynb 54
 @stk_plot('ordered_population', data_format='raw', factor_columns=3, aspect_ratio=(1.0/1.0), plot_args={'group_categories':'bool'}, n_facets=(0,1), no_question_facet=True)
 def ordered_population(data, value_col='value', facets=[], tooltip=[], outer_factors=[], group_categories=False):
     f0 = facets[0] if len(facets)>0 else None
@@ -778,7 +773,7 @@ def ordered_population(data, value_col='value', facets=[], tooltip=[], outer_fac
     )
     return plot
 
-# %% ../nbs/03_plots.ipynb 55
+# %% ../nbs/03_plots.ipynb 56
 @stk_plot('marimekko', data_format='longform', draws=False, group_sizes=True, args={'separate':'bool'}, n_facets=(2,2))
 def marimekko(data, value_col='value', facets=[], val_format='%', width=800, tooltip=[], outer_factors=[], separate=False):
     f0, f1 = facets[0], facets[1]
