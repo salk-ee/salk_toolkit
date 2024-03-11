@@ -397,7 +397,7 @@ def matrix(data, value_col='value', facets=[], val_format='%', reorder=False, ro
     text = base.mark_text().encode(
         text=alt.Text(f'{value_col}:Q', format=val_format),
         color=alt.condition(
-            alt.datum[f'{value_col}:Q']**2 > 1.5,
+            alt.datum[f'{value_col}']**2 > (0.5*dmax)**2,
             alt.value('white'),
             alt.value('black')
         ),

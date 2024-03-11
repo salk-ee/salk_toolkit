@@ -123,7 +123,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, return_me
             if 'scale' in group: cd = {**group['scale'],**cd}
 
             # Col prefix is used to avoid name clashes when different groups naturally share same column names
-            if 'col_prefix' in cd: cn, sn = cd['col_prefix']+cn, cd['col_prefix']+sn
+            if 'col_prefix' in cd: cn = cd['col_prefix']+cn
             
             # Detect duplicate columns in meta - including among those missing or generated
             if cn in all_cns: 
