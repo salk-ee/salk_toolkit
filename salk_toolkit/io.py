@@ -439,7 +439,39 @@ def data_with_inferred_meta(data_file, **kwargs):
 
 # %% ../nbs/01_io.ipynb 14
 def read_and_process_data(desc, return_meta=False, constants={}):
-    df, meta = read_annotated_data(desc['file'])
+
+    if 'files' in desc: # Same syntax as process_annotated_data
+        data_files = [ f if isinstance(f,dict) else {'file': f } for f in desc['files'] ]
+
+        raw_dfs, metas = [], []
+        for fi, fd in enumerate(data_files):
+
+            raw_data, meta = read_annotated_data(fd['file'])
+
+            # Add extra columns to raw data that contain info about the file. Always includes column 'file' with filename and file_ind with index
+            # Can be used to add survey_date or other useful metainfo
+            raw_data['file_ind'] = fi
+            for k,v in fd.items():
+                if k in ['opts']: continue
+                raw_data[k] = v
+
+                    # Re-align the categoricals to the first file, as pandas fails to concatenate if one is ordered and other is not
+            if fi>0:
+                fdf = raw_dfs[0]
+                for c in raw_data.columns:
+                    if c in fdf.columns and raw_data[c].dtype.name == 'category' and fdf[c].dtype.name == 'category':
+                        raw_data[c] = pd.Categorical(raw_data[c],dtype=fdf[c].dtype)
+
+            raw_dfs.append(raw_data)
+            metas.append(meta)
+
+        df = pd.concat(raw_dfs)
+        meta = metas[-1] # Use the last meta as the main one
+    
+    elif 'file' in desc:
+        df, meta = read_annotated_data(desc['file'])
+    else:
+        raise Exception("No files provided")
     
     # Perform transformation and filtering
     globs = {'pd':pd, 'np':np, 'stk':stk, 'df':df, **constants}

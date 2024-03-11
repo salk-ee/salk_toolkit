@@ -35,7 +35,7 @@ import streamlit_authenticator as stauth
 
 # %% ../nbs/05_dashboard.ipynb 4
 def get_plot_width(key):
-    wobj = st_dimensions(key=key) or { 'width': 800 }# Can return none so handle that
+    wobj = st_dimensions(key=key) or { 'width': 800 } # Can return none so handle that
     return min(800,int(0.85*wobj['width'])) # Needs to be adjusted down  to leave margin for plots
 
 # %% ../nbs/05_dashboard.ipynb 5
