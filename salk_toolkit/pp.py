@@ -214,7 +214,7 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
     for k, v in filter_dict.items():
         
         # Handle continuous variables separately
-        if isinstance(v,tuple) and (vod(c_meta[k],'continuous') or vod(c_meta[k],'datetime')): # Only special case where we actually need a range
+        if isinstance(v,tuple) and (not isinstance(v[0],str) or vod(c_meta[k],'continuous') or vod(c_meta[k],'datetime')): # Only special case where we actually need a range
             if lazy: inds = (((pl.col(k)>=v[0]) & (pl.col(k)<=v[1])) | pl.col(k).is_null()) & inds
             else: inds = (((df[k]>=v[0]) & (df[k]<=v[1])) | df[k].isna()) & inds
             continue # NB! this approach does not work for ordered categoricals with polars LazyDataFrame, hence handling that separately below
@@ -310,7 +310,8 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
 # %% ../nbs/02_pp.ipynb 21
 def discretize_continuous(col, col_meta={}):
     # NB! qcut might be a better default - see where testing leads us
-    cut = pd.cut(col, bins = vod(col_meta,'bins',5), labels = vod(col_meta,'bin_labels',None) )
+    if 'bins' in col_meta: cut = pd.cut(col, bins = vod(col_meta,'bins',5), labels = vod(col_meta,'bin_labels',None) )
+    else:  cut = pd.qcut(col, q = vod(col_meta,'qbins',5))
     cut = pd.Categorical(cut.astype(str), map(str,cut.dtype.categories), True) # Convert from intervals to strings for it to play nice with altair
     return cut
 
@@ -335,6 +336,16 @@ def wrangle_data(raw_df, data_meta, pp_desc):
         
     pparams = { 'value_col': 'value' }
     data = None
+
+    # Ensure all rv columns other than value are categorical
+    for c in raw_df.columns:
+        if c in ['weight','draw','training_subsample']: continue # bypass some columns added above
+        print(c,raw_df[c].dtype.name)
+        if raw_df[c].dtype.name != 'category' and c!=pparams['value_col']:
+            if vod(vod(col_meta,c,{}),'continuous') or not isinstance(raw_df[c],str):
+                raw_df[c] = discretize_continuous(raw_df[c],vod(col_meta,c,{}))
+            else: # Just assume it's categorical by any other name
+                raw_df[c] = pd.Categorical(raw_df[c])
     
     if data_format=='raw':
         pparams['value_col'] = res_col
@@ -365,14 +376,7 @@ def wrangle_data(raw_df, data_meta, pp_desc):
     else:
         raise Exception("Unknown data_format")
         
-    # Ensure all rv columns other than value are categorical
-    for c in data.columns:
-        if c in ['group_size']: continue # bypass some columns added above
-        if data[c].dtype.name != 'category' and c!=pparams['value_col']:
-            if vod(vod(col_meta,c,{}),'continuous'):
-                data[c] = discretize_continuous(data[c],vod(col_meta,c,{}))
-            else: # Just assume it's categorical by any other name
-                data[c] = pd.Categorical(data[c])
+
             
     pparams['data'] = data
     return pparams
