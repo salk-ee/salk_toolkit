@@ -34,6 +34,75 @@ def read_json(fname,replace_const=True):
     return meta
 
 # %% ../nbs/01_io.ipynb 5
+# Read files listed in meta['file'] or meta['files']
+def read_concatenate_files_list(meta,data_file=None,path=None):
+
+    opts = meta['read_opts'] if'read_opts' in meta else {}
+    if data_file: data_files = [{ 'file': data_file, 'opts': opts}]
+    elif 'file' in meta: data_files = [{ 'file': meta['file'], 'opts': opts }]
+    elif 'files' in meta: data_files = meta['files'] 
+    else: raise Exception("No files provided")
+    
+    data_files = [  {'opts': opts, **f } if isinstance(f,dict) else
+                    {'opts': opts, 'file': f } for f in data_files ]
+    
+    cat_dtypes = {}
+    raw_dfs, metas = [], []
+    for fi, fd in enumerate(data_files):
+        
+        data_file, opts = fd['file'], fd['opts']
+        if path: data_file = os.path.join(os.path.dirname(path),data_file)
+        
+        if data_file[-4:] == 'json' or data_file[-7:] == 'parquet': # Allow loading metafiles or annotated data
+            if data_file[-4:] == 'json': warn(f"Processing {data_file}") # Print this to separate warnings for input jsons from main 
+            raw_data, meta = read_annotated_data(data_file, infer=False)
+            if meta is not None: metas.append(meta)
+        elif data_file[-3:] in ['csv', '.gz']:
+            raw_data = pd.read_csv(data_file, low_memory=False, **opts)
+        elif data_file[-3:] in ['sav','dta']:
+            read_fn = getattr(pyreadstat,'read_'+data_file[-3:])
+            with warnings.catch_warnings(): # While pyreadstat has not been updated to pandas 2.2 standards
+                warnings.simplefilter("ignore")
+                raw_data, _ = read_fn(data_file, **{ 'apply_value_formats':True, 'dates_as_pandas_datetime':True },**opts)
+        elif data_file[-4:] in ['.xls', 'xlsx', 'xlsm', 'xlsb', '.odf', '.ods', '.odt']:
+            raw_data = pd.read_excel(data_file, **opts)
+        else:
+            raise Exception(f"Not a known file format for {data_file}")
+        
+        # If data is multi-indexed, flatten the index
+        if isinstance(raw_data.columns,pd.MultiIndex): raw_data.columns = [" | ".join(tpl) for tpl in raw_data.columns]
+        
+        # Add extra columns to raw data that contain info about the file. Always includes column 'file' with filename and file_ind with index
+        # Can be used to add survey_date or other useful metainfo
+        raw_data['file_ind'] = fi
+        for k,v in fd.items():
+            if k in ['opts']: continue
+            raw_data[k] = v
+
+        # Strip all categorical dtypes
+        if len(data_files) > 1: # No point if only one file
+            for c in raw_data.columns:
+                if raw_data[c].dtype.name == 'category':
+                    if c not in cat_dtypes or len(cat_dtypes[c].categories)<=len(raw_data[c].dtype.categories):
+                        cat_dtypes[c] = raw_data[c].dtype
+                    raw_data[c] = raw_data[c].astype('object')
+            
+        raw_dfs.append(raw_data)
+
+    fdf = pd.concat(raw_dfs)
+
+    # Restore categoricals
+    if len(cat_dtypes)>0:
+        for c, dtype in cat_dtypes.items():
+            if not set(fdf[c].dropna().unique()) <= set(dtype.categories): # If the categories are the same, restore the dtype
+                print(set(fdf[c].dropna().unique()), set(dtype.categories))
+                warn(f"Categories for {c} are different between files, not restoring dtype")
+                dtype=pd.Categorical([],list(fdf[c].dropna().unique())).dtype
+            fdf[c] = pd.Categorical(fdf[c],dtype=dtype)
+
+    return fdf, (metas[-1] if metas else None)
+
+# %% ../nbs/01_io.ipynb 6
 # Default usage with mature metafile: process_annotated_data(<metafile name>)
 # When figuring out the metafile, it can also be run as: process_annotated_data(meta=<dict>, data_file=<>)
 def process_annotated_data(meta_fname=None, meta=None, data_file=None, return_meta=False, only_fix_categories=False):
@@ -47,60 +116,8 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, return_me
     meta = replace_constants(meta)
     
     # Read datafile(s)
-    opts = meta['read_opts'] if'read_opts' in meta else {}
-    if data_file: data_files = [{ 'file': data_file, 'opts': opts}]
-    elif 'file' in meta: data_files = [{ 'file': meta['file'], 'opts': opts }]
-    elif 'files' in meta:
-        data_files = [ {'opts': opts, **f } if isinstance(f,dict) else
-                       {'opts': opts, 'file': f } for f in meta['files'] ]
-    else: raise Exception("No files provided in metafile")
-    
-    raw_dfs, meta_inputs = [], False
-    for fi, fd in enumerate(data_files):
-        
-        data_file, opts = fd['file'], fd['opts']
-        if meta_fname: data_file = os.path.join(os.path.dirname(meta_fname),data_file)
-        
-        if data_file[-3:] in ['csv', '.gz']:
-            raw_data = pd.read_csv(data_file, low_memory=False, **opts)
-        elif data_file[-3:] in ['sav','dta']:
-            read_fn = getattr(pyreadstat,'read_'+data_file[-3:])
-            with warnings.catch_warnings(): # While pyreadstat has not been updated to pandas 2.2 standards
-                warnings.simplefilter("ignore")
-                raw_data, _ = read_fn(data_file, **{ 'apply_value_formats':True, 'dates_as_pandas_datetime':True },**opts)
-        elif data_file[-7:] == 'parquet':
-            raw_data = pd.read_parquet(data_file, **opts)
-        elif data_file[-4:] in ['.xls', 'xlsx', 'xlsm', 'xlsb', '.odf', '.ods', '.odt']:
-            raw_data = pd.read_excel(data_file, **opts)
-        elif data_file[-4:] == 'json': # Allow metafile to load other metafiles as input
-            warn(f"Processing {data_file}") # Print this to separate warnings for input jsons from main 
-            raw_data, _ = read_annotated_data(data_file)
-            meta_inputs = True
-        else:
-            raise Exception(f"Not a known file format for {data_file}")
-        
-        # If data is multi-indexed, flatten the index
-        if isinstance(raw_data.columns,pd.MultiIndex): raw_data.columns = [" | ".join(tpl) for tpl in raw_data.columns]
-        
-        # Add extra columns to raw data that contain info about the file. Always includes column 'file' with filename and file_ind with index
-        # Can be used to add survey_date or other useful metainfo
-        raw_data['file_ind'] = fi
-        for k,v in fd.items():
-            if k in ['opts']: continue
-            raw_data[k] = pd.Categorical([v]*len(raw_data),[v]) if isinstance(v,str) else v
-            
-        # Re-align the categoricals to the first file, as pandas fails to concatenate if one is ordered and other is not
-        if fi>0:
-            fdf = raw_dfs[0]
-            for c in raw_data.columns:
-                if c in fdf.columns and raw_data[c].dtype.name == 'category' and fdf[c].dtype.name == 'category':
-                    raw_data[c] = pd.Categorical(raw_data[c],dtype=fdf[c].dtype)
-            
-        raw_dfs.append(raw_data)
-        
-    if meta_inputs: warn(f"Processing main meta file") # Print this to separate warnings for input jsons from main 
-        
-    raw_data = pd.concat(raw_dfs)
+    raw_data, inp_meta = read_concatenate_files_list(meta,data_file,path=meta_fname)
+    if inp_meta is not None: warn(f"Processing main meta file") # Print this to separate warnings for input jsons from main 
     
     globs = {'pd':pd, 'np':np, 'stk':stk, 'df':raw_data, **constants }
     if 'preprocessing' in meta and not only_fix_categories:
@@ -187,22 +204,24 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, return_me
     
     return (ndf, meta) if return_meta else ndf
 
-# %% ../nbs/01_io.ipynb 6
+# %% ../nbs/01_io.ipynb 7
 # Read either a json annotation and process the data, or a processed parquet with the annotation attached
-def read_annotated_data(fname):
+def read_annotated_data(fname, infer=True):
     _, ext = os.path.splitext(fname)
     if ext == '.json':
         return process_annotated_data(fname, return_meta=True)
     elif ext == '.parquet':
         data, full_meta = load_parquet_with_metadata(fname)
         if full_meta is not None:
-            return data, full_meta['data']
+            return data, full_meta['data'] if full_meta else None
+    
+    if not infer: return data, None
     
     warn(f"Warning: using inferred meta for {fname}")
     meta = infer_meta(fname,meta_file=False)
     return process_annotated_data(fname, meta=meta, return_meta=True)
 
-# %% ../nbs/01_io.ipynb 7
+# %% ../nbs/01_io.ipynb 8
 # Helper functions designed to be used with the annotations
 
 # Convert data_meta into a dict where each group and column maps to their metadata dict
@@ -227,7 +246,7 @@ def group_columns_dict(data_meta):
 def list_aliases(lst, da):
     return [ fv for v in lst for fv in (da[v] if v in da else [v]) ]
 
-# %% ../nbs/01_io.ipynb 9
+# %% ../nbs/01_io.ipynb 10
 # Creates a mapping old -> new
 def get_original_column_names(dmeta):
     res = {}
@@ -248,7 +267,7 @@ def change_mapping(ot, nt, only_matches=False):
                  **{ k:v for k, v in nt.items() if k not in ot }, # do those in nt not in ot
                  **matches } 
 
-# %% ../nbs/01_io.ipynb 10
+# %% ../nbs/01_io.ipynb 11
 # Change an existing dataset to correspond better to a new meta_data
 # This is intended to allow making small improvements in the meta even after a model has been run
 # It is by no means perfect, but is nevertheless a useful tool to avoid re-running long pymc models for simple column/translation changes
@@ -315,12 +334,12 @@ def change_parquet_meta(orig_file,data_metafile,new_file):
     return df, meta
 
 
-# %% ../nbs/01_io.ipynb 11
+# %% ../nbs/01_io.ipynb 12
 def is_categorical(col):
     return col.dtype.name in ['object', 'str', 'category'] and not is_datetime(col)
 
 
-# %% ../nbs/01_io.ipynb 12
+# %% ../nbs/01_io.ipynb 13
 max_cats = 50
 
 # Create a very basic metafile for a dataset based on it's contents
@@ -437,48 +456,13 @@ def data_with_inferred_meta(data_file, **kwargs):
     return process_annotated_data(meta=meta, data_file=data_file, return_meta=True)
 
 
-# %% ../nbs/01_io.ipynb 14
+# %% ../nbs/01_io.ipynb 15
 def read_and_process_data(desc, return_meta=False, constants={}):
 
-    if 'files' in desc: # Same syntax as process_annotated_data
-        data_files = [ f if isinstance(f,dict) else {'file': f } for f in desc['files'] ]
+    df, meta = read_concatenate_files_list(desc)
 
-        raw_dfs, metas = [], []
-        for fi, fd in enumerate(data_files):
-
-            raw_data, meta = read_annotated_data(fd['file'])
-
-            # Add extra columns to raw data that contain info about the file. Always includes column 'file' with filename and file_ind with index
-            # Can be used to add survey_date or other useful metainfo
-            raw_data['file_ind'] = fi
-            for k,v in fd.items():
-                if k in ['opts']: continue
-                raw_data[k] = v #pd.Categorical([v]*len(raw_data),[v]) if isinstance(v,str) else v
-
-            # Re-align the categoricals to the first file, as pandas fails to concatenate if one is ordered and other is not
-            if fi>0:
-                fdf = raw_dfs[0]
-                for c in raw_data.columns:
-                    if c not in fdf.columns: continue
-                    if raw_data[c].dtype.name == 'category' and fdf[c].dtype.name == 'category':
-                        if set(raw_data[c].dtype.categories)!=set(fdf[c].dtype.categories): 
-                            warn(f"Category mismatch for {c}: {list(raw_data[c].dtype.categories)} vs {list(fdf[c].dtype.categories)}")
-                        raw_data[c] = pd.Categorical(raw_data[c],dtype=fdf[c].dtype)
-                    elif fdf[c].dtype.name == 'category': 
-                        print("Realigning",c, fdf[c].dtype, raw_data[c].dtype)
-                        raw_data[c] = pd.Categorical(raw_data[c],dtype=fdf[c].dtype)
-                    elif raw_data[c].dtype.name == 'category': fdf[c] = pd.Categorical(fdf[c],dtype=raw_data[c].dtype)
-                        
-            raw_dfs.append(raw_data)
-            metas.append(meta)
-
-        df = pd.concat(raw_dfs)
-        meta = metas[-1] # Use the last meta as the main one
-    
-    elif 'file' in desc:
-        df, meta = read_annotated_data(desc['file'])
-    else:
-        raise Exception("No files provided")
+    if meta is None and return_meta:
+        raise Exception("No meta found on any of the files")
     
     # Perform transformation and filtering
     globs = {'pd':pd, 'np':np, 'stk':stk, 'df':df, **constants}
@@ -489,7 +473,7 @@ def read_and_process_data(desc, return_meta=False, constants={}):
     
     return (df, meta) if return_meta else df
 
-# %% ../nbs/01_io.ipynb 16
+# %% ../nbs/01_io.ipynb 17
 def save_population_h5(fname,pdf):
     hdf = pd.HDFStore(fname,complevel=9, complib='zlib')
     hdf.put('population',pdf,format='table')
@@ -501,7 +485,7 @@ def load_population_h5(fname):
     hdf.close()
     return res
 
-# %% ../nbs/01_io.ipynb 17
+# %% ../nbs/01_io.ipynb 18
 def save_sample_h5(fname,trace,COORDS = None, filter_df = None):
     odims = [d for d in trace.predictions.dims if d not in ['chain','draw','obs_idx']]
     
@@ -542,7 +526,7 @@ def save_sample_h5(fname,trace,COORDS = None, filter_df = None):
     hdf.close()
 
 
-# %% ../nbs/01_io.ipynb 18
+# %% ../nbs/01_io.ipynb 19
 # These two very helpful functions are borrowed from https://towardsdatascience.com/saving-metadata-with-dataframes-71f51f558d8e
 
 custom_meta_key = 'salk-toolkit-meta'
