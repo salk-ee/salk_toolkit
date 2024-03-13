@@ -469,6 +469,15 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
   
     plot_args = vod(pp_desc,'plot_args',{})
     pparams.update(plot_args)
+
+    # Reorder categories if required
+    if vod(pp_desc,'sort'):
+        for cn in pp_desc['sort']:
+            ascending = pp_desc['sort'][cn] if isinstance(pp_desc['sort'],dict) else False
+            if cn not in data.columns or cn==pparams['value_col']: 
+                raise Exception(f"Sort column {cn} not found")
+            order = data.groupby(cn,observed=True)[pparams['value_col']].mean().sort_values(ascending=ascending).index
+            data[cn] = pd.Categorical(data[cn],list(order))
     
     # Handle value format
     pparams['val_format'] = vod(pp_desc,'value_format','.1%' if pparams['value_col'] == 'percent' else '.1f')

@@ -87,7 +87,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, return_me
         raw_data['file_ind'] = fi
         for k,v in fd.items():
             if k in ['opts']: continue
-            raw_data[k] = v
+            raw_data[k] = pd.Categorical([v]*len(raw_data),[v]) if isinstance(v,str) else v
             
         # Re-align the categoricals to the first file, as pandas fails to concatenate if one is ordered and other is not
         if fi>0:
@@ -453,15 +453,22 @@ def read_and_process_data(desc, return_meta=False, constants={}):
             raw_data['file_ind'] = fi
             for k,v in fd.items():
                 if k in ['opts']: continue
-                raw_data[k] = v
+                raw_data[k] = v #pd.Categorical([v]*len(raw_data),[v]) if isinstance(v,str) else v
 
-                    # Re-align the categoricals to the first file, as pandas fails to concatenate if one is ordered and other is not
+            # Re-align the categoricals to the first file, as pandas fails to concatenate if one is ordered and other is not
             if fi>0:
                 fdf = raw_dfs[0]
                 for c in raw_data.columns:
-                    if c in fdf.columns and raw_data[c].dtype.name == 'category' and fdf[c].dtype.name == 'category':
+                    if c not in fdf.columns: continue
+                    if raw_data[c].dtype.name == 'category' and fdf[c].dtype.name == 'category':
+                        if set(raw_data[c].dtype.categories)!=set(fdf[c].dtype.categories): 
+                            warn(f"Category mismatch for {c}: {list(raw_data[c].dtype.categories)} vs {list(fdf[c].dtype.categories)}")
                         raw_data[c] = pd.Categorical(raw_data[c],dtype=fdf[c].dtype)
-
+                    elif fdf[c].dtype.name == 'category': 
+                        print("Realigning",c, fdf[c].dtype, raw_data[c].dtype)
+                        raw_data[c] = pd.Categorical(raw_data[c],dtype=fdf[c].dtype)
+                    elif raw_data[c].dtype.name == 'category': fdf[c] = pd.Categorical(fdf[c],dtype=raw_data[c].dtype)
+                        
             raw_dfs.append(raw_data)
             metas.append(meta)
 

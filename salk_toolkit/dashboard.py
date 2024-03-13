@@ -198,7 +198,7 @@ class SalkDashboardBuilder:
         wrap_list = ['write','markdown','title','header','subheader','caption','text','divider',
                      'button','download_button','link_button','checkbox','toggle','radio','selectbox',
                      'multiselect','slider','select_slider','text_input','number_input','text_area',
-                     'date_input','time_input','file_uploader','camera_input','color_picker']
+                     'date_input','time_input','file_uploader','camera_input','color_picker', 'popover']
         for fn in wrap_list:
             wrap_st_with_translate(fn,self)
 

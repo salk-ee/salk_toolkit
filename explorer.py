@@ -136,7 +136,6 @@ with st.sidebar: #.expander("Select dimensions"):
 
     res_cont = not vod(c_meta[args['res_col']],'categories') or vod(args,'convert_res') == 'continuous'
 
-
     all_dims = vod(c_meta[obs_name],'modifiers', []) + all_dims
 
     facet_dims = all_dims
@@ -150,6 +149,7 @@ with st.sidebar: #.expander("Select dimensions"):
         st.stop()
 
     args['internal_facet'] = st.toggle('Internal facet?',True)
+    sort = st.toggle('Sort facets',False)
 
     # Make all dimensions explicit
     args['factor_cols'] = impute_factor_cols(args, c_meta)
@@ -189,6 +189,11 @@ with st.sidebar: #.expander("Select dimensions"):
             agg_fn = st.selectbox('Aggregation', ['mean', 'median', 'sum'])
             if agg_fn!='mean': args['agg_fn'] = agg_fn
 
+        if sort and len(args['factor_cols'])>0:
+            sort_facet = st.selectbox('Sort by', args['factor_cols'], 0 )
+            ascending = st.toggle('Ascending', False)
+            args['sort'] = {sort_facet: ascending}
+
         override = st.text_area('Override keys','{}')
         if override: args.update(json.loads(override))
 
@@ -197,7 +202,9 @@ with st.sidebar: #.expander("Select dimensions"):
 
 
     # Make all dimensions explicit now that plot is selected (as that can affect the factor columns)
-    args['factor_cols'] = impute_factor_cols(args, c_meta, plot_meta)    
+    args['factor_cols'] = impute_factor_cols(args, c_meta, plot_meta)
+
+    
 
     with st.expander('Plot desc'):
         st.json(args)
