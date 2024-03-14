@@ -74,10 +74,10 @@ def read_concatenate_files_list(meta,data_file=None,path=None):
         
         # Add extra columns to raw data that contain info about the file. Always includes column 'file' with filename and file_ind with index
         # Can be used to add survey_date or other useful metainfo
-        raw_data['file_ind'] = fi
+        if len(data_files)>1: raw_data['file_ind'] = fi
         for k,v in fd.items():
             if k in ['opts']: continue
-            if len(data_files)==1 and k in ['file','file_ind']: continue
+            if len(data_files)<=1 and k in ['file']: continue
             raw_data[k] = v
 
         # Strip all categorical dtypes
