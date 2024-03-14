@@ -77,6 +77,7 @@ def read_concatenate_files_list(meta,data_file=None,path=None):
         raw_data['file_ind'] = fi
         for k,v in fd.items():
             if k in ['opts']: continue
+            if len(data_files)==1 and k in ['file','file_ind']: continue
             raw_data[k] = v
 
         # Strip all categorical dtypes
