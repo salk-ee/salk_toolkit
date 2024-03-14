@@ -61,7 +61,7 @@ def get_cat_num_vals(res_meta,pp_desc):
 registry = {}
 registry_meta = {}
 
-# %% ../nbs/02_pp.ipynb 12
+# %% ../nbs/02_pp.ipynb 11
 stk_plot_defaults = { 'data_format': 'longform' }
 
 # Decorator for registering a plot type with metadata
@@ -94,7 +94,7 @@ def get_plot_meta(plot_name):
 def get_all_plots():
     return sorted(list(registry.keys()))
 
-# %% ../nbs/02_pp.ipynb 13
+# %% ../nbs/02_pp.ipynb 12
 # First is weight if not matching, second if match
 # This is very much a placeholder right now
 n_a = -1000000
@@ -169,7 +169,7 @@ def matching_plots(pp_desc, df, data_meta, details=False, list_hidden=False):
     if details: return { n: (p, i) for (n, p, i) in res } # Return dict with priorities and failure reasons
     else: return [ n for (n,p,i) in sorted(res,key=lambda t: t[1], reverse=True) if p >= 0 ] # Return list of possibilities in decreasing order of fit
 
-# %% ../nbs/02_pp.ipynb 18
+# %% ../nbs/02_pp.ipynb 17
 # Get the categories that are in use
 def get_cats(col, cats=None):
     if cats is None or len(set(col.dtype.categories)-set(cats))>0: cats = col.dtype.categories
@@ -181,7 +181,7 @@ def transform_cont(data, transform):
     elif transform == 'zscore': return sps.zscore(data,nan_policy='omit')
     else: raise Exception(f"Unknown transform '{transform}'")
 
-# %% ../nbs/02_pp.ipynb 19
+# %% ../nbs/02_pp.ipynb 18
 # Get all data required for a given graph
 # Only return columns and rows that are needed
 # This can handle either a pandas DataFrame or a polars LazyDataFrame (to allow for loading only needed data)
@@ -307,12 +307,17 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
     
     return pparams
 
-# %% ../nbs/02_pp.ipynb 21
+# %% ../nbs/02_pp.ipynb 20
 def discretize_continuous(col, col_meta={}):
-    # NB! qcut might be a better default - see where testing leads us
-    if 'bins' in col_meta: cut = pd.cut(col, bins = vod(col_meta,'bins',5), labels = vod(col_meta,'bin_labels',None) )
-    else:  cut = pd.qcut(col, q = vod(col_meta,'qbins',5))
-    cut = pd.Categorical(cut.astype(str), map(str,cut.dtype.categories), True) # Convert from intervals to strings for it to play nice with altair
+
+    if 'bin_breaks' in col_meta and 'bin_labels' in col_meta:
+        cut = pd.cut(col, bins = col_meta['bin_breaks'], labels = col_meta['bin_labels'])
+        cut = pd.Categorical(cut.astype(str), map(str,cut.dtype.categories), True) 
+    else:
+        breaks = vod(col_meta,'bin_breaks',5)
+        if isinstance(breaks,int): 
+            breaks = np.unique(np.quantile(col, np.linspace(0,1,breaks+1)))
+        cut = cut_nice(col, breaks, format=vod(col_meta,'value_format','.1f'))
     return cut
 
 # Helper function that handles reformating data for create_plot
@@ -380,7 +385,7 @@ def wrangle_data(raw_df, data_meta, pp_desc):
     pparams['data'] = data
     return pparams
 
-# %% ../nbs/02_pp.ipynb 22
+# %% ../nbs/02_pp.ipynb 21
 # Create a color scale
 ordered_gradient = ["#c30d24", "#f3a583", "#94c6da", "#1770ab"]
 def meta_color_scale(scale : Dict, column=None, translate=None):
@@ -393,7 +398,7 @@ def meta_color_scale(scale : Dict, column=None, translate=None):
         cats = [ remap[c] for c in cats ]
     return to_alt_scale(scale,cats)
 
-# %% ../nbs/02_pp.ipynb 23
+# %% ../nbs/02_pp.ipynb 22
 internal_columns = ['draw','weight','group_size'] 
 
 def translate_df(df, translate):
@@ -405,7 +410,7 @@ def translate_df(df, translate):
             df[c] = df[c].cat.rename_categories(remap)
     return df
 
-# %% ../nbs/02_pp.ipynb 24
+# %% ../nbs/02_pp.ipynb 23
 def create_tooltip(pparams,c_meta):
     
     data, tfn = pparams['data'], pparams['translate']
@@ -436,7 +441,7 @@ def create_tooltip(pparams,c_meta):
     return tooltips
     
 
-# %% ../nbs/02_pp.ipynb 25
+# %% ../nbs/02_pp.ipynb 24
 # Small helper function to move columns from internal to external columns
 def remove_from_internal_fcols(cname, factor_cols, n_inner):
     if cname not in factor_cols: return n_inner
@@ -459,7 +464,7 @@ def inner_outer_factors(factor_cols, pp_desc, plot_meta):
     
     return factor_cols, n_inner
 
-# %% ../nbs/02_pp.ipynb 26
+# %% ../nbs/02_pp.ipynb 25
 # Function that takes filtered raw data and plot information and outputs the plot
 # Handles all of the data wrangling and parameter formatting
 def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=False, width=200, return_matrix_of_plots=False, translate=None):
@@ -589,7 +594,7 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
     return plot
 
 
-# %% ../nbs/02_pp.ipynb 28
+# %% ../nbs/02_pp.ipynb 27
 # Compute the full factor_cols list, including question and res_col as needed
 def impute_factor_cols(pp_desc, col_meta, plot_meta=None):
     factor_cols = vod(pp_desc,'factor_cols',[]).copy()
@@ -615,7 +620,7 @@ def impute_factor_cols(pp_desc, col_meta, plot_meta=None):
 
     return factor_cols
 
-# %% ../nbs/02_pp.ipynb 29
+# %% ../nbs/02_pp.ipynb 28
 # A convenience function to draw a plot straight from a dataset
 def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, check_match=True,lazy=False,impute=True,**kwargs):
     if data_file is None and full_df is None:

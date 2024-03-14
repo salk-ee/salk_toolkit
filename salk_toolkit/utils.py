@@ -232,18 +232,26 @@ def censor_dict(d,vs):
 
 # %% ../nbs/10_utils.ipynb 34
 # A nicer behaving wrapper around pd.cut
-def cut_nice(s, breaks, ints=True):
+def cut_nice(s, breaks, format=''):
     s = np.array(s)
     
     # Extend breaks if needed
+    lopen, ropen = False, False
     if s.max()>breaks[-1]:
         breaks += [s.max()+1]
+        ropen = True
     if s.min()<breaks[0]:
         breaks = [s.min()] + breaks
-        
-    if ints: breaks = list(map(int,breaks))
-    
-    labels = [ f'{breaks[i]} - {breaks[i+1] + (-1 if ints else 0)}' for i in range(len(breaks)-2) ] + [f'{breaks[-2]}+']
+        lopen = True
+
+    ints = np.issubdtype(s.dtype, np.integer) or (s%1==0.0).all()
+    if ints: breaks,format = list(map(int,breaks)),'' # No need for decimal places if all integers
+
+    tuples = [ (breaks[i], breaks[i+1] + (-1 if ints else 0)) for i in range(len(breaks)-1) ]
+    labels = [ ('{t[0]:%s} - {t[1]:%s}' % (format,format)).format(t=t) for t in tuples ]
+
+    if lopen: labels = [('<{:%s}' % format).format(breaks[1])] + labels[1:]
+    if ropen: labels = labels[:-1] + [('{:%s}+' % format).format(breaks[-2])] 
     
     return pd.cut(s,breaks,right=False,labels=labels)
     
