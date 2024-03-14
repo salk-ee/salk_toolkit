@@ -340,7 +340,7 @@ def wrangle_data(raw_df, data_meta, pp_desc):
     # Ensure all rv columns other than value are categorical
     for c in raw_df.columns:
         if c in ['weight','draw','training_subsample']: continue # bypass some columns added above
-        if raw_df[c].dtype.name != 'category' and c!=pparams['value_col']:
+        if raw_df[c].dtype.name != 'category' and c!=pp_desc['res_col']:
             if vod(vod(col_meta,c,{}),'continuous') or not isinstance(raw_df[c],str):
                 raw_df[c] = discretize_continuous(raw_df[c],vod(col_meta,c,{}))
             else: # Just assume it's categorical by any other name
