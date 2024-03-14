@@ -213,18 +213,21 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
     inds = True if lazy else np.full(len(df),True) 
     for k, v in filter_dict.items():
         
+        # Range filters have form [None,start,end]
+        is_range = isinstance(v,list) and v[0] is None and len(v)==3
+
         # Handle continuous variables separately
-        if isinstance(v,tuple) and (not isinstance(v[0],str) or vod(c_meta[k],'continuous') or vod(c_meta[k],'datetime')): # Only special case where we actually need a range
-            if lazy: inds = (((pl.col(k)>=v[0]) & (pl.col(k)<=v[1])) | pl.col(k).is_null()) & inds
-            else: inds = (((df[k]>=v[0]) & (df[k]<=v[1])) | df[k].isna()) & inds
+        if  is_range and (not isinstance(v[1],str) or vod(c_meta[k],'continuous') or vod(c_meta[k],'datetime')): # Only special case where we actually need a range
+            if lazy: inds = (((pl.col(k)>=v[1]) & (pl.col(k)<=v[2])) | pl.col(k).is_null()) & inds
+            else: inds = (((df[k]>=v[1]) & (df[k]<=v[2])) | df[k].isna()) & inds
             continue # NB! this approach does not work for ordered categoricals with polars LazyDataFrame, hence handling that separately below
         
         # Filter by list of values:
-        if isinstance(v,tuple):
+        if is_range: # Range of values over ordered categorical
             if vod(c_meta[k],'categories','infer')=='infer': raise Exception(f'Ordering unknown for column {k}')
             cats = list(c_meta[k]['categories'])
-            if set(v) & set(cats) != set(v): raise Exception(f'Column {k} values {v} not found in {cats}')
-            bi, ei = cats.index(v[0]), cats.index(v[1])
+            if set(v[1:]) & set(cats) != set(v[1:]): raise Exception(f'Column {k} values {v} not found in {cats}')
+            bi, ei = cats.index(v[1]), cats.index(v[2])
             flst = cats[bi:ei+1] # 
         elif isinstance(v,list): flst = v # List indicates a set of values
         elif 'groups' in c_meta[k] and v in c_meta[k]['groups']:

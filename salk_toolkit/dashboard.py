@@ -595,27 +595,28 @@ def filter_ui(data, dmeta=None, dims=None, detailed=False, raw=False, translate=
             grp_names = vod(c_meta[cn],'groups',{}).keys()
             r_map.update(dict(zip([tf(c) for c in grp_names],grp_names)))
             
-        if detailed and col.dtype.name=='category':
+        if detailed and col.dtype.name=='category': # Multiselect
             filters[cn] = stc.multiselect(tf(cn), all_vals, all_vals, key=f"{cn}_multiselect")
             if set(filters[cn]) == set(all_vals): del filters[cn]
             else: 
                 stc.button(tf("Reset"),key=f"{cn}_reset",on_click=ms_reset(cn,all_vals))
                 filters[cn] = [ r_map[c] for c in filters[cn] ]
-        elif col.dtype.name=='category' and not col.dtype.ordered:
+        elif col.dtype.name=='category' and not col.dtype.ordered: # Unordered categorical - selectbox
             choices = [gt for gt,g in r_map.items() if g in grp_names] + all_vals
             if not force_choice: choices = [tf('All')] + choices
             filters[cn] = stc.selectbox(tf(cn),choices)
             if filters[cn] == tf('All'): del filters[cn]
             else: filters[cn] = r_map[filters[cn]]
-        elif col.dtype.name=='category':
-            filters[cn] = stc.select_slider(tf(cn),all_vals,value=(all_vals[0],all_vals[-1]))
-            if filters[cn] == (all_vals[0],all_vals[-1]): del filters[cn]
-            else: filters[cn] = (r_map[filters[cn][0]],r_map[filters[cn][1]])
-        elif is_numeric_dtype(col) and col.dtype!='bool':
+        # Use [None,<start>,<end>] for ranges, both categorical and continuous to distinguish them from list of values
+        elif col.dtype.name=='category': # Ordered categorical - slider
+            f_res = stc.select_slider(tf(cn),all_vals,value=(all_vals[0],all_vals[-1]))
+            if f_res != (all_vals[0],all_vals[-1]): 
+                filters[cn] = [None]+[r_map[f_res[0]],r_map[f_res[1]]]
+        elif is_numeric_dtype(col) and col.dtype!='bool': # Continuous
             mima = (col.min(),col.max())
             if mima[0]==mima[1]: continue
-            filters[cn] = stc.slider(tf(cn),*mima,value=mima)
-            if filters[cn] == mima: del filters[cn]
+            f_res = stc.slider(tf(cn),*mima,value=mima)
+            if f_res != mima: filters[cn] = [None] + list(f_res)
             
     if filters and not force_choice: f_info.warning('⚠️ ' + tfc('Filters active',context='ui') + ' ⚠️')
             

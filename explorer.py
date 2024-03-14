@@ -204,10 +204,10 @@ with st.sidebar: #.expander("Select dimensions"):
     # Make all dimensions explicit now that plot is selected (as that can affect the factor columns)
     args['factor_cols'] = impute_factor_cols(args, c_meta, plot_meta)
 
-    
+    import pprint
 
     with st.expander('Plot desc'):
-        st.json(args)
+        st.code(pprint.pformat(args,indent=0,width=30))
 
 
 
