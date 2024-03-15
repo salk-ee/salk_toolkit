@@ -150,7 +150,8 @@ def matching_plots(pp_desc, df, data_meta, details=False, list_hidden=False):
     rcm = col_meta[rc]
 
     # Determine if values are non-negative
-    nonneg = ('categories' in rcm) or df[ rcm['columns'] if 'columns' in rcm else rc ].min(axis=None)>=0
+    cols = [c for c in rcm['columns'] if c in df.columns] if 'columns' in rcm else [rc]
+    nonneg = ('categories' in rcm) or df[cols].min(axis=None)>=0
     if vod(pp_desc,'convert_res')=='continuous' and ('categories' in rcm):
         nonneg = min([ v for v in get_cat_num_vals(rcm,pp_desc) if v is not None ])>=0
 

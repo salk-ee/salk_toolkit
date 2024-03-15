@@ -106,7 +106,7 @@ def read_concatenate_files_list(meta,data_file=None,path=None):
 # %% ../nbs/01_io.ipynb 6
 # Default usage with mature metafile: process_annotated_data(<metafile name>)
 # When figuring out the metafile, it can also be run as: process_annotated_data(meta=<dict>, data_file=<>)
-def process_annotated_data(meta_fname=None, meta=None, data_file=None, return_meta=False, only_fix_categories=False):
+def process_annotated_data(meta_fname=None, meta=None, data_file=None, return_meta=False, only_fix_categories=False, return_raw=False):
     
     # Read metafile
     if meta_fname:
@@ -119,6 +119,8 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, return_me
     # Read datafile(s)
     raw_data, inp_meta = read_concatenate_files_list(meta,data_file,path=meta_fname)
     if inp_meta is not None: warn(f"Processing main meta file") # Print this to separate warnings for input jsons from main 
+
+    if return_raw: return (raw_data, meta) if return_meta else raw_data
     
     globs = {'pd':pd, 'np':np, 'stk':stk, 'df':raw_data, **constants }
     if 'preprocessing' in meta and not only_fix_categories:
@@ -207,10 +209,11 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, return_me
 
 # %% ../nbs/01_io.ipynb 7
 # Read either a json annotation and process the data, or a processed parquet with the annotation attached
-def read_annotated_data(fname, infer=True):
+# Return_raw is here for easier debugging of metafiles and is not meant to be used in production
+def read_annotated_data(fname, infer=True, return_raw=False):
     _, ext = os.path.splitext(fname)
     if ext == '.json':
-        return process_annotated_data(fname, return_meta=True)
+        return process_annotated_data(fname, return_meta=True, return_raw=return_raw)
     elif ext == '.parquet':
         data, full_meta = load_parquet_with_metadata(fname)
         if full_meta is not None:
