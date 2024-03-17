@@ -223,8 +223,8 @@ class SalkDashboardBuilder:
     def filter_ui(self, dims, detailed=False, raw=False, force_choice=False):
         return filter_ui(self.df, self.meta, dims=dims, detailed=detailed, raw=raw, translate=self.tf, force_choice=force_choice)
     
-    def facet_ui(self, dims, two=False, raw=False, force_choice=False):
-        return facet_ui(dims, two=two, raw=raw, translate=self.tf,force_choice=force_choice)
+    def facet_ui(self, dims, two=False, raw=False, force_choice=False, label='Facet', key=None):
+        return facet_ui(dims, two=two, raw=raw, translate=self.tf,force_choice=force_choice,label=label,key=key)
 
     def page(self, name, **kwargs):
         def decorator(pfunc):
@@ -536,7 +536,7 @@ def st_plot(pp_desc,**kwargs):
     draw_plot_matrix(plots, matrix_form=matrix_form)
 
 # %% ../nbs/05_dashboard.ipynb 23
-def facet_ui(dims, two=False, raw=False, translate=None, force_choice=False):
+def facet_ui(dims, two=False, raw=False, translate=None, force_choice=False,label='Facet', key=None):
     # Set up translation
     tfc = translate if translate else (lambda s,**kwargs: s)
     tf = lambda s: tfc(s,context='data')
@@ -546,10 +546,10 @@ def facet_ui(dims, two=False, raw=False, translate=None, force_choice=False):
     
     none = tf('None')
     stc = st.sidebar if not raw else st
-    facet_dim = stc.selectbox(tfc('Facet:',context='ui'), tdims if force_choice else [none] + tdims )
+    facet_dim = stc.selectbox(tfc(label+':',context='ui'), tdims if force_choice else [none] + tdims, key=key)
     fcols = [facet_dim] if facet_dim != none else []
     if two and facet_dim != none:
-        second_dim = stc.selectbox(tfc('Facet 2:',context='ui'), tdims if force_choice else [none] + tdims)
+        second_dim = stc.selectbox(tfc(label+' 2:',context='ui'), tdims if force_choice else [none] + tdims, key=(key+'2' if key else None))
         if second_dim not in [none,facet_dim]:  fcols = [facet_dim, second_dim]
         
     return [ r_map[d] for d in fcols ]
@@ -563,7 +563,7 @@ def ms_reset(cn, all_vals):
 
 # %% ../nbs/05_dashboard.ipynb 25
 # User interface that outputs a filter for the pp_desc
-def filter_ui(data, dmeta=None, dims=None, detailed=False, raw=False, translate=None, force_choice=False,):
+def filter_ui(data, dmeta=None, dims=None, detailed=False, raw=False, translate=None, force_choice=False):
     
     tfc = translate if translate else (lambda s,**kwargs: s)
     tf = lambda s: tfc(s,context='data')
