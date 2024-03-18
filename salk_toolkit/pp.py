@@ -273,7 +273,7 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
             for cn in value_vars:
                 filtered_df[cn] = transform_cont(filtered_df[cn],transform=vod(pp_desc,'cont_transform'))
         
-        id_vars = [ c for c in cols if c not in value_vars ]
+        id_vars = [ c for c in cols if (c not in value_vars or c in vod(pp_desc,'factor_cols',[])) ] # Make sure we leave factors in - in case we are faceting over one of the questions
         filtered_df = filtered_df.melt(id_vars=id_vars, value_vars=value_vars, var_name='question', value_name=pp_desc['res_col'])
 
 
@@ -311,7 +311,7 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
     
     return pparams
 
-# %% ../nbs/02_pp.ipynb 20
+# %% ../nbs/02_pp.ipynb 19
 def discretize_continuous(col, col_meta={}):
 
     if 'bin_breaks' in col_meta and 'bin_labels' in col_meta:
@@ -389,7 +389,7 @@ def wrangle_data(raw_df, data_meta, pp_desc):
     pparams['data'] = data
     return pparams
 
-# %% ../nbs/02_pp.ipynb 21
+# %% ../nbs/02_pp.ipynb 20
 # Create a color scale
 ordered_gradient = ["#c30d24", "#f3a583", "#94c6da", "#1770ab"]
 def meta_color_scale(scale : Dict, column=None, translate=None):
@@ -402,7 +402,7 @@ def meta_color_scale(scale : Dict, column=None, translate=None):
         cats = [ remap[c] for c in cats ]
     return to_alt_scale(scale,cats)
 
-# %% ../nbs/02_pp.ipynb 22
+# %% ../nbs/02_pp.ipynb 21
 internal_columns = ['draw','weight','group_size'] 
 
 def translate_df(df, translate):
@@ -414,7 +414,7 @@ def translate_df(df, translate):
             df[c] = df[c].cat.rename_categories(remap)
     return df
 
-# %% ../nbs/02_pp.ipynb 23
+# %% ../nbs/02_pp.ipynb 22
 def create_tooltip(pparams,c_meta):
     
     data, tfn = pparams['data'], pparams['translate']
@@ -445,10 +445,10 @@ def create_tooltip(pparams,c_meta):
     return tooltips
     
 
-# %% ../nbs/02_pp.ipynb 24
+# %% ../nbs/02_pp.ipynb 23
 # Small helper function to move columns from internal to external columns
 def remove_from_internal_fcols(cname, factor_cols, n_inner):
-    if cname not in factor_cols: return n_inner
+    if cname not in factor_cols[:n_inner]: return n_inner
     factor_cols.remove(cname)
     if n_inner>len(factor_cols): n_inner-=1
     factor_cols.insert(n_inner,cname)
@@ -468,7 +468,7 @@ def inner_outer_factors(factor_cols, pp_desc, plot_meta):
     
     return factor_cols, n_inner
 
-# %% ../nbs/02_pp.ipynb 25
+# %% ../nbs/02_pp.ipynb 24
 # Function that takes filtered raw data and plot information and outputs the plot
 # Handles all of the data wrangling and parameter formatting
 def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=False, width=200, return_matrix_of_plots=False, translate=None):
@@ -598,7 +598,7 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
     return plot
 
 
-# %% ../nbs/02_pp.ipynb 27
+# %% ../nbs/02_pp.ipynb 26
 # Compute the full factor_cols list, including question and res_col as needed
 def impute_factor_cols(pp_desc, col_meta, plot_meta=None):
     factor_cols = vod(pp_desc,'factor_cols',[]).copy()
@@ -624,7 +624,7 @@ def impute_factor_cols(pp_desc, col_meta, plot_meta=None):
 
     return factor_cols
 
-# %% ../nbs/02_pp.ipynb 28
+# %% ../nbs/02_pp.ipynb 27
 # A convenience function to draw a plot straight from a dataset
 def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, check_match=True,lazy=False,impute=True,**kwargs):
     if data_file is None and full_df is None:
