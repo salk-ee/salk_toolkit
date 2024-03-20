@@ -23,7 +23,7 @@ import pyarrow.parquet as pq
 import pyreadstat
 
 import salk_toolkit as stk
-from salk_toolkit.utils import replace_constants, vod, is_datetime, warn
+from salk_toolkit.utils import replace_constants, is_datetime, warn
 
 # %% ../nbs/01_io.ipynb 4
 def read_json(fname,replace_const=True):
@@ -130,6 +130,8 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, return_me
     ndf = pd.DataFrame()
     all_cns = dict()
     for group in meta['structure']:
+        if group['name'] in all_cns:
+            raise Exception(f"Group name {group['name']} duplicates a column name in group {all_cns[cn]}") 
         all_cns[group['name']] = group['name'] 
         for tpl in group['columns']:
             if type(tpl)==list:
@@ -153,7 +155,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, return_me
             if only_fix_categories: sn = cn
             
             if sn not in raw_data:
-                if not vod(cd,'generated'): # bypass warning for columns marked as being generated later
+                if not cd.get('generated'): # bypass warning for columns marked as being generated later
                     warn(f"Column {sn} not found")
                 continue
             
@@ -169,8 +171,8 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, return_me
                     s = s.astype('str').replace(cd['translate']).replace('nan',None).replace('None',None)
                 if 'transform' in cd: s = eval(cd['transform'],{ 's':s, 'df':raw_data, 'ndf':ndf, 'pd':pd, 'np':np, 'stk':stk , **constants })
                 
-                if vod(cd,'datetime'): s = pd.to_datetime(s,errors='coerce')
-                elif vod(cd,'continuous'): s = pd.to_numeric(s,errors='coerce')
+                if cd.get('datetime'): s = pd.to_datetime(s,errors='coerce')
+                elif cd.get('continuous'): s = pd.to_numeric(s,errors='coerce')
 
             if 'categories' in cd: 
                 na_sum = s.isna().sum()
@@ -181,7 +183,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, return_me
                     elif 'translate' in cd and 'transform' not in cd and set(cd['translate'].values()) >= set(s.unique()): # Infer order from translation dict
                         cd['categories'] = list(pd.unique(np.array(list(cd['translate'].values()))))
                     else: # Just use lexicographic ordering
-                        if vod(cd,'ordered',False): warn(f"Ordered category {cn} had category: infer. This only works correctly if you want lexicographic ordering!")
+                        if cd.get('ordered',False): warn(f"Ordered category {cn} had category: infer. This only works correctly if you want lexicographic ordering!")
                         cd['categories'] = [ str(c) for c in np.sort(s.unique().astype('str')) if pd.notna(c) ] # Also propagates it into meta (unless shared scale)
                         s = s.astype('str')
                     
@@ -233,7 +235,7 @@ def extract_column_meta(data_meta):
     res = defaultdict(lambda: {})
     for g in data_meta['structure']:
         base = g['scale'] if 'scale' in g else {}
-        res[g['name']] = {**base, 'columns': [vod(base,'col_prefix','')+(t[0] if type(t)!=str else t) for t in g['columns']] }
+        res[g['name']] = {**base, 'columns': [base.get('col_prefix','')+(t[0] if type(t)!=str else t) for t in g['columns']] }
         for cd in g['columns']:
             if isinstance(cd,str): cd = [cd]
             res[cd[0]] = {**base,**cd[-1]} if isinstance(cd[-1],dict) else base
@@ -300,22 +302,22 @@ def change_meta_df(df, old_dmeta, new_dmeta):
         ncd, ocd = ncm[c], ocm[rev_name_changes[c] if c in rev_name_changes else c]
         
         # Warn about transformations and don't touch columns where those change
-        if vod(ocd,'transform') != vod(ncd,'transform'):
+        if ocd.get('transform') != ncd.get('transform'):
             warn(f"Column {c} has a different transformation. Leaving it unchanged")
             continue
         
         # Handle translation changes
-        ot, nt = vod(ocd,'translate',{}), vod(ncd,'translate',{})
+        ot, nt = ocd.get('translate',{}), ncd.get('translate',{})
         remap = change_mapping(ot,nt)
         if remap != {}: print(f"Remapping {c} with {remap}")
         df[c].replace(remap,inplace=True)
         
         # Reorder categories and/or change ordered status
-        if vod(ocd,'categories') != vod(ncd,'categories') or vod(ocd,'ordered') != vod(ncd,'ordered'):
-            cats = vod(ncd,'categories')
+        if ocd.get('categories') != ncd.get('categories') or ocd.get('ordered') != ncd.get('ordered'):
+            cats = ncd.get('categories')
             if isinstance(cats,list):
-                print(f"Changing {c} to Cat({cats},ordered={vod(ncd,'ordered')}")
-                df[c] = pd.Categorical(df[c],categories=cats,ordered=vod(ncd,'ordered'))
+                print(f"Changing {c} to Cat({cats},ordered={ncd.get('ordered')}")
+                df[c] = pd.Categorical(df[c],categories=cats,ordered=ncd.get('ordered'))
     
     # column order changes
     gcdict = group_columns_dict(new_dmeta)
@@ -348,7 +350,7 @@ max_cats = 50
 
 # Create a very basic metafile for a dataset based on it's contents
 # This is not meant to be directly used, rather to speed up the annotation process
-def infer_meta(data_file=None, meta_file=True, read_opts={}, df=None, translate_fn=None, translation_blacklist=[], ordinal_ranking=[]):
+def infer_meta(data_file=None, meta_file=True, read_opts={}, df=None, translate_fn=None, translation_blacklist=[]):
     meta = { 'constants': {}, 'read_opts': read_opts }
     
     # Read datafile
@@ -422,10 +424,6 @@ def infer_meta(data_file=None, meta_file=True, read_opts={}, df=None, translate_
         
         cats[str(k)] = list(k) # so cat_meta would use the full list
         grp = { 'name': ';'.join(k), 'scale': cat_meta(str(k)), 'columns': m_cols }
-        
-        if np.isin(m_cols,ordinal_ranking).any():
-            grp['name'], grp['hidden'] = 'ordinal_ranking_raw', True # Set this group to hidden as it is generally weirdly shaped and only used as input to ordinal ranking
-            meta['structure'].append({ 'name': 'ordinal_ranking', 'scale': { 'continuous':True, 'generated':True }, 'columns': list(k) })
         
         meta['structure'].append(grp)
         handled_cols.update(g_cols)

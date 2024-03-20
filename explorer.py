@@ -1,3 +1,4 @@
+from re import S
 import streamlit as st
 from streamlit_dimensions import st_dimensions
 import warnings
@@ -39,7 +40,7 @@ with st.spinner("Loading libraries.."):
 
     from salk_toolkit.io import load_parquet_with_metadata, read_json, extract_column_meta
     from salk_toolkit.pp import *
-    from salk_toolkit.utils import vod
+    from salk_toolkit.utils import *
     from salk_toolkit.dashboard import draw_plot_matrix, facet_ui, filter_ui, get_plot_width, default_translate
 
     tqdm = lambda x: x # So we can freely copy-paste from notebooks
@@ -52,22 +53,26 @@ with st.spinner("Loading libraries.."):
 warnings.filterwarnings(action='ignore', category=UserWarning)
 warnings.filterwarnings(action='ignore', category=pd.errors.PerformanceWarning)
 
-# If none, uses the meta of the first data source
-global_data_metafile = sys.argv[1] if len(sys.argv)>1 else None
-
-if global_data_metafile:
-    global_data_meta = read_json(global_data_metafile,replace_const=True)
+cl_args = sys.argv[1:] if len(sys.argv)>1 else []
+if len(cl_args)>0 and cl_args[0].endswith('.json'):
+    global_data_meta = read_json(cl_args[0],replace_const=True)
+    cl_args = cl_args[1:]
 else: global_data_meta = None
 
-#info.info("Libraries loaded.")
-#path = '../salk_internal_package/samples/'
-path = './samples/'
-
 translate = default_translate
+path = './samples/' 
+paths = defaultdict( lambda: path )
 
-input_file_choices = sorted([ f for f in os.listdir(path) if f[-8:]=='.parquet' ])
+# Add command line inputs as default input files
+default_inputs = []
+for fname in cl_args:
+    path, fname = os.path.split(fname)
+    paths[fname] = path+'/'
+    default_inputs.append(fname)
 
-input_files = st.sidebar.multiselect('Select files:',input_file_choices)
+input_file_choices = default_inputs + sorted([ f for f in os.listdir(path) if f[-8:]=='.parquet' ])
+
+input_files = st.sidebar.multiselect('Select files:',input_file_choices,default_inputs)
 
 ########################################################################
 #                                                                      #
@@ -78,10 +83,10 @@ input_files = st.sidebar.multiselect('Select files:',input_file_choices)
 @st.cache_resource(show_spinner=False)
 def load_file(input_file, lazy=False):
     lazy=False # Lazy loading pipeline is buggy
-    full_df, meta = load_parquet_with_metadata(path+input_file,lazy=lazy)
+    full_df, meta = load_parquet_with_metadata(paths[input_file]+input_file,lazy=lazy)
     n = full_df.select(pl.count()).collect()[0,0] if lazy else len(full_df)
     if meta is None: meta = {}
-    return { 'data': full_df, 'data_n': n, 'data_meta': vod(meta,'data',None), 'model_meta': vod(meta,'model') }
+    return { 'data': full_df, 'data_n': n, 'data_meta': meta.get('data'), 'model_meta': meta.get('model') }
 
 if len(input_files)==0:
     st.markdown("""Please choose an input file from the sidebar""")
@@ -105,7 +110,7 @@ if global_data_meta: st.sidebar.info('⚠️ External meta loaded.')
 def get_dimensions(data_meta, observations=True, whitelist=None):
     res = []
     for g in data_meta['structure']:
-        if vod(g,'hidden'): continue
+        if g.get('hidden'): continue
         if 'scale' in g and observations:
             res.append(g['name'])
         else:
@@ -134,9 +139,9 @@ with st.sidebar: #.expander("Select dimensions"):
     obs_name = st.selectbox('Observation', obs_dims)
     args['res_col'] = obs_name
 
-    res_cont = not vod(c_meta[args['res_col']],'categories') or vod(args,'convert_res') == 'continuous'
+    res_cont = not c_meta[args['res_col']].get('categories') or args.get('convert_res') == 'continuous'
 
-    all_dims = vod(c_meta[obs_name],'modifiers', []) + all_dims
+    all_dims = c_meta[obs_name].get('modifiers', []) + all_dims
 
     facet_dims = all_dims
     if len(input_files)>1: facet_dims = ['input_file'] + facet_dims
@@ -169,13 +174,13 @@ with st.sidebar: #.expander("Select dimensions"):
 
     # Plot arguments
     plot_args = {} # 'n_facet_cols':2 }
-    for k, v in vod(plot_meta,'args',{}).items():
+    for k, v in plot_meta.get('args',{}).items():
         if v=='bool':
             plot_args[k] = st.toggle(k)
         elif isinstance(v, list):
             plot_args[k] = st.selectbox(k,v)
 
-    args['plot_args'] = {**vod(args,'plot_args',{}),**plot_args}
+    args['plot_args'] = {**args.get('plot_args',{}),**plot_args}
 
     with st.expander('Advanced'):
         args['poststrat'] = st.toggle('Post-stratified?', True)

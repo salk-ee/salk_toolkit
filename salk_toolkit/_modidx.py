@@ -207,5 +207,4 @@ d = { 'settings': { 'branch': 'main',
                                     'salk_toolkit.utils.replace_constants': ('utils.html#replace_constants', 'salk_toolkit/utils.py'),
                                     'salk_toolkit.utils.stable_draws': ('utils.html#stable_draws', 'salk_toolkit/utils.py'),
                                     'salk_toolkit.utils.str_replace': ('utils.html#str_replace', 'salk_toolkit/utils.py'),
-                                    'salk_toolkit.utils.to_alt_scale': ('utils.html#to_alt_scale', 'salk_toolkit/utils.py'),
-                                    'salk_toolkit.utils.vod': ('utils.html#vod', 'salk_toolkit/utils.py')}}}
+                                    'salk_toolkit.utils.to_alt_scale': ('utils.html#to_alt_scale', 'salk_toolkit/utils.py')}}}

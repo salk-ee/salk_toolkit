@@ -166,7 +166,7 @@ class SalkDashboardBuilder:
         # Allow deployment.json to redirect files from local to s3 if local missing (i.e. in deployment scenario)
         if os.path.exists('./deployment.json'):
             dep_meta = load_json_cached('./deployment.json')
-            self.filemap = vod(dep_meta,'files',{})
+            self.filemap = dep_meta.get('files',{})
             data_source = alias_file(data_source,self.filemap)
             auth_conf = alias_file(auth_conf,self.filemap)
         else: self.filemap = {}
@@ -228,10 +228,10 @@ class SalkDashboardBuilder:
 
     def page(self, name, **kwargs):
         def decorator(pfunc):
-            groups = vod(kwargs,'groups')
+            groups = kwargs.get('groups')
             if (groups is None or # Page is available to all
-                vod(self.user,'group')=='admin' or # Admin sees all
-                vod(self.user,'group','guests') in groups): # group is whitelisted
+                self.user.get('group')=='admin' or # Admin sees all
+                self.user.get('group','guests') in groups): # group is whitelisted
                 self.pages.append( (name,pfunc,kwargs) )
         return decorator
 
@@ -243,7 +243,7 @@ class SalkDashboardBuilder:
         if self.user:  self.pages.append( ('Settings',user_settings_page,{'icon': 'sliders'}) )
         
         # Add admin page for admins
-        if vod(self.user,'group')=='admin':  self.pages.append( ('Administration', admin_page,{'icon': 'terminal'}) )
+        if self.user.get('group')=='admin':  self.pages.append( ('Administration', admin_page,{'icon': 'terminal'}) )
         
         # Draw the menu listing pages
         pnames = [t[0] for t in self.pages]
@@ -256,7 +256,7 @@ class SalkDashboardBuilder:
             t_pnames = [ self.tf(pn,context='ui') for pn in pnames]
             menu_choice = option_menu("Pages",
                 t_pnames,
-                icons=[vod(t[2],'icon') for t in self.pages],
+                icons=[t[2].get('icon') for t in self.pages],
                 styles={
                     "container": {"padding": "5!important"}, #, "background-color": "#fafafa"},
                     #"icon": {"color": "red", "font-size": "15px"},
@@ -269,7 +269,7 @@ class SalkDashboardBuilder:
         pname, pfunc, meta = self.pages[t_pnames.index(menu_choice)]
         
         # Load data
-        self.data_source = vod(meta,'data_source',self.data_source)
+        self.data_source = meta.get('data_source',self.data_source)
         with st.spinner(self.tf("Loading data...",context='ui')):
             self.df, self.meta = read_annotated_data_cached(alias_file(self.data_source,self.filemap))
         
@@ -335,7 +335,7 @@ class UserAuthenticationManager():
                 self.log_event('login-success')
                 st.session_state['log_event'] = False
         
-        self.admin = (vod(self.user,'group') == 'admin')
+        self.admin = (self.user.get('group') == 'admin')
         
     def update_conf(self):
         with open_fn(self.conf_file,'w',s3_fs=self.s3fs) as jf:
@@ -366,7 +366,7 @@ class UserAuthenticationManager():
             del user_data['username']
         
         # Handle password change
-        if vod(user_data,'password'):
+        if user_data.get('password'):
             user_data['password'] = stauth.Hasher([user_data['password']]).generate()[0]
         else: del user_data['password']
         
@@ -492,7 +492,7 @@ def admin_page(sdb):
                 user_data['password'] = st.text_input("Password:", type='password')
                 st.markdown("""---""")
                 user_data['email'] = st.text_input("E-mail:", value=user_data['email'])
-                user_data['organization'] = st.text_input("Organization:", value=vod(user_data,'organization',''))
+                user_data['organization'] = st.text_input("Organization:", value=user_data.get('organization',''))
                 
             st.markdown("""---""")
             submitted = st.form_submit_button("Submit")
@@ -592,7 +592,7 @@ def filter_ui(data, dmeta=None, dims=None, detailed=False, raw=False, translate=
             # Do some prep for translations
             r_map = dict(zip([tf(c) for c in col.dtype.categories],col.dtype.categories))
             all_vals = list(r_map.keys()) # translated categories
-            grp_names = vod(c_meta[cn],'groups',{}).keys()
+            grp_names = c_meta[cn].get('groups',{}).keys()
             r_map.update(dict(zip([tf(c) for c in grp_names],grp_names)))
             
         if detailed and col.dtype.name=='category': # Multiselect
