@@ -165,7 +165,6 @@ def multicol_to_vals_cats(df, cols=None, col_prefix=None, reverse_cols=[], rever
         reverse_cols = list({ c for c in cols for rs in reverse_suffixes if c.endswith(rs)})
     
     if len(reverse_cols)>0:
-        #print("RC",reverse_cols)
         remap = dict(zip(cat_order,reversed(cat_order)))
         df.loc[:,reverse_cols] = df.loc[:,reverse_cols].astype('object').replace(remap)
     

@@ -1,5 +1,6 @@
 from re import S
 import streamlit as st
+from salk_toolkit.io import read_annotated_data
 from streamlit_dimensions import st_dimensions
 import warnings
 
@@ -81,18 +82,17 @@ input_files = st.sidebar.multiselect('Select files:',input_file_choices,default_
 ########################################################################
 
 @st.cache_resource(show_spinner=False)
-def load_file(input_file, lazy=False):
-    lazy=False # Lazy loading pipeline is buggy
-    full_df, meta = load_parquet_with_metadata(paths[input_file]+input_file,lazy=lazy)
-    n = full_df.select(pl.count()).collect()[0,0] if lazy else len(full_df)
-    if meta is None: meta = {}
-    return { 'data': full_df, 'data_n': n, 'data_meta': meta.get('data'), 'model_meta': meta.get('model') }
+def load_file(input_file):
+    full_df, dmeta, mmeta = read_annotated_data(paths[input_file]+input_file, return_model_meta=True)
+    n = len(full_df)
+    if dmeta is None: dmeta = {}
+    return { 'data': full_df, 'data_n': n, 'data_meta': dmeta, 'model_meta': mmeta }
 
 if len(input_files)==0:
     st.markdown("""Please choose an input file from the sidebar""")
     st.stop()
 else:
-    loaded = { ifile:load_file(ifile,(i!=0)) for i,ifile in enumerate(input_files) }
+    loaded = { ifile:load_file(ifile) for i,ifile in enumerate(input_files) }
     first_file = loaded[input_files[0]]
     first_data_meta = first_file['data_meta'] if global_data_meta is None else global_data_meta
     first_data = first_file['data']
@@ -108,13 +108,14 @@ from pandas.api.types import is_datetime64_any_dtype as is_datetime
 if global_data_meta: st.sidebar.info('⚠️ External meta loaded.')
 
 def get_dimensions(data_meta, observations=True, whitelist=None):
+    c_meta = extract_column_meta(data_meta)
     res = []
     for g in data_meta['structure']:
         if g.get('hidden'): continue
         if 'scale' in g and observations:
             res.append(g['name'])
         else:
-            cols = [ (c if isinstance(c,str) else c[0]) for c in g['columns']]
+            cols = [ c_meta[c].get('col_prefix','') + c for c in c_meta[g['name']]['columns']]
             if whitelist is not None: cols = [ c for c in cols if c in whitelist ]
             res += cols
     return res
@@ -201,7 +202,7 @@ with st.sidebar: #.expander("Select dimensions"):
 
         override = st.text_area('Override keys','{}')
         if override: args.update(json.loads(override))
-
+    
     args['filter'] = filter_ui(first_data,first_data_meta,
                                 dims=all_dims,detailed=detailed)
 
@@ -213,8 +214,6 @@ with st.sidebar: #.expander("Select dimensions"):
 
     with st.expander('Plot desc'):
         st.code(pprint.pformat(args,indent=0,width=30))
-
-
 
 
 #left, middle, right = st.columns([2, 5, 2])
@@ -239,7 +238,7 @@ else: cols = [contextlib.suppress()]
 if facet_dim == 'input_file':
     #with st.spinner('Filtering data...'):
     
-    # This is a bit hacky because of the lazy data frames
+    # This is a bit hacky because of previous use of the lazy data frames
     dfs = []
     for ifile in input_files:
         df, fargs = loaded[ifile]['data'], args.copy()

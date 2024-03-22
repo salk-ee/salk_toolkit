@@ -106,10 +106,9 @@ def read_concatenate_files_list(meta,data_file=None,path=None):
 # %% ../nbs/01_io.ipynb 6
 # Default usage with mature metafile: process_annotated_data(<metafile name>)
 # When figuring out the metafile, it can also be run as: process_annotated_data(meta=<dict>, data_file=<>)
-def process_annotated_data(meta_fname=None, meta=None, data_file=None, return_meta=False, only_fix_categories=False, return_raw=False):
-    
+def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=None, return_meta=False, only_fix_categories=False, return_raw=False, virtual_pass=False):
     # Read metafile
-    if meta_fname:
+    if meta_fname is not None:
         meta = read_json(meta_fname,replace_const=False)
     
     # Setup constants with a simple replacement mechanic
@@ -117,19 +116,23 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, return_me
     meta = replace_constants(meta)
     
     # Read datafile(s)
-    raw_data, inp_meta = read_concatenate_files_list(meta,data_file,path=meta_fname)
-    if inp_meta is not None: warn(f"Processing main meta file") # Print this to separate warnings for input jsons from main 
+    if raw_data is None:
+        raw_data, inp_meta = read_concatenate_files_list(meta,data_file,path=meta_fname)
+        if inp_meta is not None: warn(f"Processing main meta file") # Print this to separate warnings for input jsons from main 
 
     if return_raw: return (raw_data, meta) if return_meta else raw_data
     
     globs = {'pd':pd, 'np':np, 'stk':stk, 'df':raw_data, **constants }
-    if 'preprocessing' in meta and not only_fix_categories:
-        exec(meta['preprocessing'],globs)
+    
+    pp_key = 'preprocessing' if not virtual_pass else 'virtual_preprocessing'
+    if pp_key in meta and not only_fix_categories:
+        exec(meta[pp_key],globs)
         raw_data = globs['df']
     
-    ndf = pd.DataFrame()
+    ndf = pd.DataFrame() if not virtual_pass else raw_data # In vitrual pass, start with the raw_data as it is already processed by normal steps
     all_cns = dict()
     for group in meta['structure']:
+        if group.get('virtual',False) != virtual_pass: continue
         if group['name'] in all_cns:
             raise Exception(f"Group name {group['name']} duplicates a column name in group {all_cns[cn]}") 
         all_cns[group['name']] = group['name'] 
@@ -155,7 +158,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, return_me
             if only_fix_categories: sn = cn
             
             if sn not in raw_data:
-                if not cd.get('generated'): # bypass warning for columns marked as being generated later
+                if not cd.get('generated') and not group.get('virtual'): # bypass warning for columns marked as being generated later
                     warn(f"Column {sn} not found")
                 continue
             
@@ -202,9 +205,10 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, return_me
             # Update ndf in real-time so it would be usable in transforms for next columns
             ndf = pd.concat([ndf,s],axis=1)
 
-    if 'postprocessing' in meta and not only_fix_categories:
+    pp_key = 'postprocessing' if not virtual_pass else 'virtual_postprocessing'
+    if pp_key in meta and not only_fix_categories:
         globs['df'] = ndf
-        exec(meta['postprocessing'],globs)
+        exec(meta[pp_key],globs)
         ndf = globs['df']
     
     return (ndf, meta) if return_meta else ndf
@@ -212,20 +216,25 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, return_me
 # %% ../nbs/01_io.ipynb 7
 # Read either a json annotation and process the data, or a processed parquet with the annotation attached
 # Return_raw is here for easier debugging of metafiles and is not meant to be used in production
-def read_annotated_data(fname, infer=True, return_raw=False):
+def read_annotated_data(fname, infer=True, return_raw=False, return_model_meta=False):
     _, ext = os.path.splitext(fname)
+    meta, model_meta = None, None
     if ext == '.json':
-        return process_annotated_data(fname, return_meta=True, return_raw=return_raw)
+        data, meta =  process_annotated_data(fname, return_meta=True, return_raw=return_raw)
     elif ext == '.parquet':
         data, full_meta = load_parquet_with_metadata(fname)
-        if full_meta is not None:
-            return data, full_meta['data'] if full_meta else None
+        if full_meta is not None: 
+            meta, model_meta = full_meta['data'], full_meta['model']
+            if not return_raw: # Do the second, virtual pass
+                data, meta = process_annotated_data(meta=meta, raw_data=data, virtual_pass=True, return_meta=True)
     
-    if not infer: return data, None
+    mm = (model_meta,) if return_model_meta else tuple()
+    if meta is not None or not infer:
+        return (data, meta) + mm
     
     warn(f"Warning: using inferred meta for {fname}")
     meta = infer_meta(fname,meta_file=False)
-    return process_annotated_data(fname, meta=meta, return_meta=True)
+    return process_annotated_data(fname, meta=meta, return_meta=True) + mm
 
 # %% ../nbs/01_io.ipynb 8
 # Helper functions designed to be used with the annotations

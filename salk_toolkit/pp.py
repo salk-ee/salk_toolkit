@@ -186,6 +186,7 @@ def transform_cont(data, transform):
 # Get all data required for a given graph
 # Only return columns and rows that are needed
 # This can handle either a pandas DataFrame or a polars LazyDataFrame (to allow for loading only needed data)
+# NB: LazyDataFrame support is not maintained and is likely to be at least somewhat broken. Keeping code in in case it ever becomes relevant
 def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
     
     # Figure out which columns we actually need
@@ -626,17 +627,19 @@ def impute_factor_cols(pp_desc, col_meta, plot_meta=None):
 
 # %% ../nbs/02_pp.ipynb 27
 # A convenience function to draw a plot straight from a dataset
-def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, check_match=True,lazy=False,impute=True,**kwargs):
+def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, check_match=True, impute=True,**kwargs):
     if data_file is None and full_df is None:
         raise Exception('Data must be provided either as data_file or full_df')
     if data_file is None and data_meta is None:
         raise Exception('If data provided as full_df then data_meta must also be given')
         
     if full_df is None: 
-        if data_file.endswith('.parquet'): # Try lazy loading as it only loads what it needs from disk
-            full_df, full_meta = load_parquet_with_metadata(data_file,lazy=lazy)
-            dm = full_meta['data']
-        else: full_df, dm = read_annotated_data(data_file)
+        # No more lazy loading because a) it was very unstable b) it does not have a real use case c) it does not allow for easy virtual passes
+        #if data_file.endswith('.parquet'): # Try lazy loading as it only loads what it needs from disk
+        #    full_df, full_meta = load_parquet_with_metadata(data_file,lazy=lazy)
+        #    dm = full_meta['data']
+        #else: 
+        full_df, dm = read_annotated_data(data_file)
         if data_meta is None: data_meta = dm
 
     pp_desc = pp_desc.copy()
