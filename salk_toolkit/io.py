@@ -224,8 +224,8 @@ def read_annotated_data(fname, infer=True, return_raw=False, return_model_meta=F
     elif ext == '.parquet':
         data, full_meta = load_parquet_with_metadata(fname)
         if full_meta is not None: 
-            meta, model_meta = full_meta['data'], full_meta['model']
-            if not return_raw: # Do the second, virtual pass
+            meta, model_meta = full_meta.get('data'), full_meta.get('model')
+            if meta is not None and not return_raw: # Do the second, virtual pass
                 data, meta = process_annotated_data(meta=meta, raw_data=data, virtual_pass=True, return_meta=True)
     
     mm = (model_meta,) if return_model_meta else tuple()
