@@ -229,13 +229,15 @@ st.markdown("""___""")
 # Workaround for geoplot - in that case draw multiple plots instead of a facet
 matrix_form = (args['plot'] == 'geoplot')
 
+# Determine if one of the facets is input_file
+input_files_facet = 'input_file' in args.get('factor_cols',[])
+
 # Create columns, one per input file
-facet_dim = args['factor_cols'][0] if len(args['factor_cols'])>0 else None
-if len(input_files)>1 and facet_dim != 'input_file':
+if not input_files_facet:
     cols = st.columns(len(input_files))
 else: cols = [contextlib.suppress()]
 
-if facet_dim == 'input_file':
+if input_files_facet:
     #with st.spinner('Filtering data...'):
     
     # This is a bit hacky because of previous use of the lazy data frames
