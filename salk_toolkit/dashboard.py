@@ -210,10 +210,10 @@ class SalkDashboardBuilder:
         log_event(event, username or st.session_state['username'], self.log_path, s3_fs=self.s3fs)
 
     # pos_id is for plot_width to work in columns
-    def plot(self, pp_desc, pos_id='main', **kwargs):
-        # Find or reuse width
-        width = self.p_widths[pos_id] if pos_id in self.p_widths else get_plot_width(pos_id)
-        self.p_widths[pos_id] = width
+    def plot(self, pp_desc, pos_id='main', width=None, **kwargs):
+        if width is None: # Find or reuse auto-width
+            width = self.p_widths[pos_id] if pos_id in self.p_widths else get_plot_width(pos_id)
+            self.p_widths[pos_id] = width
         
         # Draw plot
         st_plot(pp_desc,
