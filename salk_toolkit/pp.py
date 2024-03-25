@@ -536,7 +536,6 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
 
             # Preserve ordering of categories we combine
             nf_order = [ ', '.join(t) for t in it.product(*[list(data[c].dtype.categories) for c in factor_cols[1:]])]
-            print(nf_order)
             factor_col = ', '.join(factor_cols[1:])
             jfs = data[factor_cols[1:]].agg(', '.join, axis=1)
             data.loc[:,factor_col] = pd.Categorical(jfs,nf_order)
@@ -555,7 +554,7 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
         pparams['value_col'] = pp_desc['value_name']
     
     # Do width/height calculations
-    if factor_cols: n_facet_cols = plot_args.get('n_facet_cols',n_facet_cols) # Allow plot_args to override col nr
+    if factor_cols: n_facet_cols = pp_desc.get('n_facet_cols',n_facet_cols) # Allow pp_desc to override col nr
     dims = {'width': width//n_facet_cols if factor_cols else width}
     if 'aspect_ratio' in plot_meta:   dims['height'] = int(dims['width']/plot_meta['aspect_ratio'])        
     
