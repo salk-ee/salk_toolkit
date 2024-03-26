@@ -272,17 +272,28 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
     # This might move to wrangle but currently easier to do here as we have gc_dict handy
     if pp_desc['res_col'] in gc_dict:
         value_vars = [ c for c in gc_dict[pp_desc['res_col']] if c in cols ]
+        if 'draw' in filtered_df.columns: ddraws, n_points = filtered_df['draw'], len(filtered_df) # Set aside draws as series for later
         
         if filtered_df[value_vars[0]].dtype.name != 'category':
             #filtered_df.loc[:,value_vars] = filtered_df.loc[:,value_vars].apply(transform_cont,axis=0,transform=pp_desc.get('cont_transform'))
             for cn in value_vars:
                 filtered_df[cn] = transform_cont(filtered_df[cn],transform=pp_desc.get('cont_transform'))
         
-        id_vars = [ c for c in cols if (c not in value_vars or c in pp_desc.get('factor_cols',[])) ] # Make sure we leave factors in - in case we are faceting over one of the questions
-        if plot_meta.get('data_format') == 'raw': # Add an entry id for raw plots so same respondent values could be linked
-            id_vars += ['id']
-            filtered_df.reset_index(names='id',inplace=True)
-        filtered_df = filtered_df.melt(id_vars=id_vars, value_vars=value_vars, var_name='question', value_name=pp_desc['res_col'])
+        id_vars = ['id'] + [ c for c in cols if (c not in value_vars or c in pp_desc.get('factor_cols',[])) ] # Make sure we leave factors in - in case we are faceting over one of the questions
+        filtered_df = filtered_df.reset_index(names='id').melt(id_vars=id_vars, value_vars=value_vars, var_name='question', value_name=pp_desc['res_col'])
+
+        # Fix the draws for each question separately
+        if 'draw' in filtered_df.columns:
+            draw_ar = []
+            for c in value_vars:
+                if c in data_meta.get('draws_data',{}):
+                    uid, ndraws = data_meta['draws_data'][c]
+                    draws = stable_draws(n_points, ndraws, uid)
+                else: draws = ddraws
+                draw_ar.append(pd.DataFrame({'draw': draws, 'question': c, 'id': np.arange(n_points) }))
+            filtered_df = filtered_df.drop(columns=['draw']).merge(pd.concat(draw_ar),on=['id','question'],how='left')
+
+        if plot_meta.get('data_format') != 'raw': filtered_df.drop(columns=['id'],inplace=True)
 
         # Convert to proper category with correct order
         filtered_df['question'] = pd.Categorical(filtered_df['question'],value_vars)
