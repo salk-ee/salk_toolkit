@@ -178,8 +178,9 @@ def get_cats(col, cats=None):
 
 def transform_cont(data, transform):
     if not transform: return data
-    elif transform == 'center': return data - data.mean(skipna=True)
-    elif transform == 'zscore': return sps.zscore(data,nan_policy='omit')
+    elif transform == 'center': return data - data.mean(skipna=True,axis=0)
+    elif transform == 'zscore': return sps.zscore(data,nan_policy='omit',axis=0)
+    elif transform == 'softmax': return np.exp(data)/(np.exp(np.array(data)).sum(axis=1)[:,None])
     else: raise Exception(f"Unknown transform '{transform}'")
 
 # %% ../nbs/02_pp.ipynb 18
@@ -246,7 +247,7 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
     if lazy and '__index_level_0__' in filtered_df.columns: # Fix index, if provided. This is a hack but seems to be needed as polars does not handle index properly by default
         filtered_df.index = filtered_df['__index_level_0__'] 
     
-    # Replace draw with the draws used in modelling - NB! does not currenlty work for group questions
+    # Replace draw with the draws used in modelling. Groups are handled separately below
     if 'draw' in filtered_df.columns and pp_desc['res_col'] in data_meta.get('draws_data',{}):
         uid, ndraws = data_meta['draws_data'][pp_desc['res_col']]
         filtered_df = deterministic_draws(filtered_df, ndraws, uid, n_total = data_meta['total_size'] )
@@ -267,17 +268,17 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
         rc = gc_dict[pp_desc['res_col']] if pp_desc['res_col'] in gc_dict else [pp_desc['res_col']]
         for col in rc:
             filtered_df[col] = pd.to_numeric(filtered_df[col].astype('object').replace(cmap))
+
+    # Apply continuous transformation
+    dfcols = gc_dict.get(pp_desc['res_col'],[pp_desc['res_col']])
+    if pp_desc.get('cont_transform') and filtered_df[dfcols[0]].dtype.name != 'category':
+        filtered_df[dfcols] = transform_cont(filtered_df[dfcols],transform=pp_desc['cont_transform'])
     
     # If res_col is a group of questions
     # This might move to wrangle but currently easier to do here as we have gc_dict handy
     if pp_desc['res_col'] in gc_dict:
         value_vars = [ c for c in gc_dict[pp_desc['res_col']] if c in cols ]
         if 'draw' in filtered_df.columns: ddraws, n_points = filtered_df['draw'], len(filtered_df) # Set aside draws as series for later
-        
-        if filtered_df[value_vars[0]].dtype.name != 'category':
-            #filtered_df.loc[:,value_vars] = filtered_df.loc[:,value_vars].apply(transform_cont,axis=0,transform=pp_desc.get('cont_transform'))
-            for cn in value_vars:
-                filtered_df[cn] = transform_cont(filtered_df[cn],transform=pp_desc.get('cont_transform'))
         
         id_vars = ['id'] + [ c for c in cols if (c not in value_vars or c in pp_desc.get('factor_cols',[])) ] # Make sure we leave factors in - in case we are faceting over one of the questions
         filtered_df = filtered_df.reset_index(names='id').melt(id_vars=id_vars, value_vars=value_vars, var_name='question', value_name=pp_desc['res_col'])
@@ -298,11 +299,8 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
         # Convert to proper category with correct order
         filtered_df['question'] = pd.Categorical(filtered_df['question'],value_vars)
     elif 'question' in pp_desc['factor_cols']: # Create 'question' as a dummy dimension
-        filtered_df['question'] = pd.Categorical([pp_desc['res_col']]*len(filtered_df))
-        
-    elif filtered_df[pp_desc['res_col']].dtype.name != 'category':
-        filtered_df[pp_desc['res_col']] = transform_cont(filtered_df[pp_desc['res_col']],transform=pp_desc.get('cont_transform'))
-        
+        filtered_df['question'] = pd.Categorical([pp_desc['res_col']]*len(filtered_df))   
+
     # Filter out the unused categories so plots are cleaner
     for k in filtered_df.columns:
         if k == 'id': continue

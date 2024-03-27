@@ -465,7 +465,7 @@ def lines(data, value_col='value', facets=[], smooth=False, width=800, tooltip=[
         points = True
     plot = alt.Chart(data).mark_line(point=points, interpolate=smoothing).encode(
         alt.X(f'{f1["col"]}:N', title=None, sort=f1["order"]),
-        alt.Y(f'{value_col}:Q', title=None, axis=alt.Axis(format=val_format)),
+        alt.Y(f'{value_col}:Q', axis=alt.Axis(format=val_format)),
         tooltip=tooltip,
         color=alt.Color(f'{f0["col"]}:N', scale=f0["colors"], sort=f0["order"],
                         legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f0["order"],width)))
