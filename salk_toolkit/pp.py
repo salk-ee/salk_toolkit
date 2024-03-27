@@ -177,10 +177,10 @@ def get_cats(col, cats=None):
     return [ c for c in cats if c in col.unique() ]
 
 def transform_cont(data, transform):
-    if not transform: return data
-    elif transform == 'center': return data - data.mean(skipna=True,axis=0)
-    elif transform == 'zscore': return sps.zscore(data,nan_policy='omit',axis=0)
-    elif transform == 'softmax': return np.exp(data)/(np.exp(np.array(data)).sum(axis=1)[:,None])
+    if not transform: return data, '.1f'
+    elif transform == 'center': return data - data.mean(skipna=True,axis=0), '.1f'
+    elif transform == 'zscore': return sps.zscore(data,nan_policy='omit',axis=0), '.2f'
+    elif transform == 'softmax': return np.exp(data)/(np.exp(np.array(data)).sum(axis=1)[:,None]), '.1%'
     else: raise Exception(f"Unknown transform '{transform}'")
 
 # %% ../nbs/02_pp.ipynb 18
@@ -271,8 +271,9 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
 
     # Apply continuous transformation
     dfcols = gc_dict.get(pp_desc['res_col'],[pp_desc['res_col']])
-    if pp_desc.get('cont_transform') and filtered_df[dfcols[0]].dtype.name != 'category':
-        filtered_df[dfcols] = transform_cont(filtered_df[dfcols],transform=pp_desc['cont_transform'])
+    if filtered_df[dfcols[0]].dtype.name != 'category':
+        filtered_df[dfcols], val_format = transform_cont(filtered_df[dfcols],transform=pp_desc.get('cont_transform'))
+    else: val_format = '.1%' 
     
     # If res_col is a group of questions
     # This might move to wrangle but currently easier to do here as we have gc_dict handy
@@ -313,7 +314,9 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
     
     # Aggregate the data into right shape
     pparams = wrangle_data(filtered_df, data_meta, pp_desc)
+    pparams['val_format'] = val_format
 
+    
     # Remove prefix from question names in plots
     if 'col_prefix' in c_meta[pp_desc['res_col']] and pp_desc['res_col'] in gc_dict:
         prefix = c_meta[pp_desc['res_col']]['col_prefix']
@@ -508,9 +511,7 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
             order = data.groupby(cn,observed=True)[pparams['value_col']].mean().sort_values(ascending=ascending).index
             data[cn] = pd.Categorical(data[cn],list(order))
     
-    # Handle value format
-    pparams['val_format'] = pp_desc.get('value_format','.1%' if pparams['value_col'] == 'percent' else '.1f')
-
+    
     # Get list of factor columns (adding question and category if needed)
     factor_cols, n_inner = inner_outer_factors(pp_desc['factor_cols'], pp_desc, plot_meta)
         
