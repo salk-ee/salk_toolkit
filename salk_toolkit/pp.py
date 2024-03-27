@@ -584,7 +584,6 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
     # Trim down parameters list if needed
     plot_fn = get_plot_fn(pp_desc['plot'])
     pparams = clean_kwargs(plot_fn,pparams)
-    
     if alt_wrapper is None: alt_wrapper = lambda p: p
     if plot_meta.get('as_is'): # if as_is set, just return the plot as-is
         return plot_fn(**pparams)
@@ -598,7 +597,7 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
                 alt_wrapper(plot_fn(data[(data[factor_cols]==c).all(axis=1)],**pparams).properties(title='-'.join(map(str,c)),**dims, **alt_properties))
                 for c in combs
                 ], n_facet_cols))
-        else: # Use faceting:
+        else: # Use faceting
             if n_facet_cols==1:
                 plot = alt_wrapper(plot_fn(**pparams).properties(**dims, **alt_properties).facet(
                     row=alt.Row(f'{factor_cols[0]}:O', sort=list(data[factor_cols[0]].dtype.categories), header=alt.Header(labelOrient='top'))))

@@ -89,20 +89,20 @@ def boxplot_vals(s,extent=1.5):
     },index=['row'])
 
 @stk_plot('boxplots', data_format='longform', draws=True, n_facets=(1,2), priority=50)
-def boxplot_manual(data, value_col='value', facets=[], val_format='%', width=800, tooltip=[]):
+def boxplot_manual(data, value_col='value', facets=[], val_format='%', width=800, tooltip=[], outer_factors=[]):
     f0, f1 = facets[0], facets[1] if len(facets)>1 else None
 
     if val_format[-1] == '%': # Boxplots being a compound plot, this workaround is needed for axis & tooltips to be proper
         data[value_col]*=100
         val_format = val_format[:-1]+'f'
 
-    df = data.groupby([f['col'] for f in facets[:2] if f is not None],observed=True)[value_col].apply(boxplot_vals).reset_index()
+    df = data.groupby(outer_factors+[f['col'] for f in facets[:2] if f is not None],observed=True)[value_col].apply(boxplot_vals).reset_index()
     
     shared = {'y': alt.Y(f'{f0["col"]}:N', title=None, sort=f0['order']),
               **({'yOffset':alt.YOffset(f'{f1["col"]}:N', title=None, sort=f1['order'])} if f1 else {}),
               'tooltip': [ alt.Tooltip(f'{vn}:Q',format=val_format,title=f'{vn[0].upper()+vn[1:]} of {value_col}') for vn in ['min','q1','median','q3','max'] ] + tooltip[1:] }
     
-    root = alt.Chart(df)#.encode(shared)
+    root = alt.Chart(df).encode(**shared)
 
     size = 12
 
@@ -110,7 +110,6 @@ def boxplot_manual(data, value_col='value', facets=[], val_format='%', width=800
     lower_plot = root.mark_rule().encode(
         x=alt.X('tmin:Q', axis=alt.Axis(title=value_col, format=val_format)),
         x2=alt.X2('q1:Q'),
-        **shared
     )
 
     middle_plot = root.mark_bar(size=size).encode(
@@ -121,13 +120,12 @@ def boxplot_manual(data, value_col='value', facets=[], val_format='%', width=800
             } if not f1 else {
                 'color': alt.Color(f'{f1["col"]}:N', scale=f1['colors'], 
                                     legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f1['order'],width)))
-        }), **shared
+        })
     )
 
     upper_plot = root.mark_rule().encode(
         x=alt.X('q3:Q'),
-        x2=alt.X2('tmax:Q'),
-        **shared
+        x2=alt.X2('tmax:Q')
     )
 
     middle_tick = root.mark_tick(
@@ -135,10 +133,9 @@ def boxplot_manual(data, value_col='value', facets=[], val_format='%', width=800
         size=size
     ).encode(
         x='median:Q',
-        **shared
     )
 
-    return lower_plot + middle_plot + upper_plot + middle_tick
+    return (lower_plot + middle_plot + upper_plot + middle_tick)
 
 # Also create a raw version for the same plot 
 stk_plot('boxplots-raw', data_format="raw", n_facets=(1,2), priority=0)(boxplot_manual)
