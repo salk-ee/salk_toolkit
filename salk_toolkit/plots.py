@@ -325,7 +325,7 @@ def likert_bars(data, value_col='value', facets=[],  tooltip=[], outer_factors=[
 # %% ../nbs/03_plots.ipynb 28
 # Calculate KDE ourselves using a fast libary. This gets around having to do sampling which is unstable
 def kde_1d(vc, value_col, ls, scale=False):
-    y =  FFTKDE(kernel='gaussian').fit(vc.to_numpy()).evaluate(ls)
+    y =  FFTKDE(kernel='gaussian',bw='silverman').fit(vc.to_numpy()).evaluate(ls)
     if scale: y*=len(vc)
     return pd.DataFrame({'density': y, value_col: ls})
 
