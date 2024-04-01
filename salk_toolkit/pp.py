@@ -435,7 +435,7 @@ def translate_df(df, translate):
     return df
 
 # %% ../nbs/02_pp.ipynb 22
-def create_tooltip(pparams,c_meta):
+def create_tooltip(pparams,tc_meta):
     
     data, tfn = pparams['data'], pparams['translate']
     
@@ -446,11 +446,12 @@ def create_tooltip(pparams,c_meta):
             
     # Find labels mappings for regular columns
     for cn in tcols:
-        if cn in c_meta and 'labels' in c_meta[cn]: label_dict[cn] = c_meta[cn]['labels']
+        if cn in tc_meta and 'labels' in tc_meta[cn]: label_dict[cn] = tc_meta[cn]['labels']
     
     # Find a mapping for multi-column questions
-    if 'question' in data.columns and any([ 'label' in c_meta[c] for c in data['question'].unique() if c in c_meta ]):
-        label_dict['question'] = { c: c_meta[c].get('label','') for c in data['question'].unique() if c in c_meta and 'label' in c_meta[c] }
+    question_tn = tfn('question')
+    if question_tn in data.columns and any([ 'label' in tc_meta[c] for c in data[question_tn].unique() if c in tc_meta ]):
+        label_dict[question_tn] = { c: tc_meta[c].get('label','') for c in data[question_tn].unique() if c in tc_meta and 'label' in tc_meta[c] }
     
     # Create the tooltips
     tooltips = [ alt.Tooltip(f"{pparams['value_col']}:Q", format=pparams['val_format']) ]
@@ -502,18 +503,29 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
     plot_args = pp_desc.get('plot_args',{})
     pparams.update(plot_args)
 
+        
+    # Get list of factor columns (adding question and category if needed)
+    factor_cols, n_inner = inner_outer_factors(pp_desc['factor_cols'], pp_desc, plot_meta)
+
     # Reorder categories if required
     if pp_desc.get('sort'):
         for cn in pp_desc['sort']:
             ascending = pp_desc['sort'][cn] if isinstance(pp_desc['sort'],dict) else False
             if cn not in data.columns or cn==pparams['value_col']: 
                 raise Exception(f"Sort column {cn} not found")
-            order = data.groupby(cn,observed=True)[pparams['value_col']].mean().sort_values(ascending=ascending).index
+            if plot_meta.get('sort_numeric_first_facet'): # Some plots (like likert_bars) need a more complex sort
+                f0 = factor_cols[0]
+                nvals = get_cat_num_vals(col_meta[f0],pp_desc) 
+                cmap = dict(zip(col_meta[f0]['categories'],nvals))
+                sdf = data[ [cn,f0,pparams['value_col']] ]
+                sdf['sort_val'] = sdf[pparams['value_col']]*sdf[f0].astype('object').replace(cmap)
+                ordervals = sdf.groupby(cn,observed=True)['sort_val'].mean()
+            else:
+                ordervals = data.groupby(cn,observed=True)[pparams['value_col']].mean()
+            order = ordervals.sort_values(ascending=ascending).index
             data[cn] = pd.Categorical(data[cn],list(order))
     
-    
-    # Get list of factor columns (adding question and category if needed)
-    factor_cols, n_inner = inner_outer_factors(pp_desc['factor_cols'], pp_desc, plot_meta)
+
         
     # Handle translation funcion
     if translate is None: translate = (lambda s: s)
@@ -542,9 +554,10 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
     pparams['data'] = data = translate_df(data,translate)
     pparams['value_col'] = translate(pparams['value_col'])  
     factor_cols = [ translate(c) for c in factor_cols ]
+    t_col_meta = { translate(c): v for c,v in col_meta.items() }
 
     # Handle tooltip
-    pparams['tooltip'] = create_tooltip(pparams,col_meta)
+    pparams['tooltip'] = create_tooltip(pparams,t_col_meta)
     
     # If we still have more than 1 factor left, merge the rest into one so we have a 2d facet
     if len(factor_cols)>1:

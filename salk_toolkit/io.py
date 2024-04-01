@@ -191,8 +191,8 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
                         s = s.astype('str')
                     
                 cats = cd['categories']
-                
-                ns = pd.Series(pd.Categorical(s,categories=cats,ordered=cd['ordered'] if 'ordered' in cd else False), name=cn, index=raw_data.index)
+                if isinstance(s[0],list) or isinstance(s[0],np.ndarray): ns = s #  Just leave a list of strings
+                else: ns = pd.Series(pd.Categorical(s,categories=cats,ordered=cd['ordered'] if 'ordered' in cd else False), name=cn, index=raw_data.index)
                 # Check if the category list provided was comprehensive
                 new_nas = ns.isna().sum() - na_sum
                 

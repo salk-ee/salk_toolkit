@@ -195,8 +195,10 @@ with st.sidebar: #.expander("Select dimensions"):
             agg_fn = st.selectbox('Aggregation', ['mean', 'median', 'sum'])
             if agg_fn!='mean': args['agg_fn'] = agg_fn
 
-        if sort and len(args['factor_cols'])>0:
-            sort_facet = st.selectbox('Sort by', args['factor_cols'], 0 )
+        sortable = args['factor_cols']
+        if plot_meta.get('sort_numeric_first_facet'): sortable = sortable[1:]
+        if sort and len(sortable)>0:
+            sort_facet = st.selectbox('Sort by', sortable, 0 )
             ascending = st.toggle('Ascending', False)
             args['sort'] = {sort_facet: ascending}
 
