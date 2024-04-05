@@ -198,6 +198,11 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
     meta_cols = ['weight', 'training_subsample', '__index_level_0__'] + (['draw'] if plot_meta.get('draws') else []) + columns
     cols = [ pp_desc['res_col'] ]  + pp_desc.get('factor_cols',[]) + list(pp_desc.get('filter',{}).keys())
     cols += [ c for c in meta_cols if c in full_df.columns and c not in cols ]
+
+    # Remove draws_data if calcualted_draws is disabled       
+    if not pp_desc.get('calculated_draws',True):
+        data_meta = data_meta.copy()
+        del data_meta['draws_data']
     
     # If any aliases are used, cconvert them to column names according to the data_meta
     gc_dict = group_columns_dict(data_meta)
@@ -273,7 +278,8 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
     dfcols = gc_dict.get(pp_desc['res_col'],[pp_desc['res_col']])
     if filtered_df[dfcols[0]].dtype.name != 'category':
         filtered_df[dfcols], val_format = transform_cont(filtered_df[dfcols],transform=pp_desc.get('cont_transform'))
-    else: val_format = '.1%' 
+    else: val_format = '.1%'
+    val_format = pp_desc.get('value_format',val_format)
     
     # If res_col is a group of questions
     # This might move to wrangle but currently easier to do here as we have gc_dict handy
