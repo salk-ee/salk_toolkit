@@ -190,7 +190,7 @@ with st.sidebar: #.expander("Select dimensions"):
         detailed = st.toggle('Fine-grained filter', False)    
 
         if res_cont: # Extra settings for continuous data 
-            cont_transform = st.selectbox('Transform', ['None', 'center', 'zscore', 'softmax'])
+            cont_transform = st.selectbox('Transform', ['None'] + cont_transform_options)
             if cont_transform != 'None': args['cont_transform'] = cont_transform
             agg_fn = st.selectbox('Aggregation', ['mean', 'median', 'sum'])
             if agg_fn!='mean': args['agg_fn'] = agg_fn
