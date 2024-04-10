@@ -234,8 +234,8 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
 
         # Handle continuous variables separately
         if  is_range and (not isinstance(v[1],str) or c_meta[k].get('continuous') or c_meta[k].get('datetime')): # Only special case where we actually need a range
-            if lazy: inds = (((pl.col(k)>=v[1]) & (pl.col(k)<=v[2])) | pl.col(k).is_null()) & inds
-            else: inds = (((df[k]>=v[1]) & (df[k]<=v[2])) | df[k].isna()) & inds
+            if lazy: inds = (((pl.col(k)>=v[1]) & (pl.col(k)<=v[2]))) & inds
+            else: inds = (((df[k]>=v[1]) & (df[k]<=v[2]))) & inds
             continue # NB! this approach does not work for ordered categoricals with polars LazyDataFrame, hence handling that separately below
         
         # Filter by list of values:
@@ -250,7 +250,7 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
             flst = c_meta[k]['groups'][v]
         else: flst = [v] # Just filter on single value    
             
-        inds =  (pl.col(k).is_in(flst) if lazy else df[k].isin(flst)) & inds
+        inds =  (pl.col(k).is_in(flst) & ~pl.col(k).is_null() if lazy else df[k].isin(flst) & ~df[k].isna()) & inds
             
     filtered_df = df.filter(inds).collect().to_pandas() if lazy else df[inds].copy()
     if lazy and '__index_level_0__' in filtered_df.columns: # Fix index, if provided. This is a hack but seems to be needed as polars does not handle index properly by default
@@ -341,7 +341,7 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
     
     return pparams
 
-# %% ../nbs/02_pp.ipynb 20
+# %% ../nbs/02_pp.ipynb 21
 def discretize_continuous(col, col_meta={}):
 
     if 'bin_breaks' in col_meta and 'bin_labels' in col_meta:
@@ -350,7 +350,7 @@ def discretize_continuous(col, col_meta={}):
     else:
         breaks = col_meta.get('bin_breaks',5)
         if isinstance(breaks,int): 
-            breaks = np.unique(np.quantile(col, np.linspace(0,1,breaks+1)))
+            breaks = np.unique(np.quantile(col.dropna(), np.linspace(0,1,breaks+1)))
         cut = cut_nice(col, breaks, format=col_meta.get('value_format','.1f'))
     return cut
 
@@ -377,8 +377,8 @@ def wrangle_data(raw_df, data_meta, pp_desc):
     data = None
 
     # Ensure all rv columns other than value are categorical
-    for c in raw_df.columns:
-        if c in special_columns: continue # bypass some columns added above
+    for c in factor_cols:
+        #if c in special_columns: continue # bypass some columns added above
         if raw_df[c].dtype.name != 'category' and c!=pp_desc['res_col']:
             if col_meta.get(c,{}).get('continuous') or not isinstance(raw_df[c],str):
                 raw_df[c] = discretize_continuous(raw_df[c],col_meta.get(c,{}))
@@ -419,7 +419,7 @@ def wrangle_data(raw_df, data_meta, pp_desc):
     pparams['data'] = data
     return pparams
 
-# %% ../nbs/02_pp.ipynb 21
+# %% ../nbs/02_pp.ipynb 22
 # Create a color scale
 ordered_gradient = ["#c30d24", "#f3a583", "#94c6da", "#1770ab"]
 def meta_color_scale(scale : Dict, column=None, translate=None):
@@ -432,7 +432,7 @@ def meta_color_scale(scale : Dict, column=None, translate=None):
         cats = [ remap[c] for c in cats ]
     return to_alt_scale(scale,cats)
 
-# %% ../nbs/02_pp.ipynb 22
+# %% ../nbs/02_pp.ipynb 23
 internal_columns = ['draw','weight','group_size'] 
 
 def translate_df(df, translate):
@@ -444,7 +444,7 @@ def translate_df(df, translate):
             df[c] = df[c].cat.rename_categories(remap)
     return df
 
-# %% ../nbs/02_pp.ipynb 23
+# %% ../nbs/02_pp.ipynb 24
 def create_tooltip(pparams,tc_meta):
     
     data, tfn = pparams['data'], pparams['translate']
@@ -476,7 +476,7 @@ def create_tooltip(pparams,tc_meta):
     return tooltips
     
 
-# %% ../nbs/02_pp.ipynb 24
+# %% ../nbs/02_pp.ipynb 25
 # Small helper function to move columns from internal to external columns
 def remove_from_internal_fcols(cname, factor_cols, n_inner):
     if cname not in factor_cols[:n_inner]: return n_inner
@@ -499,7 +499,7 @@ def inner_outer_factors(factor_cols, pp_desc, plot_meta):
     
     return factor_cols, n_inner
 
-# %% ../nbs/02_pp.ipynb 25
+# %% ../nbs/02_pp.ipynb 26
 # Function that takes filtered raw data and plot information and outputs the plot
 # Handles all of the data wrangling and parameter formatting
 def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=False, width=200, return_matrix_of_plots=False, translate=None):
@@ -637,7 +637,7 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
     return plot
 
 
-# %% ../nbs/02_pp.ipynb 27
+# %% ../nbs/02_pp.ipynb 28
 # Compute the full factor_cols list, including question and res_col as needed
 def impute_factor_cols(pp_desc, col_meta, plot_meta=None):
     factor_cols = pp_desc.get('factor_cols',[]).copy()
@@ -663,7 +663,7 @@ def impute_factor_cols(pp_desc, col_meta, plot_meta=None):
 
     return factor_cols
 
-# %% ../nbs/02_pp.ipynb 28
+# %% ../nbs/02_pp.ipynb 29
 # A convenience function to draw a plot straight from a dataset
 def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, check_match=True, impute=True,**kwargs):
     if data_file is None and full_df is None:
