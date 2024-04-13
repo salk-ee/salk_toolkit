@@ -93,7 +93,7 @@ def match_data(data1,data2,cols=None):
 
     ccols = [c for c in cols if d1[c].dtype.name=='category']
     for c in ccols: # replace categories with their index. This is ok for ordered categories, not so great otherwise
-        s1, s2 = set(d1[c].dtype.categories), set(d2[c].dtype.categories)
+        s1, s2 = set(d1[c].unique()), set(d2[c].unique())
         if s1-s2 and s2-s1: # one-way imbalance is fine
             raise Exception(f"Categorical columns differ in their categories on: {s1-s2} vs {s2-s1}")
         

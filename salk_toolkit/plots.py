@@ -52,7 +52,7 @@ def estimate_legend_columns_horiz_naive(cats, width):
 # ToDo: it should max over each column separately not just look at max(sum(row)). This is close enough though.
 def estimate_legend_columns_horiz(cats, width):
     max_cols, restart = len(cats), True
-    lens = list(map(lambda s: 15+legend_font.getlength(s),cats))
+    lens = list(map(lambda s: 25+legend_font.getlength(s),cats))
     while restart:
         restart, rl, cc = False, 0, 0
         for l in lens:
