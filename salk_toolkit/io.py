@@ -568,7 +568,7 @@ def load_parquet_metadata(file_name):
 def load_parquet_with_metadata(file_name,lazy=False,**kwargs):
     if lazy: # Load it as a polars lazy dataframe
         meta = load_parquet_metadata(file_name)
-        ldf = pl.scan_parquet(file_name,**kwargs)
+        pl.scan_parquet(file_name,**kwargs)
         return ldf, meta
     
     # Read it as a normal pandas dataframe
@@ -578,6 +578,9 @@ def load_parquet_with_metadata(file_name,lazy=False,**kwargs):
         restored_meta_json = restored_table.schema.metadata[custom_meta_key.encode()]
         restored_meta = json.loads(restored_meta_json)
     else: restored_meta = None
+
+    # fastparquet preserves numerical categoricals where pyarrow does not
+    restored_df = pd.read_parquet(file_name, engine='fastparquet') 
     return restored_df, restored_meta
 
 

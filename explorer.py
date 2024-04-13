@@ -68,8 +68,13 @@ paths = defaultdict( lambda: path )
 default_inputs = []
 for fname in cl_args:
     path, fname = os.path.split(fname)
-    paths[fname] = path+'/'
+    if fname in paths: # Duplicate file name: include path
+        p1, p2 = os.path.split(path)
+        path, fname = p1, os.path.join(p2,fname)
+    paths[fname] = (path or '.')+'/' 
     default_inputs.append(fname)
+
+if not path: path = './'
 
 input_file_choices = default_inputs + sorted([ f for f in os.listdir(path) if f[-8:]=='.parquet' ])
 
