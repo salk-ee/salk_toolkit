@@ -166,7 +166,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
                 warn(f"Column {sn} is empty and thus ignored")
                 continue
                 
-            s = raw_data[sn].rename(cn)
+            s = raw_data[sn]
             
             if not only_fix_categories:
                 if s.dtype.name=='category': s = s.astype('object') # This makes it easier to use common ops like replace and fillna
@@ -176,6 +176,8 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
                 
                 if cd.get('datetime'): s = pd.to_datetime(s,errors='coerce')
                 elif cd.get('continuous'): s = pd.to_numeric(s,errors='coerce')
+
+            s = s.rename(cn) # In case transformation removes the name or renames it
 
             if 'categories' in cd: 
                 na_sum = s.isna().sum()
