@@ -5,7 +5,8 @@ __all__ = ['warn', 'default_color', 'factorize_w_codes', 'batch', 'loc2iloc', 'm
            'match_data', 'replace_constants', 'approx_str_match', 'index_encoder', 'to_alt_scale',
            'multicol_to_vals_cats', 'gradient_to_discrete_color_scale', 'is_datetime', 'rel_wave_times', 'stable_draws',
            'deterministic_draws', 'clean_kwargs', 'censor_dict', 'cut_nice', 'rename_cats', 'str_replace',
-           'merge_series', 'aggregate_multiselect', 'gb_in', 'gb_in_apply', 'stk_defaultdict']
+           'merge_series', 'aggregate_multiselect', 'deaggregate_multiselect', 'gb_in', 'gb_in_apply',
+           'stk_defaultdict']
 
 # %% ../nbs/10_utils.ipynb 3
 import json, os, warnings, math, inspect
@@ -291,6 +292,18 @@ def aggregate_multiselect(df, prefix, out_prefix, na_vals=[]):
     df[[f'{out_prefix}{i+1}' for i in range(n_res)]] = pd.DataFrame(lst)
 
 # %% ../nbs/10_utils.ipynb 41
+# Take a list of values and create a one-hot matrix of them. Basically the inverse of previous
+def deaggregate_multiselect(df, prefix, out_prefix=''):
+    cols = [ c for c in df.columns if c.startswith(prefix) ]
+
+    # Determine all categories
+    ocols = set()
+    for c in cols: ocols.update(df[c].dropna().unique())
+
+    # Create a one-hot column for each
+    for oc in ocols: df[out_prefix+oc] = (df[cols]==oc).any(axis=1)
+
+# %% ../nbs/10_utils.ipynb 42
 # Groupby if needed - this simplifies things quite often
 def gb_in(df, gb_cols):
     return df.groupby(gb_cols,observed=False) if len(gb_cols)>0 else df
@@ -304,7 +317,7 @@ def gb_in_apply(df, gb_cols, fn, cols=None, **kwargs):
     else: res = df.groupby(gb_cols,observed=False)[cols].apply(fn,**kwargs)
     return res
 
-# %% ../nbs/10_utils.ipynb 42
+# %% ../nbs/10_utils.ipynb 43
 def stk_defaultdict(dv):
     if not isinstance(dv,dict): dv = {'default':dv}
     return defaultdict(lambda: dv['default'], dv)
