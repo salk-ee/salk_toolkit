@@ -177,7 +177,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
                 if cd.get('datetime'): s = pd.to_datetime(s,errors='coerce')
                 elif cd.get('continuous'): s = pd.to_numeric(s,errors='coerce')
 
-            s = s.rename(cn) # In case transformation removes the name or renames it
+            s = pd.Series(s,name=cn) # In case transformation removes the name or renames it
 
             if 'categories' in cd: 
                 na_sum = s.isna().sum()
