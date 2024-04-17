@@ -130,6 +130,7 @@ args = {}
 c_meta = extract_column_meta(first_data_meta)
 
 with st.sidebar: #.expander("Select dimensions"):
+
     f_info = st.empty()
     st.markdown("""___""")
 
