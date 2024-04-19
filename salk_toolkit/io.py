@@ -174,7 +174,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
                     s = s.astype('str').replace(cd['translate']).replace('nan',None).replace('None',None)
                 if 'transform' in cd: s = eval(cd['transform'],{ 's':s, 'df':raw_data, 'ndf':ndf, 'pd':pd, 'np':np, 'stk':stk , **constants })
                 if 'translate_after' in cd: 
-                    s = s.astype('str').replace(cd['translate_after']).replace('nan',None).replace('None',None)
+                    s = pd.Series(s).astype('str').replace(cd['translate_after']).replace('nan',None).replace('None',None)
                 
                 if cd.get('datetime'): s = pd.to_datetime(s,errors='coerce')
                 elif cd.get('continuous'): s = pd.to_numeric(s,errors='coerce')
