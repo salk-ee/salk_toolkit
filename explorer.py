@@ -219,7 +219,6 @@ with st.sidebar: #.expander("Select dimensions"):
     args['factor_cols'] = impute_factor_cols(args, c_meta, plot_meta)
 
     import pprint
-
     with st.expander('Plot desc'):
         st.code(pprint.pformat(args,indent=0,width=30))
 
