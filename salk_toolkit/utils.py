@@ -93,15 +93,22 @@ def match_data(data1,data2,cols=None):
     d2 = data2[cols].copy().dropna()
 
     ccols = [c for c in cols if d1[c].dtype.name=='category']
-    for c in ccols: # replace categories with their index. This is ok for ordered categories, not so great otherwise
-        s1, s2 = set(d1[c].unique()), set(d2[c].unique())
-        if s1-s2 and s2-s1: # one-way imbalance is fine
-            raise Exception(f"Categorical columns differ in their categories on: {s1-s2} vs {s2-s1}")
-        
-        md = d1 if len(s2-s1)==0 else d2
-        mdict = dict(zip(md[c].dtype.categories, range(len(md[c].dtype.categories))))
-        d1[c] = d1[c].astype('object').replace(mdict)
-        d2[c] = d2[c].astype('object').replace(mdict)
+    for c in ccols:
+        if d1[c].dtype.ordered: # replace categories with their index
+            s1, s2 = set(d1[c].unique()), set(d2[c].unique())
+            if s1-s2 and s2-s1: # one-way imbalance is fine
+                raise Exception(f"Ordered categorical columns differ in their categories on: {s1-s2} vs {s2-s1}")
+            
+            md = d1 if len(s2-s1)==0 else d2
+            mdict = dict(zip(md[c].dtype.categories, np.linspace(0,2,len(md[c].dtype.categories))))
+            d1[c] = d1[c].astype('object').replace(mdict)
+            d2[c] = d2[c].astype('object').replace(mdict)
+        else: # Use one-hot encoding instead
+            cs = list(set(d1[c].unique()) | set(d2[c].unique()))
+            d1[c], d2[c] = pd.Categorical(d1[c],cs), pd.Categorical(d2[c],cs)
+            # Use all but the first category as otherwise mahalanobis fails because of full colinearity
+            d1 = pd.concat([d1.drop(columns=[c]),pd.get_dummies(d1[c])[cs[1:]].astype(float)],axis=1)
+            d2 = pd.concat([d2.drop(columns=[c]),pd.get_dummies(d2[c])[cs[1:]].astype(float)],axis=1)
 
     dmat = cdist(d1, d2, 'mahalanobis')
     i1, i2 = linear_sum_assignment(dmat, maximize=False)

@@ -638,7 +638,7 @@ def log_missing_translations(tf, nonchanged_dict):
 
 def clean_missing_translations(nonchanged_dict, tdict={}):
     # Filter out numbers that come in from data sometimes
-    return { s:v for s,v in nonchanged_dict.items() if s not in tdict and isinstance(s,str) and not re.fullmatch('[\.\d]+',s) }
+    return { s:v for s,v in nonchanged_dict.items() if s not in tdict and isinstance(s,str) and not re.fullmatch(r'[.\d]+',s) }
 
 def add_missing_to_dict(missing_dict, tdict):
     return {**tdict, **{ s:s for s in missing_dict}}
