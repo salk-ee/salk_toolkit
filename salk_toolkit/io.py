@@ -583,8 +583,6 @@ def load_parquet_with_metadata(file_name,lazy=False,**kwargs):
         restored_meta = json.loads(restored_meta_json)
     else: restored_meta = None
 
-    # fastparquet preserves numerical categoricals where pyarrow does not
-    restored_df = pd.read_parquet(file_name, engine='fastparquet') 
     return restored_df, restored_meta
 
 

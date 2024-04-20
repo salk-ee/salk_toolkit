@@ -102,6 +102,7 @@ else:
     first_data_meta = first_file['data_meta'] if global_data_meta is None else global_data_meta
     first_data = first_file['data']
 
+
 ########################################################################
 #                                                                      #
 #                            Sidebar UI                                #
