@@ -2,10 +2,10 @@
 
 # %% auto 0
 __all__ = ['warn', 'default_color', 'factorize_w_codes', 'batch', 'loc2iloc', 'match_sum_round', 'min_diff', 'continify',
-           'match_data', 'replace_constants', 'approx_str_match', 'index_encoder', 'to_alt_scale',
-           'multicol_to_vals_cats', 'gradient_to_discrete_color_scale', 'is_datetime', 'rel_wave_times', 'stable_draws',
-           'deterministic_draws', 'clean_kwargs', 'censor_dict', 'cut_nice', 'rename_cats', 'str_replace',
-           'merge_series', 'aggregate_multiselect', 'deaggregate_multiselect', 'gb_in', 'gb_in_apply',
+           'replace_cat_with_dummies', 'match_data', 'replace_constants', 'approx_str_match', 'index_encoder',
+           'to_alt_scale', 'multicol_to_vals_cats', 'gradient_to_discrete_color_scale', 'is_datetime', 'rel_wave_times',
+           'stable_draws', 'deterministic_draws', 'clean_kwargs', 'censor_dict', 'cut_nice', 'rename_cats',
+           'str_replace', 'merge_series', 'aggregate_multiselect', 'deaggregate_multiselect', 'gb_in', 'gb_in_apply',
            'stk_defaultdict']
 
 # %% ../nbs/10_utils.ipynb 3
@@ -87,15 +87,10 @@ from scipy.spatial.distance import cdist
 from scipy.optimize import linear_sum_assignment
 
 # %% ../nbs/10_utils.ipynb 14
-# Replace categorical with dummy values, and add noise to them
-# Noise is needed for mahalanobis to be non-singular in case there are two collinear cols
-def replace_cat_with_noisy_dummies(df,c,cs):
-    dummies = pd.get_dummies(df[c])[cs[1:]].astype(float)
-    dummies += np.random.normal(0,0.1,dummies.values.shape)
-    return pd.concat([df.drop(columns=[c]),dummies],axis=1)
-                            
+# Replace categorical with dummy values,
+def replace_cat_with_dummies(df,c,cs):
+    return pd.concat([df.drop(columns=[c]),pd.get_dummies(df[c])[cs[1:]].astype(float)],axis=1)
 
-# %% ../nbs/10_utils.ipynb 15
 # Match data1 with data2 on columns cols as closely as possible
 def match_data(data1,data2,cols=None):
     d1 = data1[cols].copy().dropna()
@@ -116,15 +111,18 @@ def match_data(data1,data2,cols=None):
             cs = list(set(d1[c].unique()) | set(d2[c].unique()))
             d1[c], d2[c] = pd.Categorical(d1[c],cs), pd.Categorical(d2[c],cs)
             # Use all but the first category as otherwise mahalanobis fails because of full colinearity
-            d1 = replace_cat_with_noisy_dummies(d1,c,cs)
-            d2 = replace_cat_with_noisy_dummies(d2,c,cs)
+            d1 = replace_cat_with_dummies(d1,c,cs)
+            d2 = replace_cat_with_dummies(d2,c,cs)
 
-    dmat = cdist(d1, d2, 'mahalanobis')
+
+    # Use pseudoinverse in case we have collinear columns
+    pVI = np.linalg.pinv(np.cov(np.vstack([d1.values, d2.values]).T.astype('float'))).T
+    dmat = cdist(d1, d2, 'mahalanobis', VI=pVI)
     i1, i2 = linear_sum_assignment(dmat, maximize=False)
     ind1, ind2 = d1.index[i1], d2.index[i2]
     return ind1, ind2
 
-# %% ../nbs/10_utils.ipynb 18
+# %% ../nbs/10_utils.ipynb 16
 # Allow 'constants' entries in the dict to provide replacement mappings
 # This leads to much more readable jsons as repetitions can be avoided
 def replace_constants(d, constants = {}, inplace=False):
@@ -142,14 +140,14 @@ def replace_constants(d, constants = {}, inplace=False):
             
     return d
 
-# %% ../nbs/10_utils.ipynb 19
+# %% ../nbs/10_utils.ipynb 17
 # Little function to do approximate string matching between two lists. Useful if things have multiple spellings. 
 def approx_str_match(frm,to):
     dmat = scipy.spatial.distance.cdist(np.array(frm)[:,None],np.array(to)[:,None],lambda x,y: Levenshtein.distance(x[0],y[0]))
     t1,t2 = scipy.optimize.linear_sum_assignment(dmat)
     return dict(zip([frm[i] for i in t1],[to[i] for i in t2]))
 
-# %% ../nbs/10_utils.ipynb 22
+# %% ../nbs/10_utils.ipynb 20
 # JSON encoder needed to convert pandas indices into lists for serialization
 def index_encoder(z):
     if isinstance(z, pd.Index):
@@ -158,7 +156,7 @@ def index_encoder(z):
         type_name = z.__class__.__name__
         raise TypeError(f"Object of type {type_name} is not serializable")
 
-# %% ../nbs/10_utils.ipynb 23
+# %% ../nbs/10_utils.ipynb 21
 default_color = 'lightgrey' # Something that stands out so it is easy to notice a missing color
 
 # Helper function to turn a dictionary into an Altair scale (or None into alt.Undefined)
@@ -171,7 +169,7 @@ def to_alt_scale(scale, order=None):
         scale = alt.Scale(domain=list(order),range=[ (scale[c] if c in scale else default_color) for c in order ])
     return scale
 
-# %% ../nbs/10_utils.ipynb 24
+# %% ../nbs/10_utils.ipynb 22
 # Turn a question with multiple variants all of which are in distinct columns into a two columns - one with response, the other with which question variant was used
 
 def multicol_to_vals_cats(df, cols=None, col_prefix=None, reverse_cols=[], reverse_suffixes=None, cat_order=None, vals_name='vals', cats_name='cats', inplace=False):
@@ -191,19 +189,19 @@ def multicol_to_vals_cats(df, cols=None, col_prefix=None, reverse_cols=[], rever
     df.loc[:,cats_name] = np.array(tdf.columns)[cinds]
     return df
 
-# %% ../nbs/10_utils.ipynb 26
+# %% ../nbs/10_utils.ipynb 24
 # Grad is a list of colors
 def gradient_to_discrete_color_scale( grad, num_colors):
     cmap = mpc.LinearSegmentedColormap.from_list('grad',grad)
     return [mpc.to_hex(cmap(i)) for i in np.linspace(0, 1, num_colors)]
 
-# %% ../nbs/10_utils.ipynb 28
+# %% ../nbs/10_utils.ipynb 26
 def is_datetime(col):
     with warnings.catch_warnings():
         warnings.simplefilter(action='ignore', category=UserWarning)
         return pd.api.types.is_datetime64_any_dtype(col) or (col.dtype.name in ['str','object'] and pd.to_datetime(col,errors='coerce').notna().any())
 
-# %% ../nbs/10_utils.ipynb 29
+# %% ../nbs/10_utils.ipynb 27
 # Convert a series of wave indices and a series of survey dates into a time series usable by our gp model
 def rel_wave_times(ws, dts, dt0=None):
     df = pd.DataFrame({'wave':ws, 'dt': pd.to_datetime(dts)})
@@ -214,7 +212,7 @@ def rel_wave_times(ws, dts, dt0=None):
     
     return pd.Series(df['wave'].replace(w_to_time),name='t')
 
-# %% ../nbs/10_utils.ipynb 31
+# %% ../nbs/10_utils.ipynb 29
 # Generate a random draws column that is deterministic in n, n_draws and uid
 def stable_draws(n, n_draws, uid):
     # Initialize a random generator with a hash of uid
@@ -231,18 +229,18 @@ def deterministic_draws(df, n_draws, uid, n_total=None):
     df.loc[:,'draw'] = pd.Series(stable_draws(n_total, n_draws, uid), index = np.arange(n_total))
     return df
 
-# %% ../nbs/10_utils.ipynb 33
+# %% ../nbs/10_utils.ipynb 31
 # Clean kwargs leaving only parameters fn can digest
 def clean_kwargs(fn, kwargs):
     aspec = inspect.getfullargspec(fn)
     return { k:v for k,v in kwargs.items() if k in aspec.args } if aspec.varkw is None else kwargs
 
-# %% ../nbs/10_utils.ipynb 34
+# %% ../nbs/10_utils.ipynb 32
 # Simple one-liner to remove certain keys from a dict
 def censor_dict(d,vs):
     return { k:v for k,v in d.items() if k not in vs }
 
-# %% ../nbs/10_utils.ipynb 35
+# %% ../nbs/10_utils.ipynb 33
 # A nicer behaving wrapper around pd.cut
 def cut_nice(s, breaks, format=''):
     s = np.array(s)
@@ -268,14 +266,14 @@ def cut_nice(s, breaks, format=''):
     return pd.cut(s,breaks,right=False,labels=labels)
     
 
-# %% ../nbs/10_utils.ipynb 37
+# %% ../nbs/10_utils.ipynb 35
 # Utility function to rename categories in pre/post processing steps as pandas made .replace unusable with categories
 def rename_cats(df, col, cat_map):
     if df[col].dtype.name == 'category': 
         df[col] = df[col].cat.rename_categories(cat_map)
     else: df[col] = df[col].replace(cat_map)
 
-# %% ../nbs/10_utils.ipynb 38
+# %% ../nbs/10_utils.ipynb 36
 # Simplify doing multiple replace's on a column
 def str_replace(s,d):
     s = s.astype('object')
@@ -283,7 +281,7 @@ def str_replace(s,d):
         s = s.str.replace(k,v)
     return s
 
-# %% ../nbs/10_utils.ipynb 40
+# %% ../nbs/10_utils.ipynb 38
 # Merge values from multiple columns, iteratively replacing values
 # lst contains either a series or a tuple of (series, whitelist)
 def merge_series(*lst):
@@ -298,7 +296,7 @@ def merge_series(*lst):
             s.loc[~ns.isna()] = ns[~ns.isna()]
     return s
 
-# %% ../nbs/10_utils.ipynb 42
+# %% ../nbs/10_utils.ipynb 40
 # Turn a list of selected/not seleced into a list of selected values in the same dataframe
 def aggregate_multiselect(df, prefix, out_prefix, na_vals=[]):
     cols = [ c for c in df.columns if c.startswith(prefix) ]
@@ -307,7 +305,7 @@ def aggregate_multiselect(df, prefix, out_prefix, na_vals=[]):
     n_res = max(map(len,lst))
     df[[f'{out_prefix}{i+1}' for i in range(n_res)]] = pd.DataFrame(lst)
 
-# %% ../nbs/10_utils.ipynb 43
+# %% ../nbs/10_utils.ipynb 41
 # Take a list of values and create a one-hot matrix of them. Basically the inverse of previous
 def deaggregate_multiselect(df, prefix, out_prefix=''):
     cols = [ c for c in df.columns if c.startswith(prefix) ]
@@ -319,7 +317,7 @@ def deaggregate_multiselect(df, prefix, out_prefix=''):
     # Create a one-hot column for each
     for oc in ocols: df[out_prefix+oc] = (df[cols]==oc).any(axis=1)
 
-# %% ../nbs/10_utils.ipynb 44
+# %% ../nbs/10_utils.ipynb 42
 # Groupby if needed - this simplifies things quite often
 def gb_in(df, gb_cols):
     return df.groupby(gb_cols,observed=False) if len(gb_cols)>0 else df
@@ -333,7 +331,7 @@ def gb_in_apply(df, gb_cols, fn, cols=None, **kwargs):
     else: res = df.groupby(gb_cols,observed=False)[cols].apply(fn,**kwargs)
     return res
 
-# %% ../nbs/10_utils.ipynb 45
+# %% ../nbs/10_utils.ipynb 43
 def stk_defaultdict(dv):
     if not isinstance(dv,dict): dv = {'default':dv}
     return defaultdict(lambda: dv['default'], dv)
