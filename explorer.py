@@ -318,7 +318,7 @@ else:
             else: steps = {}
             steps['main_model'] = mdl
             with st.expander('Model'):
-                step_name = st.selectbox('Show:', list(steps.keys()), len(steps)-1)
+                step_name = st.selectbox('Show:', list(steps.keys()), len(steps)-1,key='mdlshow_'+ifile)
                 st.json(steps[step_name])
 
 info.empty()
