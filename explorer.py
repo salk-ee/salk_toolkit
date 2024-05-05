@@ -310,9 +310,16 @@ else:
             with st.expander('Data Meta'):
                 st.json(loaded[ifile]['data_meta'])
 
-            with st.expander('Model Meta'):
-                st.json(loaded[ifile]['model_meta'])
+            mdl = loaded[ifile]['model_meta'].copy()
 
+            if 'sequence' in mdl:
+                steps = { m['name']: m for m in mdl['sequence'] }
+                del mdl['sequence']
+            else: steps = {}
+            steps['main_model'] = mdl
+            with st.expander('Model'):
+                step_name = st.selectbox('Show:', list(steps.keys()), len(steps)-1)
+                st.json(steps[step_name])
 
 info.empty()
 
