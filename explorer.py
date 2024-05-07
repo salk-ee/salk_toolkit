@@ -135,6 +135,8 @@ with st.sidebar: #.expander("Select dimensions"):
     f_info = st.empty()
     st.markdown("""___""")
 
+    draw = st.toggle('Draw plots',True)
+
     show_grouped = st.toggle('Show grouped facets', True)
 
     if st.toggle('Convert to continuous', False):
@@ -245,7 +247,9 @@ if not input_files_facet:
     cols = st.columns(len(input_files))
 else: cols = [contextlib.suppress()]
 
-if input_files_facet:
+if not draw:
+    st.text("Plot drawing disabled for refresh speed")
+elif input_files_facet:
     #with st.spinner('Filtering data...'):
     
     # This is a bit hacky because of previous use of the lazy data frames
