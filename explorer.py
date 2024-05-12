@@ -211,8 +211,13 @@ with st.sidebar: #.expander("Select dimensions"):
             ascending = st.toggle('Ascending', False)
             args['sort'] = {sort_facet: ascending}
 
+        qpos = st.selectbox('Question position',['Auto',1,2,3])
+        if 'question' in args['factor_cols'] and qpos!='Auto':
+            args['factor_cols'] = [ c for c in args['factor_cols'] if c != 'question']
+            args['factor_cols'].insert(qpos-1,'question')
+
         override = st.text_area('Override keys','{}')
-        if override: args.update(json.loads(override))
+        if override: args.update(eval(override))
     
     args['filter'] = filter_ui(first_data,first_data_meta,
                                 dims=all_dims,detailed=detailed)
