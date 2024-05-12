@@ -73,8 +73,8 @@ def min_diff(arr):
     else: return b[b>0].min()
 
 # Turn a discretized variable into a more smooth continuous one w a gaussian kernel
-def continify(ar, bounded=False):
-    mi,ma = ar.min(), ar.max()
+def continify(ar, bounded=False, delta=0.0):
+    mi,ma = ar.min()+delta, ar.max()-delta
     noise = np.random.normal(0,0.5 * min_diff(ar),size=len(ar))
     res = ar + noise
     if bounded: # Reflect the noise on the boundaries

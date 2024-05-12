@@ -223,6 +223,14 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
     if lazy: pl.enable_string_cache() # Needed for categories to be comparable to strings
     
     df = full_df.select(cols) if lazy else full_df[cols]
+
+    # Replace draw with the draws used in modelling. Groups are handled separately below
+    # NB! Has to happen before filtering or the draws are computed for wrong size df
+    # Workaround would be to compute for a dummy df and merge on indices later
+    if 'draw' in df.columns and pp_desc['res_col'] in data_meta.get('draws_data',{}):
+        uid, ndraws = data_meta['draws_data'][pp_desc['res_col']]
+        df = deterministic_draws(df, ndraws, uid, n_total = data_meta['total_size'] )
+    n_points = len(df) # This is used later for draws
     
     # Filter using demographics dict. This is very clever but hard to read. See:
     filter_dict = pp_desc.get('filter',{})
@@ -255,11 +263,7 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
     filtered_df = df.filter(inds).collect().to_pandas() if lazy else df[inds].copy()
     if lazy and '__index_level_0__' in filtered_df.columns: # Fix index, if provided. This is a hack but seems to be needed as polars does not handle index properly by default
         filtered_df.index = filtered_df['__index_level_0__'] 
-    
-    # Replace draw with the draws used in modelling. Groups are handled separately below
-    if 'draw' in filtered_df.columns and pp_desc['res_col'] in data_meta.get('draws_data',{}):
-        uid, ndraws = data_meta['draws_data'][pp_desc['res_col']]
-        filtered_df = deterministic_draws(filtered_df, ndraws, uid, n_total = data_meta['total_size'] )
+
     
     # If not poststratisfied
     if not pp_desc.get('poststrat',True):
@@ -289,7 +293,7 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
     # This might move to wrangle but currently easier to do here as we have gc_dict handy
     if pp_desc['res_col'] in gc_dict:
         value_vars = [ c for c in gc_dict[pp_desc['res_col']] if c in cols ]
-        if 'draw' in filtered_df.columns: ddraws, n_points = filtered_df['draw'], len(filtered_df) # Set aside draws as series for later
+        if 'draw' in filtered_df.columns: ddraws = filtered_df['draw'] # Set aside draws as series for later
         
         id_vars = ['id'] + [ c for c in cols if (c not in value_vars or c in pp_desc.get('factor_cols',[])) ] # Make sure we leave factors in - in case we are faceting over one of the questions
         filtered_df = filtered_df.reset_index(names='id').melt(id_vars=id_vars, value_vars=value_vars, var_name='question', value_name=pp_desc['res_col'])
