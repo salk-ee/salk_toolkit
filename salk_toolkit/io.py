@@ -185,18 +185,20 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
                 na_sum = s.isna().sum()
                 
                 if cd['categories'] == 'infer':
-                    if pd.api.types.is_numeric_dtype(s): cd['categories'] = list(map(lambda v: v.item(),np.sort(s.unique()))) # map to list of native int/float
-                    elif s.dtype=='category': cd['categories'] = list(s.dtype.categories) # Categories come from data file
+                    if s.dtype.name=='category': cd['categories'] = list(s.dtype.categories) # Categories come from data file
                     elif 'translate' in cd and 'transform' not in cd and set(cd['translate'].values()) >= set(s.unique()): # Infer order from translation dict
                         cd['categories'] = list(pd.unique(np.array(list(cd['translate'].values()))))
                     else: # Just use lexicographic ordering
-                        if cd.get('ordered',False): warn(f"Ordered category {cn} had category: infer. This only works correctly if you want lexicographic ordering!")
-                        cd['categories'] = [ str(c) for c in np.sort(s.unique().astype('str')) if pd.notna(c) ] # Also propagates it into meta (unless shared scale)
+                        if cd.get('ordered',False) and not pd.api.types.is_numeric_dtype(s):
+                            warn(f"Ordered category {cn} had category: infer. This only works correctly if you want lexicographic ordering!")
+                        if not pd.api.types.is_numeric_dtype(s): s = s.astype('str') # convert all to string to avoid type issues in sorting for mixed columns
+                        cd['categories'] = [ str(c) for c in np.sort(s.unique()) if pd.notna(c) ] # Also propagates it into meta (unless shared scale)
                         s = s.astype('str')
                     
                 cats = cd['categories']
                 if isinstance(s[0],list) or isinstance(s[0],np.ndarray): ns = s #  Just leave a list of strings
-                else: ns = pd.Series(pd.Categorical(s,categories=cats,ordered=cd['ordered'] if 'ordered' in cd else False), name=cn, index=raw_data.index)
+                else: ns = pd.Series(pd.Categorical(s.astype('str'), # Convert to strings, even if numeric/boolean
+                                                    categories=cats,ordered=cd['ordered'] if 'ordered' in cd else False), name=cn, index=raw_data.index)
                 # Check if the category list provided was comprehensive
                 new_nas = ns.isna().sum() - na_sum
                 
@@ -414,7 +416,7 @@ def infer_meta(data_file=None, meta_file=True, read_opts={}, df=None, translate_
     # Fn to create the meta for a categorical column
     def cat_meta(cn):
         m = { 'categories': cats[cn] if len(cats[cn])<=max_cats else 'infer' }
-        if cn in df.columns and df[cn].dtype=='category' and df[cn].dtype.ordered: m['ordered'] = True
+        if cn in df.columns and df[cn].dtype.name=='category' and df[cn].dtype.ordered: m['ordered'] = True
         if translate_fn is not None and cn not in translation_blacklist and len(cats[cn])<=max_cats:
             tdict = { c: translate_fn(c) for c in m['categories'] }
             m['categories'] = 'infer' #[ tdict[c] for c in m['categories'] ]
