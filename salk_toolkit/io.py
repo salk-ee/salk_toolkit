@@ -209,6 +209,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
                 s = ns
             
             # Update ndf in real-time so it would be usable in transforms for next columns
+            if s.name in ndf.columns: ndf = ndf.drop(columns=s.name) # Overwrite existing instead of duplicates. Esp. important for virtual cols
             ndf = pd.concat([ndf,s],axis=1)
 
     pp_key = 'postprocessing' if not virtual_pass else 'virtual_postprocessing'
