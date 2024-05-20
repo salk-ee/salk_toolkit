@@ -266,7 +266,7 @@ def group_columns_dict(data_meta):
 
 # Take a list and a dict and replace all dict keys in list with their corresponding lists in-place
 def list_aliases(lst, da):
-    return [ fv for v in lst for fv in (da[v] if v in da else [v]) ]
+    return [ fv for v in lst for fv in (da[v] if isinstance(v,str) and v in da else [v]) ]
 
 # %% ../nbs/01_io.ipynb 10
 # Creates a mapping old -> new
@@ -475,7 +475,7 @@ def data_with_inferred_meta(data_file, **kwargs):
 
 
 # %% ../nbs/01_io.ipynb 15
-def read_and_process_data(desc, return_meta=False, constants={}):
+def read_and_process_data(desc, return_meta=False, constants={}, skip_postprocessing=False):
 
     df, meta = read_concatenate_files_list(desc)
 
@@ -486,7 +486,7 @@ def read_and_process_data(desc, return_meta=False, constants={}):
     globs = {'pd':pd, 'np':np, 'stk':stk, 'df':df, **constants}
     if 'preprocessing' in desc:  exec(desc['preprocessing'], globs)
     if 'filter' in desc: globs['df'] = globs['df'][eval(desc['filter'], globs)]
-    if 'postprocessing' in desc: exec(desc['postprocessing'],globs)
+    if 'postprocessing' in desc and not skip_post: exec(desc['postprocessing'],globs)
     df = globs['df']
     
     return (df, meta) if return_meta else df

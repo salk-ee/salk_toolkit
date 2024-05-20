@@ -621,7 +621,9 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
             #print( [ data[(data[factor_cols]==c).all(axis=1)] for c in combs ] )
             #print(list(combs))
             return list(batch([
-                alt_wrapper(plot_fn(data[(data[factor_cols]==c).all(axis=1)],**pparams).properties(title='-'.join(map(str,c)),**dims, **alt_properties))
+                alt_wrapper(plot_fn(data[(data[factor_cols]==c).all(axis=1)],**pparams)
+                            .properties(title='-'.join(map(str,c)),**dims, **alt_properties)
+                            .configure_view(discreteHeight={'step':20}))
                 for c in combs
                 ], n_facet_cols))
         else: # Use faceting
@@ -634,8 +636,10 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
                     row=alt.Row(f'{factor_cols[0]}:O', sort=list(data[factor_cols[0]].dtype.categories), header=alt.Header(labelOrient='top'))))
             else: # n_facet_cols!=1 but just one facet
                 plot = alt_wrapper(plot_fn(**pparams).properties(**dims, **alt_properties).facet(f'{factor_cols[0]}:O',columns=n_facet_cols))
+            plot = plot.configure_view(discreteHeight={'step':20})
     else:
-        plot = alt_wrapper(plot_fn(**pparams).properties(**dims, **alt_properties))
+        plot = alt_wrapper(plot_fn(**pparams).properties(**dims, **alt_properties).configure_view(discreteHeight={'step':20}))
+
         if return_matrix_of_plots: plot = [[plot]]
 
     return plot
