@@ -486,7 +486,7 @@ def read_and_process_data(desc, return_meta=False, constants={}, skip_postproces
     globs = {'pd':pd, 'np':np, 'stk':stk, 'df':df, **constants}
     if 'preprocessing' in desc:  exec(desc['preprocessing'], globs)
     if 'filter' in desc: globs['df'] = globs['df'][eval(desc['filter'], globs)]
-    if 'postprocessing' in desc and not skip_post: exec(desc['postprocessing'],globs)
+    if 'postprocessing' in desc and not skip_postprocessing: exec(desc['postprocessing'],globs)
     df = globs['df']
     
     return (df, meta) if return_meta else df

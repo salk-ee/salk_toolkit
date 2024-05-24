@@ -638,7 +638,8 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
                 plot = alt_wrapper(plot_fn(**pparams).properties(**dims, **alt_properties).facet(f'{factor_cols[0]}:O',columns=n_facet_cols))
             plot = plot.configure_view(discreteHeight={'step':20})
     else:
-        plot = alt_wrapper(plot_fn(**pparams).properties(**dims, **alt_properties).configure_view(discreteHeight={'step':20}))
+        plot = alt_wrapper(plot_fn(**pparams).properties(**dims, **alt_properties)
+                            .configure_view(discreteHeight={'step':20}))
 
         if return_matrix_of_plots: plot = [[plot]]
 
