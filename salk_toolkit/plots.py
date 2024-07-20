@@ -619,18 +619,21 @@ def barbell(data, value_col='value', facets=[], n_datapoints=1, val_format='%', 
 def geoplot(data, topo_feature, value_col='value', facets=[], val_format='.2f',tooltip=[]):
     f0 = facets[0]
 
-    tjson_url, tjson_meta, tjson_col = topo_feature
-    source = alt.topo_feature(tjson_url, tjson_meta)
+    json_url, json_meta, json_col = topo_feature
+    if json_meta == 'geojson':
+        source = alt.Data(url=json_url, format=alt.DataFormat(property='features',type='json'))
+    else:
+        source = alt.topo_feature(json_url, json_meta)
 
     plot = alt.Chart(source).mark_geoshape(stroke='white', strokeWidth=0.1).transform_lookup(
-        lookup = f"properties.{tjson_col}",
+        lookup = f"properties.{json_col}",
         from_ = alt.LookupData(
             data=data,
             key=f0["col"],
             fields=list(data.columns)
         ),
     ).encode(
-        tooltip=tooltip, #[alt.Tooltip(f'properties.{tjson_col}:N', title=f1["col"]),
+        tooltip=tooltip, #[alt.Tooltip(f'properties.{json_col}:N', title=f1["col"]),
                 #alt.Tooltip(f'{value_col}:Q', title=value_col, format=val_format)],
         color=alt.Color(
             f'{value_col}:Q',
