@@ -98,7 +98,7 @@ def wrap_st_with_translate(fn,self):
 
 # %% ../nbs/05_dashboard.ipynb 9
 def default_translate(s,**kwargs):
-    return (s[0].upper() + s[1:]).replace('_',' ') if isinstance(s,str) else s
+    return (s[0].upper() + s[1:]).replace('_',' ') if isinstance(s,str) and len(s)>0 else s
 
 # %% ../nbs/05_dashboard.ipynb 10
 def po_template_updater(pot_file = None):
