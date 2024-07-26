@@ -2,8 +2,8 @@
 
 # %% auto 0
 __all__ = ['estimate_legend_columns_horiz_naive', 'estimate_legend_columns_horiz', 'boxplot_vals', 'boxplot_manual', 'columns',
-           'stacked_columns', 'diff_columns', 'massplot', 'make_start_end', 'likert_bars', 'kde_1d', 'density',
-           'violin', 'cluster_based_reorder', 'matrix', 'corr_matrix', 'lines', 'draws_to_hdis', 'lines_hdi',
+           'stacked_columns', 'diff_columns', 'massplot', 'make_start_end', 'likert_bars', 'kde_bw', 'kde_1d',
+           'density', 'violin', 'cluster_based_reorder', 'matrix', 'corr_matrix', 'lines', 'draws_to_hdis', 'lines_hdi',
            'area_smooth', 'likert_aggregate', 'likert_rad_pol', 'barbell', 'geoplot', 'fd_mangle', 'facet_dist',
            'ordered_population', 'marimekko']
 
@@ -23,6 +23,7 @@ import scipy as sp
 import scipy.stats as sps
 from scipy.cluster import hierarchy
 from KDEpy import FFTKDE
+from KDEpy.bw_selection import *
 import arviz as az
 
 from salk_toolkit.utils import *
@@ -323,9 +324,15 @@ def likert_bars(data, value_col='value', facets=[],  tooltip=[], outer_factors=[
     return plot
 
 # %% ../nbs/03_plots.ipynb 29
+# Calculate the bandwidth for KDE
+def kde_bw(ar):
+    # Lower-bound silverman by min_diff to smooth out categorical density plots
+    return max(silvermans_rule(ar),min_diff(ar[:,0]))
+
 # Calculate KDE ourselves using a fast libary. This gets around having to do sampling which is unstable
 def kde_1d(vc, value_col, ls, scale=False):
-    y =  FFTKDE(kernel='gaussian',bw='silverman').fit(vc.to_numpy()).evaluate(ls)
+    ar = vc.to_numpy()
+    y =  FFTKDE(kernel='gaussian',bw=kde_bw(ar)).fit(ar).evaluate(ls)
     if scale: y*=len(vc)
     return pd.DataFrame({'density': y, value_col: ls})
 
