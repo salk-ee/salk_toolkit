@@ -327,7 +327,7 @@ def likert_bars(data, value_col='value', facets=[],  tooltip=[], outer_factors=[
 # Calculate the bandwidth for KDE
 def kde_bw(ar):
     # Lower-bound silverman by min_diff to smooth out categorical density plots
-    return max(silvermans_rule(ar),min_diff(ar[:,0]))
+    return max(silvermans_rule(ar),0.5*min_diff(ar[:,0]))
 
 # Calculate KDE ourselves using a fast libary. This gets around having to do sampling which is unstable
 def kde_1d(vc, value_col, ls, scale=False):
