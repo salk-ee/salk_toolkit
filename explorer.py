@@ -75,6 +75,7 @@ for fname in cl_args:
     default_inputs.append(fname)
 
 if not path: path = './'
+else: path += '/'
 
 input_file_choices = default_inputs + sorted([ f for f in os.listdir(path) if f[-8:]=='.parquet' ])
 

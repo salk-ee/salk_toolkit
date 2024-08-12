@@ -196,7 +196,8 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
                         s = s.astype('str')
                     
                 cats = cd['categories']
-                if isinstance(s[0],list) or isinstance(s[0],np.ndarray): ns = s #  Just leave a list of strings
+                s_rep = s.dropna().iloc[0] # Find a non-na element
+                if isinstance(s_rep,list) or isinstance(s_rep,np.ndarray): ns = s #  Just leave a list of strings
                 else: ns = pd.Series(pd.Categorical(s.astype('str'), # Convert to strings, even if numeric/boolean
                                                     categories=cats,ordered=cd['ordered'] if 'ordered' in cd else False), name=cn, index=raw_data.index)
                 # Check if the category list provided was comprehensive
