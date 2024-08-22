@@ -4,7 +4,8 @@
 __all__ = ['max_cats', 'custom_meta_key', 'read_json', 'process_annotated_data', 'read_annotated_data', 'extract_column_meta',
            'group_columns_dict', 'list_aliases', 'change_meta_df', 'change_parquet_meta', 'infer_meta',
            'data_with_inferred_meta', 'read_and_process_data', 'save_population_h5', 'load_population_h5',
-           'save_sample_h5', 'save_parquet_with_metadata', 'load_parquet_metadata', 'load_parquet_with_metadata']
+           'save_sample_h5', 'find_type_in_dict', 'save_parquet_with_metadata', 'load_parquet_metadata',
+           'load_parquet_with_metadata']
 
 # %% ../nbs/01_io.ipynb 3
 import json, os, warnings
@@ -187,7 +188,8 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
                 if cd['categories'] == 'infer':
                     if s.dtype.name=='category': cd['categories'] = list(s.dtype.categories) # Categories come from data file
                     elif 'translate' in cd and 'transform' not in cd and set(cd['translate'].values()) >= set(s.unique()): # Infer order from translation dict
-                        cd['categories'] = list(pd.unique(np.array(list(cd['translate'].values()))))
+                        cd['categories'] = pd.unique(np.array(list(cd['translate'].values())).astype('str')).tolist()
+                        s = s.astype('str')
                     else: # Just use lexicographic ordering
                         if cd.get('ordered',False) and not pd.api.types.is_numeric_dtype(s):
                             warn(f"Ordered category {cn} had category: infer. This only works correctly if you want lexicographic ordering!")
@@ -546,12 +548,28 @@ def save_sample_h5(fname,trace,COORDS = None, filter_df = None):
 
 
 # %% ../nbs/01_io.ipynb 19
+# Small debug tool to help find where jsons become non-serializable
+def find_type_in_dict(d,dtype,path=''):
+    print(d,path)
+    if isinstance(d,dict):
+        for k,v in d.items():
+            find_type_in_dict(v,dtype,path+f'{k}:')
+    if isinstance(d,list):
+        for i,v in enumerate(d):
+            find_type_in_dict(v,dtype,path+f'[{i}]')
+    elif isinstance(d,dtype):
+        print("RES")
+        raise Exception(f"Value {d} of type {dtype} found at {path}")
+
+# %% ../nbs/01_io.ipynb 20
 # These two very helpful functions are borrowed from https://towardsdatascience.com/saving-metadata-with-dataframes-71f51f558d8e
 
 custom_meta_key = 'salk-toolkit-meta'
 
 def save_parquet_with_metadata(df, meta, file_name):
     table = pa.Table.from_pandas(df)
+
+    #find_type_in_dict(meta,np.int64)
     
     custom_meta_json = json.dumps(meta)
     existing_meta = table.schema.metadata

@@ -340,6 +340,11 @@ def kde_1d(vc, value_col, ls, scale=False):
 def density(data, value_col='value', facets=[], tooltip=[], outer_factors=[], stacked=False, width=800):
     f0 = facets[0] if len(facets)>0 else None
     gb_cols = [ c for c in outer_factors+[f['col'] for f in facets] if c is not None ] # There can be other extra cols (like labels) that should be ignored
+
+    # Filter out extreme outliers (one thousandth on each side). 
+    # Because at 100k+, these get very extreme even for normal distributions
+    lims = list(data[value_col].quantile([.005,0.995]))
+    data = data[(data[value_col]>lims[0]) & (data[value_col]<lims[1])]
     
     ls = np.linspace(data[value_col].min()-1e-10,data[value_col].max()+1e-10,200)
     ndata = gb_in_apply(data,gb_cols,cols=[value_col],fn=kde_1d,value_col=value_col,ls=ls,scale=stacked).reset_index()
