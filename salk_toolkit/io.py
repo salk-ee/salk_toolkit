@@ -136,7 +136,8 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
         if group.get('virtual',False) != virtual_pass: continue
         if group['name'] in all_cns:
             raise Exception(f"Group name {group['name']} duplicates a column name in group {all_cns[cn]}") 
-        all_cns[group['name']] = group['name'] 
+        all_cns[group['name']] = group['name']
+        g_cols = []
         for tpl in group['columns']:
             if type(tpl)==list:
                 cn = tpl[0] # column name
@@ -157,6 +158,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
             all_cns[cn] = group['name']
                 
             if only_fix_categories: sn = cn
+            g_cols.append(cn)
             
             if sn not in raw_data:
                 if not cd.get('generated') and not group.get('virtual'): # bypass warning for columns marked as being generated later
@@ -214,6 +216,11 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
             # Update ndf in real-time so it would be usable in transforms for next columns
             if s.name in ndf.columns: ndf = ndf.drop(columns=s.name) # Overwrite existing instead of duplicates. Esp. important for virtual cols
             ndf = pd.concat([ndf,s],axis=1)
+
+        if 'subgroup_transform' in group:
+            subgroups = group.get('subgroups',[g_cols])
+            for sg in subgroups:
+                ndf[sg] = eval(group['subgroup_transform'],{ 'gdf':ndf[sg], 'df':raw_data, 'ndf':ndf, 'pd':pd, 'np':np, 'stk':stk , **constants })
 
     pp_key = 'postprocessing' if not virtual_pass else 'virtual_postprocessing'
     if pp_key in meta and not only_fix_categories:
