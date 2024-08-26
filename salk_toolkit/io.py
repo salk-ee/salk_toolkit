@@ -5,7 +5,7 @@ __all__ = ['max_cats', 'custom_meta_key', 'read_json', 'process_annotated_data',
            'group_columns_dict', 'list_aliases', 'change_meta_df', 'change_parquet_meta', 'infer_meta',
            'data_with_inferred_meta', 'read_and_process_data', 'save_population_h5', 'load_population_h5',
            'save_sample_h5', 'find_type_in_dict', 'save_parquet_with_metadata', 'load_parquet_metadata',
-           'load_parquet_with_metadata']
+           'load_parquet_with_metadata', 'replace_data_meta_in_parquet']
 
 # %% ../nbs/01_io.ipynb 3
 import json, os, warnings
@@ -615,3 +615,24 @@ def load_parquet_with_metadata(file_name,lazy=False,**kwargs):
     return restored_df, restored_meta
 
 
+
+# %% ../nbs/01_io.ipynb 22
+# Helper function to replace a data meta in an already sampled model
+# Should be used carefully, but should mostly work. 
+
+def replace_data_meta_in_parquet(parquet_name,metafile_name):
+    df, fmeta = load_parquet_with_metadata(parquet_name)
+
+    with open(metafile_name,'r') as jf:
+        nmeta = json.load(jf)
+
+    # Add the groups added by the model before to data_meta
+    existing_grps = { g['name'] for g in nmeta['structure'] }
+    nmeta['structure'] += [ grp for grp in fmeta['data']['structure']
+        if grp.get('generated') and grp['name'] not in existing_grps ]
+
+    # Replace the data part of meta    
+    fmeta['data'] = nmeta
+
+    # Rewrite the file
+    save_parquet_with_metadata(df,fmeta,parquet_name)
