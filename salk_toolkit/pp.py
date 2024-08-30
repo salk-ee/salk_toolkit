@@ -177,7 +177,8 @@ cont_transform_options = ['center','zscore','softmax','softmax-ratio']
 # Get the categories that are in use
 def get_cats(col, cats=None):
     if cats is None or len(set(col.dtype.categories)-set(cats))>0: cats = col.dtype.categories
-    return [ c for c in cats if c in col.unique() ]
+    uvals = col.unique()
+    return [ c for c in cats if c in uvals ]
 
 def transform_cont(data, transform):
     if not transform: return data, '.1f'
@@ -299,7 +300,7 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
         filtered_df = filtered_df.reset_index(names='id').melt(id_vars=id_vars, value_vars=value_vars, var_name='question', value_name=pp_desc['res_col'])
 
         # Fix the draws for each question separately
-        if 'draw' in filtered_df.columns:
+        if 'draw' in filtered_df.columns and data_meta.get('draws_data') is not None:
             draw_ar = []
             for c in value_vars:
                 if c in data_meta.get('draws_data',{}):
