@@ -80,6 +80,7 @@ def read_concatenate_files_list(meta,data_file=None,path=None):
             if k in ['opts']: continue
             if len(data_files)<=1 and k in ['file']: continue
             raw_data[k] = v
+            if isinstance(v,str): cat_dtypes[k] = None
 
         # Strip all categorical dtypes
         if len(data_files) > 1: # No point if only one file
@@ -96,10 +97,12 @@ def read_concatenate_files_list(meta,data_file=None,path=None):
     # Restore categoricals
     if len(cat_dtypes)>0:
         for c, dtype in cat_dtypes.items():
-            if not set(fdf[c].dropna().unique()) <= set(dtype.categories): # If the categories are the same, restore the dtype
+            if dtype is None: # Added as an extra field, infer categories
+                dtype = pd.Categorical([],list(fdf[c].dropna().unique())).dtype
+            elif not set(fdf[c].dropna().unique()) <= set(dtype.categories): # If the categories are the same, restore the dtype
                 #print(set(fdf[c].dropna().unique()), set(dtype.categories))
                 warn(f"Categories for {c} are different between files, not restoring dtype")
-                dtype=pd.Categorical([],list(fdf[c].dropna().unique())).dtype
+                dtype = pd.Categorical([],list(fdf[c].dropna().unique())).dtype
             fdf[c] = pd.Categorical(fdf[c],dtype=dtype)
 
     return fdf, (metas[-1] if metas else None)
