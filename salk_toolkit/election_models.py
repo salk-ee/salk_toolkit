@@ -209,8 +209,11 @@ def coalition_applet(data, mandates, electoral_system, value_col='value', facets
     p_plot = alt.Chart(
             ddf,
             #title=var
-        ).mark_bar(opacity=0.5, stroke='black', strokeWidth=0, size=20).encode(
-            alt.X('mandates:Q', title="Mandates", axis=alt.Axis(tickMinStep=1),scale=alt.Scale(domainMin=0)),
+        ).mark_rect(opacity=0.5, stroke='black', strokeWidth=0).transform_calculate(
+            x1='datum.mandates - 0.45',
+            x2='datum.mandates + 0.45'
+        ).encode(
+            alt.X('x1:Q', title="Mandates", axis=alt.Axis(tickMinStep=1),scale=alt.Scale(domainMin=0)), alt.X2('x2:Q'),
             alt.Y('count:Q', title=None, axis=None),
             alt.Row(f'{f0["col"]}:N', title=None),
             color=alt.Color(f'{f0["col"]}:N', legend=None, scale=f0["colors"]),
@@ -230,8 +233,11 @@ def coalition_applet(data, mandates, electoral_system, value_col='value', facets
 
         mi, ma = min(cdf['mandates'].min(),n), max(cdf['mandates'].max(),n)
         tick_count = (ma-mi+1) # This is the only way to enforce integer ticks as tickMinStep seems to not do it sometimes
-        k_plot = alt.Chart(cdf).mark_bar(color='#ff2b2b',size=20).encode(
-            x=alt.X('mandates:Q', title='Mandates', scale=alt.Scale(round=True), axis=alt.Axis(tickMinStep=1,tickCount=tick_count)),
+        k_plot = alt.Chart(cdf).mark_rect(color='#ff2b2b').transform_calculate(
+            x1='datum.mandates - 0.45',
+            x2='datum.mandates + 0.45'
+        ).encode(
+            x=alt.X('x1:Q', title='Mandates', axis=alt.Axis(tickMinStep=1,tickCount=tick_count), scale=alt.Scale(domain=[mi,ma])), x2=alt.X2('x2:Q'),
             y=alt.Y('count:Q', title=None, stack=None, axis=None),
         ).properties(height=200,width=300)
         rule = alt.Chart(pd.DataFrame({'x': [n]})).mark_rule(color='red', size=1.25, strokeDash=[5, 2]).encode(x='x')
