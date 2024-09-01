@@ -209,7 +209,7 @@ def coalition_applet(data, mandates, electoral_system, value_col='value', facets
     p_plot = alt.Chart(
             ddf,
             #title=var
-        ).mark_rect(opacity=0.5, stroke='black', strokeWidth=0).transform_calculate(
+        ).mark_rect(opacity=0.8, stroke='black', strokeWidth=0).transform_calculate(
             x1='datum.mandates - 0.45',
             x2='datum.mandates + 0.45'
         ).encode(
@@ -240,7 +240,7 @@ def coalition_applet(data, mandates, electoral_system, value_col='value', facets
             x=alt.X('x1:Q', title='Mandates', axis=alt.Axis(tickMinStep=1,tickCount=tick_count), scale=alt.Scale(domain=[mi,ma])), x2=alt.X2('x2:Q'),
             y=alt.Y('count:Q', title=None, stack=None, axis=None),
         ).properties(height=200,width=300)
-        rule = alt.Chart(pd.DataFrame({'x': [n]})).mark_rule(color='red', size=1.25, strokeDash=[5, 2]).encode(x='x')
+        rule = alt.Chart(pd.DataFrame({'x': [n]})).mark_rule(color='silver', size=1.25, strokeDash=[5, 2]).encode(x='x')
         col2.altair_chart((k_plot+rule).configure_view(strokeWidth=0), use_container_width=True)
 
         col2.write(tf("Probability of at least  **{0:.0f}** mandates: **{1:.1%}**").format(n, cdf[cdf['mandates'] >= n]['count'].sum()/cdf['count'].sum()))
