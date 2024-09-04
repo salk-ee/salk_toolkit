@@ -56,7 +56,7 @@ def simulate_election(support, nmandates, threshold=0.0, ed_threshold=0.0, quota
 
     # Districts with quotas, then country-level compensation (Estonian system)
     if quotas:
-        quotas = (support.sum(axis=-1)+1e-3)/(nmandates[None,:]+2)
+        quotas = (support.sum(axis=-1)+1e-3)/(nmandates[None,:])
         v, r = np.divmod(uzsim_t/quotas[:,:,None],1.0)
         dmandates = v+(r>=first_quota_coef)
     
