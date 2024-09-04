@@ -95,6 +95,7 @@ def vec_smallest_k(t, kv):
 
 
 # %% ../nbs/04_election_models.ipynb 8
+# Czech electoral system based on https://pspen.psp.cz/chamber-members/plenary/elections/#electoralsystem
 def cz_system(support, nmandates, threshold=0.0, body_size=None, **kwargs):
 
     # Remove parties below a national threshold
@@ -116,12 +117,15 @@ def cz_system(support, nmandates, threshold=0.0, body_size=None, **kwargs):
     remaining_mand = body_size - dmandates.sum(axis=(1,2)) # Margin over e_d and party
 
     # Second level quota
-    slquotas = (slvotes.sum(axis=-1)+1e-3)/(remaining_mand)
+    slquotas = (slvotes.sum(axis=-1)+1e-3)/(remaining_mand+1)
     slmandates, r = np.divmod(slvotes/slquotas[:,None],1.0)
 
     # Assign all seats using highest remainders
-    missing = remaining_mand-slmandates.sum(axis=-1)
+    missing = np.maximum(0,remaining_mand-slmandates.sum(axis=-1))
     slmandates += vec_smallest_k(-r,missing)
+
+    # Checksums to make sure all mandates get allocated
+    #print(list(dmandates.sum(axis=(1,2)) + slmandates.sum(axis=1)))
     
     # Return the districts + compensation results
     return np.concatenate( [dmandates,slmandates[:,None,:]],axis=1 )

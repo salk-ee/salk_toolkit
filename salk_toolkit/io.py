@@ -164,7 +164,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
             g_cols.append(cn)
             
             if sn not in raw_data:
-                if not cd.get('generated') and not group.get('virtual'): # bypass warning for columns marked as being generated later
+                if not group.get('generated') and not group.get('virtual'): # bypass warning for columns marked as being generated later
                     warn(f"Column {sn} not found")
                 continue
             
