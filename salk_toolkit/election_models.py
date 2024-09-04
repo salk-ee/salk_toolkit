@@ -190,8 +190,9 @@ def coalition_applet(data, mandates, electoral_system, value_col='value', facets
     sdf = simulate_election_pp(data, mandates, electoral_system, f0['col'], value_col, f1['col'], f0['order'], f1['order'])
 
     # Aggregate to total mandate counts
-    adf = sdf.groupby(['draw',f0['col']])['mandates'].sum().reset_index()
-    adf = adf[adf['mandates']>0]
+    odf = sdf.groupby(['draw',f0['col']])['mandates'].sum().reset_index()
+    odf['over_t'] = (odf['mandates']>0) 
+    adf = odf[odf['mandates']>0]
 
     parties = list(adf[f0['col']].unique()) # Leave only parties that have mandates
 
@@ -205,7 +206,10 @@ def coalition_applet(data, mandates, electoral_system, value_col='value', facets
     col1.markdown(tf('**Party mandate distributions**'))
 
     # Individual parties plot
-    ddf = adf.groupby(f0['col'])['mandates'].value_counts().rename('count').reset_index()
+    ddf = (adf.groupby(f0['col'])['mandates'].value_counts()/odf.groupby(f0['col']).size()).rename('percent').reset_index()
+    ddf = ddf.merge(odf.groupby(f0['col'])['mandates'].median().rename(tf('median')),left_on=f0['col'],right_index=True)
+    ddf = ddf.merge(odf.groupby(f0['col'])['over_t'].mean().rename(tf('over_threshold')),left_on=f0['col'],right_index=True)
+     
     p_plot = alt.Chart(
             ddf,
             #title=var
@@ -213,11 +217,16 @@ def coalition_applet(data, mandates, electoral_system, value_col='value', facets
             x1='datum.mandates - 0.45',
             x2='datum.mandates + 0.45'
         ).encode(
-            alt.X('x1:Q', title="Mandates", axis=alt.Axis(tickMinStep=1),scale=alt.Scale(domainMin=0)), alt.X2('x2:Q'),
-            alt.Y('count:Q', title=None, axis=None),
+            alt.X('x1:Q', title=tf("mandates"), axis=alt.Axis(tickMinStep=1),scale=alt.Scale(domainMin=0)), alt.X2('x2:Q'),
+            alt.Y('percent:Q', title=None, axis=None),
             alt.Row(f'{f0["col"]}:N', title=None),
             color=alt.Color(f'{f0["col"]}:N', legend=None, scale=f0["colors"]),
-            tooltip=[alt.Tooltip('mandates:Q', format=',d')]
+            tooltip=[
+                alt.Tooltip('mandates:Q',title=tf('mandates'), format=',d'),
+                alt.Tooltip('percent:Q',title=tf('percent'),format='.1%'),
+                alt.Tooltip(tf('median'),format=',d'),
+                alt.Tooltip(tf('over_threshold'),format='.1%'),
+                ]
         ).properties(height=60)
     col1.altair_chart(p_plot, use_container_width=True)
 
@@ -237,7 +246,7 @@ def coalition_applet(data, mandates, electoral_system, value_col='value', facets
             x1='datum.mandates - 0.45',
             x2='datum.mandates + 0.45'
         ).encode(
-            x=alt.X('x1:Q', title='Mandates', axis=alt.Axis(tickMinStep=1,tickCount=tick_count), scale=alt.Scale(domain=[mi,ma])), x2=alt.X2('x2:Q'),
+            x=alt.X('x1:Q', title=tf('mandates'), axis=alt.Axis(tickMinStep=1,tickCount=tick_count), scale=alt.Scale(domain=[mi,ma])), x2=alt.X2('x2:Q'),
             y=alt.Y('count:Q', title=None, stack=None, axis=None),
         ).properties(height=200,width=300)
         rule = alt.Chart(pd.DataFrame({'x': [n]})).mark_rule(color='silver', size=1.25, strokeDash=[5, 2]).encode(x='x')
