@@ -171,7 +171,7 @@ def matching_plots(pp_desc, df, data_meta, details=False, list_hidden=False):
     else: return [ n for (n,p,i) in sorted(res,key=lambda t: t[1], reverse=True) if p >= 0 ] # Return list of possibilities in decreasing order of fit
 
 # %% ../nbs/02_pp.ipynb 17
-cont_transform_options = ['center','zscore','softmax','softmax-ratio']
+cont_transform_options = ['center','zscore','proportion','softmax','softmax-ratio']
 
 # %% ../nbs/02_pp.ipynb 18
 # Get the categories that are in use
@@ -184,6 +184,7 @@ def transform_cont(data, transform):
     if not transform: return data, '.1f'
     elif transform == 'center': return data - data.mean(skipna=True,axis=0), '.1f'
     elif transform == 'zscore': return sps.zscore(data,nan_policy='omit',axis=0), '.2f'
+    elif transform == 'proportion': return data/(np.array(data).sum(axis=1)[:,None]), '.1%'
     elif transform == 'softmax': return np.exp(data)/(np.exp(np.array(data)).sum(axis=1)[:,None]), '.1%'
     elif transform == 'softmax-ratio': return data.shape[1]*np.exp(data)/(np.exp(np.array(data)).sum(axis=1)[:,None]), '.1f' 
     else: raise Exception(f"Unknown transform '{transform}'")
