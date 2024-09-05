@@ -109,7 +109,8 @@ def cz_system(support, nmandates, threshold=0.0, body_size=None, **kwargs):
 
     # Deal with excess allocations
     excess = np.maximum(0,(dmandates.sum(axis=-1)-nmandates[None,:]))
-    excess_dist = vec_smallest_k(r,excess) 
+    rp = r+(dmandates==0) # Increase residuals to remove mandates only from those that got any
+    excess_dist = vec_smallest_k(rp,excess) 
     dmandates -= excess_dist
 
     # Second level votes
