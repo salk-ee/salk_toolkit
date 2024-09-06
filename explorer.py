@@ -200,6 +200,7 @@ with st.sidebar: #.expander("Select dimensions"):
         if v=='bool':
             plot_args[k] = st.toggle(k,key=k)
         elif isinstance(v, list):
+            stss_safety(k,v)
             plot_args[k] = st.selectbox(k,v,key=k)
 
     args['plot_args'] = {**args.get('plot_args',{}),**plot_args}
@@ -219,6 +220,7 @@ with st.sidebar: #.expander("Select dimensions"):
         sortable = args['factor_cols']
         if plot_meta.get('sort_numeric_first_facet'): sortable = sortable[1:]
         if sort and len(sortable)>0:
+            stss_safety('sortby',sortable)
             sort_facet = st.selectbox('Sort by', sortable, 0 ,key='sortby')
             ascending = st.toggle('Ascending', False,key='sort_ascending')
             args['sort'] = {sort_facet: ascending}
