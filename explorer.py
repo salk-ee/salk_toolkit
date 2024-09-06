@@ -264,7 +264,7 @@ elif input_files_facet:
         df, fargs = loaded[ifile]['data'], args.copy()
         fargs['filter'] = { k:v for k,v in fargs['filter'].items() if k in df.columns }
         fargs['factor_cols'] = [ f for f in fargs['factor_cols'] if f!='input_file' ]
-        pparams = get_filtered_data(df, first_data_meta, fargs)
+        pparams = pp_transform_data(df, first_data_meta, fargs)
         dfs.append(pparams['data'])
 
     fdf = pd.concat(dfs)
@@ -305,7 +305,7 @@ else:
             #with st.spinner('Filtering data...'):
             fargs = args.copy()
             fargs['filter'] = { k:v for k,v in args['filter'].items() if k in loaded[ifile]['data'].columns }
-            pparams = get_filtered_data(loaded[ifile]['data'], data_meta, fargs)
+            pparams = pp_transform_data(loaded[ifile]['data'], data_meta, fargs)
             plot = create_plot(pparams,data_meta,fargs,
                                translate=translate,
                                width=get_plot_width(f'{i}_{ifile}'),

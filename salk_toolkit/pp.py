@@ -3,8 +3,8 @@
 # %% auto 0
 __all__ = ['registry', 'registry_meta', 'stk_plot_defaults', 'n_a', 'priority_weights', 'cont_transform_options',
            'special_columns', 'internal_columns', 'get_cat_num_vals', 'stk_plot', 'stk_deregister', 'get_plot_fn',
-           'get_plot_meta', 'get_all_plots', 'calculate_priority', 'matching_plots', 'get_filtered_data',
-           'translate_df', 'create_plot', 'impute_factor_cols', 'e2e_plot', 'test_new_plot']
+           'get_plot_meta', 'get_all_plots', 'calculate_priority', 'matching_plots', 'pp_filter_data',
+           'pp_transform_data', 'translate_df', 'create_plot', 'impute_factor_cols', 'e2e_plot', 'test_new_plot']
 
 # %% ../nbs/02_pp.ipynb 3
 import json, os
@@ -190,52 +190,8 @@ def transform_cont(data, transform):
     else: raise Exception(f"Unknown transform '{transform}'")
 
 # %% ../nbs/02_pp.ipynb 19
-special_columns = ['id','weight','draw','training_subsample', '__index_level_0__']
+def pp_filter_data(df, filter_dict, c_meta, lazy=False):
 
-# Get all data required for a given graph
-# Only return columns and rows that are needed
-# This can handle either a pandas DataFrame or a polars LazyDataFrame (to allow for loading only needed data)
-# NB: LazyDataFrame support is not maintained and is likely to be at least somewhat broken. Keeping code in in case it ever becomes relevant
-def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
-
-    plot_meta = get_plot_meta(pp_desc['plot'])
-    
-    # Figure out which columns we actually need
-    meta_cols = ['weight', 'training_subsample', '__index_level_0__'] + (['draw'] if plot_meta.get('draws') else []) + columns
-    cols = [ pp_desc['res_col'] ]  + pp_desc.get('factor_cols',[]) + list(pp_desc.get('filter',{}).keys())
-    cols += [ c for c in meta_cols if c in full_df.columns and c not in cols ]
-
-    # Remove draws_data if calcualted_draws is disabled       
-    if not pp_desc.get('calculated_draws',True):
-        data_meta = data_meta.copy()
-        del data_meta['draws_data']
-    
-    # If any aliases are used, cconvert them to column names according to the data_meta
-    gc_dict = group_columns_dict(data_meta)
-    c_meta = extract_column_meta(data_meta)
-    
-    # Dict to remap (short) category names to longer descriptions in tooltips
-    label_dict = {}
-    
-    cols = [ c for c in np.unique(list_aliases(cols,gc_dict)) if c in full_df.columns ]
-    
-    #print("C",cols)
-    
-    lazy = isinstance(full_df,pl.LazyFrame)
-    if lazy: pl.enable_string_cache() # Needed for categories to be comparable to strings
-    
-    df = full_df.select(cols) if lazy else full_df[cols]
-
-    # Replace draw with the draws used in modelling. Groups are handled separately below
-    # NB! Has to happen before filtering or the draws are computed for wrong size df
-    # Workaround would be to compute for a dummy df and merge on indices later
-    if 'draw' in df.columns and pp_desc['res_col'] in data_meta.get('draws_data',{}):
-        uid, ndraws = data_meta['draws_data'][pp_desc['res_col']]
-        df = deterministic_draws(df, ndraws, uid, n_total = data_meta['total_size'] )
-    n_points = len(df) # This is used later for draws
-    
-    # Filter using demographics dict. This is very clever but hard to read. See:
-    filter_dict = pp_desc.get('filter',{})
     inds = True if lazy else np.full(len(df),True) 
     for k, v in filter_dict.items():
         
@@ -264,8 +220,56 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
             
     filtered_df = df.filter(inds).collect().to_pandas() if lazy else df[inds].copy()
     if lazy and '__index_level_0__' in filtered_df.columns: # Fix index, if provided. This is a hack but seems to be needed as polars does not handle index properly by default
-        filtered_df.index = filtered_df['__index_level_0__'] 
+        filtered_df.index = filtered_df['__index_level_0__']
+    
+    return filtered_df
 
+# %% ../nbs/02_pp.ipynb 20
+special_columns = ['id','weight','draw','training_subsample', '__index_level_0__']
+
+# Get all data required for a given graph
+# Only return columns and rows that are needed
+# This can handle either a pandas DataFrame or a polars LazyDataFrame (to allow for loading only needed data)
+# NB: LazyDataFrame support is not maintained and is likely to be at least somewhat broken. Keeping code in in case it ever becomes relevant
+def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
+
+    plot_meta = get_plot_meta(pp_desc['plot'])
+    
+    # Figure out which columns we actually need
+    meta_cols = ['weight', 'training_subsample', '__index_level_0__'] + (['draw'] if plot_meta.get('draws') else []) + columns
+    cols = [ pp_desc['res_col'] ]  + pp_desc.get('factor_cols',[]) + list(pp_desc.get('filter',{}).keys())
+    cols += [ c for c in meta_cols if c in full_df.columns and c not in cols ]
+
+    # Remove draws_data if calcualted_draws is disabled       
+    if not pp_desc.get('calculated_draws',True):
+        data_meta = data_meta.copy()
+        del data_meta['draws_data']
+    
+    # If any aliases are used, cconvert them to column names according to the data_meta
+    gc_dict = group_columns_dict(data_meta)
+    c_meta = extract_column_meta(data_meta)
+    
+    cols = [ c for c in np.unique(list_aliases(cols,gc_dict)) if c in full_df.columns ]
+    
+    #print("C",cols)
+    
+    lazy = isinstance(full_df,pl.LazyFrame)
+    if lazy: pl.enable_string_cache() # Needed for categories to be comparable to strings
+    
+    df = full_df.select(cols) if lazy else full_df[cols]
+
+    # Replace draw with the draws used in modelling. Groups are handled separately below
+    # NB! Has to happen before filtering or the draws are computed for wrong size df
+    # Workaround would be to compute for a dummy df and merge on indices later
+    if 'draw' in df.columns and pp_desc['res_col'] in data_meta.get('draws_data',{}):
+        uid, ndraws = data_meta['draws_data'][pp_desc['res_col']]
+        df = deterministic_draws(df, ndraws, uid, n_total = data_meta['total_size'] )
+    n_points = len(df) # This is used later for draws
+    
+    # Filter the data with given filters
+    if pp_desc.get('filter'):
+        filtered_df = pp_filter_data(df, pp_desc.get('filter',{}), c_meta, lazy=lazy)
+    else: filtered_df = df.copy()
     
     # If not poststratisfied
     if not pp_desc.get('poststrat',True):
@@ -347,7 +351,7 @@ def get_filtered_data(full_df, data_meta, pp_desc, columns=[]):
     
     return pparams
 
-# %% ../nbs/02_pp.ipynb 21
+# %% ../nbs/02_pp.ipynb 22
 def discretize_continuous(col, col_meta={}):
 
     if 'bin_breaks' in col_meta and 'bin_labels' in col_meta:
@@ -425,7 +429,7 @@ def wrangle_data(raw_df, data_meta, pp_desc):
     pparams['data'] = data
     return pparams
 
-# %% ../nbs/02_pp.ipynb 22
+# %% ../nbs/02_pp.ipynb 23
 # Create a color scale
 ordered_gradient = ["#c30d24", "#f3a583", "#94c6da", "#1770ab"]
 def meta_color_scale(scale : Dict, column=None, translate=None):
@@ -438,7 +442,7 @@ def meta_color_scale(scale : Dict, column=None, translate=None):
         cats = [ remap[c] for c in cats ]
     return to_alt_scale(scale,cats)
 
-# %% ../nbs/02_pp.ipynb 23
+# %% ../nbs/02_pp.ipynb 24
 internal_columns = ['draw','weight','group_size'] 
 
 def translate_df(df, translate):
@@ -450,7 +454,7 @@ def translate_df(df, translate):
             df[c] = df[c].cat.rename_categories(remap)
     return df
 
-# %% ../nbs/02_pp.ipynb 24
+# %% ../nbs/02_pp.ipynb 25
 def create_tooltip(pparams,tc_meta):
     
     data, tfn = pparams['data'], pparams['translate']
@@ -482,7 +486,7 @@ def create_tooltip(pparams,tc_meta):
     return tooltips
     
 
-# %% ../nbs/02_pp.ipynb 25
+# %% ../nbs/02_pp.ipynb 26
 # Small helper function to move columns from internal to external columns
 def remove_from_internal_fcols(cname, factor_cols, n_inner):
     if cname not in factor_cols[:n_inner]: return n_inner
@@ -505,7 +509,7 @@ def inner_outer_factors(factor_cols, pp_desc, plot_meta):
     
     return factor_cols, n_inner
 
-# %% ../nbs/02_pp.ipynb 26
+# %% ../nbs/02_pp.ipynb 27
 # Function that takes filtered raw data and plot information and outputs the plot
 # Handles all of the data wrangling and parameter formatting
 def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=False, width=200, return_matrix_of_plots=False, translate=None):
@@ -648,7 +652,7 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
     return plot
 
 
-# %% ../nbs/02_pp.ipynb 28
+# %% ../nbs/02_pp.ipynb 29
 # Compute the full factor_cols list, including question and res_col as needed
 def impute_factor_cols(pp_desc, col_meta, plot_meta=None):
     factor_cols = pp_desc.get('factor_cols',[]).copy()
@@ -674,7 +678,7 @@ def impute_factor_cols(pp_desc, col_meta, plot_meta=None):
 
     return factor_cols
 
-# %% ../nbs/02_pp.ipynb 29
+# %% ../nbs/02_pp.ipynb 30
 # A convenience function to draw a plot straight from a dataset
 def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, check_match=True, impute=True,**kwargs):
     if data_file is None and full_df is None:
@@ -703,7 +707,7 @@ def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, c
         if  fit<0:
             raise Exception(f"Plot {pp_desc['plot']} not applicable in this situation because of flags {imp}")
             
-    pparams = get_filtered_data(full_df, data_meta, pp_desc)
+    pparams = pp_transform_data(full_df, data_meta, pp_desc)
     return create_plot(pparams, data_meta, pp_desc, width=width,**kwargs)
 
 # Another convenience function to simplify testing new plots

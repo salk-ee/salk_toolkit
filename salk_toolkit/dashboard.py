@@ -195,7 +195,7 @@ class SalkDashboardBuilder:
             self.uam.login_screen()
             
         # Wrap some streamlit functions with translate
-        wrap_list = ['write','markdown','title','header','subheader','caption','text','divider',
+        wrap_list = ['write','markdown','title','header','subheader','caption','text','divider','tabs',
                      'button','download_button','link_button','checkbox','toggle','radio','selectbox',
                      'multiselect','slider','select_slider','text_input','number_input','text_area',
                      'date_input','time_input','file_uploader','camera_input','color_picker', 'popover']
