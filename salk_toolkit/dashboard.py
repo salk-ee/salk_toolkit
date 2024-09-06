@@ -3,7 +3,7 @@
 # %% auto 0
 __all__ = ['get_plot_width', 'open_fn', 'exists_fn', 'read_annotated_data_cached', 'load_json', 'load_json_cached', 'save_json',
            'alias_file', 'default_translate', 'SalkDashboardBuilder', 'UserAuthenticationManager', 'draw_plot_matrix',
-           'st_plot', 'facet_ui', 'filter_ui', 'translate_with_dict', 'log_missing_translations',
+           'st_plot', 'stss_safety', 'facet_ui', 'filter_ui', 'translate_with_dict', 'log_missing_translations',
            'clean_missing_translations', 'add_missing_to_dict']
 
 # %% ../nbs/05_dashboard.ipynb 3
@@ -536,6 +536,11 @@ def st_plot(pp_desc,**kwargs):
     draw_plot_matrix(plots, matrix_form=matrix_form)
 
 # %% ../nbs/05_dashboard.ipynb 23
+# Streamlit session state safety - check and clear session state if it has an unfit value
+def stss_safety(key, opts):
+    if key in st.session_state and st.session_state[key] not in opts: del st.session_state[key]
+
+# %% ../nbs/05_dashboard.ipynb 24
 def facet_ui(dims, two=False, raw=False, translate=None, force_choice=False,label='Facet', key=None):
     # Set up translation
     tfc = translate if translate else (lambda s,**kwargs: s)
@@ -544,24 +549,28 @@ def facet_ui(dims, two=False, raw=False, translate=None, force_choice=False,labe
     tdims = [ tf(d) for d in dims ]
     r_map = dict(zip(tdims,dims))
     
+    key='' if key is None else '_'+key
     none = tf('None')
     stc = st.sidebar if not raw else st
-    facet_dim = stc.selectbox(tfc(label+':',context='ui'), tdims if force_choice else [none] + tdims, key=key)
+
+    stss_safety('facet1'+key,tdims)
+    facet_dim = stc.selectbox(tfc(label+':',context='ui'), tdims if force_choice else [none] + tdims, key='facet1'+key)
     fcols = [facet_dim] if facet_dim != none else []
     if two and facet_dim != none:
-        second_dim = stc.selectbox(tfc(label+' 2:',context='ui'), tdims if force_choice else [none] + tdims, key=(key+'2' if key else None))
+        stss_safety('facet2'+key,tdims)
+        second_dim = stc.selectbox(tfc(label+' 2:',context='ui'), tdims if force_choice else [none] + tdims, key='facet2'+key)
         if second_dim not in [none,facet_dim]:  fcols = [facet_dim, second_dim]
         
     return [ r_map[d] for d in fcols ]
 
-# %% ../nbs/05_dashboard.ipynb 24
+# %% ../nbs/05_dashboard.ipynb 25
 # Function that creates reset functions for multiselects in filter
 def ms_reset(cn, all_vals):
     def reset_ms():
         st.session_state[f"{cn}_multiselect"] = all_vals
     return reset_ms
 
-# %% ../nbs/05_dashboard.ipynb 25
+# %% ../nbs/05_dashboard.ipynb 26
 # User interface that outputs a filter for the pp_desc
 def filter_ui(data, dmeta=None, dims=None, detailed=False, raw=False, translate=None, force_choice=False):
     
@@ -596,7 +605,7 @@ def filter_ui(data, dmeta=None, dims=None, detailed=False, raw=False, translate=
             r_map.update(dict(zip([tf(c) for c in grp_names],grp_names)))
             
         if detailed and col.dtype.name=='category': # Multiselect
-            filters[cn] = stc.multiselect(tf(cn), all_vals, all_vals, key=f"{cn}_multiselect")
+            filters[cn] = stc.multiselect(tf(cn), all_vals, all_vals, key=f"filter_{cn}_multiselect")
             if set(filters[cn]) == set(all_vals): del filters[cn]
             else: 
                 stc.button(tf("Reset"),key=f"{cn}_reset",on_click=ms_reset(cn,all_vals))
@@ -604,18 +613,19 @@ def filter_ui(data, dmeta=None, dims=None, detailed=False, raw=False, translate=
         elif col.dtype.name=='category' and not col.dtype.ordered: # Unordered categorical - selectbox
             choices = [gt for gt,g in r_map.items() if g in grp_names] + all_vals
             if not force_choice: choices = [tf('All')] + choices
-            filters[cn] = stc.selectbox(tf(cn),choices)
+            stss_safety(f'filter_{cn}_sel',choices)
+            filters[cn] = stc.selectbox(tf(cn),choices,key=f'filter_{cn}_sel')
             if filters[cn] == tf('All'): del filters[cn]
             else: filters[cn] = r_map[filters[cn]]
         # Use [None,<start>,<end>] for ranges, both categorical and continuous to distinguish them from list of values
         elif col.dtype.name=='category': # Ordered categorical - slider
-            f_res = stc.select_slider(tf(cn),all_vals,value=(all_vals[0],all_vals[-1]))
+            f_res = stc.select_slider(tf(cn),all_vals,value=(all_vals[0],all_vals[-1]),key=f'filter_{cn}_ocat')
             if f_res != (all_vals[0],all_vals[-1]): 
                 filters[cn] = [None]+[r_map[f_res[0]],r_map[f_res[1]]]
         elif is_numeric_dtype(col) and col.dtype!='bool': # Continuous
             mima = (col.min(),col.max())
             if mima[0]==mima[1]: continue
-            f_res = stc.slider(tf(cn),*mima,value=mima)
+            f_res = stc.slider(tf(cn),*mima,value=mima,key=f'filter_{cn}_cont')
             if f_res != mima: filters[cn] = [None] + list(f_res)
             
     if filters and not force_choice: f_info.warning('⚠️ ' + tfc('Filters active',context='ui') + ' ⚠️')
@@ -623,7 +633,7 @@ def filter_ui(data, dmeta=None, dims=None, detailed=False, raw=False, translate=
     return filters
 
 
-# %% ../nbs/05_dashboard.ipynb 27
+# %% ../nbs/05_dashboard.ipynb 28
 # Use dict here as dicts are ordered as of Python 3.7 and preserving order groups things together better
 
 def translate_with_dict(d):

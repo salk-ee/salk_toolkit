@@ -37,12 +37,12 @@ with st.spinner("Loading libraries.."):
     import contextlib
 
     from pandas.api.types import is_numeric_dtype
-
+    from streamlit_js import st_js, st_js_blocking
 
     from salk_toolkit.io import load_parquet_with_metadata, read_json, extract_column_meta
     from salk_toolkit.pp import *
     from salk_toolkit.utils import *
-    from salk_toolkit.dashboard import draw_plot_matrix, facet_ui, filter_ui, get_plot_width, default_translate
+    from salk_toolkit.dashboard import draw_plot_matrix, facet_ui, filter_ui, get_plot_width, default_translate, stss_safety
 
     tqdm = lambda x: x # So we can freely copy-paste from notebooks
 
@@ -50,9 +50,15 @@ with st.spinner("Loading libraries.."):
     # This speeds plots up considerably as altair performs an excessive amount of these validation for some reason
     dm = alt.utils.schemapi.debug_mode(False); dm.__enter__()
 
+if 'ls_loaded' not in st.session_state:
+    ls_state = json.loads(st_js_blocking(f'return localStorage.getItem("session_state")') or '{}')
+    for k, v in ls_state.items(): st.session_state[k] = v
+st.session_state['ls_loaded'] = True    
+
 # Turn off annoying warnings
 warnings.filterwarnings(action='ignore', category=UserWarning)
 warnings.filterwarnings(action='ignore', category=pd.errors.PerformanceWarning)
+
 
 cl_args = sys.argv[1:] if len(sys.argv)>1 else []
 if len(cl_args)>0 and cl_args[0].endswith('.json'):
@@ -110,6 +116,7 @@ else:
 #                                                                      #
 ########################################################################
 
+
 from pandas.api.types import is_datetime64_any_dtype as is_datetime
 
 if global_data_meta: st.sidebar.info('⚠️ External meta loaded.')
@@ -136,6 +143,9 @@ with st.sidebar: #.expander("Select dimensions"):
     f_info = st.empty()
     st.markdown("""___""")
 
+    # Reset button - has to be high up in case something fails to load
+    if st.sidebar.button('Reset choices'): st.session_state.clear()
+
     draw = st.toggle('Draw plots',True)
 
     show_grouped = st.toggle('Show grouped facets', True)
@@ -147,7 +157,8 @@ with st.sidebar: #.expander("Select dimensions"):
     obs_dims = [c for c in obs_dims if c not in first_data.columns or not is_datetime(first_data[c])]
     all_dims = get_dimensions(first_data_meta, False, first_data.columns)
 
-    obs_name = st.selectbox('Observation', obs_dims)
+    stss_safety('observation',obs_dims)
+    obs_name = st.selectbox('Observation', obs_dims,key='observation')
     args['res_col'] = obs_name
 
     res_cont = not c_meta[args['res_col']].get('categories') or args.get('convert_res') == 'continuous'
@@ -164,8 +175,8 @@ with st.sidebar: #.expander("Select dimensions"):
         st.markdown("""Please choose facets different from observation dimension""")
         st.stop()
 
-    args['internal_facet'] = st.toggle('Internal facet?',True)
-    sort = st.toggle('Sort facets',False)
+    args['internal_facet'] = st.toggle('Internal facet?',True,key='internal')
+    sort = st.toggle('Sort facets',False,key='sort')
 
     # Make all dimensions explicit
     args['factor_cols'] = impute_factor_cols(args, c_meta)
@@ -187,42 +198,46 @@ with st.sidebar: #.expander("Select dimensions"):
     plot_args = {} # 'n_facet_cols':2 }
     for k, v in plot_meta.get('args',{}).items():
         if v=='bool':
-            plot_args[k] = st.toggle(k)
+            plot_args[k] = st.toggle(k,key=k)
         elif isinstance(v, list):
-            plot_args[k] = st.selectbox(k,v)
+            plot_args[k] = st.selectbox(k,v,key=k)
 
     args['plot_args'] = {**args.get('plot_args',{}),**plot_args}
 
     with st.expander('Advanced'):
-        args['poststrat'] = st.toggle('Post-stratified?', True)
+        args['poststrat'] = st.toggle('Post-stratified?', True,key='poststrat')
         if args['poststrat']: del args['poststrat'] # True is default, so clean the dict from it in that case
 
-        detailed = st.toggle('Fine-grained filter', False)    
+        detailed = st.toggle('Fine-grained filter', False,key='fine_grained')    
 
         if res_cont: # Extra settings for continuous data 
-            cont_transform = st.selectbox('Transform', ['None'] + cont_transform_options)
+            cont_transform = st.selectbox('Transform', ['None'] + cont_transform_options, key='transform')
             if cont_transform != 'None': args['cont_transform'] = cont_transform
-            agg_fn = st.selectbox('Aggregation', ['mean', 'median', 'sum'])
+            agg_fn = st.selectbox('Aggregation', ['mean', 'median', 'sum'], key='aggregation')
             if agg_fn!='mean': args['agg_fn'] = agg_fn
 
         sortable = args['factor_cols']
         if plot_meta.get('sort_numeric_first_facet'): sortable = sortable[1:]
         if sort and len(sortable)>0:
-            sort_facet = st.selectbox('Sort by', sortable, 0 )
-            ascending = st.toggle('Ascending', False)
+            sort_facet = st.selectbox('Sort by', sortable, 0 ,key='sortby')
+            ascending = st.toggle('Ascending', False,key='sort_ascending')
             args['sort'] = {sort_facet: ascending}
 
-        qpos = st.selectbox('Question position',['Auto',1,2,3])
+        qpos = st.selectbox('Question position',['Auto',1,2,3],key='q_pos')
         if 'question' in args['factor_cols'] and qpos!='Auto':
             args['factor_cols'] = [ c for c in args['factor_cols'] if c != 'question']
             args['factor_cols'].insert(qpos-1,'question')
 
-        override = st.text_area('Override keys','{}')
+        override = st.text_area('Override keys','{}',key='override')
         if override: args.update(eval(override))
     
     args['filter'] = filter_ui(first_data,first_data_meta,
                                 dims=all_dims,detailed=detailed)
+    
+    #print(list(st.session_state.keys()))
 
+    #print(f"localStorage.setItem('args','{json.dumps(args)}');")
+    st_js(f"localStorage.setItem('session_state','{json.dumps(dict(st.session_state))}');")
 
     # Make all dimensions explicit now that plot is selected (as that can affect the factor columns)
     args['factor_cols'] = impute_factor_cols(args, c_meta, plot_meta)
