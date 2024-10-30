@@ -26,7 +26,7 @@ import pyarrow.parquet as pq
 import pyreadstat
 
 import salk_toolkit as stk
-from salk_toolkit.utils import replace_constants, is_datetime, warn
+from salk_toolkit.utils import replace_constants, is_datetime, warn, cached_fn
 
 # %% ../nbs/01_io.ipynb 4
 def read_json(fname,replace_const=True):
@@ -383,6 +383,11 @@ max_cats = 50
 # This is not meant to be directly used, rather to speed up the annotation process
 def infer_meta(data_file=None, meta_file=True, read_opts={}, df=None, translate_fn=None, translation_blacklist=[]):
     meta = { 'constants': {}, 'read_opts': read_opts }
+
+    if translate_fn is not None: 
+        otfn = translate_fn
+        translate_fn = cached_fn(lambda x: otfn(str(x)) if x else '' )
+    else: translate_fn = str
     
     # Read datafile
     col_labels = {}
@@ -395,7 +400,7 @@ def infer_meta(data_file=None, meta_file=True, read_opts={}, df=None, translate_
             read_fn = getattr(pyreadstat,'read_'+data_file[-3:])
             df, sav_meta = read_fn(data_file, **{ 'apply_value_formats':True, 'dates_as_pandas_datetime':True },**read_opts)
             col_labels = dict(zip(sav_meta.column_names, sav_meta.column_labels)) # Make this data easy to access by putting it in meta as constant
-            if translate_fn: col_labels = { k:translate_fn(v) for k,v in col_labels.items() }
+            if translate_fn: col_labels = { k: translate_fn(v) for k,v in col_labels.items() }
         elif data_file[-7:] == 'parquet':
             df = pd.read_parquet(data_file, **read_opts)
         elif data_file[-4:] in ['.xls', 'xlsx', 'xlsm', 'xlsb', '.odf', '.ods', '.odt']:

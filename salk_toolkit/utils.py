@@ -8,7 +8,7 @@ __all__ = ['warn', 'default_color', 'factorize_w_codes', 'batch', 'loc2iloc', 'm
            'to_alt_scale', 'multicol_to_vals_cats', 'gradient_to_discrete_color_scale', 'is_datetime', 'rel_wave_times',
            'stable_draws', 'deterministic_draws', 'clean_kwargs', 'censor_dict', 'cut_nice', 'rename_cats',
            'str_replace', 'merge_series', 'aggregate_multiselect', 'deaggregate_multiselect', 'gb_in', 'gb_in_apply',
-           'stk_defaultdict']
+           'stk_defaultdict', 'cached_fn']
 
 # %% ../nbs/10_utils.ipynb 3
 import json, os, warnings, math, inspect
@@ -338,3 +338,12 @@ def gb_in_apply(df, gb_cols, fn, cols=None, **kwargs):
 def stk_defaultdict(dv):
     if not isinstance(dv,dict): dv = {'default':dv}
     return defaultdict(lambda: dv['default'], dv)
+
+# %% ../nbs/10_utils.ipynb 44
+def cached_fn(fn):
+    cache = {}
+    def cf(x):
+        if x not in cache:
+            cache[x] = fn(x)
+        return cache[x]
+    return cf
