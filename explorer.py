@@ -144,7 +144,9 @@ with st.sidebar: #.expander("Select dimensions"):
     st.markdown("""___""")
 
     # Reset button - has to be high up in case something fails to load
-    if st.sidebar.button('Reset choices'): st.session_state.clear()
+    if st.sidebar.button('Reset choices'): 
+        st.session_state.clear()
+        st.session_state['ls_loaded'] = True
 
     draw = st.toggle('Draw plots',True)
 

@@ -158,6 +158,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
             if 'col_prefix' in cd: cn = cd['col_prefix']+cn
             
             # Detect duplicate columns in meta - including among those missing or generated
+            # Only flag if they are duplicates even after prefix
             if cn in all_cns: 
                 raise Exception(f"Duplicate column name found: '{cn}' in {all_cns[cn]} and {group['name']}")
             all_cns[cn] = group['name']
@@ -269,7 +270,7 @@ def extract_column_meta(data_meta):
         res[g['name']] = {**base, 'columns': [base.get('col_prefix','')+(t[0] if type(t)!=str else t) for t in g['columns']] }
         for cd in g['columns']:
             if isinstance(cd,str): cd = [cd]
-            res[cd[0]] = {**base,**cd[-1]} if isinstance(cd[-1],dict) else base
+            res[base.get('col_prefix','')+cd[0]] = {**base,**cd[-1]} if isinstance(cd[-1],dict) else base
     return res
 
 # Convert data_meta into a dict of group_name -> [column names]
