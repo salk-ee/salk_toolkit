@@ -65,7 +65,9 @@ def load_file(pdict):
 mst = st.container()
 
 dd_e = st.expander('Data & Population sections from model',expanded=True)
-ddict = eval(dd_e.text_area('Data desc','{}'))
+dd_d = dd_e.text_area('Data desc','{}').strip()
+if dd_d[0]!= '{': dd_d = '{'+dd_d+'}' # Add parentheses if it was copied without
+ddict = eval(dd_d)
 
 if 'data' not in ddict or 'population' not in ddict:
     st.write("Please copy the 'data' and 'population' sections of the model")
@@ -76,8 +78,7 @@ ddict['population']['file'] = os.path.join(path,ddict['population']['file'])
 df, dm = load_file(ddict['data'])
 cdf, cm = load_file(ddict['population'])
 
-common_cols = [c for c in cdf.columns if c in df.columns]
-
+common_cols = [c for c in cdf.columns if c in df.columns and len(set(cdf[c]) & set(df[c]))>0]
 # Get marginal distributions
 def get_dists(dim,div_dim=[]):
     gbs = df.groupby(div_dim).size() if div_dim else len(df)
@@ -108,7 +109,6 @@ with st.sidebar:
         dim = [st.selectbox('Dimension',common_cols)]
         dim2 = st.selectbox('Second dimension',['None']+common_cols)
         if dim2!='None':  dim += [dim2]
-
         split_dim = st.selectbox('Split dimension',['None']+list(df.columns))
         sdl = [split_dim] if split_dim!='None' else []
 
@@ -120,6 +120,7 @@ if page=='Overview':
     kl_overall = kl_divergence(common_cols)
     table.append(('Full', kl_overall[0], kl_overall[1]))
     for c in common_cols:
+        
         kl_c = kl_divergence([c])
         table.append((c, kl_c[0], kl_c[1]))
     sdf = pd.DataFrame(table,columns=['Dimension','Raw KL', 'Weighted KL'])
@@ -140,8 +141,6 @@ if page=='Overview':
     ).properties(width=400,height=400)
     c2.altair_chart(chart)
 
-        
-
 
 elif page=='Margins':
 
@@ -155,17 +154,49 @@ elif page=='Margins':
     ddf = pd.concat([dd,wd,cd])
 
     if len(dim)>1: # Side-by-side Heatmaps
-        chart = alt.Chart(ddf).mark_rect(size=10).encode(
-            x=alt.X(f'{dim[1]}:N',title=None),
-            y=alt.Y(f'{dim[0]}:N',title=None),
-            color=alt.Color('d:Q',legend=None),
-            column=alt.Column(f'cat:N',sort=['raw','weighted','census'],title=None),
-            **({ 'row':alt.Column(f'{split_dim}:N',title=None) } if split_dim!='None' else {}),
-            tooltip = [alt.Tooltip(dim[0],title='Value 1'),alt.Tooltip(dim[1],title='Value 2'),alt.Tooltip('d',title='Probability',format='.1%')]
-        ).properties(width=300)
+
+        mode = mst.radio('Mode',['Probability','Difference','Log-Ratio', 'Weighted L-R'],horizontal=True)
+
+        if mode == 'Probability':
+            chart = alt.Chart(ddf).mark_rect(size=10).encode(
+                x=alt.X(f'{dim[1]}:N',title=None),
+                y=alt.Y(f'{dim[0]}:N',title=None),
+                color=alt.Color('d:Q',legend=None),
+                column=alt.Column(f'cat:N',sort=['raw','weighted','census'],title=None),
+                **({ 'row':alt.Column(f'{split_dim}:N',title=None) } if split_dim!='None' else {}),
+                tooltip = [alt.Tooltip(dim[0],title='Value 1'),alt.Tooltip(dim[1],title='Value 2'),alt.Tooltip('d',title='Probability',format='.1%')]
+            ).properties(width=300)
+        else:
+            cols = dim + sdl
+            ndd, nwd = dd.merge(cd,on=cols), wd.merge(cd,on=cols)
+            nddf = pd.concat([ndd,nwd]).rename(columns={'cat_x':'cat'})
+            if mode == 'Difference':
+                nddf['d'] = nddf['d_x']-nddf['d_y']
+                format = '.1%'
+            elif mode == 'Log-Ratio':
+                nddf['d'] = np.log(nddf['d_x']/nddf['d_y'])
+                format = '.2'
+            elif mode == 'Weighted L-R':
+                nddf['d'] = nddf['d_y']*np.log(nddf['d_x']/nddf['d_y'])
+                format = '.2' 
+
+            b = max(nddf['d'].max(),-nddf['d'].min())
+
+            chart = alt.Chart(nddf).mark_rect(size=10).encode(
+                    x=alt.X(f'{dim[1]}:N',title=None),
+                    y=alt.Y(f'{dim[0]}:N',title=None),
+                    color=alt.Color('d:Q',legend=alt.Legend(format=format,title=mode),scale=alt.Scale(scheme='blueorange', domain=[-b,b])),
+                    column=alt.Column(f'cat:N',sort=['raw','weighted','census'],title=None),
+                    **({ 'row':alt.Column(f'{split_dim}:N',title=None) } if split_dim!='None' else {}),
+                    tooltip = [
+                        alt.Tooltip(dim[0],title='Value 1'),alt.Tooltip(dim[1],title='Value 2'),
+                        alt.Tooltip('d_x',title='Probability',format='.1%'),alt.Tooltip('d_y',title='Census',format='.1%'),
+                        alt.Tooltip('d',title=mode,format=format)
+                        ]
+                ).properties(width=300)
+                
 
     else: # Simple barplot
-        st.write(split_dim)
         chart = alt.Chart(ddf).mark_bar().encode(
             y=alt.Y('cat:N',sort=['raw','weighted','census'],title=None,axis=alt.Axis(labels=False)),
             x=alt.X('d:Q',title=None),
