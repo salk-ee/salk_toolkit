@@ -208,7 +208,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
                         if cd.get('ordered',False) and not pd.api.types.is_numeric_dtype(s):
                             warn(f"Ordered category {cn} had category: infer. This only works correctly if you want lexicographic ordering!")
                         if not pd.api.types.is_numeric_dtype(s): s = s.astype(str) # convert all to string to avoid type issues in sorting for mixed columns
-                        cinds = s.drop_duplicates().sort_values().index
+                        cinds = s.drop_duplicates().sort_values().index # NB! Important to do this still with numbers before converting them to strings
                         if pd.api.types.is_numeric_dtype(s): s = convert_number_series_to_categorical(s)
                         cd['categories'] = [ c for c in s[cinds] if pd.notna(c) ] # Also propagates it into meta (unless shared scale)
 

@@ -346,7 +346,7 @@ def density(data, value_col='value', facets=[], tooltip=[], outer_factors=[], st
     # Filter out extreme outliers (one thousandth on each side). 
     # Because at 100k+, these get very extreme even for normal distributions
     lims = list(data[value_col].quantile([.005,0.995]))
-    data = data[(data[value_col]>lims[0]) & (data[value_col]<lims[1])]
+    data = data[(data[value_col]>=lims[0]) & (data[value_col]<=lims[1])]
     
     ls = np.linspace(data[value_col].min()-1e-10,data[value_col].max()+1e-10,200)
     ndata = gb_in_apply(data,gb_cols,cols=[value_col],fn=kde_1d,value_col=value_col,ls=ls,scale=stacked).reset_index()

@@ -343,7 +343,7 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     if 'col_prefix' in c_meta[pp_desc['res_col']] and pp_desc['res_col'] in gc_dict:
         prefix = c_meta[pp_desc['res_col']]['col_prefix']
         cmap = { c: c.replace(prefix,'') for c in pparams['data']['question'].dtype.categories }
-        pparams['data']['question'] = pparams['data']['question'].cat.rename_categories(cmap)
+        pparams['data'].loc['question'] = pparams['data']['question'].cat.rename_categories(cmap)
             
     
     # How many datapoints the plot is based on. This is useful metainfo to display sometimes
