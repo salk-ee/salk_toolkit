@@ -113,7 +113,7 @@ def read_concatenate_files_list(meta,data_file=None,path=None):
 # convert number series to categorical, avoiding long and unweildy fractions like 24.666666666667
 # This is a practical judgement call right now - round to two digits after comma and remove .00 from integers
 def convert_number_series_to_categorical(s):
-    return s.astype('float').map('{:.2f}'.format).str.replace('.00','')
+    return s.astype('float').map('{:.2f}'.format).str.replace('.00','').replace({'nan':None})
 
 # %% ../nbs/01_io.ipynb 7
 # Default usage with mature metafile: process_annotated_data(<metafile name>)
@@ -207,7 +207,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
                     else: # Just use lexicographic ordering
                         if cd.get('ordered',False) and not pd.api.types.is_numeric_dtype(s):
                             warn(f"Ordered category {cn} had category: infer. This only works correctly if you want lexicographic ordering!")
-                        if not pd.api.types.is_numeric_dtype(s): s = s.astype(str) # convert all to string to avoid type issues in sorting for mixed columns
+                        if not pd.api.types.is_numeric_dtype(s): s.loc[~s.isna()] = s[~s.isna()].astype(str) # convert all to string to avoid type issues in sorting for mixed columns
                         cinds = s.drop_duplicates().sort_values().index # NB! Important to do this still with numbers before converting them to strings
                         if pd.api.types.is_numeric_dtype(s): s = convert_number_series_to_categorical(s)
                         cd['categories'] = [ c for c in s[cinds] if pd.notna(c) ] # Also propagates it into meta (unless shared scale)
@@ -215,9 +215,12 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
                     
                 cats = cd['categories']
                 s_rep = s.dropna().iloc[0] # Find a non-na element
-                if isinstance(s_rep,list) or isinstance(s_rep,np.ndarray): ns = s #  Just leave a list of strings
-                else: ns = pd.Series(pd.Categorical(s.astype('str'), # Convert to strings, even if numeric/boolean
+                if isinstance(s_rep,list) or isinstance(s_rep,np.ndarray): 
+                    print(cn,s_rep)
+                    ns = s #  Just leave a list of strings
+                else: ns = pd.Series(pd.Categorical(s, # NB! conversion to str already done before. Doing it here kills NA values
                                                     categories=cats,ordered=cd['ordered'] if 'ordered' in cd else False), name=cn, index=raw_data.index)
+                if cn=='statement_fairness':  print(cn,ns)
                 # Check if the category list provided was comprehensive
                 new_nas = ns.isna().sum() - na_sum
                 

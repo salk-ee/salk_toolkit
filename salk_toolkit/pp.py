@@ -55,7 +55,10 @@ def augment_draws(data, factors=None, n_draws=None, threshold=50):
 # %% ../nbs/02_pp.ipynb 7
 # Get the numerical values to map categories to
 def get_cat_num_vals(res_meta,pp_desc):
-    nvals = res_meta.get('num_values',range(len(res_meta['categories'])))
+    try: # First try to convert categories themselves to numbers. Because they might be in some use cases ;) 
+        nvals = [ float(x) for x in res_meta['categories'] ]
+    except ValueError: # Instead default to 0,1,2,3... scale
+        nvals = res_meta.get('num_values',range(len(res_meta['categories'])))
     if 'num_values' in pp_desc: nvals = pp_desc['num_values'] 
     return nvals
 
