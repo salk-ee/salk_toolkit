@@ -286,7 +286,7 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
 
     # Convert ordered categorical to continuous if we can
     res_meta = c_meta[pp_desc['res_col']]
-    if pp_desc.get('convert_res') == 'continuous' and res_meta.get('ordered') and res_meta.get('categories','infer') != 'infer':
+    if pp_desc.get('convert_res') == 'continuous' and res_meta.get('ordered'):
         nvals = get_cat_num_vals(res_meta,pp_desc) 
         cmap = dict(zip(res_meta['categories'],nvals))
         rc = gc_dict[pp_desc['res_col']] if pp_desc['res_col'] in gc_dict else [pp_desc['res_col']]
