@@ -331,9 +331,11 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
         if res_meta['categories'] == 'infer': res_meta['categories'] = list(filtered_df[rc].dtype.categories)
         nvals = get_cat_num_vals(res_meta,pp_desc)
         cmap = dict(zip(res_meta['categories'],nvals))
-        #for col in rc:
-            #filtered_df[col] = pd.to_numeric(filtered_df[col].astype('object').replace(cmap)) # Replace can be slow
-        filtered_df.loc[:,rc] = filtered_df[rc].map(lambda x: float(cmap.get(x,x)))
+        
+        # TODO: This ugly workaround is required because we are changing the type of column with the map (since pandas 2.2.3)
+        vals = filtered_df[rc].map(lambda x: float(cmap.get(x,x))).astype('float')
+        filtered_df = filtered_df.astype({rc: 'float'})
+        filtered_df.loc[:,rc] = vals
 
     # Apply continuous transformation
     if filtered_df[rc].dtype.name != 'category' and 'cont_transform' in pp_desc:
@@ -349,9 +351,13 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     if 'col_prefix' in c_meta[pp_desc['res_col']] and pp_desc['res_col'] in gc_dict:
         prefix = c_meta[pp_desc['res_col']]['col_prefix']
         cmap = { c: c.replace(prefix,'') for c in pparams['data']['question'].dtype.categories }
-        pparams['data'].loc['question'] = pparams['data']['question'].cat.rename_categories(cmap)
-            
-    
+        
+        # TODO: Idiotic workaround because of pandas newfound type enforcement in 2.2.3
+        res = pparams['data']['question'].cat.rename_categories(cmap)
+        pparams['data'].loc[:,'question'] = None
+        pparams['data'] = pparams['data'].astype({'question':res.dtype})
+        pparams['data'].loc[:,'question'] = res
+
     # How many datapoints the plot is based on. This is useful metainfo to display sometimes
     pparams['n_datapoints'] = n_datapoints
     
@@ -361,7 +367,6 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
 
 # %% ../nbs/02_pp.ipynb 22
 def discretize_continuous(col, col_meta={}):
-
     if 'bin_breaks' in col_meta and 'bin_labels' in col_meta:
         cut = pd.cut(col, bins = col_meta['bin_breaks'], labels = col_meta['bin_labels'])
         cut = pd.Categorical(cut.astype(str), map(str,cut.dtype.categories), True) 
@@ -520,7 +525,7 @@ def inner_outer_factors(factor_cols, pp_desc, plot_meta):
 # %% ../nbs/02_pp.ipynb 27
 # Function that takes filtered raw data and plot information and outputs the plot
 # Handles all of the data wrangling and parameter formatting
-def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=False, width=200, return_matrix_of_plots=False, translate=None):
+def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=False, width=200, height=None, return_matrix_of_plots=False, translate=None):
     data = pparams['data']
     plot_meta = get_plot_meta(pp_desc['plot'])
     col_meta = extract_column_meta(data_meta)
@@ -614,7 +619,9 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
     # Do width/height calculations
     if factor_cols: n_facet_cols = pp_desc.get('n_facet_cols',n_facet_cols) # Allow pp_desc to override col nr
     dims = {'width': width//n_facet_cols if factor_cols else width}
-    if 'aspect_ratio' in plot_meta:   dims['height'] = int(dims['width']/plot_meta['aspect_ratio'])
+
+    if height!=None: dims['height'] = int(height)
+    elif 'aspect_ratio' in plot_meta:   dims['height'] = int(dims['width']/plot_meta['aspect_ratio'])
     
     # Make plot properties available to plot function (mostly useful for as_is plots)
     pparams.update({'width':width}); pparams['alt_properties'] = alt_properties; pparams['outer_factors'] = factor_cols
@@ -686,7 +693,7 @@ def impute_factor_cols(pp_desc, col_meta, plot_meta=None):
 
 # %% ../nbs/02_pp.ipynb 30
 # A convenience function to draw a plot straight from a dataset
-def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, check_match=True, impute=True,**kwargs):
+def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, height=None, check_match=True, impute=True,**kwargs):
     if data_file is None and full_df is None:
         raise Exception('Data must be provided either as data_file or full_df')
     if data_file is None and data_meta is None:
@@ -714,7 +721,7 @@ def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, c
             raise Exception(f"Plot {pp_desc['plot']} not applicable in this situation because of flags {imp}")
             
     pparams = pp_transform_data(full_df, data_meta, pp_desc)
-    return create_plot(pparams, data_meta, pp_desc, width=width,**kwargs)
+    return create_plot(pparams, data_meta, pp_desc, width=width,height=height,**kwargs)
 
 # Another convenience function to simplify testing new plots
 def test_new_plot(fn, pp_desc, *args, plot_meta={}, **kwargs):
