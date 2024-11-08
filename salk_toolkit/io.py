@@ -220,7 +220,6 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
                     ns = s #  Just leave a list of strings
                 else: ns = pd.Series(pd.Categorical(s, # NB! conversion to str already done before. Doing it here kills NA values
                                                     categories=cats,ordered=cd['ordered'] if 'ordered' in cd else False), name=cn, index=raw_data.index)
-                if cn=='statement_fairness':  print(cn,ns)
                 # Check if the category list provided was comprehensive
                 new_nas = ns.isna().sum() - na_sum
                 

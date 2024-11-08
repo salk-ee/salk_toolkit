@@ -256,12 +256,13 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     
     cols = [ c for c in np.unique(list_aliases(cols,gc_dict)) if c in full_df.columns ]
     
-    #print("C",cols)
-    
     lazy = isinstance(full_df,pl.LazyFrame)
     if lazy: pl.enable_string_cache() # Needed for categories to be comparable to strings
     
     df = full_df.select(cols) if lazy else full_df[cols]
+
+    if 'sample' in pp_desc:
+        df = full_df.sample(pp_desc['sample'])
 
     # Replace draw with the draws used in modelling. Groups are handled separately below
     # NB! Has to happen before filtering or the draws are computed for wrong size df
@@ -284,22 +285,7 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     
     n_datapoints = len(filtered_df)
 
-    # Convert ordered categorical to continuous if we can
-    res_meta = c_meta[pp_desc['res_col']]
-    if pp_desc.get('convert_res') == 'continuous' and res_meta.get('ordered'):
-        nvals = get_cat_num_vals(res_meta,pp_desc) 
-        cmap = dict(zip(res_meta['categories'],nvals))
-        rc = gc_dict[pp_desc['res_col']] if pp_desc['res_col'] in gc_dict else [pp_desc['res_col']]
-        for col in rc:
-            filtered_df[col] = pd.to_numeric(filtered_df[col].astype('object').replace(cmap))
 
-    # Apply continuous transformation
-    dfcols = gc_dict.get(pp_desc['res_col'],[pp_desc['res_col']])
-    if filtered_df[dfcols[0]].dtype.name != 'category':
-        filtered_df[dfcols], val_format = transform_cont(filtered_df[dfcols],transform=pp_desc.get('cont_transform'))
-    else: val_format = '.1%'
-    val_format = pp_desc.get('value_format',val_format)
-    
     # If res_col is a group of questions
     # This might move to wrangle but currently easier to do here as we have gc_dict handy
     if pp_desc['res_col'] in gc_dict:
@@ -336,11 +322,27 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
             
             #vals = filtered_df[k]
             filtered_df[k] = pd.Categorical(filtered_df[k],f_cats,ordered=c_meta[k].get('ordered',False))
+
+    # Convert ordered categorical to continuous if we can
+    res_meta = c_meta[pp_desc['res_col']]
+    rc = pp_desc['res_col']
+    if pp_desc.get('convert_res') == 'continuous' and res_meta.get('ordered'):
+        if res_meta['categories'] == 'infer': res_meta['categories'] = list(filtered_df[rc].dtype.categories)
+        nvals = get_cat_num_vals(res_meta,pp_desc)
+        cmap = dict(zip(res_meta['categories'],nvals))
+        #for col in rc:
+            #filtered_df[col] = pd.to_numeric(filtered_df[col].astype('object').replace(cmap)) # Replace can be slow
+        filtered_df.loc[:,rc] = filtered_df[rc].map(lambda x: float(cmap.get(x,x)))
+
+    # Apply continuous transformation
+    if filtered_df[rc].dtype.name != 'category' and 'cont_transform' in pp_desc:
+        filtered_df.loc[:,rc], val_format = transform_cont(filtered_df[rc],transform=pp_desc.get('cont_transform'))
+    else: val_format = '.1%'
+    val_format = pp_desc.get('value_format',val_format)
     
     # Aggregate the data into right shape
     pparams = wrangle_data(filtered_df, data_meta, pp_desc)
     pparams['val_format'] = val_format
-
     
     # Remove prefix from question names in plots
     if 'col_prefix' in c_meta[pp_desc['res_col']] and pp_desc['res_col'] in gc_dict:
@@ -629,8 +631,6 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
         if return_matrix_of_plots: # return a 2d list of plots which can be rendeed one plot at a time
             del pparams['data']
             combs = it.product( *[data[fc].dtype.categories for fc in factor_cols ])
-            #print( [ data[(data[factor_cols]==c).all(axis=1)] for c in combs ] )
-            #print(list(combs))
             return list(batch([
                 alt_wrapper(plot_fn(data[(data[factor_cols]==c).all(axis=1)],**pparams)
                             .properties(title='-'.join(map(str,c)),**dims, **alt_properties)
