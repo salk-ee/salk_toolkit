@@ -211,11 +211,12 @@ def pp_filter_data(df, filter_dict, c_meta, lazy=False):
         
         # Filter by list of values:
         if is_range: # Range of values over ordered categorical
-            if c_meta[k].get('categories','infer')=='infer': raise Exception(f'Ordering unknown for column {k}')
-            cats = list(c_meta[k]['categories'])
-            if set(v[1:]) & set(cats) != set(v[1:]): raise Exception(f'Column {k} values {v} not found in {cats}')
-            bi, ei = cats.index(v[1]), cats.index(v[2])
-            flst = cats[bi:ei+1] # 
+            cats = list(c_meta[k]['categories'] if c_meta[k].get('categories','infer')!='infer' else df[k].dtype.categories)
+            if set(v[1:]) & set(cats) != set(v[1:]): 
+                warn(f'Column {k} values {v} not found in {cats}')
+            else:
+                bi, ei = cats.index(v[1]), cats.index(v[2])
+                flst = cats[bi:ei+1] # 
         elif isinstance(v,list): flst = v # List indicates a set of values
         elif 'groups' in c_meta[k] and v in c_meta[k]['groups']:
             flst = c_meta[k]['groups'][v]

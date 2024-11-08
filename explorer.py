@@ -53,7 +53,7 @@ with st.spinner("Loading libraries.."):
 if 'ls_loaded' not in st.session_state:
     ls_state = json.loads(st_js_blocking(f'return localStorage.getItem("session_state")') or '{}')
     for k, v in ls_state.items(): st.session_state[k] = v
-st.session_state['ls_loaded'] = True    
+    st.session_state['ls_loaded'] = True
 
 # Turn off annoying warnings
 warnings.filterwarnings(action='ignore', category=UserWarning)
@@ -241,7 +241,7 @@ with st.sidebar: #.expander("Select dimensions"):
     #print(list(st.session_state.keys()))
 
     #print(f"localStorage.setItem('args','{json.dumps(args)}');")
-    st_js(f"localStorage.setItem('session_state','{json.dumps(dict(st.session_state))}');")
+    st_js(f"localStorage.setItem('session_state','{json.dumps(dict(st.session_state)).replace('\'','\\\'')}');")
 
     # Make all dimensions explicit now that plot is selected (as that can affect the factor columns)
     args['factor_cols'] = impute_factor_cols(args, c_meta, plot_meta)
