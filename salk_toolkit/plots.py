@@ -329,17 +329,18 @@ def likert_bars(data, value_col='value', facets=[],  tooltip=[], outer_factors=[
 # Calculate the bandwidth for KDE
 def kde_bw(ar):
     # Lower-bound silverman by min_diff to smooth out categorical density plots
-    return max(silvermans_rule(ar),0.5*min_diff(ar[:,0]))
+    return max(silvermans_rule(ar) or 0.0, 0.75*min_diff(ar[:,0]))
 
 # Calculate KDE ourselves using a fast libary. This gets around having to do sampling which is unstable
-def kde_1d(vc, value_col, ls, scale=False):
+def kde_1d(vc, value_col, ls, scale=False, bw=None):
     ar = vc.to_numpy()
-    y =  FFTKDE(kernel='gaussian',bw=kde_bw(ar)).fit(ar).evaluate(ls)
+    if bw is None: bw = kde_bw(ar) # This can be problematic in small segments, so best calculated globally
+    y =  FFTKDE(kernel='gaussian',bw=bw).fit(ar).evaluate(ls)
     if scale: y*=len(vc)
     return pd.DataFrame({'density': y, value_col: ls})
 
-@stk_plot('density', data_format='raw', factor_columns=3, aspect_ratio=(1.0/1.0), n_facets=(0,1), args={'stacked':'bool'}, no_question_facet=True)
-def density(data, value_col='value', facets=[], tooltip=[], outer_factors=[], stacked=False, width=800):
+@stk_plot('density', factor_columns=3, aspect_ratio=(1.0/1.0), n_facets=(0,1), args={'stacked':'bool', 'bw':'float'}, no_question_facet=True)
+def density(data, value_col='value', facets=[], tooltip=[], outer_factors=[], stacked=False, bw=None, width=800):
     f0 = facets[0] if len(facets)>0 else None
     gb_cols = [ c for c in outer_factors+[f['col'] for f in facets] if c is not None ] # There can be other extra cols (like labels) that should be ignored
 
@@ -348,11 +349,11 @@ def density(data, value_col='value', facets=[], tooltip=[], outer_factors=[], st
     lims = list(data[value_col].quantile([.005,0.995]))
     data = data[(data[value_col]>=lims[0]) & (data[value_col]<=lims[1])]
     
-    ls = np.linspace(data[value_col].min()-1e-10,data[value_col].max()+1e-10,200)
-    ndata = gb_in_apply(data,gb_cols,cols=[value_col],fn=kde_1d,value_col=value_col,ls=ls,scale=stacked).reset_index()
+    ls = np.linspace(data[value_col].min()-1e-10,data[value_col].max()+1e-10,100)
+    if bw is None: bw = kde_bw(data[[value_col]].sample(10000,replace=True).to_numpy()) # Can get slow for large data otherwise
+    ndata = gb_in_apply(data,gb_cols,cols=[value_col],fn=kde_1d,value_col=value_col,ls=ls,scale=stacked,bw=bw).reset_index()
 
-    if stacked:
-        
+    if stacked: 
         if f0:
             ldict = dict(zip(f0["order"], reversed(range(len(f0["order"])))))
             ndata.loc[:,'order'] = ndata[f0["col"]].astype('object').replace(ldict).astype('int')
@@ -362,7 +363,8 @@ def density(data, value_col='value', facets=[], tooltip=[], outer_factors=[], st
                 x=alt.X(f"{value_col}:Q"),
                 y=alt.Y('density:Q',axis=alt.Axis(title=None, format = '%'),stack='zero'),
                 tooltip = tooltip[1:],
-                **({'color': alt.Color(f'{f0["col"]}:N', scale=f0["colors"], legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f0["order"],width))), 'order': alt.Order('order:O')} if f0 else {})
+                **({'fill': alt.Fill(f'{f0["col"]}:N', scale=f0["colors"], 
+                            legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f0["order"],width))), 'order': alt.Order('order:O')} if f0 else {})
             )
     else:
         plot = alt.Chart(
@@ -371,18 +373,23 @@ def density(data, value_col='value', facets=[], tooltip=[], outer_factors=[], st
                 x=alt.X(f"{value_col}:Q"),
                 y=alt.Y('density:Q',axis=alt.Axis(title=None, format = '%')),
                 tooltip = tooltip[1:],
-                **({'color': alt.Color(f'{f0["col"]}:N', scale=f0["colors"], legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f0["order"],width)))} if f0 else {})
+                **({'color': alt.Color(f'{f0["col"]}:N', scale=f0["colors"], 
+                    legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f0["order"],width)))} if f0 else {})
             )
     return plot
 
+# Also create a raw version for the same plot 
+stk_plot('density-raw', data_format="raw", factor_columns=3, aspect_ratio=(1.0/1.0), n_facets=(0,1), args={'stacked':'bool', 'bw':'float'}, no_question_facet=True, priority=0)(density)
+
 # %% ../nbs/03_plots.ipynb 31
-@stk_plot('violin', data_format='raw', n_facets=(1,2), as_is=True)
-def violin(data, value_col='value', facets=[], tooltip=[], outer_factors=[],width=800):
+@stk_plot('violin', n_facets=(1,2), as_is=True, args={'bw':'float'})
+def violin(data, value_col='value', facets=[], tooltip=[], outer_factors=[], bw=None, width=800):
     f0, f1 = facets[0], facets[1] if len(facets)>1 else None
     gb_cols = outer_factors + [ f['col'] for f in facets ] # There can be other extra cols (like labels) that should be ignored
     
     ls = np.linspace(data[value_col].min()-1e-10,data[value_col].max()+1e-10,200)
-    ndata = gb_in_apply(data,gb_cols,cols=[value_col],fn=kde_1d,value_col=value_col,ls=ls,scale=True).reset_index()
+    if bw is None: bw = kde_bw(data[[value_col]].sample(10000,replace=True).to_numpy())
+    ndata = gb_in_apply(data,gb_cols,cols=[value_col],fn=kde_1d,value_col=value_col,ls=ls,scale=True,bw=bw).reset_index()
     
     if f1:
         ldict = dict(zip(f1["order"], reversed(range(len(f1["order"])))))
@@ -400,6 +407,9 @@ def violin(data, value_col='value', facets=[], tooltip=[], outer_factors=[],widt
         ).properties(width=width,height=70)
 
     return plot
+
+# Also create a raw version for the same plot 
+stk_plot('violin-raw', data_format='raw', n_facets=(1,2), as_is=True, args={'bw':'float'})(violin)
 
 # %% ../nbs/03_plots.ipynb 33
 # Cluster-based reordering
