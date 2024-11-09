@@ -353,6 +353,8 @@ def density(data, value_col='value', facets=[], tooltip=[], outer_factors=[], st
     if bw is None: bw = kde_bw(data[[value_col]].sample(10000,replace=True).to_numpy()) # Can get slow for large data otherwise
     ndata = gb_in_apply(data,gb_cols,cols=[value_col],fn=kde_1d,value_col=value_col,ls=ls,scale=stacked,bw=bw).reset_index()
 
+    if f0: selection = alt.selection_point(fields=[f0["col"]], bind='legend')
+
     if stacked: 
         if f0:
             ldict = dict(zip(f0["order"], reversed(range(len(f0["order"])))))
@@ -364,18 +366,23 @@ def density(data, value_col='value', facets=[], tooltip=[], outer_factors=[], st
                 y=alt.Y('density:Q',axis=alt.Axis(title=None, format = '%'),stack='zero'),
                 tooltip = tooltip[1:],
                 **({'fill': alt.Fill(f'{f0["col"]}:N', scale=f0["colors"], 
-                            legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f0["order"],width))), 'order': alt.Order('order:O')} if f0 else {})
+                            legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f0["order"],width))), 
+                    'order': alt.Order('order:O'), 'opacity': alt.condition(selection, alt.value(1), alt.value(0.15))
+                    } if f0 else {})
             )
     else:
-        plot = alt.Chart(
-                ndata
-            ).mark_line().encode(
+        plot = alt.Chart(ndata).mark_line().encode(
                 x=alt.X(f"{value_col}:Q"),
                 y=alt.Y('density:Q',axis=alt.Axis(title=None, format = '%')),
                 tooltip = tooltip[1:],
                 **({'color': alt.Color(f'{f0["col"]}:N', scale=f0["colors"], 
-                    legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f0["order"],width)))} if f0 else {})
+                    legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f0["order"],width))),
+                    'order': alt.Order('order:O'), 'opacity': alt.condition(selection, alt.value(1), alt.value(0.15))
+                    } if f0 else {})
             )
+
+    if f0: plot = plot.add_params(selection)
+
     return plot
 
 # Also create a raw version for the same plot 
