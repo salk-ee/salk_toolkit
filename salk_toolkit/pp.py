@@ -331,16 +331,14 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
         if res_meta['categories'] == 'infer': res_meta['categories'] = list(filtered_df[rc].dtype.categories)
         nvals = get_cat_num_vals(res_meta,pp_desc)
         cmap = dict(zip(res_meta['categories'],nvals))
-        
-        # TODO: This ugly workaround is required because we are changing the type of column with the map (since pandas 2.2.3)
-        vals = filtered_df[rc].map(lambda x: float(cmap.get(x,x))).astype('float')
-        filtered_df = filtered_df.astype({rc: 'float'})
-        filtered_df.loc[:,rc] = vals
+        filtered_df[rc] = filtered_df[rc].map(lambda x: float(cmap.get(x,x))).astype('float')
 
     # Apply continuous transformation
-    if filtered_df[rc].dtype.name != 'category' and 'cont_transform' in pp_desc:
-        filtered_df.loc[:,rc], val_format = transform_cont(filtered_df[rc],transform=pp_desc.get('cont_transform'))
-    else: val_format = '.1%'
+    if filtered_df[rc].dtype.name != 'category':
+        if 'cont_transform' in pp_desc:
+            filtered_df.loc[:,rc], val_format = transform_cont(filtered_df[rc],transform=pp_desc.get('cont_transform'))
+        else: val_format = '.1f'
+    else: val_format = '.1%' # Categoricals report %
     val_format = pp_desc.get('value_format',val_format)
     
     # Aggregate the data into right shape
@@ -351,12 +349,8 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     if 'col_prefix' in c_meta[pp_desc['res_col']] and pp_desc['res_col'] in gc_dict:
         prefix = c_meta[pp_desc['res_col']]['col_prefix']
         cmap = { c: c.replace(prefix,'') for c in pparams['data']['question'].dtype.categories }
-        
-        # TODO: Idiotic workaround because of pandas newfound type enforcement in 2.2.3
-        res = pparams['data']['question'].cat.rename_categories(cmap)
-        pparams['data'].loc[:,'question'] = None
-        pparams['data'] = pparams['data'].astype({'question':res.dtype})
-        pparams['data'].loc[:,'question'] = res
+        pparams['data']['question'] = pparams['data']['question'].cat.rename_categories(cmap)
+
 
     # How many datapoints the plot is based on. This is useful metainfo to display sometimes
     pparams['n_datapoints'] = n_datapoints
