@@ -473,7 +473,6 @@ def matrix(data, value_col='value', facets=[], val_format='%', reorder=False, lo
 # %% ../nbs/03_plots.ipynb 37
 @stk_plot('corr_matrix', data_format='raw', aspect_ratio=(1/0.8), n_facets=(1,1))
 def corr_matrix(data, value_col='value', facets=[], val_format='%', reorder=False, tooltip=[]):
-    print(data.columns)
     if 'id' not in data.columns: raise Exception("Corr_matrix only works for groups of continuous variables")
     cm = data.pivot_table(index='id',columns=facets[0]['col'],values=value_col,observed=False).corr().reset_index(names='index')
     cm_long = cm.melt(id_vars=['index'],value_vars=cm.columns, var_name=facets[0]['col'], value_name=value_col)

@@ -293,8 +293,11 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
         value_vars = [ c for c in gc_dict[pp_desc['res_col']] if c in cols ]
         if 'draw' in filtered_df.columns: ddraws = filtered_df['draw'] # Set aside draws as series for later
         
+        dtype = filtered_df[value_vars[0]].dtype
         id_vars = ['id'] + [ c for c in cols if (c not in value_vars or c in pp_desc.get('factor_cols',[])) ] # Make sure we leave factors in - in case we are faceting over one of the questions
         filtered_df = filtered_df.reset_index(names='id').melt(id_vars=id_vars, value_vars=value_vars, var_name='question', value_name=pp_desc['res_col'])
+        if dtype != filtered_df[pp_desc['res_col']].dtype:
+            filtered_df[pp_desc['res_col']] = filtered_df[pp_desc['res_col']].astype(dtype)
 
         # Fix the draws for each question separately
         if 'draw' in filtered_df.columns and data_meta.get('draws_data') is not None:
@@ -450,7 +453,7 @@ def meta_color_scale(scale : Dict, column=None, translate=None):
     return to_alt_scale(scale,cats)
 
 # %% ../nbs/02_pp.ipynb 24
-internal_columns = ['draw','weight','group_size'] 
+internal_columns = ['draw','weight','group_size','id']
 
 def translate_df(df, translate):
     df.columns = [ (translate(c) if c not in internal_columns else c) for c in df.columns ]
