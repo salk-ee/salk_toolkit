@@ -593,11 +593,12 @@ def likert_rad_pol(data, value_col='value', facets=[], normalized=True, width=80
     
     if normalized and len(likert_indices)>1: likert_indices.loc[:,['polarisation','radicalisation']] = likert_indices[['polarisation','radicalisation']].apply(sps.zscore)
     
+    if f1: selection = alt.selection_point(fields=[f1["col"]], bind='legend')
+        
     plot = alt.Chart(likert_indices).mark_point().encode(
         x=alt.X('polarisation:Q'),
         y=alt.Y('radicalisation:Q'),
         size=alt.Size('relevance:Q', legend=None, scale=alt.Scale(range=[100, 500])),
-        opacity=alt.value(1.0),
         #stroke=alt.value('#777'),
         tooltip=[
             alt.Tooltip('radicalisation:Q', format='.2'),
@@ -605,9 +606,12 @@ def likert_rad_pol(data, value_col='value', facets=[], normalized=True, width=80
             alt.Tooltip('relevance:Q', format='.2')
         ] + tooltip[2:],
         **({'color': alt.Color(f'{f1["col"]}:N', scale=f1["colors"], 
-                               legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f1["order"],width)))
+                               legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f1["order"],width))),
+            'opacity':alt.condition(selection, alt.value(1), alt.value(0.15)),
             } if f1 else {})
         )
+    if f1: plot = plot.add_params(selection)
+    
     return plot
 
 # %% ../nbs/03_plots.ipynb 47
@@ -637,7 +641,7 @@ def barbell(data, value_col='value', facets=[], n_datapoints=1, val_format='%', 
             scale=f1["colors"],
             sort=f1["order"]
         ),
-        opacity=alt.condition(selection, alt.value(1), alt.value(0.2)),
+        opacity=alt.condition(selection, alt.value(1), alt.value(0.15)),
     ).add_params(
         selection
     )#.interactive()
