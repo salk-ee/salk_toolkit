@@ -129,7 +129,8 @@ def get_dimensions(data_meta, observations=True, whitelist=None):
         if 'scale' in g and observations:
             res.append(g['name'])
         else:
-            cols = [ c_meta[c].get('col_prefix','') + c for c in c_meta[g['name']]['columns']]
+            cols = [ c for c in c_meta[g['name']]['columns']]
+            
             if whitelist is not None: cols = [ c for c in cols if c in whitelist ]
             res += cols
     return res
@@ -156,7 +157,7 @@ with st.sidebar: #.expander("Select dimensions"):
         args['convert_res'] = 'continuous'
 
     obs_dims = get_dimensions(first_data_meta, show_grouped, first_data.columns)
-    obs_dims = [c for c in obs_dims if c not in first_data.columns or not is_datetime(first_data[c])]
+    obs_dims = [c for c in obs_dims if c not in first_data or not is_datetime(first_data[c])]
     all_dims = get_dimensions(first_data_meta, False, first_data.columns)
 
     stss_safety('observation',obs_dims)

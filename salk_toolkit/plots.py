@@ -474,8 +474,13 @@ def matrix(data, value_col='value', facets=[], val_format='%', reorder=False, lo
 @stk_plot('corr_matrix', data_format='raw', aspect_ratio=(1/0.8), n_facets=(1,1))
 def corr_matrix(data, value_col='value', facets=[], val_format='%', reorder=False, tooltip=[]):
     if 'id' not in data.columns: raise Exception("Corr_matrix only works for groups of continuous variables")
+
     cm = data.pivot_table(index='id',columns=facets[0]['col'],values=value_col,observed=False).corr().reset_index(names='index')
     cm_long = cm.melt(id_vars=['index'],value_vars=cm.columns, var_name=facets[0]['col'], value_name=value_col)
+
+    order = facets[0]['order'] 
+    lower_tri = (cm_long['index'].map(lambda x: order.index(x)).astype(int)>cm_long[facets[0]['col']].map(lambda x: order.index(x)).astype(int))
+    cm_long = cm_long[lower_tri]
     
     return matrix(cm_long, value_col=value_col, facets=[{'col':'index','order':facets[0]['order']},{'col':facets[0]['col'],'order':facets[0]['order']}], val_format=val_format,
                   tooltip=[alt.Tooltip(f'{value_col}:Q'),alt.Tooltip('index:N'),alt.Tooltip(f"{facets[0]['col']}:N")])
