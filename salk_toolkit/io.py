@@ -201,7 +201,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
                 
                 if cd['categories'] == 'infer':
                     if s.dtype.name=='category': cd['categories'] = list(s.dtype.categories) # Categories come from data file
-                    elif 'translate' in cd and 'transform' not in cd and set(cd['translate'].values()) >= set(s.unique()): # Infer order from translation dict
+                    elif 'translate' in cd and 'transform' not in cd and set(cd['translate'].values()) >= set(s.dropna().unique()): # Infer order from translation dict
                         cd['categories'] = pd.unique(np.array(list(cd['translate'].values())).astype('str')).tolist()
                         s = s.astype('str')
                     else: # Just use lexicographic ordering
