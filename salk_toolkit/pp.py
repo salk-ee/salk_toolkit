@@ -286,6 +286,23 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     
     n_datapoints = len(filtered_df)
 
+    # Convert ordered categorical to continuous if we can
+    rcl = gc_dict.get(pp_desc['res_col'], [pp_desc['res_col']])
+    for rc in rcl:
+        res_meta = c_meta[pp_desc['res_col']]
+        if pp_desc.get('convert_res') == 'continuous' and res_meta.get('ordered'):    
+            if res_meta['categories'] == 'infer': res_meta['categories'] = list(filtered_df[rc].dtype.categories)
+            nvals = get_cat_num_vals(res_meta,pp_desc)
+            cmap = dict(zip(res_meta['categories'],nvals))
+            filtered_df[rc] = filtered_df[rc].map(lambda x: float(cmap.get(x,x))).astype('float')
+
+    # Apply continuous transformation - needs to happen when data still in table form
+    if filtered_df[rcl[0]].dtype.name != 'category':
+        if 'cont_transform' in pp_desc:
+            filtered_df.loc[:,rcl], val_format = transform_cont(filtered_df[rcl],transform=pp_desc.get('cont_transform'))
+        else: val_format = '.1f'
+    else: val_format = '.1%' # Categoricals report %
+    val_format = pp_desc.get('value_format',val_format)
 
     # If res_col is a group of questions
     # This might move to wrangle but currently easier to do here as we have gc_dict handy
@@ -326,23 +343,6 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
             
             #vals = filtered_df[k]
             filtered_df[k] = pd.Categorical(filtered_df[k],f_cats,ordered=c_meta[k].get('ordered',False))
-
-    # Convert ordered categorical to continuous if we can
-    res_meta = c_meta[pp_desc['res_col']]
-    rc = pp_desc['res_col']
-    if pp_desc.get('convert_res') == 'continuous' and res_meta.get('ordered'):
-        if res_meta['categories'] == 'infer': res_meta['categories'] = list(filtered_df[rc].dtype.categories)
-        nvals = get_cat_num_vals(res_meta,pp_desc)
-        cmap = dict(zip(res_meta['categories'],nvals))
-        filtered_df[rc] = filtered_df[rc].map(lambda x: float(cmap.get(x,x))).astype('float')
-
-    # Apply continuous transformation
-    if filtered_df[rc].dtype.name != 'category':
-        if 'cont_transform' in pp_desc:
-            filtered_df.loc[:,rc], val_format = transform_cont(filtered_df[rc],transform=pp_desc.get('cont_transform'))
-        else: val_format = '.1f'
-    else: val_format = '.1%' # Categoricals report %
-    val_format = pp_desc.get('value_format',val_format)
     
     # Aggregate the data into right shape
     pparams = wrangle_data(filtered_df, data_meta, pp_desc)
