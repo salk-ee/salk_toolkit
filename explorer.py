@@ -160,6 +160,10 @@ with st.sidebar: #.expander("Select dimensions"):
     obs_dims = [c for c in obs_dims if c not in first_data or not is_datetime(first_data[c])]
     all_dims = get_dimensions(first_data_meta, False, first_data.columns)
 
+    # Deduplicate them - this bypasses some issues sometimes
+    obs_dims = list(dict.fromkeys(obs_dims))
+    all_dims = list(dict.fromkeys(all_dims))
+
     stss_safety('observation',obs_dims)
     obs_name = st.selectbox('Observation', obs_dims,key='observation')
     args['res_col'] = obs_name
