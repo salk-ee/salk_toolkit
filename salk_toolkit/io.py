@@ -153,12 +153,12 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
             if type(tpl)==list:
                 cn = tpl[0] # column name
                 sn = tpl[1] if len(tpl)>1 and type(tpl[1])==str else cn # source column
-                cd = tpl[2] if len(tpl)==3 else tpl[1] if len(tpl)==2 and type(tpl[1])==dict else {} # metadata
+                o_cd = tpl[2] if len(tpl)==3 else tpl[1] if len(tpl)==2 and type(tpl[1])==dict else {} # metadata
             else:
                 cn = sn = tpl
-                cd = {}
+                o_cd = {}
 
-            if 'scale' in group: cd = {**group['scale'],**cd}
+            cd = {**group.get('scale',{}),**o_cd}
 
             # Col prefix is used to avoid name clashes when different groups naturally share same column names
             if 'col_prefix' in cd: cn = cd['col_prefix']+cn
@@ -212,8 +212,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
                         if pd.api.types.is_numeric_dtype(s): s = convert_number_series_to_categorical(s)
                         cd['categories'] = [ c for c in s[cinds] if pd.notna(c) ] # Also propagates it into meta (unless shared scale)
 
-                    
-                cats = cd['categories']
+                cats = o_cd['categories'] = cd['categories'] 
                 s_rep = s.dropna().iloc[0] # Find a non-na element
                 if isinstance(s_rep,list) or isinstance(s_rep,np.ndarray): 
                     print(cn,s_rep)
