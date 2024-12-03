@@ -118,7 +118,7 @@ def convert_number_series_to_categorical(s):
 # %% ../nbs/01_io.ipynb 7
 # Default usage with mature metafile: process_annotated_data(<metafile name>)
 # When figuring out the metafile, it can also be run as: process_annotated_data(meta=<dict>, data_file=<>)
-def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=None, return_meta=False, only_fix_categories=False, return_raw=False, virtual_pass=False):
+def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=None, return_meta=False, ignore_excluded=False, only_fix_categories=False, return_raw=False, virtual_pass=False):
     # Read metafile
     if meta_fname is not None:
         meta = read_json(meta_fname,replace_const=False)
@@ -211,8 +211,12 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
                         cinds = s.drop_duplicates().sort_values().index # NB! Important to do this still with numbers before converting them to strings
                         if pd.api.types.is_numeric_dtype(s): s = convert_number_series_to_categorical(s)
                         cd['categories'] = [ c for c in s[cinds] if pd.notna(c) ] # Also propagates it into meta (unless shared scale)
+                    
+                    # Replace categories with those inferred in the output meta
+                    # Many things in pp and model pipeline assume categories are set so this is a necessity
+                    o_cd['categories'] = cd['categories'] 
 
-                cats = o_cd['categories'] = cd['categories'] 
+                cats = cd['categories']
                 s_rep = s.dropna().iloc[0] # Find a non-na element
                 if isinstance(s_rep,list) or isinstance(s_rep,np.ndarray): 
                     print(cn,s_rep)
@@ -242,17 +246,22 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
         globs['df'] = ndf
         exec(meta[pp_key],globs)
         ndf = globs['df']
+
+    ndf['original_inds'] = np.arange(len(ndf))
+    if 'excluded' in meta and not ignore_excluded and not virtual_pass:
+        excl_inds = [ i for i,_ in meta['excluded'] ]
+        ndf = ndf[~ndf['original_inds'].isin(excl_inds)]
     
     return (ndf, meta) if return_meta else ndf
 
 # %% ../nbs/01_io.ipynb 8
 # Read either a json annotation and process the data, or a processed parquet with the annotation attached
 # Return_raw is here for easier debugging of metafiles and is not meant to be used in production
-def read_annotated_data(fname, infer=True, return_raw=False, return_model_meta=False):
+def read_annotated_data(fname, infer=True, return_raw=False, return_model_meta=False, **kwargs):
     _, ext = os.path.splitext(fname)
     meta, model_meta = None, None
     if ext == '.json':
-        data, meta =  process_annotated_data(fname, return_meta=True, return_raw=return_raw)
+        data, meta =  process_annotated_data(fname, return_meta=True, return_raw=return_raw, **kwargs)
     elif ext == '.parquet':
         data, full_meta = load_parquet_with_metadata(fname)
         if full_meta is not None: 

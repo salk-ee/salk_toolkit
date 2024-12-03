@@ -119,8 +119,7 @@ if page=='Overview':
     table = []
     kl_overall = kl_divergence(common_cols)
     table.append(('Full', kl_overall[0], kl_overall[1]))
-    for c in common_cols:
-        
+    for c in common_cols: 
         kl_c = kl_divergence([c])
         table.append((c, kl_c[0], kl_c[1]))
     sdf = pd.DataFrame(table,columns=['Dimension','Raw KL', 'Weighted KL'])

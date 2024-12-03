@@ -12,7 +12,7 @@ if profile:
 
 st.set_page_config(
     layout="wide",
-    page_title="SALK Explorer",
+    page_title="Straightliners tool",
     #page_icon="./s-model.png",
     initial_sidebar_state="expanded",
 )
@@ -56,7 +56,7 @@ warnings.filterwarnings(action='ignore', category=pd.errors.PerformanceWarning)
 
 #@st.cache_resource(show_spinner=False)
 def load_file(pname):
-    df, dm = read_annotated_data(pname)
+    df, dm = read_annotated_data(pname, ignore_excluded=True)
     return df, dm
 
 fname = sys.argv[1]
@@ -65,10 +65,10 @@ df, meta = load_file(fname)
 
 c_meta = extract_column_meta(meta)
 
-st.title("Constant answers by blocks")
+st.title("Straightliners by blocks")
 
-ndf = pd.DataFrame(index=df.index)
-ndf['id'] = df.index
+ndf = pd.DataFrame(index=df['original_inds'])
+ndf['ind'] = ndf.index 
 ndf['score'] = 0
 for gn, g in c_meta.items():
     # only look at groups >=3
@@ -106,9 +106,15 @@ ndf = st.data_editor(ndf, disabled=dcols, hide_index=True)
 
 meta['excluded'] = [ [i,r] for i,r in ndf.loc[ndf['excluded'],'exclusion_reason'].items() ]
 
-if fname.endswith('.json'):
-    with open(fname,'w') as jf:
-        json.dump(meta,jf,indent=2)
+with st.expander('Excluded block (to copy to meta)'):
+
+    res_str = '"excluded": [\n' + ''.join([ f'  [{i},"{r}"],\n' for i,r in ndf.loc[ndf['excluded'],'exclusion_reason'].items() ]) +']'
+    st.code(res_str)#json.dumps(meta['excluded']))#,indent=2))
+
+# Rewriting json fucks up formatting. So don't do that
+# if fname.endswith('.json'):
+#     with open(fname,'w') as jf:
+#         json.dump(meta,jf,indent=2)
 
 info.empty()
 

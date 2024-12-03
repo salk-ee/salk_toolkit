@@ -241,7 +241,7 @@ with st.sidebar: #.expander("Select dimensions"):
         if override: args.update(eval(override))
     
     args['filter'] = filter_ui(first_data,first_data_meta,
-                                dims=all_dims,detailed=detailed)
+                                dims=all_dims,detailed=detailed)    
     
     #print(list(st.session_state.keys()))
 
