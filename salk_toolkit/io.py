@@ -125,7 +125,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
         meta = read_json(meta_fname,replace_const=False)
 
     # Print any issues with the meta without raising an error - for now
-    soft_validate(meta)
+    if not virtual_pass: soft_validate(meta)
     
     # Setup constants with a simple replacement mechanic
     constants = meta['constants'] if 'constants' in meta else {}
