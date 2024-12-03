@@ -27,6 +27,7 @@ import pyreadstat
 
 import salk_toolkit as stk
 from salk_toolkit.utils import replace_constants, is_datetime, warn, cached_fn
+from salk_toolkit.validation import soft_validate
 
 # %% ../nbs/01_io.ipynb 4
 def read_json(fname,replace_const=True):
@@ -122,6 +123,9 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
     # Read metafile
     if meta_fname is not None:
         meta = read_json(meta_fname,replace_const=False)
+
+    # Print any issues with the meta without raising an error - for now
+    soft_validate(meta)
     
     # Setup constants with a simple replacement mechanic
     constants = meta['constants'] if 'constants' in meta else {}
