@@ -49,12 +49,12 @@ class ColumnMeta(PBase):
         if self.categories is None:
             #if not self.continuous and not self.datetime:
             #    raise ValueError('Column type undefined: need either categories, continuous or datetime')
-            for f in ['ordered','groups','colors','num_values','likert','topo_feature']: # ['ordered']
+            for f in ['ordered','groups','colors','num_values','likert','topo_feature']:
                 if getattr(self,f):
                     raise ValueError(f'Field {f} only makes sense for categorical columns {getattr(self,f)}')
         else: # Is categorical
             if not self.ordered:
-                for f in ['likert','num_values']:
+                for f in ['likert']: # ['num_values'] can be situationally useful in non-ordered settings
                     if getattr(self,f):
                         raise ValueError(f'Field {f} only makes sense for ordered categorical columns')
         return self
