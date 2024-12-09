@@ -27,7 +27,7 @@ import pyreadstat
 
 import salk_toolkit as stk
 from salk_toolkit.utils import replace_constants, is_datetime, warn, cached_fn
-from salk_toolkit.validation import soft_validate
+from salk_toolkit.validation import DataMeta, DataDescription, soft_validate
 
 # %% ../nbs/01_io.ipynb 4
 def read_json(fname,replace_const=True):
@@ -125,7 +125,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
         meta = read_json(meta_fname,replace_const=False)
 
     # Print any issues with the meta without raising an error - for now
-    if not virtual_pass: soft_validate(meta)
+    if not virtual_pass: soft_validate(meta,DataMeta)
     
     # Setup constants with a simple replacement mechanic
     constants = meta['constants'] if 'constants' in meta else {}
@@ -520,7 +520,25 @@ def data_with_inferred_meta(data_file, **kwargs):
 
 
 # %% ../nbs/01_io.ipynb 16
+def perform_merges(df,merges,constants={}):
+    if not isinstance(merges,list): merges = [merges]
+    for ms in merges:
+        ndf = read_and_process_data(ms['file'],constants=constants)
+        on = ms['on'] if isinstance(ms['on'],list) else [ms['on']]
+        if ms.get('add'): ndf = ndf[ms['on']+ms['add']]
+        #print(df.columns,ndf.columns,ms['on'])
+        mdf = pd.merge(df,ndf,on=on,how=ms.get('how','inner'))
+        for c in on: mdf[c] = mdf[c].astype(df[c].dtype)
+        df = mdf
+    return df
+
+# %% ../nbs/01_io.ipynb 17
 def read_and_process_data(desc, return_meta=False, constants={}, skip_postprocessing=False):
+
+    if isinstance(desc,str): desc = { 'file':desc } # Allow easy shorthand for simple cases
+
+    # Validate the data desc format 
+    desc = DataDescription.validate(desc).dict()
 
     df, meta = read_concatenate_files_list(desc)
 
@@ -531,12 +549,13 @@ def read_and_process_data(desc, return_meta=False, constants={}, skip_postproces
     globs = {'pd':pd, 'np':np, 'stk':stk, 'df':df, **constants}
     if desc.get('preprocessing'): exec(desc['preprocessing'], globs)
     if desc.get('filter'): globs['df'] = globs['df'][eval(desc['filter'], globs)]
+    if desc.get('merge'): globs['df'] = perform_merges(globs['df'],desc.get('merge'),constants)
     if desc.get('postprocessing') and not skip_postprocessing: exec(desc['postprocessing'],globs)
     df = globs['df']
     
     return (df, meta) if return_meta else df
 
-# %% ../nbs/01_io.ipynb 18
+# %% ../nbs/01_io.ipynb 19
 def save_population_h5(fname,pdf):
     hdf = pd.HDFStore(fname,complevel=9, complib='zlib')
     hdf.put('population',pdf,format='table')
@@ -548,7 +567,7 @@ def load_population_h5(fname):
     hdf.close()
     return res
 
-# %% ../nbs/01_io.ipynb 19
+# %% ../nbs/01_io.ipynb 20
 def save_sample_h5(fname,trace,COORDS = None, filter_df = None):
     odims = [d for d in trace.predictions.dims if d not in ['chain','draw','obs_idx']]
     
@@ -589,7 +608,7 @@ def save_sample_h5(fname,trace,COORDS = None, filter_df = None):
     hdf.close()
 
 
-# %% ../nbs/01_io.ipynb 20
+# %% ../nbs/01_io.ipynb 21
 # Small debug tool to help find where jsons become non-serializable
 def find_type_in_dict(d,dtype,path=''):
     print(d,path)
@@ -603,7 +622,7 @@ def find_type_in_dict(d,dtype,path=''):
         print("RES")
         raise Exception(f"Value {d} of type {dtype} found at {path}")
 
-# %% ../nbs/01_io.ipynb 21
+# %% ../nbs/01_io.ipynb 22
 # These two very helpful functions are borrowed from https://towardsdatascience.com/saving-metadata-with-dataframes-71f51f558d8e
 
 custom_meta_key = 'salk-toolkit-meta'
@@ -651,7 +670,7 @@ def load_parquet_with_metadata(file_name,lazy=False,**kwargs):
 
 
 
-# %% ../nbs/01_io.ipynb 23
+# %% ../nbs/01_io.ipynb 24
 # Helper function to replace a data meta in an already sampled model
 # Should be used carefully, but should mostly work. 
 

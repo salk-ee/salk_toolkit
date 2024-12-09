@@ -145,6 +145,8 @@ def replace_constants(d, constants = {}, inplace=False):
 # %% ../nbs/10_utils.ipynb 17
 # Little function to do approximate string matching between two lists. Useful if things have multiple spellings. 
 def approx_str_match(frm,to,dist_fn=None):
+    if not isinstance(frm,list): frm = list(frm)
+    if not isinstance(frm,list): to = list(to)
     if dist_fn is None: dist_fn = Levenshtein.distance 
     dmat = scipy.spatial.distance.cdist(np.array(frm)[:,None],np.array(to)[:,None],lambda x,y: dist_fn(x[0],y[0]))
     t1,t2 = scipy.optimize.linear_sum_assignment(dmat)
