@@ -528,7 +528,11 @@ def perform_merges(df,merges,constants={}):
         if ms.get('add'): ndf = ndf[ms['on']+ms['add']]
         #print(df.columns,ndf.columns,ms['on'])
         mdf = pd.merge(df,ndf,on=on,how=ms.get('how','inner'))
+        
         for c in on: mdf[c] = mdf[c].astype(df[c].dtype)
+        if len(df) != len(mdf):
+            missing = set(list(df[on].drop_duplicates().itertuples(index=False,name=None))) - set(list(ndf[on].drop_duplicates().itertuples(index=False,name=None)))
+            warn(f'Merge with {ms['file']} removes { 1-len(mdf)/len(df):.1%} rows with missing merges on: {missing}')
         df = mdf
     return df
 
