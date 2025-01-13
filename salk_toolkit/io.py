@@ -39,7 +39,7 @@ def read_json(fname,replace_const=True):
 
 # %% ../nbs/01_io.ipynb 5
 # Read files listed in meta['file'] or meta['files']
-def read_concatenate_files_list(meta,data_file=None,path=None):
+def read_concatenate_files_list(meta,data_file=None,path=None,**kwargs):
 
     opts = meta['read_opts'] if'read_opts' in meta else {}
     if data_file: data_files = [{ 'file': data_file, 'opts': opts}]
@@ -59,7 +59,7 @@ def read_concatenate_files_list(meta,data_file=None,path=None):
         
         if data_file[-4:] == 'json' or data_file[-7:] == 'parquet': # Allow loading metafiles or annotated data
             if data_file[-4:] == 'json': warn(f"Processing {data_file}") # Print this to separate warnings for input jsons from main 
-            raw_data, meta = read_annotated_data(data_file, infer=False)
+            raw_data, meta = read_annotated_data(data_file, infer=False, **kwargs)
             if meta is not None: metas.append(meta)
         elif data_file[-3:] in ['csv', '.gz']:
             raw_data = pd.read_csv(data_file, low_memory=False, **opts)
@@ -120,7 +120,8 @@ def convert_number_series_to_categorical(s):
 # %% ../nbs/01_io.ipynb 7
 # Default usage with mature metafile: process_annotated_data(<metafile name>)
 # When figuring out the metafile, it can also be run as: process_annotated_data(meta=<dict>, data_file=<>)
-def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=None, return_meta=False, ignore_excluded=False, only_fix_categories=False, return_raw=False, virtual_pass=False):
+def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=None, 
+                        return_meta=False, ignore_exclusions=False, only_fix_categories=False, return_raw=False, add_original_inds=False, virtual_pass=False):
     # Read metafile
     if meta_fname is not None:
         meta = read_json(meta_fname,replace_const=False)
@@ -253,9 +254,10 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
         ndf = globs['df']
 
     ndf['original_inds'] = np.arange(len(ndf))
-    if 'excluded' in meta and not ignore_excluded and not virtual_pass:
+    if 'excluded' in meta and not ignore_exclusions and not virtual_pass:
         excl_inds = [ i for i,_ in meta['excluded'] ]
         ndf = ndf[~ndf['original_inds'].isin(excl_inds)]
+    if not add_original_inds: ndf.drop(columns=['original_inds'],inplace=True)
     
     return (ndf, meta) if return_meta else ndf
 
@@ -273,7 +275,7 @@ def read_annotated_data(fname, infer=True, return_raw=False, return_model_meta=F
             meta, model_meta = full_meta.get('data'), full_meta.get('model')
             if meta is not None and not return_raw: # Do the second, virtual pass
                 data, meta = process_annotated_data(meta=meta, raw_data=data, virtual_pass=True, return_meta=True)
-    
+
     mm = (model_meta,) if return_model_meta else tuple()
     if meta is not None or not infer:
         return (data, meta) + mm
@@ -538,14 +540,14 @@ def perform_merges(df,merges,constants={}):
     return df
 
 # %% ../nbs/01_io.ipynb 17
-def read_and_process_data(desc, return_meta=False, constants={}, skip_postprocessing=False):
+def read_and_process_data(desc, return_meta=False, constants={}, skip_postprocessing=False, **kwargs):
 
     if isinstance(desc,str): desc = { 'file':desc } # Allow easy shorthand for simple cases
 
     # Validate the data desc format 
     desc = DataDescription.validate(desc).dict()
 
-    df, meta = read_concatenate_files_list(desc)
+    df, meta = read_concatenate_files_list(desc, **kwargs)
 
     if meta is None and return_meta:
         raise Exception("No meta found on any of the files")
