@@ -38,6 +38,12 @@ def read_json(fname,replace_const=True):
     return meta
 
 # %% ../nbs/01_io.ipynb 5
+def str_from_list(val):
+    if isinstance(val,list):
+        return '\n'.join(val)
+    return str(val)
+
+# %% ../nbs/01_io.ipynb 6
 # Read files listed in meta['file'] or meta['files']
 def read_concatenate_files_list(meta,data_file=None,path=None,**kwargs):
 
@@ -111,13 +117,13 @@ def read_concatenate_files_list(meta,data_file=None,path=None,**kwargs):
 
     return fdf, (metas[-1] if metas else None)
 
-# %% ../nbs/01_io.ipynb 6
+# %% ../nbs/01_io.ipynb 7
 # convert number series to categorical, avoiding long and unweildy fractions like 24.666666666667
 # This is a practical judgement call right now - round to two digits after comma and remove .00 from integers
 def convert_number_series_to_categorical(s):
     return s.astype('float').map('{:.2f}'.format).str.replace('.00','').replace({'nan':None})
 
-# %% ../nbs/01_io.ipynb 7
+# %% ../nbs/01_io.ipynb 8
 # Default usage with mature metafile: process_annotated_data(<metafile name>)
 # When figuring out the metafile, it can also be run as: process_annotated_data(meta=<dict>, data_file=<>)
 def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=None, 
@@ -144,7 +150,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
     
     pp_key = 'preprocessing' if not virtual_pass else 'virtual_preprocessing'
     if pp_key in meta and not only_fix_categories:
-        exec(meta[pp_key],globs)
+        exec(str_from_list(meta[pp_key]),globs)
         raw_data = globs['df']
     
     ndf = pd.DataFrame() if not virtual_pass else raw_data # In vitrual pass, start with the raw_data as it is already processed by normal steps
@@ -250,7 +256,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
     pp_key = 'postprocessing' if not virtual_pass else 'virtual_postprocessing'
     if pp_key in meta and not only_fix_categories:
         globs['df'] = ndf
-        exec(meta[pp_key],globs)
+        exec(str_from_list(meta[pp_key]),globs)
         ndf = globs['df']
 
     ndf['original_inds'] = np.arange(len(ndf))
@@ -261,7 +267,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
     
     return (ndf, meta) if return_meta else ndf
 
-# %% ../nbs/01_io.ipynb 8
+# %% ../nbs/01_io.ipynb 9
 # Read either a json annotation and process the data, or a processed parquet with the annotation attached
 # Return_raw is here for easier debugging of metafiles and is not meant to be used in production
 def read_annotated_data(fname, infer=True, return_raw=False, return_model_meta=False, **kwargs):
@@ -284,7 +290,7 @@ def read_annotated_data(fname, infer=True, return_raw=False, return_model_meta=F
     meta = infer_meta(fname,meta_file=False)
     return process_annotated_data(fname, meta=meta, return_meta=True) + mm
 
-# %% ../nbs/01_io.ipynb 9
+# %% ../nbs/01_io.ipynb 10
 # Helper functions designed to be used with the annotations
 
 # Convert data_meta into a dict where each group and column maps to their metadata dict
@@ -309,7 +315,7 @@ def group_columns_dict(data_meta):
 def list_aliases(lst, da):
     return [ fv for v in lst for fv in (da[v] if isinstance(v,str) and v in da else [v]) ]
 
-# %% ../nbs/01_io.ipynb 11
+# %% ../nbs/01_io.ipynb 12
 # Creates a mapping old -> new
 def get_original_column_names(dmeta):
     res = {}
@@ -330,7 +336,7 @@ def change_mapping(ot, nt, only_matches=False):
                  **{ k:v for k, v in nt.items() if k not in ot }, # do those in nt not in ot
                  **matches } 
 
-# %% ../nbs/01_io.ipynb 12
+# %% ../nbs/01_io.ipynb 13
 # Change an existing dataset to correspond better to a new meta_data
 # This is intended to allow making small improvements in the meta even after a model has been run
 # It is by no means perfect, but is nevertheless a useful tool to avoid re-running long pymc models for simple column/translation changes
@@ -397,12 +403,12 @@ def change_parquet_meta(orig_file,data_metafile,new_file):
     return df, meta
 
 
-# %% ../nbs/01_io.ipynb 13
+# %% ../nbs/01_io.ipynb 14
 def is_categorical(col):
     return col.dtype.name in ['object', 'str', 'category'] and not is_datetime(col)
 
 
-# %% ../nbs/01_io.ipynb 14
+# %% ../nbs/01_io.ipynb 15
 max_cats = 50
 
 # Create a very basic metafile for a dataset based on it's contents
@@ -522,7 +528,7 @@ def data_with_inferred_meta(data_file, **kwargs):
     return process_annotated_data(meta=meta, data_file=data_file, return_meta=True)
 
 
-# %% ../nbs/01_io.ipynb 16
+# %% ../nbs/01_io.ipynb 17
 def perform_merges(df,merges,constants={}):
     if not isinstance(merges,list): merges = [merges]
     for ms in merges:
@@ -539,7 +545,7 @@ def perform_merges(df,merges,constants={}):
         df = mdf
     return df
 
-# %% ../nbs/01_io.ipynb 17
+# %% ../nbs/01_io.ipynb 18
 def read_and_process_data(desc, return_meta=False, constants={}, skip_postprocessing=False, **kwargs):
 
     if isinstance(desc,str): desc = { 'file':desc } # Allow easy shorthand for simple cases
@@ -554,15 +560,15 @@ def read_and_process_data(desc, return_meta=False, constants={}, skip_postproces
     
     # Perform transformation and filtering
     globs = {'pd':pd, 'np':np, 'stk':stk, 'df':df, **constants}
-    if desc.get('preprocessing'): exec(desc['preprocessing'], globs)
+    if desc.get('preprocessing'): exec(str_from_list(desc['preprocessing']), globs)
     if desc.get('filter'): globs['df'] = globs['df'][eval(desc['filter'], globs)]
     if desc.get('merge'): globs['df'] = perform_merges(globs['df'],desc.get('merge'),constants)
-    if desc.get('postprocessing') and not skip_postprocessing: exec(desc['postprocessing'],globs)
+    if desc.get('postprocessing') and not skip_postprocessing: exec(str_from_list(desc['postprocessing']),globs)
     df = globs['df']
     
     return (df, meta) if return_meta else df
 
-# %% ../nbs/01_io.ipynb 19
+# %% ../nbs/01_io.ipynb 20
 def save_population_h5(fname,pdf):
     hdf = pd.HDFStore(fname,complevel=9, complib='zlib')
     hdf.put('population',pdf,format='table')
@@ -574,7 +580,7 @@ def load_population_h5(fname):
     hdf.close()
     return res
 
-# %% ../nbs/01_io.ipynb 20
+# %% ../nbs/01_io.ipynb 21
 def save_sample_h5(fname,trace,COORDS = None, filter_df = None):
     odims = [d for d in trace.predictions.dims if d not in ['chain','draw','obs_idx']]
     
@@ -615,7 +621,7 @@ def save_sample_h5(fname,trace,COORDS = None, filter_df = None):
     hdf.close()
 
 
-# %% ../nbs/01_io.ipynb 21
+# %% ../nbs/01_io.ipynb 22
 # Small debug tool to help find where jsons become non-serializable
 def find_type_in_dict(d,dtype,path=''):
     print(d,path)
@@ -629,7 +635,7 @@ def find_type_in_dict(d,dtype,path=''):
         print("RES")
         raise Exception(f"Value {d} of type {dtype} found at {path}")
 
-# %% ../nbs/01_io.ipynb 22
+# %% ../nbs/01_io.ipynb 23
 # These two very helpful functions are borrowed from https://towardsdatascience.com/saving-metadata-with-dataframes-71f51f558d8e
 
 custom_meta_key = 'salk-toolkit-meta'
@@ -677,7 +683,7 @@ def load_parquet_with_metadata(file_name,lazy=False,**kwargs):
 
 
 
-# %% ../nbs/01_io.ipynb 24
+# %% ../nbs/01_io.ipynb 25
 # Helper function to replace a data meta in an already sampled model
 # Should be used carefully, but should mostly work. 
 

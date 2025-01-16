@@ -128,10 +128,10 @@ class DataMeta(PBase):
     constants: Optional[Dict] = None
 
     # Different global processing steps
-    preprocessing: Optional[str] = None # Performed on raw data
-    postprocessing: Optional[str] = None # Performed after columns and blocks have been processed
-    virtual_preprocessing: Optional[str] = None # Same as preprocessing, but only in virtual step
-    virtual_postprocessing: Optional[str] = None # Same as postprocessing, but only in virtual step
+    preprocessing: Optional[Union[str,List[str]]] = None # Performed on raw data
+    postprocessing: Optional[Union[str,List[str]]] = None # Performed after columns and blocks have been processed
+    virtual_preprocessing: Optional[Union[str,List[str]]] = None # Same as preprocessing, but only in virtual step
+    virtual_postprocessing: Optional[Union[str,List[str]]] = None # Same as postprocessing, but only in virtual step
 
     # List of data points that should be excluded in alyses
     excluded: List[Tuple[int,str]] = [] # Index of row + str  reason for exclusion
@@ -180,10 +180,10 @@ class DataDescription(BaseModel):
     # NB! BaseModel not PBase to allow for extensions such as PopulationDescription
     file: Optional[str] = None # Single file to read
     files: Optional[List[Union[str,Dict]]] = None # Multiple files to parse
-    preprocessing: Optional[str] = None # String of python code that can reference df
+    preprocessing: Optional[Union[str,List[str]]] = None # String of python code that can reference df
     filter: Optional[str] = None # String of python code that can reference df and is evaluated as df[filter code]
     merge: MergeSpec = [] # Optionally merge another data source into this one
-    postprocessing: Optional[str] = None # String of python code that can reference df
+    postprocessing: Optional[Union[str,List[str]]] = None # String of python code that can reference df
 
 
 
