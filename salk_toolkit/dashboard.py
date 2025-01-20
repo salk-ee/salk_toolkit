@@ -163,7 +163,7 @@ def load_translate(translate):
 # Main dashboard wrapper - WIP
 class SalkDashboardBuilder:
 
-    def __init__(self, data_source, auth_conf, logfile, groups=['guest','user','admin'], public=False, translate=None):
+    def __init__(self, data_source, auth_conf, logfile, groups=['guest','user','admin'], org_whitelist=None, public=False, translate=None):
         
         # Allow deployment.json to redirect files from local to s3 if local missing (i.e. in deployment scenario)
         if os.path.exists('./deployment.json'):
@@ -190,7 +190,8 @@ class SalkDashboardBuilder:
         
         # Set up authentication
         with st.spinner(self.tf("Setting up authentication...",context='ui')):
-            self.uam = UserAuthenticationManager(auth_conf, groups, s3_fs=self.s3fs, info=self.info, logger=self.log_event, 
+            self.uam = UserAuthenticationManager(auth_conf, groups, org_whitelist=org_whitelist,
+                                                s3_fs=self.s3fs, info=self.info, logger=self.log_event, 
                                                 translate_func=lambda t: self.tf(t,context='ui'))
 
         if not public:
@@ -290,11 +291,14 @@ class SalkDashboardBuilder:
 # %% ../nbs/05_dashboard.ipynb 14
 class UserAuthenticationManager():
     
-    def __init__(self,auth_conf_file,groups,s3_fs,info,logger,translate_func):
+    def __init__(self,auth_conf_file,groups,org_whitelist,s3_fs,info,logger,translate_func):
         self.groups, self.s3fs, self.info  = groups, s3_fs, info
+        self.org_whitelist = org_whitelist
+
+        self.conf_file = auth_conf_file
+        self.load_uncached_conf()
+        config = self.conf     
         
-        config = load_json_cached(auth_conf_file, _s3_fs = self.s3fs)
-        self.conf, self.conf_file = config, auth_conf_file
         self.auth = stauth.Authenticate(
             config['credentials'],
             config['cookie']['name'],
@@ -302,7 +306,6 @@ class UserAuthenticationManager():
             config['cookie']['expiry_days'],
             config['preauthorized']
         )
-        self.users = config['credentials']['usernames']
         self.user = {} # Filled on login
         self.log_event = logger
         self.tf = translate_func
@@ -315,6 +318,14 @@ class UserAuthenticationManager():
     
     def load_uncached_conf(self):
         self.conf = load_json(self.conf_file, _s3_fs = self.s3fs)
+        
+        if self.org_whitelist is not None:
+            self.conf['credentials']['usernames'] = {
+                un:ud for un,ud in self.conf['credentials']['usernames'].items()
+                if ud.get('group') == 'admin' or # Admins have access to everything
+                    ud.get('organization') in self.org_whitelist
+            }
+            
         self.users = self.conf['credentials']['usernames']
     
     def login_screen(self):
