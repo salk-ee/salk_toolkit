@@ -47,7 +47,6 @@ def str_from_list(val):
 # Read files listed in meta['file'] or meta['files']
 def read_concatenate_files_list(meta,data_file=None,path=None,**kwargs):
 
-    print(data_file,meta)
     opts = meta['read_opts'] if'read_opts' in meta else {}
     if data_file: data_files = [{ 'file': data_file, 'opts': opts}]
     elif meta.get('file'): data_files = [{ 'file': meta['file'], 'opts': opts }]
@@ -63,7 +62,6 @@ def read_concatenate_files_list(meta,data_file=None,path=None,**kwargs):
         
         data_file, opts = fd['file'], fd['opts']
         if path: data_file = os.path.join(os.path.dirname(path),data_file)
-        print(fi,fd,data_file)
         if data_file[-4:] == 'json' or data_file[-7:] == 'parquet': # Allow loading metafiles or annotated data
             if data_file[-4:] == 'json': warn(f"Processing {data_file}") # Print this to separate warnings for input jsons from main 
             raw_data, meta = read_annotated_data(data_file, infer=False, **kwargs)
@@ -110,10 +108,10 @@ def read_concatenate_files_list(meta,data_file=None,path=None,**kwargs):
         for c, dtype in cat_dtypes.items():
             if dtype is None: # Added as an extra field, infer categories
                 dtype = pd.Categorical([],list(fdf[c].dropna().unique())).dtype
-            elif not set(fdf[c].dropna().unique()) <= set(dtype.categories): # If the categories are the same, restore the dtype
+            elif not set(fdf[c].dropna().unique()) <= set(dtype.categories): # If the categories are not the same, create a new dtype
                 #print(set(fdf[c].dropna().unique()), set(dtype.categories))
-                warn(f"Categories for {c} are different between files, not restoring dtype")
                 dtype = pd.Categorical([],list(fdf[c].dropna().unique())).dtype
+                warn(f"Categories for {c} are different between files - merging to total {len(dtype.categories)} cats")
             fdf[c] = pd.Categorical(fdf[c],dtype=dtype)
 
     return fdf, (metas[-1] if metas else None)
@@ -232,7 +230,6 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
                 cats = cd['categories']
                 s_rep = s.dropna().iloc[0] # Find a non-na element
                 if isinstance(s_rep,list) or isinstance(s_rep,np.ndarray): 
-                    print(cn,s_rep)
                     ns = s #  Just leave a list of strings
                 else: ns = pd.Series(pd.Categorical(s, # NB! conversion to str already done before. Doing it here kills NA values
                                                     categories=cats,ordered=cd['ordered'] if 'ordered' in cd else False), name=cn, index=raw_data.index)
@@ -633,7 +630,6 @@ def find_type_in_dict(d,dtype,path=''):
         for i,v in enumerate(d):
             find_type_in_dict(v,dtype,path+f'[{i}]')
     elif isinstance(d,dtype):
-        print("RES")
         raise Exception(f"Value {d} of type {dtype} found at {path}")
 
 # %% ../nbs/01_io.ipynb 23
