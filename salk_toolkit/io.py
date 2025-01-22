@@ -47,10 +47,11 @@ def str_from_list(val):
 # Read files listed in meta['file'] or meta['files']
 def read_concatenate_files_list(meta,data_file=None,path=None,**kwargs):
 
+    print(data_file,meta)
     opts = meta['read_opts'] if'read_opts' in meta else {}
     if data_file: data_files = [{ 'file': data_file, 'opts': opts}]
-    elif 'file' in meta: data_files = [{ 'file': meta['file'], 'opts': opts }]
-    elif 'files' in meta: data_files = meta['files'] 
+    elif meta.get('file'): data_files = [{ 'file': meta['file'], 'opts': opts }]
+    elif meta.get('files'): data_files = meta['files'] 
     else: raise Exception("No files provided")
     
     data_files = [  {'opts': opts, **f } if isinstance(f,dict) else
@@ -62,7 +63,7 @@ def read_concatenate_files_list(meta,data_file=None,path=None,**kwargs):
         
         data_file, opts = fd['file'], fd['opts']
         if path: data_file = os.path.join(os.path.dirname(path),data_file)
-        
+        print(fi,fd,data_file)
         if data_file[-4:] == 'json' or data_file[-7:] == 'parquet': # Allow loading metafiles or annotated data
             if data_file[-4:] == 'json': warn(f"Processing {data_file}") # Print this to separate warnings for input jsons from main 
             raw_data, meta = read_annotated_data(data_file, infer=False, **kwargs)
@@ -541,7 +542,7 @@ def perform_merges(df,merges,constants={}):
         for c in on: mdf[c] = mdf[c].astype(df[c].dtype)
         if len(df) != len(mdf):
             missing = set(list(df[on].drop_duplicates().itertuples(index=False,name=None))) - set(list(ndf[on].drop_duplicates().itertuples(index=False,name=None)))
-            warn(f'Merge with {ms['file']} removes { 1-len(mdf)/len(df):.1%} rows with missing merges on: {missing}')
+            warn(f"Merge with {ms['file']} removes { 1-len(mdf)/len(df):.1%} rows with missing merges on: {missing}")
         df = mdf
     return df
 

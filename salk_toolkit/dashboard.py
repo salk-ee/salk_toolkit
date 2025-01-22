@@ -4,9 +4,9 @@
 
 # %% auto 0
 __all__ = ['get_plot_width', 'open_fn', 'exists_fn', 'read_annotated_data_cached', 'load_json', 'load_json_cached', 'save_json',
-           'alias_file', 'default_translate', 'SalkDashboardBuilder', 'UserAuthenticationManager', 'draw_plot_matrix',
-           'st_plot', 'stss_safety', 'facet_ui', 'filter_ui', 'translate_with_dict', 'log_missing_translations',
-           'clean_missing_translations', 'add_missing_to_dict']
+           'alias_file', 'default_translate', 'SalkDashboardBuilder', 'sqlite_client', 'UserAuthenticationManager',
+           'draw_plot_matrix', 'st_plot', 'stss_safety', 'facet_ui', 'filter_ui', 'translate_with_dict',
+           'log_missing_translations', 'clean_missing_translations', 'add_missing_to_dict']
 
 # %% ../nbs/05_dashboard.ipynb 3
 import json, os, csv, re, time
@@ -34,6 +34,7 @@ import streamlit as st
 from streamlit_option_menu import option_menu
 from streamlit_dimensions import st_dimensions
 import streamlit_authenticator as stauth
+import libsql_client
 
 # %% ../nbs/05_dashboard.ipynb 4
 def get_plot_width(key):
@@ -289,35 +290,54 @@ class SalkDashboardBuilder:
         self.build()
 
 # %% ../nbs/05_dashboard.ipynb 14
+# TODO
+# - centralize the db connection, getting url and token from env
+# - move other conf (cookie token) to streamlit env variables
+# - create a database with username as id and migrate the auth_conf on the web
+
+@st.cache_resource
+def sqlite_client(url, token):
+    return libsql_client.create_client_sync(url=url, auth_token=token)
+
 class UserAuthenticationManager():
     
     def __init__(self,auth_conf_file,groups,org_whitelist,s3_fs,info,logger,translate_func):
         self.groups, self.s3fs, self.info  = groups, s3_fs, info
         self.org_whitelist = org_whitelist
 
+
+        self.client = None
         self.conf_file = auth_conf_file
         self.load_uncached_conf()
-        config = self.conf     
+        config = self.conf 
         
         self.auth = stauth.Authenticate(
             config['credentials'],
             config['cookie']['name'],
             config['cookie']['key'],
             config['cookie']['expiry_days'],
-            config['preauthorized']
+            [] # config['preauthorized'] - not using preauthorization
         )
         self.user = {} # Filled on login
         self.log_event = logger
         self.tf = translate_func
-        
+
         # Mark that we should log the next login
         if 'log_event' not in st.session_state: st.session_state['log_event'] = True
+
                           
     def require_admin(self):
         if not self.admin: raise Exception("This action requires administrator privileges")
     
     def load_uncached_conf(self):
         self.conf = load_json(self.conf_file, _s3_fs = self.s3fs)
+
+        if 'libsql' in self.conf:
+            print("LOAD SQL")
+            url, token = self.conf['libsql']['url'], self.conf['libsql']['token']
+            self.client = sqlite_client(url=url, token=token)
+            ures = self.client.execute("SELECT * FROM users")
+            self.conf['credentials']['usernames'] = { u['username']:dict(zip(ures.columns,u)) for u in ures.rows }
         
         if self.org_whitelist is not None:
             self.conf['credentials']['usernames'] = {
@@ -355,6 +375,14 @@ class UserAuthenticationManager():
             json.dump(self.conf,jf)
         time.sleep(3) # Give some time for messages to display etc
         st.rerun() # Force a rerun to reload the new file
+
+    def update_user(self,username):
+        if 'libsql' in self.conf:
+            user_data = self.users[username]
+            self.client.execute('UPDATE users SET name = ?, email = ?, organization = ?, "group" = ?, password = ? WHERE username = ?',
+                         [user_data['name'], user_data['email'], user_data['organization'], 
+                          user_data['group'], user_data['password'], username])
+        else: update_conf()
             
     def add_user(self, username, password, user_data):
         self.require_admin()
@@ -363,7 +391,12 @@ class UserAuthenticationManager():
             self.users[username] = user_data
             self.info.success(f'User {username} successfully added.')
             self.log_event(f'add-user: {username}')
-            self.update_conf()
+            
+            if 'libsql' in self.conf:
+                self.client.execute('INSERT INTO users (username, name, email, organization, "group", password) VALUES (?, ?, ?, ?, ?, ?)',
+                               [username, user_data['name'], user_data['email'], user_data['organization'], 
+                                user_data['group'], user_data['password']])
+            else: self.update_conf()
             return True
         else:
             self.info.error(f'User **{username}** already exists.')
@@ -381,20 +414,24 @@ class UserAuthenticationManager():
         # Handle password change
         if user_data.get('password'):
             user_data['password'] = stauth.Hasher([user_data['password']]).generate()[0]
-        else: del user_data['password']
+        else: user_data['password'] = self.users[username]['password']
         
         # Update everything else
         self.users[username].update(user_data)
         self.log_event(f'change-user: {username}')
         self.info.success(f'User **{username}** changed.')
-        self.update_conf()
+        self.update_user(username)
         
     def delete_user(self, username): 
         self.require_admin()
         del self.users[username]
         self.info.warning(f'User **{username}** deleted.')
         self.log_event(f'delete-user: {username}')
-        self.update_conf()
+
+        if 'libsql' in self.conf:
+            self.client.execute('DELETE FROM users WHERE username = ?', [username])
+        else:
+            self.update_conf()
 
     def list_users(self):
         self.require_admin()
@@ -411,7 +448,7 @@ def user_settings_page(sdb):
                                        fields={'Form name':tf('Reset password'), 'Current password':tf('Current password'), 
                                                'New password':tf('New password'), 'Repeat password': tf('Repeat password'), 
                                                'Reset':tf('Reset')}):
-            sdb.uam.update_conf()
+            sdb.uam.update_user(st.session_state["username"])
             st.success(tf('Password modified successfully'))
     except Exception as e:
         st.error(e)
