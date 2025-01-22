@@ -41,7 +41,7 @@ class ColumnMeta(PBase):
     colors: Optional[Dict[str,str]] = None # Dict matching colors to categories
     num_values: Optional[List[Union[float,None]]] = None # For categoricals - how to convert the categories to numbers
     likert: bool = False # For ordered categoricals - if they are likert-type (i.e. symmetric around center)
-    topo_feature: Optional[List[str]] = None # Link to a geojson/topojson [url,type,col_name inside geodata]
+    topo_feature: Optional[Tuple[str,str,str]] = None # Link to a geojson/topojson [url,type,col_name inside geodata]
     electoral_system: Optional[Dict] = None # Information about electoral system (TODO: spec it out)
     mandates: Optional[Dict] = None # Mandate count mapping for the electoral system
 
