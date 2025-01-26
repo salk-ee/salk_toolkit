@@ -99,7 +99,7 @@ def estimate_box_from_beta(row,beta_max_k=1000):
     m, m2, n, n2 = row['count'],row['count_sq'],row['group_size'],row['group_size_sq']
     v = m2 - m*m # empirical variance 
     p = m/(n+1e-5) # p = a/(a+b)
-    k = (p*(1-p)*n2-v)/(v-p*(1-p)*n+1e-5) # k = a+b
+    k = (p*n2 - v)/(v - n2*p*p - p*(1-p)*n + 1e-5) # k = a+b
     #print(row.name,m,n,k)
     if k<=0 or k>beta_max_k: k = beta_max_k # Can go negative or near-infinite - limit to reasonable values
 
