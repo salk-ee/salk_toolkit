@@ -239,7 +239,15 @@ class SalkDashboardBuilder:
                 self.pages.append( (name,pfunc,kwargs) )
         return decorator
 
-    def build(self):    
+    def build(self):
+
+        # This is to avoid a bug of the option menu not showing up on reload
+        # I don't get how this row fixes the issue, but it does
+        #https://github.com/victoryhb/streamlit-option-menu/issues/68
+        if st.session_state["authentication_status"] and st.session_state["logout"] is None:
+            st.session_state["logout"] = True 
+            st.rerun()
+
         # If login failed and is required, don't go any further
         if not self.public and not st.session_state["authentication_status"]: return
     
@@ -308,7 +316,7 @@ class UserAuthenticationManager():
 
         self.client = None
         self.conf_file = auth_conf_file
-        self.load_uncached_conf()
+        self.load_conf()
         config = self.conf 
         
         self.auth = stauth.Authenticate(
@@ -329,8 +337,9 @@ class UserAuthenticationManager():
     def require_admin(self):
         if not self.admin: raise Exception("This action requires administrator privileges")
     
-    def load_uncached_conf(self):
-        self.conf = load_json(self.conf_file, _s3_fs = self.s3fs)
+    def load_conf(self,cached=True):
+        if cached: self.conf = load_json_cached(self.conf_file, _s3_fs = self.s3fs)
+        else: self.conf = load_json(self.conf_file, _s3_fs = self.s3fs)
 
         if 'libsql' in self.conf:
             print("LOAD SQL")
@@ -382,7 +391,7 @@ class UserAuthenticationManager():
             self.client.execute('UPDATE users SET name = ?, email = ?, organization = ?, "group" = ?, password = ? WHERE username = ?',
                          [user_data['name'], user_data['email'], user_data['organization'], 
                           user_data['group'], user_data['password'], username])
-        else: update_conf()
+        else: self.update_conf()
             
     def add_user(self, username, password, user_data):
         self.require_admin()
@@ -472,7 +481,7 @@ def highlight_cells(val):
 
 def admin_page(sdb):
     sdb.uam.require_admin()
-    sdb.uam.load_uncached_conf() # so all admin updates would immediately be visible
+    sdb.uam.load_conf(cached=False) # so all admin updates would immediately be visible
     
     menu_choice = option_menu(None,[ 'Log management', 'List users', 'Add user', 'Change user', 'Delete user' ], 
                               icons=['card-list','people-fill','person-fill-add','person-lines-fill','person-fill-dash'], orientation='horizontal')
