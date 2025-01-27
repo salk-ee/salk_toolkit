@@ -97,9 +97,8 @@ def estimate_box_from_beta(row,beta_max_k=1000):
 
     # Use method of moments to estimate beta-binomialparameters
     m, m2, n, n2 = row['count'],row['count_sq'],row['group_size'],row['group_size_sq']
-    v = m2 - m*m # empirical variance 
     p = m/(n+1e-5) # p = a/(a+b)
-    k = (p*n2 - v)/(v - n2*p*p - p*(1-p)*n + 1e-5) # k = a+b
+    k = (p*n2 - m2)/(m2 - n2*p*p - p*(1-p)*n + 1e-5) # k = a+b
     #print(row.name,m,n,k)
     if k<=0 or k>beta_max_k: k = beta_max_k # Can go negative or near-infinite - limit to reasonable values
 
@@ -125,10 +124,11 @@ def boxplot_manual(data, value_col='value', facets=[], val_format='%', width=800
         val_format = val_format[:-1]+'f'
 
     if fit_beta_dist:
-        data['count'] = data['group_size']*(data[value_col]/100)
+        data['count'] = (data['group_size']*(data[value_col]/100)).round(0).astype('int')
         data['count_sq'] = data['count']**2
         data['group_size_sq'] = data['group_size']**2
-        max_k = max(500,data['group_size'].mean()*3)
+
+        max_k = 1000 #max(500,data['group_size'].mean()*3)
         df = data.groupby(outer_factors+[f['col'] for f in facets[:2] if f is not None],observed=True)[['count','count_sq','group_size','group_size_sq']].mean().apply(estimate_box_from_beta,beta_max_k=max_k,axis=1).reset_index()
     else:
         df = data.groupby(outer_factors+[f['col'] for f in facets[:2] if f is not None],observed=True)[value_col].apply(boxplot_vals).reset_index()
