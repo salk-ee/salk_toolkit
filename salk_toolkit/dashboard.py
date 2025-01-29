@@ -305,6 +305,7 @@ class SalkDashboardBuilder:
 
 @st.cache_resource
 def sqlite_client(url, token):
+    print(f"User database from {url}")
     return libsql_client.create_client_sync(url=url, auth_token=token)
 
 class UserAuthenticationManager():
@@ -342,7 +343,6 @@ class UserAuthenticationManager():
         else: self.conf = load_json(self.conf_file, _s3_fs = self.s3fs)
 
         if 'libsql' in self.conf:
-            print("LOAD SQL")
             url, token = self.conf['libsql']['url'], self.conf['libsql']['token']
             self.client = sqlite_client(url=url, token=token)
             ures = self.client.execute("SELECT * FROM users")
