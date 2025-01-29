@@ -116,6 +116,7 @@ priority_weights = {
     'required_meta': [n_a, 500],
 }
 
+# Method for choosing a sensible default plot based on the data and plot metadata
 def calculate_priority(plot_meta, match):
     priority, reasons = plot_meta.get('priority',0), []
 

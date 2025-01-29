@@ -695,6 +695,10 @@ def replace_data_meta_in_parquet(parquet_name,metafile_name):
     nmeta['structure'] += [ grp for grp in fmeta['data']['structure']
         if grp.get('generated') and grp['name'] not in existing_grps ]
 
+    # Add back the draws data and total size
+    nmeta['draws_data'] = fmeta.get('draws_data',[])
+    if 'total_size' in fmeta: nmeta['total_size'] = fmeta['total_size']
+
     # Replace the data part of meta    
     fmeta['data'] = nmeta
 

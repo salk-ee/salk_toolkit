@@ -969,7 +969,7 @@ def compile_bb_pp_ff():
     lp = (
         pm.BetaBinomial.logp(value=c,n=n,alpha=p*mv,beta=(1-p)*mv).sum() + #+ #p*mv,beta=(1-p)*mv).sum() +
         pm.LogNormal.logp(mv, mu=mm, sigma=s).sum() + # Partially pooled means
-        pm.Normal.logp(mm, mu=3, sigma=3).sum() + # Prior for mean 
+        pm.Normal.logp(mm, mu=4, sigma=3).sum() + # Prior for mean 
         pm.Gamma.logp(s, alpha=2, scale=1).sum() # Prior for scale
     )
 
@@ -977,11 +977,11 @@ def compile_bb_pp_ff():
     lpf_jac = pytensor.function([log_pv,c,n], pytensor.gradient.jacobian(lp,[log_pv]))
     return lambda v,c,n: (-lpf(v,c,n), -np.clip(lpf_jac(v,c,n)[0],-1e3,1e3)) # Clipping is importatnt to avoid exploding gradients
 
-def beta_binomial_fit(data,f_cols,beta_max_k=1000):
+def beta_binomial_fit(data,f_cols,beta_max_k=5000):
     from scipy.optimize import minimize
     global bb_pp_ff
 
-    # data.to_csv('~/boxplot_data.csv') # If needed for debugging
+    data.to_csv('~/boxplot_data.csv') # If needed for debugging
 
     cdf = data.pivot(index='draw', columns=f_cols, values='count').fillna(0)
     cv, res_inds = cdf.to_numpy(), cdf.columns
@@ -1001,7 +1001,7 @@ def beta_binomial_fit(data,f_cols,beta_max_k=1000):
         res = minimize(bb_pp_ff, [3, 1.5] + list(np.log(kmm)), args=(cv,nv), jac=True, method='L-BFGS-B')
         if not res.success: raise ValueError(f"Beta-binomial fit failed: {res.message}")
 
-        kmm = np.exp(res.x[2:])
+        print(np.exp(res.x[:2]), np.exp(res.x[2:]).mean())
     
     rdf = pd.DataFrame({ 'p':p,'k':kmm },index=res_inds).reset_index()
 
