@@ -92,7 +92,7 @@ def read_concatenate_files_list(meta,data_file=None,path=None,**kwargs):
 
         # Handle categorical types for more complex situations
         for c in raw_data.columns:
-            if raw_data[c].dtype.name == 'object':
+            if raw_data[c].dtype.name == 'object' and not isinstance(raw_data[c].dropna().iloc[0],list):
                 cat_dtypes[c] = cat_dtypes.get(c,None) # Infer a categorical type unless already given
             elif raw_data[c].dtype.name == 'category' and len(data_files) > 1: # Strip categories when multiple files involved
                 if c not in cat_dtypes or len(cat_dtypes[c].categories)<=len(raw_data[c].dtype.categories):
