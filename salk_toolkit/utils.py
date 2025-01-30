@@ -101,7 +101,7 @@ def match_data(data1,data2,cols=None):
     ccols = [c for c in cols if d1[c].dtype.name=='category']
     for c in ccols:
         if d1[c].dtype.ordered: # replace categories with their index
-            s1, s2 = set(d1[c].unique()), set(d2[c].unique())
+            s1, s2 = set(d1[c].dtype.categories), set(d2[c].dtype.categories)
             if s1-s2 and s2-s1: # one-way imbalance is fine
                 raise Exception(f"Ordered categorical columns differ in their categories on: {s1-s2} vs {s2-s1}")
             
@@ -118,7 +118,9 @@ def match_data(data1,data2,cols=None):
 
 
     # Use pseudoinverse in case we have collinear columns
-    pVI = np.linalg.pinv(np.cov(np.vstack([d1.values, d2.values]).T.astype('float'))).T
+    cov = np.cov(np.vstack([d1.values, d2.values]).T.astype('float'))
+    cov += np.eye(len(cov))*1e-5 # Add a small amount of noise to avoid singular matrix
+    pVI = np.linalg.pinv(cov).T
     dmat = cdist(d1, d2, 'mahalanobis', VI=pVI)
     i1, i2 = linear_sum_assignment(dmat, maximize=False)
     ind1, ind2 = d1.index[i1], d2.index[i2]
