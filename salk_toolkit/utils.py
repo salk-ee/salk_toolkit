@@ -98,6 +98,8 @@ def match_data(data1,data2,cols=None):
     d1 = data1[cols].copy().dropna()
     d2 = data2[cols].copy().dropna()
 
+    if len(d1)==0 or len(d2)==0: return [],[]
+
     ccols = [c for c in cols if d1[c].dtype.name=='category']
     for c in ccols:
         if d1[c].dtype.ordered: # replace categories with their index

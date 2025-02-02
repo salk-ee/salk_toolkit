@@ -548,7 +548,7 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
                 nvals = get_cat_num_vals(col_meta[f0],pp_desc) 
                 cmap = dict(zip(col_meta[f0]['categories'],nvals))
                 sdf = data[ [cn,f0,pparams['value_col']] ]
-                sdf['sort_val'] = sdf[pparams['value_col']]*sdf[f0].astype('object').replace(cmap)
+                sdf['sort_val'] = sdf[pparams['value_col']].astype(float)*sdf[f0].astype('object').replace(cmap).astype(float)
                 ordervals = sdf.groupby(cn,observed=True)['sort_val'].mean()
             else:
                 ordervals = data.groupby(cn,observed=True)[pparams['value_col']].mean()
