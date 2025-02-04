@@ -545,10 +545,12 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
                 raise Exception(f"Sort column {cn} not found")
             if plot_meta.get('sort_numeric_first_facet'): # Some plots (like likert_bars) need a more complex sort
                 f0 = factor_cols[0]
-                nvals = get_cat_num_vals(col_meta[f0],pp_desc) 
-                cmap = dict(zip(col_meta[f0]['categories'],nvals))
+                nvals = get_cat_num_vals(col_meta[f0],pp_desc)
+                cats = col_meta[f0]['categories']
+                if cats == 'infer': cats = data[f0].dtype.categories
+                cmap = dict(zip(cats,nvals))
                 sdf = data[ [cn,f0,pparams['value_col']] ]
-                sdf['sort_val'] = sdf[pparams['value_col']].astype(float)*sdf[f0].astype('object').replace(cmap).astype(float)
+                sdf['sort_val'] = sdf[pparams['value_col']]*sdf[f0].astype('object').replace(cmap)
                 ordervals = sdf.groupby(cn,observed=True)['sort_val'].mean()
             else:
                 ordervals = data.groupby(cn,observed=True)[pparams['value_col']].mean()

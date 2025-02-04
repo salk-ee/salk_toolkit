@@ -240,7 +240,6 @@ class SalkDashboardBuilder:
         return decorator
 
     def build(self):
-
         # This is to avoid a bug of the option menu not showing up on reload
         # I don't get how this row fixes the issue, but it does
         #https://github.com/victoryhb/streamlit-option-menu/issues/68
@@ -260,7 +259,7 @@ class SalkDashboardBuilder:
         # Draw the menu listing pages
         pnames = [t[0] for t in self.pages]
         with st.sidebar:
-            
+
             if self.user:
                 self.sb_info.info(self.tf('Logged in as **%s**',context='ui') % self.user["name"])
                 self.uam.auth.logout(self.tf('Log out',context='ui'), 'sidebar')
