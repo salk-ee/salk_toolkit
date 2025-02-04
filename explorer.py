@@ -27,7 +27,7 @@ with st.spinner("Loading libraries.."):
     import pandas as pd
     import polars as pl
     import numpy as np
-    import json, io, gzip, os, sys
+    import json, io, gzip, os, sys, psutil
     from collections import defaultdict
 
     import arviz as az
@@ -93,21 +93,30 @@ input_files = st.sidebar.multiselect('Select files:',input_file_choices,default_
 #                                                                      #
 ########################################################################
 
+lazy = False
+
 @st.cache_resource(show_spinner=False)
-def load_file(input_file):
-    full_df, dmeta, mmeta = read_annotated_data(paths[input_file]+input_file, return_model_meta=True)
-    n = len(full_df)
+def load_file(input_file,lazy=False):
+    ifile = paths[input_file]+input_file
+    if lazy:
+        full_df, full_meta = load_parquet_with_metadata(ifile,lazy=True)
+        dmeta, mmeta = full_meta['data'], full_meta['model']
+        n = full_df.select(pl.len()).collect().item()
+        columns = full_df.collect_schema().names()
+    else:
+        full_df, dmeta, mmeta = read_annotated_data(ifile, return_model_meta=True)
+        n, columns = len(full_df), full_df.columns
     if dmeta is None: dmeta = {}
-    return { 'data': full_df, 'data_n': n, 'data_meta': dmeta, 'model_meta': mmeta }
+    return { 'data': full_df, 'data_n': n, 'data_meta': dmeta, 'model_meta': mmeta, 'columns': columns }
 
 if len(input_files)==0:
     st.markdown("""Please choose an input file from the sidebar""")
     st.stop()
 else:
-    loaded = { ifile:load_file(ifile) for i,ifile in enumerate(input_files) }
+    loaded = { ifile:load_file(ifile,lazy) for i,ifile in enumerate(input_files) }
     first_file = loaded[input_files[0]]
     first_data_meta = first_file['data_meta'] if global_data_meta is None else global_data_meta
-    first_data = first_file['data']
+    first_data = first_file['data'] if not lazy else first_file['data'].head(5).collect().to_pandas()
 
 
 ########################################################################
@@ -286,7 +295,7 @@ elif input_files_facet:
     dfs = []
     for ifile in input_files:
         df, fargs = loaded[ifile]['data'], args.copy()
-        fargs['filter'] = { k:v for k,v in fargs['filter'].items() if k in df.columns }
+        fargs['filter'] = { k:v for k,v in fargs['filter'].items() if k in loaded[ifile]['columns'] }
         fargs['factor_cols'] = [ f for f in fargs['factor_cols'] if f!='input_file' ]
         pparams = pp_transform_data(df, first_data_meta, fargs)
         dfs.append(pparams['data'])
@@ -328,7 +337,7 @@ else:
 
             #with st.spinner('Filtering data...'):
             fargs = args.copy()
-            fargs['filter'] = { k:v for k,v in args['filter'].items() if k in loaded[ifile]['data'].columns }
+            fargs['filter'] = { k:v for k,v in args['filter'].items() if k in loaded[ifile]['columns'] }
             pparams = pp_transform_data(loaded[ifile]['data'], data_meta, fargs)
             plot = create_plot(pparams,data_meta,fargs,
                                translate=translate,
@@ -356,6 +365,8 @@ else:
                 st.json(steps[step_name])
 
 info.empty()
+
+st.sidebar.write("Mem: %.1f" % (psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2))
 
 dm.__exit__(None,None,None)
 

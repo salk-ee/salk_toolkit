@@ -665,7 +665,7 @@ def load_parquet_metadata(file_name):
 def load_parquet_with_metadata(file_name,lazy=False,**kwargs):
     if lazy: # Load it as a polars lazy dataframe
         meta = load_parquet_metadata(file_name)
-        pl.scan_parquet(file_name,**kwargs)
+        ldf = pl.scan_parquet(file_name,**kwargs)
         return ldf, meta
     
     # Read it as a normal pandas dataframe

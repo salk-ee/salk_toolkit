@@ -147,7 +147,7 @@ def calculate_priority(plot_meta, match):
             if k == 'ordered' and md.get('continuous'): val = priority_weights[k][1] # Continuous is turned into ordered categoricals for facets
             if val < 0: reasons.append(k)
             priority += val
-                                     
+
     return priority, reasons
 
 
@@ -158,14 +158,21 @@ def matching_plots(pp_desc, df, data_meta, details=False, list_hidden=False):
     rc = pp_desc['res_col']
     rcm = col_meta[rc]
 
+    lazy = isinstance(df,pl.LazyFrame)
+    if lazy: df_cols = df.collect_schema().names()
+    else: df_cols = df.columns
+
     # Determine if values are non-negative
-    cols = [c for c in rcm['columns'] if c in df.columns] if 'columns' in rcm else [rc]
-    nonneg = ('categories' in rcm) or df[cols].min(axis=None)>=0
+    cols = [c for c in rcm['columns'] if c in df_cols] if 'columns' in rcm else [rc]
+    nonneg = ('categories' in rcm) or (
+        df[cols].min(axis=None)>=0 if not lazy else 
+        df.select(pl.min_horizontal(pl.col(cols).min())).collect().item()>=0)
+
     if pp_desc.get('convert_res')=='continuous' and ('categories' in rcm):
         nonneg = min([ v for v in get_cat_num_vals(rcm,pp_desc) if v is not None ])>=0
 
     match = {
-        'draws': ('draw' in df.columns),
+        'draws': ('draw' in df_cols),
         'nonnegative': nonneg,
         'hidden': list_hidden,
 
@@ -182,7 +189,7 @@ def matching_plots(pp_desc, df, data_meta, details=False, list_hidden=False):
 # %% ../nbs/02_pp.ipynb 18
 cont_transform_options = ['center','zscore','proportion','softmax','softmax-ratio']
 
-# %% ../nbs/02_pp.ipynb 19
+# %% ../nbs/02_pp.ipynb 20
 # Get the categories that are in use
 def get_cats(col, cats=None):
     if cats is None or len(set(col.dtype.categories)-set(cats))>0: cats = col.dtype.categories
@@ -198,10 +205,14 @@ def transform_cont(data, transform):
     elif transform == 'softmax-ratio': return data.shape[1]*np.exp(data)/(np.exp(np.array(data)).sum(axis=1)[:,None]), '.1f' 
     else: raise Exception(f"Unknown transform '{transform}'")
 
-# %% ../nbs/02_pp.ipynb 20
+
+# %% ../nbs/02_pp.ipynb 21
 def pp_filter_data(df, filter_dict, c_meta, lazy=False):
 
-    inds = True if lazy else np.full(len(df),True) 
+    inds = True if lazy else np.full(len(df),True)
+
+    if lazy: pl.enable_string_cache() # Needed for categories to be comparable to strings
+
     for k, v in filter_dict.items():
         
         # Range filters have form [None,start,end]
@@ -217,7 +228,8 @@ def pp_filter_data(df, filter_dict, c_meta, lazy=False):
         if is_range: # Range of values over ordered categorical
             cats = list(c_meta[k]['categories'] if c_meta[k].get('categories','infer')!='infer' else df[k].dtype.categories)
             if set(v[1:]) & set(cats) != set(v[1:]): 
-                warn(f'Column {k} values {v} not found in {cats}')
+                warn(f'Column {k} values {v} not found in {cats}, not filtering')
+                flst = cats
             else:
                 bi, ei = cats.index(v[1]), cats.index(v[2])
                 flst = cats[bi:ei+1] # 
@@ -231,10 +243,12 @@ def pp_filter_data(df, filter_dict, c_meta, lazy=False):
     filtered_df = df.filter(inds).collect().to_pandas() if lazy else df[inds].copy()
     if lazy and '__index_level_0__' in filtered_df.columns: # Fix index, if provided. This is a hack but seems to be needed as polars does not handle index properly by default
         filtered_df.index = filtered_df['__index_level_0__']
+
+    if lazy: pl.disable_string_cache()
     
     return filtered_df
 
-# %% ../nbs/02_pp.ipynb 21
+# %% ../nbs/02_pp.ipynb 22
 # Get all data required for a given graph
 # Only return columns and rows that are needed
 # This can handle either a pandas DataFrame or a polars LazyDataFrame (to allow for loading only needed data)
@@ -243,42 +257,49 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
 
     plot_meta = get_plot_meta(pp_desc['plot'])
     
+    gc_dict = group_columns_dict(data_meta)
+    c_meta = extract_column_meta(data_meta)
+
+    # Setup lazy frame
+    lazy = isinstance(full_df,pl.LazyFrame)
+    all_col_names = full_df.collect_schema().names() if lazy else full_df.columns
+    
     # Figure out which columns we actually need
     meta_cols = ['weight', 'training_subsample', '__index_level_0__'] + (['draw'] if plot_meta.get('draws') else []) + columns
     cols = [ pp_desc['res_col'] ]  + pp_desc.get('factor_cols',[]) + list(pp_desc.get('filter',{}).keys())
-    cols += [ c for c in meta_cols if c in full_df.columns and c not in cols ]
+    cols += [ c for c in meta_cols if c in all_col_names and c not in cols ]
+
+    # If any aliases are used, cconvert them to column names according to the data_meta
+    cols = [ c for c in np.unique(list_aliases(cols,gc_dict)) if c in all_col_names ]
 
     # Remove draws_data if calcualted_draws is disabled       
     if not pp_desc.get('calculated_draws',True):
         data_meta = data_meta.copy()
         del data_meta['draws_data']
     
-    # If any aliases are used, cconvert them to column names according to the data_meta
-    gc_dict = group_columns_dict(data_meta)
-    c_meta = extract_column_meta(data_meta)
-    
-    cols = [ c for c in np.unique(list_aliases(cols,gc_dict)) if c in full_df.columns ]
-    
-    lazy = isinstance(full_df,pl.LazyFrame)
-    if lazy: pl.enable_string_cache() # Needed for categories to be comparable to strings
-    
     df = full_df.select(cols) if lazy else full_df[cols]
-
-    if 'sample' in pp_desc:
-        df = full_df.sample(pp_desc['sample'])
-
-    # Replace draw with the draws used in modelling. Groups are handled separately below
-    # NB! Has to happen before filtering or the draws are computed for wrong size df
-    # Workaround would be to compute for a dummy df and merge on indices later
-    if 'draw' in df.columns and pp_desc['res_col'] in data_meta.get('draws_data',{}):
-        uid, ndraws = data_meta['draws_data'][pp_desc['res_col']]
-        df = deterministic_draws(df, ndraws, uid, n_total = data_meta['total_size'] )
-    n_points = len(df) # This is used later for draws
-    
+    total_points = df.select(pl.len()).collect().item() if lazy else len(df)
+        
     # Filter the data with given filters
     if pp_desc.get('filter'):
         filtered_df = pp_filter_data(df, pp_desc.get('filter',{}), c_meta, lazy=lazy)
+    elif lazy: filtered_df = df.collect().to_pandas()
     else: filtered_df = df.copy()
+
+    ########################################
+    # Pandas DF from here on
+    ########################################    
+
+    # Replace draw with the draws used in modelling. Groups are handled separately below
+    total_points = data_meta.get('total_size',total_points)
+    if 'draw' in filtered_df.columns and pp_desc['res_col'] in data_meta.get('draws_data',{}):
+        uid, ndraws = data_meta['draws_data'][pp_desc['res_col']]
+        filtered_df = deterministic_draws(filtered_df, ndraws, uid, n_total = total_points )
+
+    n_points = len(filtered_df)
+
+    if 'sample' in pp_desc:
+        df = full_df.sample(pp_desc['sample'])
     
     # If not poststratisfied
     if not pp_desc.get('poststrat',True):
@@ -324,7 +345,7 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
             for c in value_vars:
                 if c in data_meta.get('draws_data',{}):
                     uid, ndraws = data_meta['draws_data'][c]
-                    draws = stable_draws(n_points, ndraws, uid)
+                    draws = stable_draws(total_points, ndraws, uid)[filtered_df.index]
                 else: draws = ddraws
                 draw_ar.append(pd.DataFrame({'draw': draws, 'question': c, 'id': np.arange(n_points) }))
             filtered_df = filtered_df.drop(columns=['draw']).merge(pd.concat(draw_ar),on=['id','question'],how='left')
@@ -360,11 +381,9 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     # How many datapoints the plot is based on. This is useful metainfo to display sometimes
     pparams['n_datapoints'] = n_datapoints
     
-    if lazy: pl.disable_string_cache()
-    
     return pparams
 
-# %% ../nbs/02_pp.ipynb 23
+# %% ../nbs/02_pp.ipynb 24
 def discretize_continuous(col, col_meta={}):
     if 'bin_breaks' in col_meta and 'bin_labels' in col_meta:
         cut = pd.cut(col, bins = col_meta['bin_breaks'], labels = col_meta['bin_labels'])
@@ -441,7 +460,7 @@ def wrangle_data(raw_df, data_meta, pp_desc):
     pparams['data'] = data
     return pparams
 
-# %% ../nbs/02_pp.ipynb 24
+# %% ../nbs/02_pp.ipynb 25
 # Create a color scale
 ordered_gradient = ["#c30d24", "#f3a583", "#94c6da", "#1770ab"]
 def meta_color_scale(scale : Dict, column=None, translate=None):
@@ -454,7 +473,7 @@ def meta_color_scale(scale : Dict, column=None, translate=None):
         cats = [ remap[c] for c in cats ]
     return to_alt_scale(scale,cats)
 
-# %% ../nbs/02_pp.ipynb 25
+# %% ../nbs/02_pp.ipynb 26
 def translate_df(df, translate):
     df.columns = [ (translate(c) if c not in special_columns else c) for c in df.columns ]
     for c in df.columns:
@@ -464,7 +483,7 @@ def translate_df(df, translate):
             df[c] = df[c].cat.rename_categories(remap)
     return df
 
-# %% ../nbs/02_pp.ipynb 26
+# %% ../nbs/02_pp.ipynb 27
 def create_tooltip(pparams,tc_meta):
     
     data, tfn = pparams['data'], pparams['translate']
@@ -496,7 +515,7 @@ def create_tooltip(pparams,tc_meta):
     return tooltips
     
 
-# %% ../nbs/02_pp.ipynb 27
+# %% ../nbs/02_pp.ipynb 28
 # Small helper function to move columns from internal to external columns
 def remove_from_internal_fcols(cname, factor_cols, n_inner):
     if cname not in factor_cols[:n_inner]: return n_inner
@@ -519,7 +538,7 @@ def inner_outer_factors(factor_cols, pp_desc, plot_meta):
     
     return factor_cols, n_inner
 
-# %% ../nbs/02_pp.ipynb 28
+# %% ../nbs/02_pp.ipynb 29
 # Function that takes filtered raw data and plot information and outputs the plot
 # Handles all of the data wrangling and parameter formatting
 def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=False, width=200, height=None, return_matrix_of_plots=False, translate=None):
@@ -664,7 +683,7 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
     return plot
 
 
-# %% ../nbs/02_pp.ipynb 30
+# %% ../nbs/02_pp.ipynb 31
 # Compute the full factor_cols list, including question and res_col as needed
 def impute_factor_cols(pp_desc, col_meta, plot_meta=None):
     factor_cols = pp_desc.get('factor_cols',[]).copy()
@@ -690,9 +709,9 @@ def impute_factor_cols(pp_desc, col_meta, plot_meta=None):
 
     return factor_cols
 
-# %% ../nbs/02_pp.ipynb 31
+# %% ../nbs/02_pp.ipynb 32
 # A convenience function to draw a plot straight from a dataset
-def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, height=None, check_match=True, impute=True,**kwargs):
+def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, height=None, check_match=True, impute=True, lazy=False, **kwargs):
     if data_file is None and full_df is None:
         raise Exception('Data must be provided either as data_file or full_df')
     if data_file is None and data_meta is None:
@@ -700,11 +719,11 @@ def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, h
         
     if full_df is None: 
         # No more lazy loading because a) it was very unstable b) it does not have a real use case c) it does not allow for easy virtual passes
-        #if data_file.endswith('.parquet'): # Try lazy loading as it only loads what it needs from disk
-        #    full_df, full_meta = load_parquet_with_metadata(data_file,lazy=lazy)
-        #    dm = full_meta['data']
-        #else: 
-        full_df, dm = read_annotated_data(data_file)
+        if lazy and data_file.endswith('.parquet'): # Try lazy loading as it only loads what it needs from disk
+            full_df, full_meta = load_parquet_with_metadata(data_file,lazy=True)
+            dm = full_meta['data']
+        else: 
+            full_df, dm = read_annotated_data(data_file)
         if data_meta is None: data_meta = dm
 
     pp_desc = pp_desc.copy()
