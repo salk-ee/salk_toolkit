@@ -229,7 +229,7 @@ def stable_draws(n, n_draws, uid):
     gen = np.random.Generator(bgen)
     
     n_samples = int(math.ceil(n/n_draws))
-    draws = (list(range(n_draws))*n_samples)[:n]
+    draws = np.tile(np.arange(n_draws),n_samples)[:n]
     return gen.permuted(draws)
 
 # Use the stable_draws function to deterministicall assign shuffled draws to a df 

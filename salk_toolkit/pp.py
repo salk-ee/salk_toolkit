@@ -189,29 +189,35 @@ def matching_plots(pp_desc, df, data_meta, details=False, list_hidden=False):
 # %% ../nbs/02_pp.ipynb 18
 cont_transform_options = ['center','zscore','proportion','softmax','softmax-ratio']
 
-# %% ../nbs/02_pp.ipynb 20
+# %% ../nbs/02_pp.ipynb 19
 # Get the categories that are in use
 def get_cats(col, cats=None):
     if cats is None or len(set(col.dtype.categories)-set(cats))>0: cats = col.dtype.categories
     uvals = col.unique()
     return [ c for c in cats if c in uvals ]
 
-def transform_cont(data, transform):
+# Polars is annoyingly verbose for these but it is fast enough to be worth it
+def transform_cont(data, cols, transform):
     if not transform: return data, '.1f'
-    elif transform == 'center': return data - data.mean(skipna=True,axis=0), '.1f'
-    elif transform == 'zscore': return sps.zscore(data,nan_policy='omit',axis=0), '.2f'
-    elif transform == 'proportion': return data/(np.array(data).sum(axis=1)[:,None]), '.1%'
-    elif transform == 'softmax': return np.exp(data)/(np.exp(np.array(data)).sum(axis=1)[:,None]), '.1%'
-    elif transform == 'softmax-ratio': return data.shape[1]*np.exp(data)/(np.exp(np.array(data)).sum(axis=1)[:,None]), '.1f' 
+    elif transform == 'center': 
+        return data.with_columns([ pl.col(c) - pl.col(c).mean() for c in cols]), '.1f'
+    elif transform == 'zscore': 
+        return data.with_columns([(pl.col(c) - pl.col(c).mean()) / pl.col(c).std(0) for c in cols ]), '.2f'
+    elif transform == 'proportion': 
+        data = data.with_columns(pl.sum_horizontal(pl.col(cols).abs()).alias('sum'))
+        return data.with_columns([ (pl.col(c)/pl.col('sum')).alias(c) for c in cols ]).drop('sum'), '.1%'
+    elif transform.startswith('softmax'): 
+        data = data.with_columns([ pl.col(c).exp().alias(c) for c in cols]) # Exp all columns
+        data = data.with_columns(pl.sum_horizontal(cols).alias('sum')) # Get row sum of exps
+        mult = len(cols) if transform == 'softmax-ratio' else 1.0 # Ratio is just a multiplier
+        return data.with_columns([ (mult*pl.col(c)/pl.col('sum')).alias(c) for c in cols ]).drop('sum'), '.1%'
     else: raise Exception(f"Unknown transform '{transform}'")
 
 
 # %% ../nbs/02_pp.ipynb 21
-def pp_filter_data(df, filter_dict, c_meta, lazy=False):
+def pp_filter_data(df, filter_dict, c_meta):
 
-    inds = True if lazy else np.full(len(df),True)
-
-    if lazy: pl.enable_string_cache() # Needed for categories to be comparable to strings
+    inds = True
 
     for k, v in filter_dict.items():
         
@@ -220,8 +226,7 @@ def pp_filter_data(df, filter_dict, c_meta, lazy=False):
 
         # Handle continuous variables separately
         if  is_range and (not isinstance(v[1],str) or c_meta[k].get('continuous') or c_meta[k].get('datetime')): # Only special case where we actually need a range
-            if lazy: inds = (((pl.col(k)>=v[1]) & (pl.col(k)<=v[2]))) & inds
-            else: inds = (((df[k]>=v[1]) & (df[k]<=v[2]))) & inds
+            inds = (((pl.col(k)>=v[1]) & (pl.col(k)<=v[2]))) & inds
             continue # NB! this approach does not work for ordered categoricals with polars LazyDataFrame, hence handling that separately below
         
         # Filter by list of values:
@@ -238,31 +243,34 @@ def pp_filter_data(df, filter_dict, c_meta, lazy=False):
             flst = c_meta[k]['groups'][v]
         else: flst = [v] # Just filter on single value    
             
-        inds =  (pl.col(k).is_in(flst) & ~pl.col(k).is_null() if lazy else df[k].isin(flst) & ~df[k].isna()) & inds
+        inds =  pl.col(k).is_in(flst) & ~pl.col(k).is_null()
             
-    filtered_df = df.filter(inds).collect().to_pandas() if lazy else df[inds].copy()
-    if lazy and '__index_level_0__' in filtered_df.columns: # Fix index, if provided. This is a hack but seems to be needed as polars does not handle index properly by default
-        filtered_df.index = filtered_df['__index_level_0__']
-
-    if lazy: pl.disable_string_cache()
+    filtered_df = df.filter(inds)
     
     return filtered_df
 
 # %% ../nbs/02_pp.ipynb 22
 # Get all data required for a given graph
-# Only return columns and rows that are needed
-# This can handle either a pandas DataFrame or a polars LazyDataFrame (to allow for loading only needed data)
-# NB: LazyDataFrame support is not maintained and is likely to be at least somewhat broken. Keeping code in in case it ever becomes relevant
+# Only return columns and rows that are needed, aggregated to the format plot requires
+# Internally works with polars LazyDataFrame for large data set performance
+
+# TODO: handle infer in the beginning
+
 def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
+
+    pl.enable_string_cache() # So we can work on categorical columns
 
     plot_meta = get_plot_meta(pp_desc['plot'])
     
     gc_dict = group_columns_dict(data_meta)
     c_meta = extract_column_meta(data_meta)
 
-    # Setup lazy frame
-    lazy = isinstance(full_df,pl.LazyFrame)
-    all_col_names = full_df.collect_schema().names() if lazy else full_df.columns
+    # Setup lazy frame if not already:
+    if not isinstance(full_df,pl.LazyFrame):
+        full_df = pl.DataFrame(full_df).lazy()
+
+    schema = full_df.collect_schema()
+    all_col_names = schema.names()
     
     # Figure out which columns we actually need
     meta_cols = ['weight', 'training_subsample', '__index_level_0__'] + (['draw'] if plot_meta.get('draws') else []) + columns
@@ -277,98 +285,104 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
         data_meta = data_meta.copy()
         del data_meta['draws_data']
     
-    df = full_df.select(cols) if lazy else full_df[cols]
-    total_points = df.select(pl.len()).collect().item() if lazy else len(df)
-        
+    df = full_df.select(cols).with_row_count('id')
+    total_n = df.select(pl.len()).collect().item()
+
     # Filter the data with given filters
     if pp_desc.get('filter'):
-        filtered_df = pp_filter_data(df, pp_desc.get('filter',{}), c_meta, lazy=lazy)
-    elif lazy: filtered_df = df.collect().to_pandas()
-    else: filtered_df = df.copy()
+        filtered_df = pp_filter_data(df, pp_desc.get('filter',{}), c_meta)
+    else: filtered_df = df
 
-    ########################################
-    # Pandas DF from here on
-    ########################################    
+    if 'sample' in pp_desc: filtered_df = filtered_df.sample(n=pp_desc['sample'], with_replacement=True)
 
-    # Replace draw with the draws used in modelling. Groups are handled separately below
-    total_points = data_meta.get('total_size',total_points)
-    if 'draw' in filtered_df.columns and pp_desc['res_col'] in data_meta.get('draws_data',{}):
-        uid, ndraws = data_meta['draws_data'][pp_desc['res_col']]
-        filtered_df = deterministic_draws(filtered_df, ndraws, uid, n_total = total_points )
-
-    n_points = len(filtered_df)
-
-    if 'sample' in pp_desc:
-        df = full_df.sample(pp_desc['sample'])
+    filtered_n = filtered_df.select(pl.len()).collect().item()
     
-    # If not poststratisfied
-    if not pp_desc.get('poststrat',True):
-        filtered_df = filtered_df.assign(weight = 1.0) # Remove weighting
-        if 'training_subsample' in filtered_df.columns:
-            filtered_df = filtered_df[filtered_df['training_subsample']]
+    # # If not poststratisfied
+    # if not pp_desc.get('poststrat',True):
+    #     filtered_df = filtered_df.assign(weight = 1.0) # Remove weighting
+    #     if 'training_subsample' in filtered_df.columns:
+    #         filtered_df = filtered_df[filtered_df['training_subsample']]
     
-    n_datapoints = len(filtered_df)
+    #########################################################################################
+    # TODO: infer needs to be handled by this point
+    #########################################################################################
 
     # Convert ordered categorical to continuous if we can
     rcl = gc_dict.get(pp_desc['res_col'], [pp_desc['res_col']])
     for rc in rcl:
         res_meta = c_meta[pp_desc['res_col']]
         if pp_desc.get('convert_res') == 'continuous' and res_meta.get('ordered'):    
-            if res_meta['categories'] == 'infer': res_meta['categories'] = list(filtered_df[rc].dtype.categories)
             nvals = get_cat_num_vals(res_meta,pp_desc)
             cmap = dict(zip(res_meta['categories'],nvals))
-            filtered_df[rc] = filtered_df[rc].map(lambda x: float(cmap.get(x,x))).astype('float')
-
+            filtered_df = filtered_df.with_columns(pl.col(rc).cast(pl.String).replace(cmap).cast(pl.Float32))
+            
     # Apply continuous transformation - needs to happen when data still in table form
-    if filtered_df[rcl[0]].dtype.name != 'category':
+    if 'categories' in c_meta[rcl[0]]:
         if 'cont_transform' in pp_desc:
-            filtered_df.loc[:,rcl], val_format = transform_cont(filtered_df[rcl],transform=pp_desc.get('cont_transform'))
+            filtered_df, val_format = transform_cont(filtered_df,rcl,transform=pp_desc.get('cont_transform'))
         else: val_format = '.1f'
     else: val_format = '.1%' # Categoricals report %
     val_format = pp_desc.get('value_format',val_format)
 
-    # If res_col is a group of questions
-    # This might move to wrangle but currently easier to do here as we have gc_dict handy
-    if pp_desc['res_col'] in gc_dict:
-        value_vars = [ c for c in gc_dict[pp_desc['res_col']] if c in cols ]
-        if 'draw' in filtered_df.columns: ddraws = filtered_df['draw'] # Set aside draws as series for later
-        
-        dtype = filtered_df[value_vars[0]].dtype
-        id_vars = ['id'] + [ c for c in cols if (c not in value_vars or c in pp_desc.get('factor_cols',[])) ] # Make sure we leave factors in - in case we are faceting over one of the questions
-        filtered_df = filtered_df.reset_index(names='id').melt(id_vars=id_vars, value_vars=value_vars, var_name='question', value_name=pp_desc['res_col'])
-        if dtype != filtered_df[pp_desc['res_col']].dtype:
-            filtered_df[pp_desc['res_col']] = filtered_df[pp_desc['res_col']].astype(dtype)
+    # Compute draws if needed - Nb: also applies if the draws are shared for the group of questions
+    if 'draw' in cols and pp_desc['res_col'] in data_meta.get('draws_data',{}):
+        uid, ndraws = data_meta['draws_data'][pp_desc['res_col']]
+        draws = stable_draws(total_n, ndraws, uid)
+        draw_df = pl.DataFrame({ 'draw': draws, 'id': np.arange(0, total_n) })
+        filtered_df = filtered_df.drop('draw').join(draw_df.lazy(), on=['id'], how='left')
 
-        # Fix the draws for each question separately
-        if 'draw' in filtered_df.columns and data_meta.get('draws_data') is not None:
-            draw_ar = []
+    # If res_col is a group of questions, melt i.e. unpivot the questions and handle draws if needed
+    if pp_desc['res_col'] in gc_dict:
+
+        # Melt i.e. unpivot the questions
+        value_vars = [ c for c in gc_dict[pp_desc['res_col']] if c in cols ]
+        id_vars = ['id'] + [ c for c in cols if (c not in value_vars or c in pp_desc.get('factor_cols',[])) ]
+        filtered_df = filtered_df.unpivot(
+            variable_name='question',
+            value_name=pp_desc['res_col'],
+            index=id_vars,
+            on=value_vars,
+        )
+
+        # Handle draws for each question
+        if 'draw' in cols and data_meta.get('draws_data') is not None:
+            draw_dfs = []
             for c in value_vars:
                 if c in data_meta.get('draws_data',{}):
                     uid, ndraws = data_meta['draws_data'][c]
-                    draws = stable_draws(total_points, ndraws, uid)[filtered_df.index]
-                else: draws = ddraws
-                draw_ar.append(pd.DataFrame({'draw': draws, 'question': c, 'id': np.arange(n_points) }))
-            filtered_df = filtered_df.drop(columns=['draw']).merge(pd.concat(draw_ar),on=['id','question'],how='left')
-
-        if plot_meta.get('data_format') != 'raw': filtered_df.drop(columns=['id'],inplace=True)
-
-        # Convert to proper category with correct order
-        filtered_df['question'] = pd.Categorical(filtered_df['question'],value_vars)
-    elif 'question' in pp_desc['factor_cols']: # Create 'question' as a dummy dimension
-        filtered_df['question'] = pd.Categorical([pp_desc['res_col']]*len(filtered_df))   
-
-    # Filter out the unused categories so plots are cleaner
-    for k in filtered_df.columns:
-        if k == 'id': continue
-        if filtered_df[k].dtype.name == 'category':
-            m_cats = c_meta[k]['categories'] if c_meta[k].get('categories','infer')!='infer' else None
-            f_cats = get_cats(filtered_df[k],m_cats) if k != pp_desc['res_col'] or not c_meta[k].get('likert') else m_cats # Do not trim likert as plots need to be symmetric
+                    draws = stable_draws(total_n, ndraws, uid)
+                    draw_df = pl.DataFrame({ 'draw': draws, 'question': c, 'id': np.arange(0, total_n) })
+                    draw_dfs.append(draw_df)
             
-            #vals = filtered_df[k]
-            filtered_df[k] = pd.Categorical(filtered_df[k],f_cats,ordered=c_meta[k].get('ordered',False))
-    
+            if len(draw_dfs)>0:
+                filtered_df = filtered_df.rename({'draw':'old_draw'}).join(
+                    pl.concat(draw_dfs).lazy(),
+                    on=['id', 'question'],
+                    how='left'
+                ).with_columns(pl.col('draw').fill_null(pl.col('old_draw'))).drop('old_draw')
+            
+        # Convert question to categorical with correct order
+        filtered_df = filtered_df.with_columns(pl.col('question').cast(pl.Enum(value_vars)))
+    else:
+        if 'question' in pp_desc['factor_cols']:
+            filtered_df = filtered_df.with_columns(
+                pl.lit(pp_desc['res_col']).alias('question').cast(pl.Categorical)
+            )
+
+    if plot_meta.get('data_format') != 'raw': filtered_df = filtered_df.drop('id')
+
     # Aggregate the data into right shape
     pparams = wrangle_data(filtered_df, data_meta, pp_desc)
+    data = pparams['data']
+
+    # Fix categorical types that polars does not read properly from parquet
+    # Also filter out unused categories so plots are cleaner
+    for c in data.columns:
+        if c_meta.get(c,{}).get('categories') and data[c].dtype.name == 'category':
+            m_cats = c_meta[c]['categories'] if c_meta[c].get('categories','infer')!='infer' else None
+            f_cats = get_cats(data[c],m_cats) if c != pp_desc['res_col'] or not c_meta[c].get('likert') else m_cats # Do not trim likert as plots need to be symmetric
+            data[c] = pd.Categorical(data[c],f_cats,ordered=c_meta[c].get('ordered',False))
+
     pparams['val_format'] = val_format
     
     # Remove prefix from question names in plots
@@ -377,9 +391,10 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
         cmap = { c: c.replace(prefix,'') for c in pparams['data']['question'].dtype.categories }
         pparams['data']['question'] = pparams['data']['question'].cat.rename_categories(cmap)
 
-
     # How many datapoints the plot is based on. This is useful metainfo to display sometimes
-    pparams['n_datapoints'] = n_datapoints
+    pparams['n_datapoints'] = filtered_n
+
+    pl.disable_string_cache()
     
     return pparams
 
@@ -401,63 +416,86 @@ def wrangle_data(raw_df, data_meta, pp_desc):
     plot_meta = get_plot_meta(pp_desc['plot'])
     col_meta = extract_column_meta(data_meta)
 
+    schema = raw_df.collect_schema() 
+
     res_col, factor_cols = pp_desc.get('res_col'), pp_desc.get('factor_cols')
     
     draws, continuous, data_format = (plot_meta.get(n, False) for n in ['draws','continuous','data_format'])
     
-    gb_dims = (['draw'] if draws else []) + (['id'] if 'id' in raw_df.columns else []) + (factor_cols if factor_cols else [])
+    gb_dims = (['draw'] if draws else []) + (['id'] if 'id' in schema.names() else []) + (factor_cols if factor_cols else [])
     if res_col in gb_dims: gb_dims.remove(res_col) # Remove res_col from groupby dimensions in this function
     
-    if 'weight' not in raw_df.columns: raw_df = raw_df.assign(weight=1.0) # This also works for empty df-s
-    else: raw_df.loc[:,'weight'] = raw_df['weight'].fillna(1.0)
+    if 'weight' not in schema.names():   raw_df = raw_df.with_columns(pl.lit(1.0).alias('weight'))
+    else:  raw_df = raw_df.with_columns(pl.col('weight').fill_null(1.0))
 
-    if draws and 'draw' in raw_df.columns and 'augment_to' in pp_desc: # Should we try to bootstrap the data to always have augment_to points. Note this is relatively slow
-        raw_df = augment_draws(raw_df,gb_dims[1:],threshold=pp_desc['augment_to'])
+    # if draws and 'draw' in schema.names() and 'augment_to' in pp_desc: # Should we try to bootstrap the data to always have augment_to points. Note this is relatively slow
+    #     raw_df = augment_draws(raw_df,gb_dims[1:],threshold=pp_desc['augment_to'])
         
     pparams = { 'value_col': 'value' }
     data = None
 
-    # Ensure all rv columns other than value are categorical
-    for c in factor_cols:
-        #if c in special_columns: continue # bypass some columns added above
-        if raw_df[c].dtype.name != 'category' and c!=pp_desc['res_col']:
-            if col_meta.get(c,{}).get('continuous') or not isinstance(raw_df[c],str):
-                raw_df[c] = discretize_continuous(raw_df[c],col_meta.get(c,{}))
-            else: # Just assume it's categorical by any other name
-                raw_df[c] = pd.Categorical(raw_df[c])
+    # # Ensure all rv columns other than value are categorical
+    # for c in factor_cols:
+    #     #if c in special_columns: continue # bypass some columns added above
+    #     if raw_df[c].dtype.name != 'category' and c!=pp_desc['res_col']:
+    #         if col_meta.get(c,{}).get('continuous') or not isinstance(raw_df[c],str):
+    #             raw_df[c] = discretize_continuous(raw_df[c],col_meta.get(c,{}))
+    #         else: # Just assume it's categorical by any other name
+    #             raw_df[c] = pd.Categorical(raw_df[c])
     
     if data_format=='raw':
         pparams['value_col'] = res_col
         if plot_meta.get('sample'):
-            data = gb_in(raw_df[gb_dims+[res_col]],gb_dims).sample(plot_meta['sample'],replace=True)
-        else: data = raw_df[gb_dims+[res_col]]
+            data = (raw_df
+                    .select(gb_dims + [res_col])
+                    .groupby(gb_dims)
+                    .sample(n=plot_meta['sample'], with_replacement=True))
+        else: 
+            data = raw_df.select(gb_dims + [res_col])
         
     elif data_format=='longform':
         rc_meta = col_meta.get(res_col,{})
-        if raw_df[res_col].dtype == 'category':  #'categories' in rc_meta: # categorical
+        
+        # Check if categorical by looking at schema
+        is_categorical = isinstance(schema[res_col], (pl.Categorical, pl.Enum))
+        
+        if is_categorical:
             pparams['cat_col'] = res_col 
             pparams['value_col'] = 'percent'
             
             # Aggregate the data
-            data = raw_df.groupby(gb_dims+[res_col],observed=False)['weight'].sum()
-            if plot_meta.get('agg_fn')!='sum': data /= gb_in(raw_df,gb_dims)['weight'].sum()
-            data = data.rename(pparams['value_col']).dropna().reset_index()
+            data = (raw_df
+                    .group_by(gb_dims + [res_col])
+                    .agg(pl.col('weight').sum().alias('percent')))
+            
+            if plot_meta.get('agg_fn')!='sum':
+                totals = raw_df.group_by(gb_dims).agg(pl.col('weight').sum())
+                data = data.join(totals, on=gb_dims).with_columns(
+                    pl.col('percent') / pl.col('weight').alias('percent')
+                ).drop('weight')
             
         else: # Continuous
-            agg_fn = pp_desc.get('agg_fn','mean') # We may want to try median vs mean or plot sd-s or whatever
-            agg_fn = plot_meta.get('agg_fn',agg_fn) # Some plots mandate this value (election model for instance)
-            if len(gb_dims)>0: data = getattr(gb_in(raw_df,gb_dims)[res_col],agg_fn)().dropna().reset_index() 
-            else: data = pd.DataFrame({res_col: [getattr(raw_df[res_col],agg_fn)()]}) # Single value data frame
+            agg_fn = pp_desc.get('agg_fn','mean')
+            agg_fn = plot_meta.get('agg_fn',agg_fn)
+            
+            if len(gb_dims)>0:
+                data = (raw_df
+                        .group_by(gb_dims)
+                        .agg(getattr(pl.col(res_col), agg_fn)().alias(res_col)))
+            else:
+                data = pd.DataFrame({res_col: [raw_df.select(getattr(pl.col(res_col), agg_fn)()).collect().item()]})
+                
             pparams['value_col'] = res_col
             
         if plot_meta.get('group_sizes'):
-            data = data.merge(gb_in(raw_df,gb_dims).size().rename('group_size').reset_index(),on=gb_dims,how='left')
+            group_sizes = (raw_df
+                            .group_by(gb_dims)
+                            .agg(pl.count().alias('group_size')))
+            data = data.join(group_sizes, on=gb_dims, how='left')
     else:
         raise Exception("Unknown data_format")
         
-
-            
-    pparams['data'] = data
+    pparams['data'] = data.collect().to_pandas()
     return pparams
 
 # %% ../nbs/02_pp.ipynb 25

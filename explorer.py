@@ -6,9 +6,10 @@ import warnings
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
-profile = False
+lazy = True
+profile = True
 if profile:
-    from streamlit_profiler import Profiler
+    from wfork_streamlit_profiler import Profiler
     p = Profiler(); p.start()
 
 st.set_page_config(
@@ -92,8 +93,6 @@ input_files = st.sidebar.multiselect('Select files:',input_file_choices,default_
 #                       LOAD PYMC SAMPLE DATA                          #
 #                                                                      #
 ########################################################################
-
-lazy = False
 
 @st.cache_resource(show_spinner=False)
 def load_file(input_file,lazy=False):
@@ -331,7 +330,7 @@ else:
             if data_meta is None: data_meta = first_data_meta
 
             if (args['res_col'] in first_data.columns   # I.e. it is a column, not a group
-                and args['res_col'] not in loaded[ifile]['data'].columns):
+                and args['res_col'] not in loaded[ifile]['columns']):
                 st.write(f"'{args['res_col']}' not present")
                 continue
 

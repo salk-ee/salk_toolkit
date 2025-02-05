@@ -280,6 +280,8 @@ def make_start_end(x,value_col,cat_col,cat_order):
         # Fill in missing rows with value zero so they would just be skipped
         x = pd.merge(pd.DataFrame({cat_col:cat_order}),x,on=cat_col,how='left').fillna({value_col:0})
     mid = len(x)//2
+
+    x = x.sort_values(by=cat_col)
         
     if len(x)%2==1: # odd:
         scale_start=1.0
