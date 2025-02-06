@@ -348,7 +348,7 @@ def kde_1d(vc, value_col, ls, scale=False, bw=None):
     if scale: y*=len(vc)
     return pd.DataFrame({'density': y, value_col: ls})
 
-@stk_plot('density', factor_columns=3, aspect_ratio=(1.0/1.0), n_facets=(0,1), args={'stacked':'bool', 'bw':'float'}, no_question_facet=True)
+@stk_plot('density', factor_columns=3, draws=True, aspect_ratio=(1.0/1.0), n_facets=(0,1), args={'stacked':'bool', 'bw':'float'}, no_question_facet=True)
 def density(data, value_col='value', facets=[], tooltip=[], outer_factors=[], stacked=False, bw=None, width=800):
     f0 = facets[0] if len(facets)>0 else None
     gb_cols = [ c for c in outer_factors+[f['col'] for f in facets] if c is not None ] # There can be other extra cols (like labels) that should be ignored
@@ -398,7 +398,7 @@ def density(data, value_col='value', facets=[], tooltip=[], outer_factors=[], st
 stk_plot('density-raw', data_format="raw", factor_columns=3, aspect_ratio=(1.0/1.0), n_facets=(0,1), args={'stacked':'bool', 'bw':'float'}, no_question_facet=True, priority=0)(density)
 
 # %% ../nbs/03_plots.ipynb 31
-@stk_plot('violin', n_facets=(1,2), as_is=True, args={'bw':'float'})
+@stk_plot('violin', n_facets=(1,2), draws=True, as_is=True, args={'bw':'float'})
 def violin(data, value_col='value', facets=[], tooltip=[], outer_factors=[], bw=None, width=800):
     f0, f1 = facets[0], facets[1] if len(facets)>1 else None
     gb_cols = outer_factors + [ f['col'] for f in facets ] # There can be other extra cols (like labels) that should be ignored

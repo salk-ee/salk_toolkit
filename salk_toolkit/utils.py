@@ -6,9 +6,9 @@
 __all__ = ['warn', 'default_color', 'factorize_w_codes', 'batch', 'loc2iloc', 'match_sum_round', 'min_diff', 'continify',
            'replace_cat_with_dummies', 'match_data', 'replace_constants', 'approx_str_match', 'index_encoder',
            'to_alt_scale', 'multicol_to_vals_cats', 'gradient_to_discrete_color_scale', 'is_datetime', 'rel_wave_times',
-           'stable_draws', 'deterministic_draws', 'clean_kwargs', 'censor_dict', 'cut_nice', 'rename_cats',
-           'str_replace', 'merge_series', 'aggregate_multiselect', 'deaggregate_multiselect', 'gb_in', 'gb_in_apply',
-           'stk_defaultdict', 'cached_fn']
+           'stable_draws', 'deterministic_draws', 'clean_kwargs', 'censor_dict', 'cut_nice_labels', 'cut_nice',
+           'rename_cats', 'str_replace', 'merge_series', 'aggregate_multiselect', 'deaggregate_multiselect', 'gb_in',
+           'gb_in_apply', 'stk_defaultdict', 'cached_fn']
 
 # %% ../nbs/10_utils.ipynb 3
 import json, os, warnings, math, inspect
@@ -250,32 +250,38 @@ def censor_dict(d,vs):
     return { k:v for k,v in d.items() if k not in vs }
 
 # %% ../nbs/10_utils.ipynb 33
-# A nicer behaving wrapper around pd.cut
-def cut_nice(s, breaks, format='', separator=' - '):
-    s = np.array(s)
+# Create nice labels for a cut
+# Used by the cut_nice below as well as for a lazy polars version in pp
+def cut_nice_labels(breaks, mi, ma, isint, format='', separator=' - '):
     
     # Extend breaks if needed
     lopen, ropen = False, False
-    if s.max() > breaks[-1]:
-        breaks.append(s.max() + 1)
+    if ma > breaks[-1]:
+        breaks.append(ma + 1)
         ropen = True
-    if s.min() < breaks[0]:
-        breaks.insert(0, s.min())
+    if mi < breaks[0]:
+        breaks.insert(0, mi)
         lopen = True
     
-    ints = np.issubdtype(s.dtype, np.integer) or (s % 1 == 0.0).all()
-    if ints:
+    if isint:
         breaks = list(map(int, breaks))
         format = ''  # No need for decimal places if all integers
     
-    tuples = [(breaks[i], breaks[i + 1] - (1 if ints else 0)) for i in range(len(breaks) - 1)]
+    tuples = [(breaks[i], breaks[i + 1] - (1 if isint else 0)) for i in range(len(breaks) - 1)]
     labels = [f"{t[0]:{format}}{separator}{t[1]:{format}}" for t in tuples]
     
     if lopen: labels[0] = f"<{breaks[1]:{format}}"
     if ropen: labels[-1] = f"{breaks[-2]:{format}}+"
-    
+
+    return breaks,labels
+
+# A nicer behaving wrapper around pd.cut
+def cut_nice(s, breaks, format='', separator=' - '):
+    s = np.array(s)
+    mi, ma = s.min(), s.max()
+    isint = np.issubdtype(s.dtype, np.integer) or (s % 1 == 0.0).all()
+    breaks, labels = cut_nice_labels(breaks, mi, ma, isint, format, separator)
     return pd.cut(s, breaks, right=False, labels=labels, ordered=False)
-    
 
 # %% ../nbs/10_utils.ipynb 35
 # Utility function to rename categories in pre/post processing steps as pandas made .replace unusable with categories

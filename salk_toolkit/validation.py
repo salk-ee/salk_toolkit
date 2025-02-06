@@ -37,6 +37,7 @@ class ColumnMeta(PBase):
 
     # Plot pipeline extras
     label: Optional[str] = None # Longer description of the column for tooltips
+    labels: Optional[Dict[str,str]] = None # Dict matching categories to labels
     groups: Optional[Dict[str,List[str]]] = None # Dict of lists of category values defining groups for easier filtering
     colors: Optional[Dict[str,str]] = None # Dict matching colors to categories
     num_values: Optional[List[Union[float,None]]] = None # For categoricals - how to convert the categories to numbers
@@ -96,6 +97,8 @@ class ColumnBlockMeta(PBase):
     columns: ColSpec
 
     subgroup_transform: Optional[str] = None # A block-level transform performed after column level transformations
+
+    label: Optional[str] = None # Longer description of the block for tooltips
 
     # Block level flags
     generated: bool = False # This block is for data that is generated, i.e. not initially in the file. 

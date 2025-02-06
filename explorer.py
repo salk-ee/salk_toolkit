@@ -7,7 +7,7 @@ import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 lazy = True
-profile = True
+profile = False
 if profile:
     from wfork_streamlit_profiler import Profiler
     p = Profiler(); p.start()

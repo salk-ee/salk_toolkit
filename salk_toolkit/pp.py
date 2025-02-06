@@ -190,6 +190,15 @@ def matching_plots(pp_desc, df, data_meta, details=False, list_hidden=False):
 cont_transform_options = ['center','zscore','proportion','softmax','softmax-ratio']
 
 # %% ../nbs/02_pp.ipynb 19
+# Get categories from a lazy frame. 
+def ensure_ldf_categories(col_meta, col, ldf):
+    cats = col_meta[col]['categories']
+    if cats == 'infer':
+        # This is slow and is intended as a fallback as categories should be available in the data_meta
+        cats =  np.sort(ldf.select(pl.col(col).unique()).collect().to_pandas()[col].values)
+        col_meta[col]['categories'] = cats
+    return col_meta[col]
+
 # Get the categories that are in use
 def get_cats(col, cats=None):
     if cats is None or len(set(col.dtype.categories)-set(cats))>0: cats = col.dtype.categories
@@ -200,21 +209,18 @@ def get_cats(col, cats=None):
 def transform_cont(data, cols, transform):
     if not transform: return data, '.1f'
     elif transform == 'center': 
-        return data.with_columns([ pl.col(c) - pl.col(c).mean() for c in cols]), '.1f'
+        return data.with_columns(pl.col(cols) - pl.col(cols).mean()), '.1f'
     elif transform == 'zscore': 
-        return data.with_columns([(pl.col(c) - pl.col(c).mean()) / pl.col(c).std(0) for c in cols ]), '.2f'
+        return data.with_columns((pl.col(cols) - pl.col(cols).mean()) / pl.col(cols).std(0)), '.2f'
     elif transform == 'proportion': 
-        data = data.with_columns(pl.sum_horizontal(pl.col(cols).abs()).alias('sum'))
-        return data.with_columns([ (pl.col(c)/pl.col('sum')).alias(c) for c in cols ]).drop('sum'), '.1%'
+        return data.with_columns(pl.col(cols)/pl.sum_horizontal(pl.col(cols).abs())), '.1%'
     elif transform.startswith('softmax'): 
-        data = data.with_columns([ pl.col(c).exp().alias(c) for c in cols]) # Exp all columns
-        data = data.with_columns(pl.sum_horizontal(cols).alias('sum')) # Get row sum of exps
         mult = len(cols) if transform == 'softmax-ratio' else 1.0 # Ratio is just a multiplier
-        return data.with_columns([ (mult*pl.col(c)/pl.col('sum')).alias(c) for c in cols ]).drop('sum'), '.1%'
+        return data.with_columns(pl.col(cols).exp()*mult / pl.sum_horizontal(pl.col(cols).exp())), '.1%'
     else: raise Exception(f"Unknown transform '{transform}'")
 
 
-# %% ../nbs/02_pp.ipynb 21
+# %% ../nbs/02_pp.ipynb 20
 def pp_filter_data(df, filter_dict, c_meta):
 
     inds = True
@@ -225,13 +231,13 @@ def pp_filter_data(df, filter_dict, c_meta):
         is_range = isinstance(v,list) and v[0] is None and len(v)==3
 
         # Handle continuous variables separately
-        if  is_range and (not isinstance(v[1],str) or c_meta[k].get('continuous') or c_meta[k].get('datetime')): # Only special case where we actually need a range
+        if is_range and (not isinstance(v[1],str) or c_meta[k].get('continuous') or c_meta[k].get('datetime')): # Only special case where we actually need a range
             inds = (((pl.col(k)>=v[1]) & (pl.col(k)<=v[2]))) & inds
             continue # NB! this approach does not work for ordered categoricals with polars LazyDataFrame, hence handling that separately below
         
-        # Filter by list of values:
+        # Handle categoricals
         if is_range: # Range of values over ordered categorical
-            cats = list(c_meta[k]['categories'] if c_meta[k].get('categories','infer')!='infer' else df[k].dtype.categories)
+            cats = ensure_ldf_categories(c_meta,k,df)['categories']
             if set(v[1:]) & set(cats) != set(v[1:]): 
                 warn(f'Column {k} values {v} not found in {cats}, not filtering')
                 flst = cats
@@ -249,12 +255,10 @@ def pp_filter_data(df, filter_dict, c_meta):
     
     return filtered_df
 
-# %% ../nbs/02_pp.ipynb 22
+# %% ../nbs/02_pp.ipynb 21
 # Get all data required for a given graph
 # Only return columns and rows that are needed, aggregated to the format plot requires
 # Internally works with polars LazyDataFrame for large data set performance
-
-# TODO: handle infer in the beginning
 
 def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
 
@@ -273,7 +277,7 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     all_col_names = schema.names()
     
     # Figure out which columns we actually need
-    meta_cols = ['weight', 'training_subsample', '__index_level_0__'] + (['draw'] if plot_meta.get('draws') else []) + columns
+    meta_cols = ['weight', 'training_subsample'] + (['draw'] if plot_meta.get('draws') else []) + columns
     cols = [ pp_desc['res_col'] ]  + pp_desc.get('factor_cols',[]) + list(pp_desc.get('filter',{}).keys())
     cols += [ c for c in meta_cols if c in all_col_names and c not in cols ]
 
@@ -287,7 +291,7 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     
     df = full_df.select(cols).with_row_count('id')
     total_n = df.select(pl.len()).collect().item()
-
+    
     # Filter the data with given filters
     if pp_desc.get('filter'):
         filtered_df = pp_filter_data(df, pp_desc.get('filter',{}), c_meta)
@@ -298,26 +302,24 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     filtered_n = filtered_df.select(pl.len()).collect().item()
     
     # # If not poststratisfied
-    # if not pp_desc.get('poststrat',True):
-    #     filtered_df = filtered_df.assign(weight = 1.0) # Remove weighting
-    #     if 'training_subsample' in filtered_df.columns:
-    #         filtered_df = filtered_df[filtered_df['training_subsample']]
+    if not pp_desc.get('poststrat',True):
+        filtered_df = filtered_df.with_columns(pl.lit(1.0).alias('weight')) # Remove weighting
+        if 'training_subsample' in cols:
+            filtered_df = filtered_df.filter(pl.col('training_subsample'))
     
-    #########################################################################################
-    # TODO: infer needs to be handled by this point
-    #########################################################################################
-
     # Convert ordered categorical to continuous if we can
     rcl = gc_dict.get(pp_desc['res_col'], [pp_desc['res_col']])
     for rc in rcl:
-        res_meta = c_meta[pp_desc['res_col']]
-        if pp_desc.get('convert_res') == 'continuous' and res_meta.get('ordered'):    
+        res_meta = c_meta[rc]
+        if pp_desc.get('convert_res') == 'continuous' and res_meta.get('ordered'):
+            res_meta = ensure_ldf_categories(c_meta,rc,filtered_df)
             nvals = get_cat_num_vals(res_meta,pp_desc)
             cmap = dict(zip(res_meta['categories'],nvals))
             filtered_df = filtered_df.with_columns(pl.col(rc).cast(pl.String).replace(cmap).cast(pl.Float32))
+            c_meta[rc] = c_meta[pp_desc['res_col']] = { 'continuous': True }
             
     # Apply continuous transformation - needs to happen when data still in table form
-    if 'categories' in c_meta[rcl[0]]:
+    if c_meta[rcl[0]].get('continuous'):
         if 'cont_transform' in pp_desc:
             filtered_df, val_format = transform_cont(filtered_df,rcl,transform=pp_desc.get('cont_transform'))
         else: val_format = '.1f'
@@ -372,16 +374,8 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     if plot_meta.get('data_format') != 'raw': filtered_df = filtered_df.drop('id')
 
     # Aggregate the data into right shape
-    pparams = wrangle_data(filtered_df, data_meta, pp_desc)
+    pparams = wrangle_data(filtered_df, c_meta, pp_desc)
     data = pparams['data']
-
-    # Fix categorical types that polars does not read properly from parquet
-    # Also filter out unused categories so plots are cleaner
-    for c in data.columns:
-        if c_meta.get(c,{}).get('categories') and data[c].dtype.name == 'category':
-            m_cats = c_meta[c]['categories'] if c_meta[c].get('categories','infer')!='infer' else None
-            f_cats = get_cats(data[c],m_cats) if c != pp_desc['res_col'] or not c_meta[c].get('likert') else m_cats # Do not trim likert as plots need to be symmetric
-            data[c] = pd.Categorical(data[c],f_cats,ordered=c_meta[c].get('ordered',False))
 
     pparams['val_format'] = val_format
     
@@ -398,24 +392,42 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     
     return pparams
 
-# %% ../nbs/02_pp.ipynb 24
-def discretize_continuous(col, col_meta={}):
+# %% ../nbs/02_pp.ipynb 23
+# While polars-ized, it is still slow because of the collects. 
+# This can likely be improved by batching all of the required collects into a single select (over all columns)
+# In practice, this is probably not worth it because this is not used very often
+def discretize_continuous(ldf, col, col_meta={}):
     if 'bin_breaks' in col_meta and 'bin_labels' in col_meta:
-        cut = pd.cut(col, bins = col_meta['bin_breaks'], labels = col_meta['bin_labels'])
-        cut = pd.Categorical(cut.astype(str), map(str,cut.dtype.categories), True) 
+        breaks, labels = col_meta['bin_breaks'], col_meta['bin_labels']
+        ldf = ldf.with_columns(pl.col(col).cut(breaks[1:-1], labels=labels, left_closed=True).cast(pl.Categorical))
     else:
         breaks = col_meta.get('bin_breaks',5)
-        if isinstance(breaks,int): 
-            breaks = np.unique(np.quantile(col.dropna(), np.linspace(0,1,breaks+1)))
-        cut = cut_nice(col, breaks, format=col_meta.get('value_format','.1f'))
-    return cut
+        fmt = col_meta.get('value_format','.1f') 
+        if False: # Precise computation is slow
+            if isinstance(breaks,int): # This requires computing quantiles for each break - slow
+                breaks = list(np.unique([
+                    ldf.select([pl.col(col).quantile(br).alias(str(br))  
+                    for br in np.linspace(0,1,breaks+1) ]).collect().to_pandas().values.T
+                ]))
+            mima = ldf.select([pl.col(col).min().alias('min'),pl.col(col).max().alias('max')]).collect().to_pandas()
+            mi, ma = mima['min'].values[0], mima['max'].values[0]
+        else: # Approximate computation is considerably faster
+            nbreaks = len(breaks) if isinstance(breaks,list) else breaks
+            vals = ldf.select(pl.col(col).sample(200*nbreaks,with_replacement=True)).collect().to_pandas()[col].values
+            if isinstance(breaks,int):
+                breaks = list(np.unique(np.quantile(vals,np.linspace(0,1,breaks+1))))
+            mi, ma = vals.min(), vals.max()
+
+        isint = ldf.collect_schema()[col].is_integer()
+        breaks, labels = cut_nice_labels(breaks, mi, ma, isint, fmt)
+        ldf = ldf.with_columns(pl.col(col).cut(breaks[1:-1], labels=labels, left_closed=True).cast(pl.Categorical))
+        
+    return ldf, labels
 
 # Helper function that handles reformating data for create_plot
-def wrangle_data(raw_df, data_meta, pp_desc):
+def wrangle_data(raw_df, col_meta, pp_desc):
     
     plot_meta = get_plot_meta(pp_desc['plot'])
-    col_meta = extract_column_meta(data_meta)
-
     schema = raw_df.collect_schema() 
 
     res_col, factor_cols = pp_desc.get('res_col'), pp_desc.get('factor_cols')
@@ -434,15 +446,13 @@ def wrangle_data(raw_df, data_meta, pp_desc):
     pparams = { 'value_col': 'value' }
     data = None
 
-    # # Ensure all rv columns other than value are categorical
-    # for c in factor_cols:
-    #     #if c in special_columns: continue # bypass some columns added above
-    #     if raw_df[c].dtype.name != 'category' and c!=pp_desc['res_col']:
-    #         if col_meta.get(c,{}).get('continuous') or not isinstance(raw_df[c],str):
-    #             raw_df[c] = discretize_continuous(raw_df[c],col_meta.get(c,{}))
-    #         else: # Just assume it's categorical by any other name
-    #             raw_df[c] = pd.Categorical(raw_df[c])
-    
+    # Discretize factor columns that are numeric
+    for c in factor_cols:
+        if c!=pp_desc['res_col'] and schema[c].is_numeric():    
+            raw_df, labels = discretize_continuous(raw_df,c,col_meta.get(c,{}))
+            # Make sure it gets restored to pandas properly
+            col_meta[c] = { 'categories': labels, 'ordered': True } 
+        
     if data_format=='raw':
         pparams['value_col'] = res_col
         if plot_meta.get('sample'):
@@ -495,10 +505,22 @@ def wrangle_data(raw_df, data_meta, pp_desc):
     else:
         raise Exception("Unknown data_format")
         
-    pparams['data'] = data.collect().to_pandas()
+    data = data.collect().to_pandas()
+
+    # Fix categorical types that polars does not read properly from parquet
+    # Also filter out unused categories so plots are cleaner
+    for c in data.columns:
+        if col_meta.get(c,{}).get('categories'): 
+            m_cats = col_meta[c]['categories'] if col_meta[c].get('categories','infer')!='infer' else None
+            f_cats = get_cats(data[c],m_cats) if c != pp_desc['res_col'] or not col_meta[c].get('likert') else m_cats # Do not trim likert as plots need to be symmetric
+            data[c] = pd.Categorical(data[c],f_cats,ordered=col_meta[c].get('ordered',False))
+
+    pparams['col_meta'] = col_meta # As this has been adjusted for discretization etc
+    pparams['data'] = data
+
     return pparams
 
-# %% ../nbs/02_pp.ipynb 25
+# %% ../nbs/02_pp.ipynb 24
 # Create a color scale
 ordered_gradient = ["#c30d24", "#f3a583", "#94c6da", "#1770ab"]
 def meta_color_scale(scale : Dict, column=None, translate=None):
@@ -511,7 +533,7 @@ def meta_color_scale(scale : Dict, column=None, translate=None):
         cats = [ remap[c] for c in cats ]
     return to_alt_scale(scale,cats)
 
-# %% ../nbs/02_pp.ipynb 26
+# %% ../nbs/02_pp.ipynb 25
 def translate_df(df, translate):
     df.columns = [ (translate(c) if c not in special_columns else c) for c in df.columns ]
     for c in df.columns:
@@ -521,7 +543,7 @@ def translate_df(df, translate):
             df[c] = df[c].cat.rename_categories(remap)
     return df
 
-# %% ../nbs/02_pp.ipynb 27
+# %% ../nbs/02_pp.ipynb 26
 def create_tooltip(pparams,tc_meta):
     
     data, tfn = pparams['data'], pparams['translate']
@@ -553,7 +575,7 @@ def create_tooltip(pparams,tc_meta):
     return tooltips
     
 
-# %% ../nbs/02_pp.ipynb 28
+# %% ../nbs/02_pp.ipynb 27
 # Small helper function to move columns from internal to external columns
 def remove_from_internal_fcols(cname, factor_cols, n_inner):
     if cname not in factor_cols[:n_inner]: return n_inner
@@ -576,14 +598,13 @@ def inner_outer_factors(factor_cols, pp_desc, plot_meta):
     
     return factor_cols, n_inner
 
-# %% ../nbs/02_pp.ipynb 29
+# %% ../nbs/02_pp.ipynb 28
 # Function that takes filtered raw data and plot information and outputs the plot
 # Handles all of the data wrangling and parameter formatting
 def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=False, width=200, height=None, return_matrix_of_plots=False, translate=None):
-    data = pparams['data']
+    data, col_meta = pparams['data'], pparams['col_meta']
     plot_meta = get_plot_meta(pp_desc['plot'])
-    col_meta = extract_column_meta(data_meta)
-
+    
     if 'question' in data.columns: # TODO: this should be in io.py already, probably
       col_meta['question']['colors'] = col_meta[pp_desc['res_col']].get('question_colors',None)
   
@@ -604,7 +625,6 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
                 f0 = factor_cols[0]
                 nvals = get_cat_num_vals(col_meta[f0],pp_desc)
                 cats = col_meta[f0]['categories']
-                if cats == 'infer': cats = data[f0].dtype.categories
                 cmap = dict(zip(cats,nvals))
                 sdf = data[ [cn,f0,pparams['value_col']] ]
                 sdf['sort_val'] = sdf[pparams['value_col']]*sdf[f0].astype('object').replace(cmap)
@@ -721,7 +741,7 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
     return plot
 
 
-# %% ../nbs/02_pp.ipynb 31
+# %% ../nbs/02_pp.ipynb 30
 # Compute the full factor_cols list, including question and res_col as needed
 def impute_factor_cols(pp_desc, col_meta, plot_meta=None):
     factor_cols = pp_desc.get('factor_cols',[]).copy()
@@ -747,7 +767,7 @@ def impute_factor_cols(pp_desc, col_meta, plot_meta=None):
 
     return factor_cols
 
-# %% ../nbs/02_pp.ipynb 32
+# %% ../nbs/02_pp.ipynb 31
 # A convenience function to draw a plot straight from a dataset
 def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, height=None, check_match=True, impute=True, lazy=False, **kwargs):
     if data_file is None and full_df is None:
