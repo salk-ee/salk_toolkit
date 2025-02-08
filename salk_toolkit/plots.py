@@ -175,10 +175,10 @@ def columns(data, value_col='value', facets=[], val_format='%', width=800, toolt
 
 # %% ../nbs/03_plots.ipynb 19
 @stk_plot('stacked_columns', data_format='longform', draws=False, nonnegative=True, n_facets=(2,2), agg_fn='sum', args={'normalized':'bool'})
-def stacked_columns(data, value_col='value', facets=[], n_datapoints=1, val_format='%', width=800, normalized=False, tooltip=[]):
+def stacked_columns(data, value_col='value', facets=[], filtered_size=1, val_format='%', width=800, normalized=False, tooltip=[]):
     f0, f1 = facets[0], facets[1]
     
-    data[value_col] = data[value_col]/n_datapoints
+    data[value_col] = data[value_col]/filtered_size
     
     ldict = dict(zip(f1["order"], range(len(f1["order"]))))
     data['f_order'] = data[f1["col"]].astype('object').replace(ldict).astype('int')
@@ -239,10 +239,10 @@ def diff_columns(data, value_col='value', facets=[], val_format='%', sort_descen
 # The idea was to also visualize the size of each cluster. Currently not very useful, may need to be rethought
 
 @stk_plot('massplot', data_format='longform', draws=False, group_sizes=True, n_facets=(1,2), hidden=True)
-def massplot(data, value_col='value', facets=[], n_datapoints=1, val_format='%', width=800, tooltip=[]):
+def massplot(data, value_col='value', facets=[], filtered_size=1, val_format='%', width=800, tooltip=[]):
     f0, f1 = facets[0], facets[1] if len(facets)>1 else None
 
-    data['group_size']=(data['group_size']/n_datapoints)#.round(2)
+    data['group_size']=(data['group_size']/filtered_size)#.round(2)
 
     plot = alt.Chart(round(data, 3), width = 'container' \
     ).mark_circle().encode(
@@ -484,6 +484,7 @@ def matrix(data, value_col='value', facets=[], val_format='%', reorder=False, lo
 def corr_matrix(data, value_col='value', facets=[], val_format='%', reorder=False, tooltip=[]):
     if 'id' not in data.columns: raise Exception("Corr_matrix only works for groups of continuous variables")
 
+    # id is required to match the rows for correllations
     cm = data.pivot_table(index='id',columns=facets[0]['col'],values=value_col,observed=False).corr().reset_index(names='index')
     cm_long = cm.melt(id_vars=['index'],value_vars=cm.columns, var_name=facets[0]['col'], value_name=value_col)
 
@@ -630,7 +631,7 @@ def likert_rad_pol(data, value_col='value', facets=[], normalized=True, width=80
 
 # %% ../nbs/03_plots.ipynb 47
 @stk_plot('barbell', data_format='longform', draws=False, n_facets=(2,2))
-def barbell(data, value_col='value', facets=[], n_datapoints=1, val_format='%', width=800, tooltip=[]):
+def barbell(data, value_col='value', facets=[], filtered_size=1, val_format='%', width=800, tooltip=[]):
     f0, f1 = facets[0], facets[1]
     
     chart_base = alt.Chart(data).encode(

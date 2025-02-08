@@ -136,6 +136,8 @@ class DataMeta(PBase):
     virtual_preprocessing: Optional[Union[str,List[str]]] = None # Same as preprocessing, but only in virtual step
     virtual_postprocessing: Optional[Union[str,List[str]]] = None # Same as postprocessing, but only in virtual step
 
+    weight_column: Optional[str] = None # Column to use for weighting - overriden by model to population weight column
+
     # List of data points that should be excluded in alyses
     excluded: List[Tuple[int,str]] = [] # Index of row + str  reason for exclusion
 

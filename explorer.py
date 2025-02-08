@@ -100,13 +100,14 @@ def load_file(input_file,lazy=False):
     if lazy:
         full_df, full_meta = load_parquet_with_metadata(ifile,lazy=True)
         dmeta, mmeta = full_meta['data'], full_meta['model']
-        n = full_df.select(pl.len()).collect().item()
         columns = full_df.collect_schema().names()
     else:
         full_df, dmeta, mmeta = read_annotated_data(ifile, return_model_meta=True)
-        n, columns = len(full_df), full_df.columns
+        columns = full_df.columns
+
+    n = dmeta.get('total_size')
     if dmeta is None: dmeta = {}
-    return { 'data': full_df, 'data_n': n, 'data_meta': dmeta, 'model_meta': mmeta, 'columns': columns }
+    return { 'data': full_df, 'total_size': n, 'data_meta': dmeta, 'model_meta': mmeta, 'columns': columns }
 
 if len(input_files)==0:
     st.markdown("""Please choose an input file from the sidebar""")
@@ -154,6 +155,7 @@ with st.sidebar: #.expander("Select dimensions"):
 
     # Reset button - has to be high up in case something fails to load
     if st.sidebar.button('Reset choices'): 
+        st_js_blocking('localStorage.removeItem("session_state")')
         st.session_state.clear()
         st.session_state['ls_loaded'] = True
 
@@ -345,7 +347,7 @@ else:
 
             #n_questions = pparams['data']['question'].nunique() if 'question' in pparams['data'] else 1
             #st.write('Based on %.1f%% of data' % (100*pparams['n_datapoints']/(len(loaded[ifile]['data_n'])*n_questions)))
-            st.write('Based on %.1f%% of data' % (100*pparams['n_datapoints']/loaded[ifile]['data_n']))
+            st.write('Based on %.1f%% of data' % (100*pparams['filtered_size']/loaded[ifile]['total_size']))
             #st.altair_chart(plot)#, use_container_width=(len(input_files)>1))
             draw_plot_matrix(plot,matrix_form=matrix_form)
 
