@@ -351,8 +351,6 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     # Sample from filtered data
     if 'sample' in pp_desc: filtered_df = filtered_df.sample(n=pp_desc['sample'], with_replacement=True)
 
-    # Get number of rows in filtered data
-    filtered_n = filtered_df.select(pl.len()).collect().item()    
     
     # Convert ordered categorical to continuous if we can
     rcl = gc_dict.get(pp_desc['res_col'], [pp_desc['res_col']])
@@ -392,6 +390,7 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
 
     # If res_col is a group of questions, melt i.e. unpivot the questions and handle draws if needed
     if pp_desc['res_col'] in gc_dict:
+        n_questions = len(gc_dict[pp_desc['res_col']])
 
         # Melt i.e. unpivot the questions
         value_vars = [ c for c in gc_dict[pp_desc['res_col']] if c in cols ]
@@ -423,14 +422,14 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
         # Convert question to categorical with correct order
         filtered_df = filtered_df.with_columns(pl.col('question').cast(pl.Enum(value_vars)))
     else:
+        n_questions = 1
         if 'question' in factor_cols:
             filtered_df = filtered_df.with_columns(
                 pl.lit(pp_desc['res_col']).alias('question').cast(pl.Categorical)
             )
-    
-    
+        
     # Aggregate the data into right shape
-    pparams = wrangle_data(filtered_df, c_meta, factor_cols, weight_col, pp_desc)
+    pparams = wrangle_data(filtered_df, c_meta, factor_cols, weight_col, pp_desc, n_questions)
     data = pparams['data']
 
     pparams['val_format'] = val_format
@@ -441,14 +440,11 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
         cmap = { c: c.replace(prefix,'') for c in pparams['data']['question'].dtype.categories }
         pparams['data']['question'] = pparams['data']['question'].cat.rename_categories(cmap)
 
-
-    pl.disable_string_cache()
-    
     return pparams
 
 # %% ../nbs/02_pp.ipynb 25
 # Helper function that handles reformating data for create_plot
-def wrangle_data(raw_df, col_meta, factor_cols, weight_col, pp_desc):
+def wrangle_data(raw_df, col_meta, factor_cols, weight_col, pp_desc, n_questions):
     
     plot_meta = get_plot_meta(pp_desc['plot'])
     schema = raw_df.collect_schema() 
@@ -545,8 +541,7 @@ def wrangle_data(raw_df, col_meta, factor_cols, weight_col, pp_desc):
     data = data.collect(streaming=False).to_pandas()
 
     # How many datapoints the plot is based on. This is useful metainfo to display sometimes
-    pparams['filtered_size'] = raw_df.select(pl.col(weight_col).sum()).collect().item()
-
+    pparams['filtered_size'] = raw_df.select(pl.col(weight_col).sum()).collect().item()/n_questions
 
     # Fix categorical types that polars does not read properly from parquet
     # Also filter out unused categories so plots are cleaner

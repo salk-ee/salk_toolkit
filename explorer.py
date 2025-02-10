@@ -6,7 +6,7 @@ import warnings
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
-lazy = True
+# If true, the profiler will be shown
 profile = False
 if profile:
     from wfork_streamlit_profiler import Profiler
@@ -40,7 +40,7 @@ with st.spinner("Loading libraries.."):
     from pandas.api.types import is_numeric_dtype
     from streamlit_js import st_js, st_js_blocking
 
-    from salk_toolkit.io import load_parquet_with_metadata, read_json, extract_column_meta
+    from salk_toolkit.io import read_json, extract_column_meta, read_annotated_data_lazy
     from salk_toolkit.pp import *
     from salk_toolkit.utils import *
     from salk_toolkit.dashboard import draw_plot_matrix, facet_ui, filter_ui, get_plot_width, default_translate, stss_safety
@@ -94,29 +94,26 @@ input_files = st.sidebar.multiselect('Select files:',input_file_choices,default_
 #                                                                      #
 ########################################################################
 
-@st.cache_resource(show_spinner=False)
-def load_file(input_file,lazy=False):
-    ifile = paths[input_file]+input_file
-    if lazy:
-        full_df, full_meta = load_parquet_with_metadata(ifile,lazy=True)
-        dmeta, mmeta = full_meta['data'], full_meta['model']
-        columns = full_df.collect_schema().names()
-    else:
-        full_df, dmeta, mmeta = read_annotated_data(ifile, return_model_meta=True)
-        columns = full_df.columns
 
-    n = dmeta.get('total_size')
+@st.cache_resource(show_spinner=False)
+def load_file(input_file):
+    pl.enable_string_cache()
+    ifile = paths[input_file]+input_file
+    ldf, dmeta, mmeta = read_annotated_data_lazy(ifile, return_model_meta=True)
+    columns = ldf.collect_schema().names()        
+    n0 = ldf.select(pl.len()).collect().item()
+    n = dmeta.get('total_size', n0) # N0 is count of rows which is a fallback for older versions
     if dmeta is None: dmeta = {}
-    return { 'data': full_df, 'total_size': n, 'data_meta': dmeta, 'model_meta': mmeta, 'columns': columns }
+    return { 'data': ldf, 'total_size': n, 'data_meta': dmeta, 'model_meta': mmeta, 'columns': columns }
 
 if len(input_files)==0:
     st.markdown("""Please choose an input file from the sidebar""")
     st.stop()
 else:
-    loaded = { ifile:load_file(ifile,lazy) for i,ifile in enumerate(input_files) }
+    loaded = { ifile:load_file(ifile) for i,ifile in enumerate(input_files) }
     first_file = loaded[input_files[0]]
     first_data_meta = first_file['data_meta'] if global_data_meta is None else global_data_meta
-    first_data = first_file['data'] if not lazy else first_file['data'].head(5).collect().to_pandas()
+    first_data = first_file['data']
 
 
 ########################################################################
@@ -166,9 +163,12 @@ with st.sidebar: #.expander("Select dimensions"):
     if st.toggle('Convert to continuous', False):
         args['convert_res'] = 'continuous'
 
-    obs_dims = get_dimensions(first_data_meta, show_grouped, first_data.columns)
-    obs_dims = [c for c in obs_dims if c not in first_data or not is_datetime(first_data[c])]
-    all_dims = get_dimensions(first_data_meta, False, first_data.columns)
+    schema = first_data.collect_schema()
+    all_cols = list(schema.names())
+
+    obs_dims = get_dimensions(first_data_meta, show_grouped, all_cols)
+    obs_dims = [c for c in obs_dims if c not in first_data or not schema[c].is_temporal()]
+    all_dims = get_dimensions(first_data_meta, False, all_cols)
 
     # Deduplicate them - this bypasses some issues sometimes
     obs_dims = list(dict.fromkeys(obs_dims))
@@ -331,7 +331,7 @@ else:
             data_meta = loaded[ifile]['data_meta'] if global_data_meta is None else global_data_meta
             if data_meta is None: data_meta = first_data_meta
 
-            if (args['res_col'] in first_data.columns   # I.e. it is a column, not a group
+            if (args['res_col'] in all_cols   # I.e. it is a column, not a group
                 and args['res_col'] not in loaded[ifile]['columns']):
                 st.write(f"'{args['res_col']}' not present")
                 continue
