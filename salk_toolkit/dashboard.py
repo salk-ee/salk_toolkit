@@ -9,7 +9,7 @@ __all__ = ['get_plot_width', 'open_fn', 'exists_fn', 'read_annotated_data_lazy_c
            'translate_with_dict', 'log_missing_translations', 'clean_missing_translations', 'add_missing_to_dict']
 
 # %% ../nbs/05_dashboard.ipynb 3
-import json, os, csv, re, time
+import json, os, csv, re, time, psutil
 import itertools as it
 from collections import defaultdict
 
@@ -216,6 +216,7 @@ class SalkDashboardBuilder:
         else: q = self.ldf.select(columns)
         return q.collect().to_pandas()
     
+    # For backwards compatibility - this is very inefficient
     @property
     def df(self):
         return self.get_df()
@@ -310,6 +311,9 @@ class SalkDashboardBuilder:
         # Render the chosen page
         self.subheader(pname)
         pfunc(**clean_kwargs(pfunc,{'sdb':self}))
+
+        if self.user.get('group')=='admin':
+            st.sidebar.write("Mem: %.1fMb" % (psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2))
         
     # Add enter and exit so it can be used as a context
     def __enter__(self):
