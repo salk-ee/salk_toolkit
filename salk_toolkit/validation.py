@@ -41,6 +41,7 @@ class ColumnMeta(PBase):
     groups: Optional[Dict[str,List[str]]] = None # Dict of lists of category values defining groups for easier filtering
     colors: Optional[Dict[str,str]] = None # Dict matching colors to categories
     num_values: Optional[List[Union[float,None]]] = None # For categoricals - how to convert the categories to numbers
+    val_format: Optional[str] = None # Format string for the column values - only used with continuous display
     likert: bool = False # For ordered categoricals - if they are likert-type (i.e. symmetric around center)
     topo_feature: Optional[Tuple[str,str,str]] = None # Link to a geojson/topojson [url,type,col_name inside geodata]
     electoral_system: Optional[Dict] = None # Information about electoral system (TODO: spec it out)
@@ -97,8 +98,6 @@ class ColumnBlockMeta(PBase):
     columns: ColSpec
 
     subgroup_transform: Optional[str] = None # A block-level transform performed after column level transformations
-
-    label: Optional[str] = None # Longer description of the block for tooltips
 
     # Block level flags
     generated: bool = False # This block is for data that is generated, i.e. not initially in the file. 

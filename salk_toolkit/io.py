@@ -313,11 +313,12 @@ def read_annotated_data_lazy(fname,return_model_meta=False):
 def extract_column_meta(data_meta):
     res = defaultdict(lambda: {})
     for g in data_meta['structure']:
-        base = g['scale'] if 'scale' in g else {}
+        base = g['scale'].copy() if 'scale' in g else {}
         res[g['name']] = {**base, 'columns': [base.get('col_prefix','')+(t[0] if type(t)!=str else t) for t in g['columns']] }
+        base['label'] = None # Don't let that be carried over to individual columns
         for cd in g['columns']:
             if isinstance(cd,str): cd = [cd]
-            res[base.get('col_prefix','')+cd[0]] = {**base,**cd[-1]} if isinstance(cd[-1],dict) else base
+            res[base.get('col_prefix','')+cd[0]] = {**base,**cd[-1]} if isinstance(cd[-1],dict) else base.copy()
     return res
 
 # Convert data_meta into a dict of group_name -> [column names]

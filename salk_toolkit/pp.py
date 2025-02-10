@@ -191,17 +191,17 @@ cont_transform_options = ['center','zscore','proportion','softmax','softmax-rati
 
 # %% ../nbs/02_pp.ipynb 19
 # Polars is annoyingly verbose for these but it is fast enough to be worth it
-def transform_cont(data, cols, transform):
-    if not transform: return data, '.1f'
+def transform_cont(data, cols, transform, val_format='.1f'):
+    if not transform: return data, val_format
     elif transform == 'center': 
-        return data.with_columns(pl.col(cols) - pl.col(cols).mean()), '.1f'
+        return data.with_columns(pl.col(cols) - pl.col(cols).mean()), val_format
     elif transform == 'zscore': 
         return data.with_columns((pl.col(cols) - pl.col(cols).mean()) / pl.col(cols).std(0)), '.2f'
     elif transform == 'proportion': 
         return data.with_columns(pl.col(cols)/pl.sum_horizontal(pl.col(cols).abs())), '.1%'
     elif transform.startswith('softmax'): 
-        mult = len(cols) if transform == 'softmax-ratio' else 1.0 # Ratio is just a multiplier
-        return data.with_columns(pl.col(cols).exp()*mult / pl.sum_horizontal(pl.col(cols).exp())), '.1%'
+        mult, val_format = (len(cols),'.1f') if transform == 'softmax-ratio' else (1.0,'.1%') # Ratio is just a multiplier
+        return data.with_columns(pl.col(cols).exp()*mult / pl.sum_horizontal(pl.col(cols).exp())), val_format
     else: raise Exception(f"Unknown transform '{transform}'")
 
 # %% ../nbs/02_pp.ipynb 20
@@ -271,7 +271,7 @@ def discretize_continuous(ldf, col, col_meta={}):
         ldf = ldf.with_columns(pl.col(col).cut(breaks[1:-1], labels=labels, left_closed=True).cast(pl.Categorical))
     else:
         breaks = col_meta.get('bin_breaks',5)
-        fmt = col_meta.get('value_format','.1f') 
+        fmt = col_meta.get('val_format','.1f') 
         if False: # Precise computation is slow
             if isinstance(breaks,int): # This requires computing quantiles for each break - slow
                 breaks = list(np.unique([
@@ -350,7 +350,6 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
 
     # Sample from filtered data
     if 'sample' in pp_desc: filtered_df = filtered_df.sample(n=pp_desc['sample'], with_replacement=True)
-
     
     # Convert ordered categorical to continuous if we can
     rcl = gc_dict.get(pp_desc['res_col'], [pp_desc['res_col']])
@@ -361,22 +360,24 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
             nvals = get_cat_num_vals(res_meta,pp_desc)
             cmap = dict(zip(res_meta['categories'],nvals))
             filtered_df = filtered_df.with_columns(pl.col(rc).cast(pl.String).replace(cmap).cast(pl.Float32))
-            c_meta[rc] = c_meta[pp_desc['res_col']] = { 'continuous': True }
+            c_meta[rc].update({ 'continuous': True, 'categories': None })
+            c_meta[pp_desc['res_col']].update({ 'continuous': True, 'categories': None })
             
     # Apply continuous transformation - needs to happen when data still in table form
     if c_meta[rcl[0]].get('continuous'):
+        val_format = c_meta[rcl[0]].get('val_format') or '.1f'
         if 'cont_transform' in pp_desc:
-            filtered_df, val_format = transform_cont(filtered_df,rcl,transform=pp_desc.get('cont_transform'))
-        else: val_format = '.1f'
+            filtered_df, val_format = transform_cont(filtered_df,rcl,
+                        transform=pp_desc.get('cont_transform'),val_format=val_format)
     else: val_format = '.1%' # Categoricals report %
-    val_format = pp_desc.get('value_format',val_format)
+    val_format = pp_desc.get('val_format',val_format) # Plot can override the default
 
     # Discretize factor columns that are numeric
     for c in factor_cols:
         if c in cols and schema[c].is_numeric():    
-            raw_df, labels = discretize_continuous(raw_df,c,col_meta.get(c,{}))
+            raw_df, labels = discretize_continuous(raw_df,c,c_meta.get(c,{}))
             # Make sure it gets restored to pandas properly
-            col_meta[c] = { 'categories': labels, 'ordered': True } 
+            c_meta[c].update({ 'categories': labels, 'ordered': True, 'continuous': False })
 
     # Add row id-s
     filtered_df = filtered_df.with_row_count('id')
@@ -430,12 +431,11 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
         
     # Aggregate the data into right shape
     pparams = wrangle_data(filtered_df, c_meta, factor_cols, weight_col, pp_desc, n_questions)
-    data = pparams['data']
 
     pparams['val_format'] = val_format
     
     # Remove prefix from question names in plots
-    if 'col_prefix' in c_meta[pp_desc['res_col']] and pp_desc['res_col'] in gc_dict:
+    if 'col_prefix' in c_meta[pp_desc['res_col']] and 'question' in pparams['data'].columns:
         prefix = c_meta[pp_desc['res_col']]['col_prefix']
         cmap = { c: c.replace(prefix,'') for c in pparams['data']['question'].dtype.categories }
         pparams['data']['question'] = pparams['data']['question'].cat.rename_categories(cmap)
@@ -591,17 +591,17 @@ def create_tooltip(pparams,tc_meta):
             
     # Find labels mappings for regular columns
     for cn in tcols:
-        if cn in tc_meta and 'labels' in tc_meta[cn]: label_dict[cn] = tc_meta[cn]['labels']
+        if cn in tc_meta and tc_meta[cn].get('labels'): label_dict[cn] = tc_meta[cn]['labels']
     
     # Find a mapping for multi-column questions
     question_tn = tfn('question')
-    if question_tn in data.columns and any([ 'label' in tc_meta[c] for c in data[question_tn].unique() if c in tc_meta ]):
-        label_dict[question_tn] = { c: tc_meta[c].get('label','') for c in data[question_tn].unique() if c in tc_meta and 'label' in tc_meta[c] }
+    if question_tn in data.columns and any([ tc_meta[c].get('label') for c in data[question_tn].unique() if c in tc_meta ]):
+        label_dict[question_tn] = { c: tc_meta[c].get('label') or '' for c in data[question_tn].unique() if c in tc_meta and tc_meta[c].get('label') }
     
     # Create the tooltips
     tooltips = [ alt.Tooltip(f"{pparams['value_col']}:Q", format=pparams['val_format']) ]
     for cn in tcols:
-        if cn in label_dict:
+        if label_dict.get(cn):
             data[cn+'_label'] = data[cn].astype('object').replace({ k:tfn(v) for k,v in label_dict[cn].items() })
             t = alt.Tooltip(f"{cn}_label:N",title=cn)
         else:
@@ -639,6 +639,7 @@ def inner_outer_factors(factor_cols, pp_desc, plot_meta):
 # Handles all of the data wrangling and parameter formatting
 def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=False, width=200, height=None, return_matrix_of_plots=False, translate=None):
     data, col_meta = pparams['data'], pparams['col_meta']
+
     plot_meta = get_plot_meta(pp_desc['plot'])
     
     if 'question' in data.columns: # TODO: this should be in io.py already, probably
@@ -670,8 +671,6 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
             order = ordervals.sort_values(ascending=ascending).index
             data[cn] = pd.Categorical(data[cn],list(order))
     
-
-        
     # Handle translation funcion
     if translate is None: translate = (lambda s: s)
     pparams['translate'] = translate
@@ -694,6 +693,15 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
                 if v=='pass': pparams[k] = col_meta[pparams['facets'][i]['ocol']].get(k)
         
         factor_cols = factor_cols[n_inner:] # Leave rest for external faceting
+
+    # Rename res_col if label provided (or remove prefix if present)
+    if col_meta[pparams['value_col']].get('label') or col_meta[pparams['value_col']].get('col_prefix'):
+        label = col_meta[pparams['value_col']]['label'] 
+        if not label:
+            prefix = col_meta[pparams['value_col']]['col_prefix']
+            label = pparams['value_col'][len(prefix):]
+        data = data.rename(columns={pparams['value_col']: label})
+        pparams['value_col'] = label
 
     # Translate the data itself
     pparams['data'] = data = translate_df(data,translate)

@@ -751,7 +751,7 @@ def filter_ui(data, dmeta=None, dims=None, uid='base', detailed=False, raw=False
             mima = limits[cn]['min'], limits[cn]['max']
             if mima[0]==mima[1]: continue
             f_res = stc.slider(tf(cn),*mima,value=mima,key=f'filter_{uid}_{cn}_cont')
-            if f_res != mima: filters[cn] = [None] + list(f_res)
+            if f_res[0]>mima[0] or f_res[1]<mima[1]: filters[cn] = [None] + list(f_res)
             
     if filters and not force_choice: f_info.warning('⚠️ ' + tfc('Filters active',context='ui') + ' ⚠️')
             
