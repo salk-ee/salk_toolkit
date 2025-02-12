@@ -219,6 +219,7 @@ class SalkDashboardBuilder:
     # For backwards compatibility - this is very inefficient
     @property
     def df(self):
+        warn("sdb.df is very inefficient. Use sdb.get_df([columns]) instead to get only the columns you need")
         return self.get_df()
 
     @property
