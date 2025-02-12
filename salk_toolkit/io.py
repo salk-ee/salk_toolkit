@@ -4,9 +4,9 @@
 
 # %% auto 0
 __all__ = ['max_cats', 'custom_meta_key', 'read_json', 'process_annotated_data', 'read_annotated_data',
-           'read_annotated_data_lazy', 'extract_column_meta', 'group_columns_dict', 'list_aliases', 'change_meta_df',
-           'replace_data_meta_in_parquet', 'infer_meta', 'data_with_inferred_meta', 'read_and_process_data',
-           'save_population_h5', 'load_population_h5', 'save_sample_h5', 'find_type_in_dict',
+           'read_annotated_data_lazy', 'fix_df_with_meta', 'extract_column_meta', 'group_columns_dict', 'list_aliases',
+           'change_meta_df', 'replace_data_meta_in_parquet', 'infer_meta', 'data_with_inferred_meta',
+           'read_and_process_data', 'save_population_h5', 'load_population_h5', 'save_sample_h5', 'find_type_in_dict',
            'save_parquet_with_metadata', 'load_parquet_metadata', 'load_parquet_with_metadata']
 
 # %% ../nbs/01_io.ipynb 3
@@ -304,7 +304,16 @@ def read_annotated_data_lazy(fname,return_model_meta=False):
 
     if return_model_meta: return (ldf, full_meta['data'], full_meta['model'])
     else: return (ldf, full_meta['data'])
-    
+
+# Fix df dtypes etc using meta - needed after a lazy load
+def fix_df_with_meta(df, dmeta):
+    cmeta = extract_column_meta(dmeta)
+    for c in df.columns:
+        if c not in cmeta: continue
+        cd = cmeta[c]
+        if cd.get('categories'):
+            df[c] = pd.Categorical(df[c],categories=cd['categories'],ordered=cd.get('ordered',False))
+    return df
 
 # %% ../nbs/01_io.ipynb 10
 #| export

@@ -464,7 +464,7 @@ def wrangle_data(raw_df, col_meta, factor_cols, weight_col, pp_desc, n_questions
 
     # If we have no groupby dimensions, add a dummy one so we don't have to handle the empty case
     if len(gb_dims)==0:
-        data = data.with_columns(pl.lit('dummy').alias('dummy_col'))
+        raw_df = raw_df.with_columns(pl.lit('dummy').alias('dummy_col'))
         gb_dims = ['dummy_col']
     
     # Ensure weight column is present (fill with 1.0 if not)

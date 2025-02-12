@@ -214,7 +214,7 @@ class SalkDashboardBuilder:
     def get_df(self,columns=None):
         if columns is None: q = self.ldf
         else: q = self.ldf.select(columns)
-        return q.collect().to_pandas()
+        return fix_df_with_meta(q.collect().to_pandas(),self.meta)
     
     # For backwards compatibility - this is very inefficient
     @property
