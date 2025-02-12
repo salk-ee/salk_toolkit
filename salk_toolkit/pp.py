@@ -191,17 +191,17 @@ cont_transform_options = ['center','zscore','proportion','softmax','softmax-rati
 
 # %% ../nbs/02_pp.ipynb 19
 # Polars is annoyingly verbose for these but it is fast enough to be worth it
-def transform_cont(data, cols, transform, val_format='.1f'):
-    if not transform: return data, val_format
+def transform_cont(data, cols, transform, val_format='.1f', val_range=None):
+    if not transform: return data, val_format, val_range
     elif transform == 'center': 
-        return data.with_columns(pl.col(cols) - pl.col(cols).mean()), val_format
+        return data.with_columns(pl.col(cols) - pl.col(cols).mean()), val_format, None
     elif transform == 'zscore': 
-        return data.with_columns((pl.col(cols) - pl.col(cols).mean()) / pl.col(cols).std(0)), '.2f'
+        return data.with_columns((pl.col(cols) - pl.col(cols).mean()) / pl.col(cols).std(0)), '.2f', None
     elif transform == 'proportion': 
-        return data.with_columns(pl.col(cols)/pl.sum_horizontal(pl.col(cols).abs())), '.1%'
+        return data.with_columns(pl.col(cols)/pl.sum_horizontal(pl.col(cols).abs())), '.1%', (0.0,1.0)
     elif transform.startswith('softmax'): 
         mult, val_format = (len(cols),'.1f') if transform == 'softmax-ratio' else (1.0,'.1%') # Ratio is just a multiplier
-        return data.with_columns(pl.col(cols).exp()*mult / pl.sum_horizontal(pl.col(cols).exp())), val_format
+        return data.with_columns(pl.col(cols).exp()*mult / pl.sum_horizontal(pl.col(cols).exp())), val_format, (0.0,1.0*mult)
     else: raise Exception(f"Unknown transform '{transform}'")
 
 # %% ../nbs/02_pp.ipynb 20
@@ -233,7 +233,8 @@ def pp_filter_data_lz(df, filter_dict, c_meta):
 
         # Handle continuous variables separately
         if is_range and (not isinstance(v[1],str) or c_meta[k].get('continuous') or c_meta[k].get('datetime')): # Only special case where we actually need a range
-            inds = (((pl.col(k)>=v[1]) & (pl.col(k)<=v[2]))) & inds
+            if v[1] is not None: inds = (pl.col(k)>=v[1]) & inds
+            if v[2] is not None: inds = (pl.col(k)<=v[2]) & inds
             continue # NB! this approach does not work for ordered categoricals with polars LazyDataFrame, hence handling that separately below
         
         # Handle categoricals
@@ -315,7 +316,7 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     all_col_names = schema.names()
     
     # Figure out which columns we actually need
-    weight_col = data_meta.get('weight_column','row_weights')
+    weight_col = data_meta.get('weight_col','row_weights')
     factor_cols = pp_desc.get('factor_cols',[]).copy()
 
     # For transforming purposest, res_col is not a factor. 
@@ -360,17 +361,19 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
             nvals = get_cat_num_vals(res_meta,pp_desc)
             cmap = dict(zip(res_meta['categories'],nvals))
             filtered_df = filtered_df.with_columns(pl.col(rc).cast(pl.String).replace(cmap).cast(pl.Float32))
-            c_meta[rc].update({ 'continuous': True, 'categories': None })
-            c_meta[pp_desc['res_col']].update({ 'continuous': True, 'categories': None })
+            update = {  'continuous': True, 'categories': None, 
+                        'val_range': (np.min(nvals),np.max(nvals)) }
+            c_meta[rc].update(update); c_meta[pp_desc['res_col']].update(update)
             
     # Apply continuous transformation - needs to happen when data still in table form
     if c_meta[rcl[0]].get('continuous'):
-        val_format = c_meta[rcl[0]].get('val_format') or '.1f'
+        val_format, val_range = c_meta[rcl[0]].get('val_format') or '.1f', None
         if 'cont_transform' in pp_desc:
-            filtered_df, val_format = transform_cont(filtered_df,rcl,
-                        transform=pp_desc.get('cont_transform'),val_format=val_format)
-    else: val_format = '.1%' # Categoricals report %
+            filtered_df, val_format, val_range = transform_cont(filtered_df, rcl, transform=pp_desc['cont_transform'], 
+                                                                val_format=val_format, val_range=c_meta[rcl[0]].get('val_range'))
+    else: val_format, val_range = '.1%', None # Categoricals report %
     val_format = pp_desc.get('val_format',val_format) # Plot can override the default
+    val_range = pp_desc.get('val_range',val_range)
 
     # Discretize factor columns that are numeric
     for c in factor_cols:
@@ -433,6 +436,7 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     pparams = wrangle_data(filtered_df, c_meta, factor_cols, weight_col, pp_desc, n_questions)
 
     pparams['val_format'] = val_format
+    pparams['val_range'] = val_range # Currently not used 
     
     # Remove prefix from question names in plots
     if 'col_prefix' in c_meta[pp_desc['res_col']] and 'question' in pparams['data'].columns:

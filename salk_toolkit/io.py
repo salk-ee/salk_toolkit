@@ -225,7 +225,12 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
                     
                     # Replace categories with those inferred in the output meta
                     # Many things in pp and model pipeline assume categories are set so this is a necessity
-                    o_cd['categories'] = cd['categories'] 
+                    o_cd['categories'] = cd['categories']
+                elif pd.api.types.is_numeric_dtype(s): # Numeric datatype being coerced into categorical - map to nearest category value
+                    fcats = np.array(cd['categories']).astype(float)
+                    s = pd.Series(np.array(cd['categories'])[np.abs(s.values[:,None] - fcats[None,:]).argmin(axis=1)], 
+                                index=s.index, name=s.name,
+                                dtype=pd.CategoricalDtype(categories=cd['categories'],ordered=cd['ordered']))
 
                 cats = cd['categories']
                 s_rep = s.dropna().iloc[0] # Find a non-na element

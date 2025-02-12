@@ -671,9 +671,10 @@ def get_filter_limits(_ldf,dims,dmeta,uid):
     limits = {}
     for d in dims:
         if c_meta[d].get('continuous') and schema[d].is_numeric():
-            limits[d] = ldf.select([pl.min(d).alias('min'),pl.max(d).alias('max')]).collect().to_dicts()[0]
+            if c_meta[d].get('val_range'): limits[d] = { 'min': c_meta[d]['val_range'][0], 'max': c_meta[d]['val_range'][1] }
+            else: limits[d] = ldf.select([pl.min(d).alias('min'),pl.max(d).alias('max')]).collect().to_dicts()[0]
             limits[d]['continuous'] = True
-        else:
+        elif c_meta[d].get('categories'):
             if c_meta[d].get('categories') == 'infer':
                 if schema[d].is_numeric():
                     warn(f'Column {d} is numeric but marked as categorical. Skipping in filter as inferring categories is not possible.')
@@ -681,6 +682,7 @@ def get_filter_limits(_ldf,dims,dmeta,uid):
                 else:
                     limits[d] = { 'categories': ldf.select(pl.all()).unique(d).collect().to_series().sort().to_list() }
             else:
+                print(d)
                 limits[d] = { 'categories': c_meta[d]['categories'] } 
                 
             limits[d]['ordered'] = c_meta[d].get('ordered',False)
@@ -751,7 +753,10 @@ def filter_ui(data, dmeta=None, dims=None, uid='base', detailed=False, raw=False
             mima = limits[cn]['min'], limits[cn]['max']
             if mima[0]==mima[1]: continue
             f_res = stc.slider(tf(cn),*mima,value=mima,key=f'filter_{uid}_{cn}_cont')
-            if f_res[0]>mima[0] or f_res[1]<mima[1]: filters[cn] = [None] + list(f_res)
+            if f_res[0]>mima[0] or f_res[1]<mima[1]: 
+                filters[cn] = ( [None] + 
+                                [ f_res[0] if f_res[0]>mima[0] else None] + 
+                                [ f_res[1] if f_res[1]<mima[1] else None ] )
             
     if filters and not force_choice: f_info.warning('⚠️ ' + tfc('Filters active',context='ui') + ' ⚠️')
             

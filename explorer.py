@@ -19,9 +19,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-def get_plot_width(str):
-    return 800
-
 info = st.empty()
 
 with st.spinner("Loading libraries.."):
@@ -50,6 +47,10 @@ with st.spinner("Loading libraries.."):
     # Disable altair schema validations by setting debug_mode = False
     # This speeds plots up considerably as altair performs an excessive amount of these validation for some reason
     dm = alt.utils.schemapi.debug_mode(False); dm.__enter__()
+
+#def get_plot_width(str):
+#    return 800
+
 
 if 'ls_loaded' not in st.session_state:
     ls_state = json.loads(st_js_blocking(f'return localStorage.getItem("session_state")') or '{}')
