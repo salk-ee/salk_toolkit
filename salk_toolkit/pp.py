@@ -372,8 +372,8 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
             filtered_df, val_format, val_range = transform_cont(filtered_df, rcl, transform=pp_desc['cont_transform'], 
                                                                 val_format=val_format, val_range=c_meta[rcl[0]].get('val_range'))
     else: val_format, val_range = '.1%', None # Categoricals report %
-    val_format = pp_desc.get('val_format',val_format) # Plot can override the default
-    val_range = pp_desc.get('val_range',val_range)
+    val_format = pp_desc.get('val_format') or val_format # Plot can override the default
+    val_range = pp_desc.get('val_range') or val_range
 
     # Discretize factor columns that are numeric
     for c in factor_cols:

@@ -5,9 +5,10 @@
 # %% auto 0
 __all__ = ['max_cats', 'custom_meta_key', 'read_json', 'process_annotated_data', 'read_annotated_data',
            'read_annotated_data_lazy', 'fix_df_with_meta', 'extract_column_meta', 'group_columns_dict', 'list_aliases',
-           'change_meta_df', 'replace_data_meta_in_parquet', 'infer_meta', 'data_with_inferred_meta',
-           'read_and_process_data', 'save_population_h5', 'load_population_h5', 'save_sample_h5', 'find_type_in_dict',
-           'save_parquet_with_metadata', 'load_parquet_metadata', 'load_parquet_with_metadata']
+           'change_meta_df', 'replace_data_meta_in_parquet', 'replace_infer_in_meta', 'fix_parquet_categories',
+           'infer_meta', 'data_with_inferred_meta', 'read_and_process_data', 'save_population_h5', 'load_population_h5',
+           'save_sample_h5', 'find_type_in_dict', 'save_parquet_with_metadata', 'load_parquet_metadata',
+           'load_parquet_with_metadata']
 
 # %% ../nbs/01_io.ipynb 3
 import json, os, warnings
@@ -449,11 +450,47 @@ def replace_data_meta_in_parquet(parquet_name,metafile_name,advanced=True):
 
 
 # %% ../nbs/01_io.ipynb 15
+# A function to infer categories (and validate the ones already present)
+# Works in-place
+def replace_infer_in_meta(data_meta, df, full_validate=True):
+    if 'structure' not in data_meta: return
+
+    for s in data_meta['structure']:
+        all_cats = set()
+        prefix = s.get('col_prefix','')
+        for c in s.get('columns',[]):
+            if prefix+c[0] in df.columns and df[prefix+c[0]].dtype.name == 'category':
+                cats, cm = list(df[prefix+c[0]].dtype.categories), c[-1]
+                if isinstance(cm,dict) and cm.get('categories') == 'infer':
+                    cm['categories'] = cats
+                elif (full_validate and isinstance(cm,dict) and cm.get('categories') and 
+                    not set(cm['categories']) >= set(cats)):
+                    diff = set(cats) - set(cm['categories'])
+                    warn(f"Fixing missing categories for {c[0]}: {diff}")
+                    cm['categories'] = cats
+                all_cats |= set(cats)
+
+        if s.get('scale') and s['scale'].get('categories')=='infer':
+            s['scale']['categories'] = sort(list(all_cats))
+        elif (s.get('scale') and s['scale'].get('categories') and 
+                not set(s['scale']['categories'])>=all_cats):
+            diff = all_cats - set(s['scale']['categories'])
+            warn(f"Fixing missing categories for group {s['name']}: {diff}")
+            s['scale']['categories'] = all_cats
+
+    return data_meta
+
+def fix_parquet_categories(parquet_name):
+    df, meta = load_parquet_with_metadata(parquet_name)
+    meta['data'] = replace_infer_in_meta(meta['data'],df,full_validate=True)
+    save_parquet_with_metadata(df,meta,parquet_name)
+
+# %% ../nbs/01_io.ipynb 16
 def is_categorical(col):
     return col.dtype.name in ['object', 'str', 'category'] and not is_datetime(col)
 
 
-# %% ../nbs/01_io.ipynb 16
+# %% ../nbs/01_io.ipynb 17
 max_cats = 50
 
 # Create a very basic metafile for a dataset based on it's contents
@@ -573,7 +610,7 @@ def data_with_inferred_meta(data_file, **kwargs):
     return process_annotated_data(meta=meta, data_file=data_file, return_meta=True)
 
 
-# %% ../nbs/01_io.ipynb 18
+# %% ../nbs/01_io.ipynb 19
 def perform_merges(df,merges,constants={}):
     if not isinstance(merges,list): merges = [merges]
     for ms in merges:
@@ -590,7 +627,7 @@ def perform_merges(df,merges,constants={}):
         df = mdf
     return df
 
-# %% ../nbs/01_io.ipynb 19
+# %% ../nbs/01_io.ipynb 20
 def read_and_process_data(desc, return_meta=False, constants={}, skip_postprocessing=False, **kwargs):
 
     if isinstance(desc,str): desc = { 'file':desc } # Allow easy shorthand for simple cases
@@ -613,7 +650,7 @@ def read_and_process_data(desc, return_meta=False, constants={}, skip_postproces
     
     return (df, meta) if return_meta else df
 
-# %% ../nbs/01_io.ipynb 21
+# %% ../nbs/01_io.ipynb 22
 def save_population_h5(fname,pdf):
     hdf = pd.HDFStore(fname,complevel=9, complib='zlib')
     hdf.put('population',pdf,format='table')
@@ -625,7 +662,7 @@ def load_population_h5(fname):
     hdf.close()
     return res
 
-# %% ../nbs/01_io.ipynb 22
+# %% ../nbs/01_io.ipynb 23
 def save_sample_h5(fname,trace,COORDS = None, filter_df = None):
     odims = [d for d in trace.predictions.dims if d not in ['chain','draw','obs_idx']]
     
@@ -666,7 +703,7 @@ def save_sample_h5(fname,trace,COORDS = None, filter_df = None):
     hdf.close()
 
 
-# %% ../nbs/01_io.ipynb 23
+# %% ../nbs/01_io.ipynb 24
 # Small debug tool to help find where jsons become non-serializable
 def find_type_in_dict(d,dtype,path=''):
     print(d,path)
@@ -679,7 +716,7 @@ def find_type_in_dict(d,dtype,path=''):
     elif isinstance(d,dtype):
         raise Exception(f"Value {d} of type {dtype} found at {path}")
 
-# %% ../nbs/01_io.ipynb 24
+# %% ../nbs/01_io.ipynb 25
 # These two very helpful functions are borrowed from https://towardsdatascience.com/saving-metadata-with-dataframes-71f51f558d8e
 
 custom_meta_key = 'salk-toolkit-meta'
