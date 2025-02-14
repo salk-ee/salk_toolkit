@@ -679,14 +679,16 @@ def get_filter_limits(_ldf,dims,dmeta,uid):
             if c_meta[d].get('categories') == 'infer':
                 if schema[d].is_numeric():
                     warn(f'Column {d} is numeric but marked as categorical. Skipping in filter as inferring categories is not possible.')
-                    dims.remove(d); continue
+                    continue
                 else:
                     limits[d] = { 'categories': ldf.select(pl.all()).unique(d).collect().to_series().sort().to_list() }
             else:
-                print(d)
                 limits[d] = { 'categories': c_meta[d]['categories'] } 
                 
             limits[d]['ordered'] = c_meta[d].get('ordered',False)
+            
+        else:
+            warn(f"Skipping {d}: {c_meta[d]} in filter")
     return limits
 
 # %% ../nbs/05_dashboard.ipynb 27
