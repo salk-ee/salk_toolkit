@@ -477,7 +477,7 @@ def fix_meta_categories(data_meta, df, infers_only=False, warnings=True):
                 all_cats |= set(cats)
 
         if s.get('scale') and s['scale'].get('categories')=='infer':
-            s['scale']['categories'] = sort(list(all_cats))
+            s['scale']['categories'] = sorted(list(all_cats))
         elif ((not infers_only) and s.get('scale') and s['scale'].get('categories') and 
                 not set(s['scale']['categories'])>=all_cats):
             diff = all_cats - set(s['scale']['categories'])
