@@ -251,7 +251,7 @@ def pp_filter_data_lz(df, filter_dict, c_meta):
             flst = c_meta[k]['groups'][v]
         else: flst = [v] # Just filter on single value    
             
-        inds =  pl.col(k).is_in(flst) & ~pl.col(k).is_null()
+        inds &=  pl.col(k).is_in(flst) & ~pl.col(k).is_null()
             
     filtered_df = df.filter(inds)
     
@@ -300,7 +300,6 @@ def discretize_continuous(ldf, col, col_meta={}):
 # Internally works with polars LazyDataFrame for large data set performance
 
 def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
-
     pl.enable_string_cache() # So we can work on categorical columns
 
     plot_meta = get_plot_meta(pp_desc['plot'])
