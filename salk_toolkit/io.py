@@ -5,7 +5,7 @@
 # %% auto 0
 __all__ = ['max_cats', 'custom_meta_key', 'read_json', 'process_annotated_data', 'read_annotated_data',
            'read_annotated_data_lazy', 'fix_df_with_meta', 'extract_column_meta', 'group_columns_dict', 'list_aliases',
-           'change_meta_df', 'replace_data_meta_in_parquet', 'replace_infer_in_meta', 'fix_parquet_categories',
+           'change_meta_df', 'replace_data_meta_in_parquet', 'fix_meta_categories', 'fix_parquet_categories',
            'infer_meta', 'data_with_inferred_meta', 'read_and_process_data', 'save_population_h5', 'load_population_h5',
            'save_sample_h5', 'find_type_in_dict', 'save_parquet_with_metadata', 'load_parquet_metadata',
            'load_parquet_with_metadata']
@@ -115,7 +115,13 @@ def read_concatenate_files_list(meta,data_file=None,path=None,**kwargs):
                 warn(f"Categories for {c} are different between files - merging to total {len(dtype.categories)} cats")
             fdf[c] = pd.Categorical(fdf[c],dtype=dtype)
 
-    return fdf, (metas[-1] if metas else None)
+    if metas: # Do we have any metainfo? 
+        meta = metas[-1]
+        # This will fix categories inside meta too
+        fix_meta_categories(meta,fdf,warnings=False)
+        # TODO: one should also merge the structures in case the columns don't match
+        return fdf, meta
+    else: return fdf, None
 
 # %% ../nbs/01_io.ipynb 7
 # convert number series to categorical, avoiding long and unweildy fractions like 24.666666666667
@@ -452,7 +458,7 @@ def replace_data_meta_in_parquet(parquet_name,metafile_name,advanced=True):
 # %% ../nbs/01_io.ipynb 15
 # A function to infer categories (and validate the ones already present)
 # Works in-place
-def replace_infer_in_meta(data_meta, df, full_validate=True):
+def fix_meta_categories(data_meta, df, infers_only=False, warnings=True):
     if 'structure' not in data_meta: return
 
     for s in data_meta['structure']:
@@ -463,26 +469,26 @@ def replace_infer_in_meta(data_meta, df, full_validate=True):
                 cats, cm = list(df[prefix+c[0]].dtype.categories), c[-1]
                 if isinstance(cm,dict) and cm.get('categories') == 'infer':
                     cm['categories'] = cats
-                elif (full_validate and isinstance(cm,dict) and cm.get('categories') and 
+                elif ((not infers_only) and isinstance(cm,dict) and cm.get('categories') and 
                     not set(cm['categories']) >= set(cats)):
                     diff = set(cats) - set(cm['categories'])
-                    warn(f"Fixing missing categories for {c[0]}: {diff}")
+                    if warnings: warn(f"Fixing missing categories for {c[0]}: {diff}")
                     cm['categories'] = cats
                 all_cats |= set(cats)
 
         if s.get('scale') and s['scale'].get('categories')=='infer':
             s['scale']['categories'] = sort(list(all_cats))
-        elif (s.get('scale') and s['scale'].get('categories') and 
+        elif ((not infers_only) and s.get('scale') and s['scale'].get('categories') and 
                 not set(s['scale']['categories'])>=all_cats):
             diff = all_cats - set(s['scale']['categories'])
-            warn(f"Fixing missing categories for group {s['name']}: {diff}")
+            if warnings: warn(f"Fixing missing categories for group {s['name']}: {diff}")
             s['scale']['categories'] = all_cats
 
     return data_meta
 
 def fix_parquet_categories(parquet_name):
     df, meta = load_parquet_with_metadata(parquet_name)
-    meta['data'] = replace_infer_in_meta(meta['data'],df,full_validate=True)
+    meta['data'] = fix_meta_categories(meta['data'],df,infers_only=False)
     save_parquet_with_metadata(df,meta,parquet_name)
 
 # %% ../nbs/01_io.ipynb 16
