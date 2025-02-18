@@ -323,6 +323,13 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     weight_col = data_meta.get('weight_col','row_weights')
     factor_cols = pp_desc.get('factor_cols',[]).copy()
 
+    # Ensure weight column is present (fill with 1.0 if not)
+    if weight_col not in all_col_names: 
+        full_df = full_df.with_columns(pl.lit(1.0).alias(weight_col))
+        all_col_names += [weight_col]
+    else: 
+        full_df = full_df.with_columns(pl.col(weight_col).fill_null(1.0))
+        
     # For transforming purposest, res_col is not a factor. 
     # It will be made one for categorical plots for plotting part, but for pp_transform_data, remove it
     if pp_desc['res_col'] in factor_cols: factor_cols.remove(pp_desc['res_col']) 
@@ -472,10 +479,6 @@ def wrangle_data(raw_df, col_meta, factor_cols, weight_col, pp_desc, n_questions
         raw_df = raw_df.with_columns(pl.lit('dummy').alias('dummy_col'))
         gb_dims = ['dummy_col']
     
-    # Ensure weight column is present (fill with 1.0 if not)
-    if weight_col not in schema.names(): raw_df = raw_df.with_columns(pl.lit(1.0).alias(weight_col))
-    else: raw_df = raw_df.with_columns(pl.col(weight_col).fill_null(1.0))
-
     # if draws and 'draw' in schema.names() and 'augment_to' in pp_desc: # Should we try to bootstrap the data to always have augment_to points. Note this is relatively slow
     #     raw_df = augment_draws(raw_df,gb_dims[1:],threshold=pp_desc['augment_to'])
         
@@ -498,7 +501,7 @@ def wrangle_data(raw_df, col_meta, factor_cols, weight_col, pp_desc, n_questions
         agg_fn = plot_meta.get('agg_fn',agg_fn)
         
         # Check if categorical by looking at schema
-        is_categorical = isinstance(schema[res_col], (pl.Categorical, pl.Enum))
+        is_categorical = isinstance(schema[res_col], (pl.Categorical, pl.Enum, pl.String))
 
         if is_categorical:
             pparams['cat_col'] = res_col 
