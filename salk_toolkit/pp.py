@@ -163,7 +163,10 @@ def matching_plots(pp_desc, df, data_meta, details=False, list_hidden=False):
     else: df_cols = df.columns
 
     # Determine if values are non-negative
-    cols = [c for c in rcm['columns'] if c in df_cols] if 'columns' in rcm else [rc]
+    ocols = rcm['columns'] if 'columns' in rcm else [rc]
+    cols = [ c for c in ocols if c in df_cols ]
+    if not cols: raise ValueError(f"Columns {ocols} not found in data")
+
     nonneg = ('categories' in rcm) or (
         df[cols].min(axis=None)>=0 if not lazy else 
         df.select(pl.min_horizontal(pl.col(cols).min())).collect().item()>=0)
@@ -223,6 +226,8 @@ def get_cats(col, cats=None):
 
 # %% ../nbs/02_pp.ipynb 21
 def pp_filter_data_lz(df, filter_dict, c_meta):
+
+    colnames = df.collect_schema().names()
 
     inds = True
 
@@ -359,9 +364,10 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
             res_meta = ensure_ldf_categories(c_meta,rc,filtered_df)
             nvals = get_cat_num_vals(res_meta,pp_desc)
             cmap = dict(zip(res_meta['categories'],nvals))
-            filtered_df = filtered_df.with_columns(pl.col(rc).cast(pl.String).replace(cmap).cast(pl.Float32))
+            filtered_df = filtered_df.with_columns(pl.col(rc).cast(pl.String).replace(cmap).cast(pl.Float32).fill_nan(None))
+            nvals = np.array(nvals,dtype='float') # To handle null as nan
             update = {  'continuous': True, 'categories': None, 
-                        'val_range': (np.min(nvals),np.max(nvals)) }
+                        'val_range': (np.nanmin(nvals),np.nanmax(nvals)) }
             c_meta[rc].update(update); c_meta[pp_desc['res_col']].update(update)
             
     # Apply continuous transformation - needs to happen when data still in table form
@@ -541,7 +547,8 @@ def wrangle_data(raw_df, col_meta, factor_cols, weight_col, pp_desc, n_questions
     # For new_stream, polars 1.23 considers categoricals to still be broken
     # TODO: Check back here when 1.24+ is released
     #print("final\n",data.explain(streaming=True))
-    data = data.collect(streaming=False).to_pandas()
+    data = data.collect(streaming=True).to_pandas()
+    #print("DATA\n",data)
 
     # How many datapoints the plot is based on. This is useful metainfo to display sometimes
     pparams['filtered_size'] = raw_df.select(pl.col(weight_col).sum()).collect().item()/n_questions

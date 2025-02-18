@@ -128,17 +128,17 @@ from pandas.api.types import is_datetime64_any_dtype as is_datetime
 
 if global_data_meta: st.sidebar.info('⚠️ External meta loaded.')
 
-def get_dimensions(data_meta, observations=True, whitelist=None):
+def get_dimensions(data_meta, present_cols, observations=True):
     c_meta = extract_column_meta(data_meta)
     res = []
     for g in data_meta['structure']:
         if g.get('hidden'): continue
-        if 'scale' in g and observations:
+        if ('scale' in g and observations and
+            (set(c_meta[g['name']]['columns']) & set(present_cols))):
             res.append(g['name'])
         else:
             cols = [ c for c in c_meta[g['name']]['columns']]
-            
-            if whitelist is not None: cols = [ c for c in cols if c in whitelist ]
+            cols = [ c for c in cols if c in present_cols ]
             res += cols
     return res
 
@@ -167,16 +167,16 @@ with st.sidebar: #.expander("Select dimensions"):
     schema = first_data.collect_schema()
     all_cols = list(schema.names())
 
-    obs_dims = get_dimensions(first_data_meta, show_grouped, all_cols)
+    obs_dims = get_dimensions(first_data_meta, all_cols, show_grouped)
     obs_dims = [c for c in obs_dims if c not in first_data or not schema[c].is_temporal()]
-    all_dims = get_dimensions(first_data_meta, False, all_cols)
+    all_dims = get_dimensions(first_data_meta, all_cols, False)
 
     # Deduplicate them - this bypasses some issues sometimes
     obs_dims = list(dict.fromkeys(obs_dims))
     all_dims = list(dict.fromkeys(all_dims))
 
     stss_safety('observation',obs_dims)
-    obs_name = st.selectbox('Observation', obs_dims,key='observation')
+    obs_name = st.selectbox('Observation', obs_dims, key='observation')
     args['res_col'] = obs_name
 
     res_cont = not c_meta[args['res_col']].get('categories') or args.get('convert_res') == 'continuous'
