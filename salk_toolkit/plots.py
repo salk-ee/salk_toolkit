@@ -6,8 +6,8 @@
 __all__ = ['estimate_legend_columns_horiz_naive', 'estimate_legend_columns_horiz', 'boxplot_vals', 'boxplot_manual', 'columns',
            'stacked_columns', 'diff_columns', 'massplot', 'make_start_end', 'likert_bars', 'kde_bw', 'kde_1d',
            'density', 'violin', 'cluster_based_reorder', 'matrix', 'corr_matrix', 'lines', 'draws_to_hdis', 'lines_hdi',
-           'area_smooth', 'likert_aggregate', 'likert_rad_pol', 'barbell', 'geoplot', 'fd_mangle', 'facet_dist',
-           'ordered_population', 'marimekko']
+           'area_smooth', 'likert_aggregate', 'likert_rad_pol', 'barbell', 'geoplot', 'geobest', 'fd_mangle',
+           'facet_dist', 'ordered_population', 'marimekko']
 
 # %% ../nbs/03_plots.ipynb 3
 import json, os, math
@@ -687,8 +687,8 @@ def geoplot(data, topo_feature, value_col='value', facets=[], val_format='.2f', 
         if (outer_factors and outer_colors and 
             data[outer_factors[0]].nunique() == 1 and
             ofv in outer_colors):
-            dark_color = color_ubound_luminosity(outer_colors[ofv],0.3)
-            scale = { 'domain': [mi,ma], 'range': ['white',dark_color]}
+            grad = gradient_from_color(outer_colors[ofv])
+            scale = { 'domain': [mi,ma], 'range': grad}
         else:
             scale = { 'scheme': 'reds' }
 
@@ -711,7 +711,39 @@ def geoplot(data, topo_feature, value_col='value', facets=[], val_format='.2f', 
     ).project('mercator')
     return plot
 
-# %% ../nbs/03_plots.ipynb 54
+# %% ../nbs/03_plots.ipynb 51
+@stk_plot('geobest', data_format='longform', n_facets=(2,2), requires=[{},{'topo_feature':'pass'}], aspect_ratio=(4.0/3.0))
+def geobest(data, topo_feature, value_col='value', facets=[], val_format='.2f', tooltip=[], width=800):
+    f0, f1 = facets[0], facets[1]
+
+    json_url, json_meta, json_col = topo_feature
+    if json_meta == 'geojson':
+        source = alt.Data(url=json_url, format=alt.DataFormat(property='features',type='json'))
+    else:
+        source = alt.topo_feature(json_url, json_meta)
+
+    data = data.sort_values(value_col, ascending=False).drop_duplicates([f1['col']])
+    colormap = f0['colors']
+
+    plot = alt.Chart(source).mark_geoshape(stroke='white', strokeWidth=0.1).transform_lookup(
+        lookup = f"properties.{json_col}",
+        from_ = alt.LookupData(
+            data=data,
+            key=f1["col"],
+            fields=list(data.columns)
+        ),
+    ).encode(
+        tooltip=tooltip, #[alt.Tooltip(f'properties.{json_col}:N', title=f1["col"]),
+                #alt.Tooltip(f'{value_col}:Q', title=value_col, format=val_format)],
+        color=alt.Color(
+            f'{f0['col']}:N',
+            scale=f0['colors'],
+            legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f0["order"],width)),
+        )
+    ).project('mercator')
+    return plot
+
+# %% ../nbs/03_plots.ipynb 55
 # Assuming ns is ordered by unique row values, find the split points
 def split_ordered(cvs):
     if len(cvs.shape)==1: cvs = cvs[:,None]
@@ -727,7 +759,7 @@ def split_even_weight(ws, n):
     cws = (cws/(cws[-1]/n)).astype('int')
     return (split_ordered(cws)+1)[:-1]
 
-# %% ../nbs/03_plots.ipynb 56
+# %% ../nbs/03_plots.ipynb 57
 def fd_mangle(vc, value_col, factor_col, n_points=10): 
     
     vc = vc.sort_values(value_col)
@@ -759,7 +791,7 @@ def facet_dist(data, value_col='value',facets=[], tooltip=[], outer_factors=[]):
 
     return plot
 
-# %% ../nbs/03_plots.ipynb 58
+# %% ../nbs/03_plots.ipynb 59
 # Vectorized multinomial sampling. Should be slightly faster
 def vectorized_mn(prob_matrix):
     s = prob_matrix.cumsum(axis=1)
@@ -805,7 +837,7 @@ def linevals(vals, value_col, n_points, dim, cats, ccodes=None, ocols=None, boos
 
     return pdf
 
-# %% ../nbs/03_plots.ipynb 59
+# %% ../nbs/03_plots.ipynb 60
 @stk_plot('ordered_population', data_format='raw', factor_columns=3, aspect_ratio=(1.0/1.0), plot_args={'group_categories':'bool'}, n_facets=(0,1), no_question_facet=True)
 def ordered_population(data, value_col='value', facets=[], tooltip=[], outer_factors=[], group_categories=False):
     f0 = facets[0] if len(facets)>0 else None
@@ -888,7 +920,7 @@ def ordered_population(data, value_col='value', facets=[], tooltip=[], outer_fac
     )
     return plot
 
-# %% ../nbs/03_plots.ipynb 61
+# %% ../nbs/03_plots.ipynb 62
 @stk_plot('marimekko', data_format='longform', draws=False, group_sizes=True, args={'separate':'bool'}, n_facets=(2,2))
 def marimekko(data, value_col='value', facets=[], val_format='%', width=800, tooltip=[], outer_factors=[], separate=False):
     f0, f1 = facets[0], facets[1]
@@ -956,7 +988,7 @@ def marimekko(data, value_col='value', facets=[], val_format='%', width=800, too
     
     return plot
 
-# %% ../nbs/03_plots.ipynb 67
+# %% ../nbs/03_plots.ipynb 68
 # Beta binomial fitting using PyMC with a partially pooled model
 use_partial_pooling = False # bypass pymc and just use method of moments
 

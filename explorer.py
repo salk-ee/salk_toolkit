@@ -48,8 +48,8 @@ with st.spinner("Loading libraries.."):
     # This speeds plots up considerably as altair performs an excessive amount of these validation for some reason
     dm = alt.utils.schemapi.debug_mode(False); dm.__enter__()
 
-#def get_plot_width(str):
-#    return 800
+def get_plot_width(str):
+    return 800
 
 
 if 'ls_loaded' not in st.session_state:

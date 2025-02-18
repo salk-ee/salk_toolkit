@@ -5,7 +5,7 @@
 # %% auto 0
 __all__ = ['warn', 'default_color', 'factorize_w_codes', 'batch', 'loc2iloc', 'match_sum_round', 'min_diff', 'continify',
            'replace_cat_with_dummies', 'match_data', 'replace_constants', 'approx_str_match', 'index_encoder',
-           'to_alt_scale', 'multicol_to_vals_cats', 'gradient_to_discrete_color_scale', 'color_ubound_luminosity',
+           'to_alt_scale', 'multicol_to_vals_cats', 'gradient_to_discrete_color_scale', 'gradient_from_color',
            'is_datetime', 'rel_wave_times', 'stable_draws', 'deterministic_draws', 'clean_kwargs', 'censor_dict',
            'cut_nice_labels', 'cut_nice', 'rename_cats', 'str_replace', 'merge_series', 'aggregate_multiselect',
            'deaggregate_multiselect', 'gb_in', 'gb_in_apply', 'stk_defaultdict', 'cached_fn']
@@ -22,7 +22,7 @@ import datetime as dt
 
 import altair as alt
 import matplotlib.colors as mpc
-import colorsys
+import colorsys, hsluv
 from copy import deepcopy
 from hashlib import sha256
 
@@ -206,11 +206,12 @@ def gradient_to_discrete_color_scale( grad, num_colors):
     return [mpc.to_hex(cmap(i)) for i in np.linspace(0, 1, num_colors)]
 
 # %% ../nbs/10_utils.ipynb 26
-def color_ubound_luminosity(color, l_value):
-    rgb = mpc.to_rgb(color)
-    h, l, s = colorsys.rgb_to_hls(*rgb)
-    nrgb = colorsys.hls_to_rgb(h, min(l,l_value), s = s)
-    return mpc.to_hex(nrgb)
+# Create a color gradient from a given single color
+def gradient_from_color(color, l_value=0.3, n_points=7):
+    h,s,l = hsluv.hex_to_hsluv(mpc.to_hex(color))
+    s = min(s,70) # Desaturate the color as it can be very agressive on high L values otherwise
+    ls = np.linspace(100,min(l,100*l_value),n_points) # Create n_points steps in hsluv space
+    return [ hsluv.hsluv_to_hex((h,s,nl)) for nl in ls ]
 
 # %% ../nbs/10_utils.ipynb 27
 def is_datetime(col):
