@@ -687,6 +687,7 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
 
     # Handle internal facets (and translate as needed)
     pparams['facets'] = []
+
     if n_inner>0:
         for cn in factor_cols[:n_inner]:
             fd = {
@@ -703,6 +704,8 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
                 if v=='pass': pparams[k] = col_meta[pparams['facets'][i]['ocol']].get(k)
         
         factor_cols = factor_cols[n_inner:] # Leave rest for external faceting
+
+    pparams['outer_colors'] = col_meta[factor_cols[0]].get('colors', {}) if factor_cols else {}
 
     # Rename res_col if label provided (or remove prefix if present)
     if col_meta[pparams['value_col']].get('label') or col_meta[pparams['value_col']].get('col_prefix'):

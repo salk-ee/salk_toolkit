@@ -665,7 +665,8 @@ def barbell(data, value_col='value', facets=[], filtered_size=1, val_format='%',
 
 # %% ../nbs/03_plots.ipynb 50
 @stk_plot('geoplot', data_format='longform', n_facets=(1,1), requires=[{'topo_feature':'pass'}], aspect_ratio=(4.0/3.0), no_question_facet=True, args={'vary_colors':'bool'})
-def geoplot(data, topo_feature, value_col='value', facets=[], val_format='.2f',tooltip=[],vary_colors=False):
+def geoplot(data, topo_feature, value_col='value', facets=[], val_format='.2f', tooltip=[],
+                vary_colors=False, outer_factors=[], outer_colors={}):
     f0 = facets[0]
 
     json_url, json_meta, json_col = topo_feature
@@ -674,14 +675,22 @@ def geoplot(data, topo_feature, value_col='value', facets=[], val_format='.2f',t
     else:
         source = alt.topo_feature(json_url, json_meta)
 
-    
+    mi, ma = data[value_col].min(),data[value_col].max()
     if vary_colors: # Vary colors depending on pos or neg values
-        mi, ma = data[value_col].min(),data[value_col].max() 
+        
         dmax = max(-mi,ma)
-        if mi<0 and ma>0: scale = { 'scheme':'redyellowgreen', 'domainMid':0, 'domainMin':-dmax, 'domainMax':dmax }
-        elif ma<0: scale = { 'scheme': 'reds' }#, 'domainMin': 0, 'domainMax':dmax }
-        else: scale = { 'scheme': 'yellowgreen' }#, 'domainMin': 0, 'domainMax':dmax }
-    else: scale = { 'scheme': 'reds' }
+        if mi<0 and ma>0: scale = { 'scheme':'redblue', 'domainMid':0, 'domainMin':-dmax, 'domainMax':dmax, 'rangeMax': 0.1 }
+        elif ma<0: scale = { 'scheme': 'reds', 'reverse': True }#, 'domainMin': 0, 'domainMax':dmax }
+        else: scale = { 'scheme': 'blues' }#, 'domainMin': 0, 'domainMax':dmax }
+    else:
+        ofv = data[outer_factors[0]].iloc[0]
+        if (outer_factors and outer_colors and 
+            data[outer_factors[0]].nunique() == 1 and
+            ofv in outer_colors):
+            dark_color = color_ubound_luminosity(outer_colors[ofv],0.3)
+            scale = { 'domain': [mi,ma], 'range': ['white',dark_color]}
+        else:
+            scale = { 'scheme': 'reds' }
 
     plot = alt.Chart(source).mark_geoshape(stroke='white', strokeWidth=0.1).transform_lookup(
         lookup = f"properties.{json_col}",
@@ -697,7 +706,7 @@ def geoplot(data, topo_feature, value_col='value', facets=[], val_format='.2f',t
             f'{value_col}:Q',
             scale=alt.Scale(**scale), # To use color scale, consider switching to opacity for value
             legend=alt.Legend(format=val_format, title=None, orient='top-left',gradientThickness=6, 
-                                values=[data[value_col].min(),data[value_col].max()]),
+                                values=[mi,ma]),
         )
     ).project('mercator')
     return plot

@@ -5,10 +5,10 @@
 # %% auto 0
 __all__ = ['warn', 'default_color', 'factorize_w_codes', 'batch', 'loc2iloc', 'match_sum_round', 'min_diff', 'continify',
            'replace_cat_with_dummies', 'match_data', 'replace_constants', 'approx_str_match', 'index_encoder',
-           'to_alt_scale', 'multicol_to_vals_cats', 'gradient_to_discrete_color_scale', 'is_datetime', 'rel_wave_times',
-           'stable_draws', 'deterministic_draws', 'clean_kwargs', 'censor_dict', 'cut_nice_labels', 'cut_nice',
-           'rename_cats', 'str_replace', 'merge_series', 'aggregate_multiselect', 'deaggregate_multiselect', 'gb_in',
-           'gb_in_apply', 'stk_defaultdict', 'cached_fn']
+           'to_alt_scale', 'multicol_to_vals_cats', 'gradient_to_discrete_color_scale', 'color_ubound_luminosity',
+           'is_datetime', 'rel_wave_times', 'stable_draws', 'deterministic_draws', 'clean_kwargs', 'censor_dict',
+           'cut_nice_labels', 'cut_nice', 'rename_cats', 'str_replace', 'merge_series', 'aggregate_multiselect',
+           'deaggregate_multiselect', 'gb_in', 'gb_in_apply', 'stk_defaultdict', 'cached_fn']
 
 # %% ../nbs/10_utils.ipynb 3
 import json, os, warnings, math, inspect
@@ -22,6 +22,7 @@ import datetime as dt
 
 import altair as alt
 import matplotlib.colors as mpc
+import colorsys
 from copy import deepcopy
 from hashlib import sha256
 
@@ -205,12 +206,19 @@ def gradient_to_discrete_color_scale( grad, num_colors):
     return [mpc.to_hex(cmap(i)) for i in np.linspace(0, 1, num_colors)]
 
 # %% ../nbs/10_utils.ipynb 26
+def color_ubound_luminosity(color, l_value):
+    rgb = mpc.to_rgb(color)
+    h, l, s = colorsys.rgb_to_hls(*rgb)
+    nrgb = colorsys.hls_to_rgb(h, min(l,l_value), s = s)
+    return mpc.to_hex(nrgb)
+
+# %% ../nbs/10_utils.ipynb 27
 def is_datetime(col):
     with warnings.catch_warnings():
         warnings.simplefilter(action='ignore', category=UserWarning)
         return pd.api.types.is_datetime64_any_dtype(col) or (col.dtype.name in ['str','object'] and pd.to_datetime(col,errors='coerce').notna().any())
 
-# %% ../nbs/10_utils.ipynb 27
+# %% ../nbs/10_utils.ipynb 28
 # Convert a series of wave indices and a series of survey dates into a time series usable by our gp model
 def rel_wave_times(ws, dts, dt0=None):
     df = pd.DataFrame({'wave':ws, 'dt': pd.to_datetime(dts)})
@@ -221,7 +229,7 @@ def rel_wave_times(ws, dts, dt0=None):
     
     return pd.Series(df['wave'].replace(w_to_time),name='t')
 
-# %% ../nbs/10_utils.ipynb 29
+# %% ../nbs/10_utils.ipynb 30
 # Generate a random draws column that is deterministic in n, n_draws and uid
 def stable_draws(n, n_draws, uid):
     # Initialize a random generator with a hash of uid
@@ -238,18 +246,18 @@ def deterministic_draws(df, n_draws, uid, n_total=None):
     df.loc[:,'draw'] = pd.Series(stable_draws(n_total, n_draws, uid), index = np.arange(n_total))
     return df
 
-# %% ../nbs/10_utils.ipynb 31
+# %% ../nbs/10_utils.ipynb 32
 # Clean kwargs leaving only parameters fn can digest
 def clean_kwargs(fn, kwargs):
     aspec = inspect.getfullargspec(fn)
     return { k:v for k,v in kwargs.items() if k in aspec.args } if aspec.varkw is None else kwargs
 
-# %% ../nbs/10_utils.ipynb 32
+# %% ../nbs/10_utils.ipynb 33
 # Simple one-liner to remove certain keys from a dict
 def censor_dict(d,vs):
     return { k:v for k,v in d.items() if k not in vs }
 
-# %% ../nbs/10_utils.ipynb 33
+# %% ../nbs/10_utils.ipynb 34
 # Create nice labels for a cut
 # Used by the cut_nice below as well as for a lazy polars version in pp
 def cut_nice_labels(breaks, mi, ma, isint, format='', separator=' - '):
@@ -283,14 +291,14 @@ def cut_nice(s, breaks, format='', separator=' - '):
     breaks, labels = cut_nice_labels(breaks, mi, ma, isint, format, separator)
     return pd.cut(s, breaks, right=False, labels=labels, ordered=False)
 
-# %% ../nbs/10_utils.ipynb 35
+# %% ../nbs/10_utils.ipynb 36
 # Utility function to rename categories in pre/post processing steps as pandas made .replace unusable with categories
 def rename_cats(df, col, cat_map):
     if df[col].dtype.name == 'category': 
         df[col] = df[col].cat.rename_categories(cat_map)
     else: df[col] = df[col].replace(cat_map)
 
-# %% ../nbs/10_utils.ipynb 36
+# %% ../nbs/10_utils.ipynb 37
 # Simplify doing multiple replace's on a column
 def str_replace(s,d):
     s = s.astype('object')
@@ -298,7 +306,7 @@ def str_replace(s,d):
         s = s.str.replace(k,v)
     return s
 
-# %% ../nbs/10_utils.ipynb 38
+# %% ../nbs/10_utils.ipynb 39
 # Merge values from multiple columns, iteratively replacing values
 # lst contains either a series or a tuple of (series, whitelist)
 def merge_series(*lst):
@@ -313,7 +321,7 @@ def merge_series(*lst):
             s.loc[~ns.isna()] = ns[~ns.isna()]
     return s
 
-# %% ../nbs/10_utils.ipynb 40
+# %% ../nbs/10_utils.ipynb 41
 # Turn a list of selected/not seleced into a list of selected values in the same dataframe
 def aggregate_multiselect(df, prefix, out_prefix, na_vals=[]):
     cols = [ c for c in df.columns if c.startswith(prefix) ]
@@ -322,7 +330,7 @@ def aggregate_multiselect(df, prefix, out_prefix, na_vals=[]):
     n_res = max(map(len,lst))
     df[[f'{out_prefix}{i+1}' for i in range(n_res)]] = pd.DataFrame(lst)
 
-# %% ../nbs/10_utils.ipynb 41
+# %% ../nbs/10_utils.ipynb 42
 # Take a list of values and create a one-hot matrix of them. Basically the inverse of previous
 def deaggregate_multiselect(df, prefix, out_prefix=''):
     cols = [ c for c in df.columns if c.startswith(prefix) ]
@@ -334,7 +342,7 @@ def deaggregate_multiselect(df, prefix, out_prefix=''):
     # Create a one-hot column for each
     for oc in ocols: df[out_prefix+oc] = (df[cols]==oc).any(axis=1)
 
-# %% ../nbs/10_utils.ipynb 42
+# %% ../nbs/10_utils.ipynb 43
 # Groupby if needed - this simplifies things quite often
 def gb_in(df, gb_cols):
     return df.groupby(gb_cols,observed=False) if len(gb_cols)>0 else df
@@ -348,12 +356,12 @@ def gb_in_apply(df, gb_cols, fn, cols=None, **kwargs):
     else: res = df.groupby(gb_cols,observed=False)[cols].apply(fn,**kwargs)
     return res
 
-# %% ../nbs/10_utils.ipynb 43
+# %% ../nbs/10_utils.ipynb 44
 def stk_defaultdict(dv):
     if not isinstance(dv,dict): dv = {'default':dv}
     return defaultdict(lambda: dv['default'], dv)
 
-# %% ../nbs/10_utils.ipynb 44
+# %% ../nbs/10_utils.ipynb 45
 def cached_fn(fn):
     cache = {}
     def cf(x):
