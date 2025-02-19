@@ -8,6 +8,12 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 
 # If true, the profiler will be shown
 profile = False
+memprofile = False
+
+if memprofile:
+    import tracemalloc
+    tracemalloc.start()
+
 if profile:
     from wfork_streamlit_profiler import Profiler
     p = Profiler(); p.start()
@@ -48,8 +54,9 @@ with st.spinner("Loading libraries.."):
     # This speeds plots up considerably as altair performs an excessive amount of these validation for some reason
     dm = alt.utils.schemapi.debug_mode(False); dm.__enter__()
 
-def get_plot_width(str):
-    return 800
+# Override the st_dimensions based version that can cause refresh loops
+#def get_plot_width(str):
+#    return 800
 
 
 if 'ls_loaded' not in st.session_state:
@@ -166,7 +173,7 @@ with st.sidebar: #.expander("Select dimensions"):
 
     schema = first_data.collect_schema()
     all_cols = list(schema.names())
-
+    
     obs_dims = get_dimensions(first_data_meta, all_cols, show_grouped)
     obs_dims = [c for c in obs_dims if c not in first_data or not schema[c].is_temporal()]
     all_dims = get_dimensions(first_data_meta, all_cols, False)
@@ -371,6 +378,17 @@ info.empty()
 st.sidebar.write("Mem: %.1f" % (psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2))
 
 dm.__exit__(None,None,None)
+
+if memprofile:
+    snapshot = tracemalloc.take_snapshot()
+    top_stats = snapshot.statistics('filename')
+    memres = str(tracemalloc.get_traced_memory())+'\n'
+    memres += "[ Top 10 ]\n"
+    for stat in top_stats[:10]:
+        memres += str(stat)+'\n'
+    #print(memres)
+    st.code(memres)
+    tracemalloc.stop()
 
 if profile:
     p.stop()

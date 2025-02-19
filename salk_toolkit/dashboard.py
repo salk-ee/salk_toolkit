@@ -39,7 +39,7 @@ import libsql_client
 # %% ../nbs/05_dashboard.ipynb 4
 def get_plot_width(key):
     wobj = st_dimensions(key=key) or { 'width': 800 } # Can return none so handle that
-    return min(800,int(0.85*wobj['width'])) # Needs to be adjusted down  to leave margin for plots
+    return min(800,int(0.8*wobj['width'])) # Needs to be adjusted down  to leave margin for plots
 
 # %% ../nbs/05_dashboard.ipynb 5
 # Open either a local or an s3 file

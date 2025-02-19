@@ -5,7 +5,7 @@
 # %% auto 0
 __all__ = ['special_columns', 'registry', 'registry_meta', 'stk_plot_defaults', 'n_a', 'priority_weights',
            'cont_transform_options', 'get_cat_num_vals', 'stk_plot', 'stk_deregister', 'get_plot_fn', 'get_plot_meta',
-           'get_all_plots', 'calculate_priority', 'matching_plots', 'pp_transform_data', 'translate_df', 'create_plot',
+           'get_all_plots', 'calculate_priority', 'matching_plots', 'pp_transform_data', 'create_plot',
            'impute_factor_cols', 'e2e_plot', 'test_new_plot']
 
 # %% ../nbs/02_pp.ipynb 3
@@ -24,7 +24,7 @@ from typing import List, Tuple, Dict, Union, Optional
 import altair as alt
 
 from salk_toolkit.utils import *
-from salk_toolkit.io import load_parquet_with_metadata, extract_column_meta, group_columns_dict, list_aliases, read_annotated_data, read_json
+from salk_toolkit.io import load_parquet_with_metadata, extract_column_meta, group_columns_dict, list_aliases, read_annotated_data, read_json, read_annotated_data_lazy
 
 # %% ../nbs/02_pp.ipynb 6
 # Augment each draw with bootstrap data from across whole population to make sure there are at least <threshold> samples
@@ -350,6 +350,9 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     
     df = full_df.select(cols) # Select only the columns we need
     total_n = df.select(pl.len()).collect().item()
+
+    # Add row id-s - needs to happen before filtering
+    df = df.with_row_count('id')
     
     # Filter the data with given filters
     if pp_desc.get('filter'):
@@ -394,8 +397,7 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
             # Make sure it gets restored to pandas properly
             c_meta[c].update({ 'categories': labels, 'ordered': True, 'continuous': False })
 
-    # Add row id-s
-    filtered_df = filtered_df.with_row_count('id')
+    
 
     # Compute draws if needed - Nb: also applies if the draws are shared for the group of questions
     if 'draw' in cols and pp_desc['res_col'] in data_meta.get('draws_data',{}):
@@ -572,7 +574,7 @@ def wrangle_data(raw_df, col_meta, factor_cols, weight_col, pp_desc, n_questions
 # %% ../nbs/02_pp.ipynb 27
 # Create a color scale
 ordered_gradient = ["#c30d24", "#f3a583", "#94c6da", "#1770ab"]
-def meta_color_scale(scale : Dict, column=None, translate=None):
+def meta_color_scale(scale: Optional[Dict], column=None, translate=None):
     cats = column.dtype.categories if column.dtype.name=='category' else None
     if scale is None and column is not None and column.dtype.name=='category' and column.dtype.ordered:
         scale = dict(zip(cats,gradient_to_discrete_color_scale(ordered_gradient, len(cats))))
