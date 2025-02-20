@@ -710,11 +710,13 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
         
         factor_cols = factor_cols[n_inner:] # Leave rest for external faceting
 
+    if plot_meta.get('no_faceting') and len(factor_cols)>0: return_matrix_of_plots = True
+
     pparams['outer_colors'] = col_meta[factor_cols[0]].get('colors', {}) if factor_cols else {}
 
     # Rename res_col if label provided (or remove prefix if present)
     if col_meta[pparams['value_col']].get('label') or col_meta[pparams['value_col']].get('col_prefix'):
-        label = col_meta[pparams['value_col']]['label'] 
+        label = col_meta[pparams['value_col']].get('label')
         if not label:
             prefix = col_meta[pparams['value_col']]['col_prefix']
             label = pparams['value_col'][len(prefix):]

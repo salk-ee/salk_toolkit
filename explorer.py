@@ -285,7 +285,7 @@ st.markdown("""___""")
 ########################################################################
 
 # Workaround for geoplot - in that case draw multiple plots instead of a facet
-matrix_form = (args['plot'] == 'geoplot')
+matrix_form = False#(args['plot'] == 'geoplot')
 
 # Determine if one of the facets is input_file
 input_files_facet = 'input_file' in args.get('factor_cols',[])
@@ -325,7 +325,7 @@ elif input_files_facet:
                        width=get_plot_width('full'),
                        return_matrix_of_plots=matrix_form)
 
-    draw_plot_matrix(plot,matrix_form=matrix_form)
+    draw_plot_matrix(plot)
     #st.altair_chart(plot)#,use_container_width=True)
 
 else:
@@ -357,7 +357,7 @@ else:
             #st.write('Based on %.1f%% of data' % (100*pparams['n_datapoints']/(len(loaded[ifile]['data_n'])*n_questions)))
             st.write('Based on %.1f%% of data' % (100*pparams['filtered_size']/loaded[ifile]['total_size']))
             #st.altair_chart(plot)#, use_container_width=(len(input_files)>1))
-            draw_plot_matrix(plot,matrix_form=matrix_form)
+            draw_plot_matrix(plot)
 
             with st.expander('Data Meta'):
                 st.json(loaded[ifile]['data_meta'])

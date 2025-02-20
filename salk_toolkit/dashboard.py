@@ -606,20 +606,20 @@ def admin_page(sdb):
 # See https://github.com/altair-viz/altair/issues/2369 -> https://github.com/vega/vega-lite/issues/3729
 
 # Draw a matrix of plots using separate plots and st columns
-def draw_plot_matrix(pmat,matrix_form = False):
+def draw_plot_matrix(pmat):
     if not pmat: return # Do nothing if get None passed to it
-    if not matrix_form: pmat = [[pmat]]
-    cols = st.columns(len(pmat[0]))
+    if not isinstance(pmat,list): pmat, ucw = [[pmat]], False
+    else: ucw = True # If we are drawing more than one plot, we want to use the container width
+    cols = st.columns(len(pmat[0])) if len(pmat[0])>1 else [st]
     for j,c in enumerate(cols):
         for i, row in enumerate(pmat):
             if j>=len(pmat[i]): continue
-            c.altair_chart(pmat[i][j])
+            c.altair_chart(pmat[i][j],use_container_width=ucw)
 
 # Draw the plot described by pp_desc 
 def st_plot(pp_desc,**kwargs):
-    matrix_form = (pp_desc['plot'] == 'geoplot')
-    plots = e2e_plot(pp_desc, return_matrix_of_plots=matrix_form, **kwargs)
-    draw_plot_matrix(plots, matrix_form=matrix_form)
+    plots = e2e_plot(pp_desc, **kwargs)
+    draw_plot_matrix(plots)
 
 # %% ../nbs/05_dashboard.ipynb 23
 # Streamlit session state safety - check and clear session state if it has an unfit value
