@@ -154,8 +154,7 @@ stk_plot('boxplots-raw', data_format="raw", n_facets=(1,2), priority=0)(boxplot_
 @stk_plot('columns', data_format='longform', draws=False, n_facets=(1,2))
 def columns(data, value_col='value', facets=[], val_format='%', width=800, tooltip=[]):
     f0, f1 = facets[0], facets[1] if len(facets)>1 else None
-    plot = alt.Chart(round(data, 3), width = 'container' \
-    ).mark_bar().encode(
+    plot = alt.Chart(data).mark_bar().encode(
         x=alt.X(
             f'{value_col}:Q',
             title=value_col,
@@ -666,7 +665,7 @@ def barbell(data, value_col='value', facets=[], filtered_size=1, val_format='%',
 # %% ../nbs/03_plots.ipynb 50
 @stk_plot('geoplot', data_format='longform', n_facets=(1,1), requires=[{'topo_feature':'pass'}], no_faceting=True, aspect_ratio=(4.0/3.0), no_question_facet=True, args={'vary_colors':'bool'})
 def geoplot(data, topo_feature, value_col='value', facets=[], val_format='.2f', tooltip=[],
-                vary_colors=False, outer_factors=[], outer_colors={}):
+                vary_colors=False, outer_factors=[], outer_colors={}, value_range=None):
     f0 = facets[0]
 
     json_url, json_meta, json_col = topo_feature
@@ -675,7 +674,8 @@ def geoplot(data, topo_feature, value_col='value', facets=[], val_format='.2f', 
     else:
         source = alt.topo_feature(json_url, json_meta)
 
-    mi, ma = data[value_col].min(),data[value_col].max()
+    mi, ma = value_range if value_range else (data[value_col].min(),data[value_col].max())
+
     if vary_colors: # Vary colors depending on pos or neg values
         
         dmax = max(-mi,ma)

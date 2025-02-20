@@ -658,12 +658,11 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
     plot_meta = get_plot_meta(pp_desc['plot'])
     
     if 'question' in data.columns: # TODO: this should be in io.py already, probably
-      col_meta['question']['colors'] = col_meta[pp_desc['res_col']].get('question_colors',None)
-  
+        col_meta['question']['colors'] = col_meta[pp_desc['res_col']].get('question_colors',None)
+
     plot_args = pp_desc.get('plot_args',{})
     pparams.update(plot_args)
 
-        
     # Get list of factor columns (adding question and category if needed)
     factor_cols, n_inner = inner_outer_factors(pp_desc['factor_cols'], pp_desc, plot_meta)
 
@@ -712,6 +711,8 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
 
     if plot_meta.get('no_faceting') and len(factor_cols)>0: return_matrix_of_plots = True
 
+    #pparams['value_range'] = tuple(data[pparams['value_col']].agg([min,max]))
+
     pparams['outer_colors'] = col_meta[factor_cols[0]].get('colors', {}) if factor_cols else {}
 
     # Rename res_col if label provided (or remove prefix if present)
@@ -719,7 +720,9 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
         label = col_meta[pparams['value_col']].get('label')
         if not label:
             prefix = col_meta[pparams['value_col']]['col_prefix']
-            label = pparams['value_col'][len(prefix):]
+            label = pparams['value_col']
+            if label.startswith(prefix) and label!=prefix:
+                label = pparams['value_col'][len(prefix):]
         data = data.rename(columns={pparams['value_col']: label})
         pparams['value_col'] = label
 
