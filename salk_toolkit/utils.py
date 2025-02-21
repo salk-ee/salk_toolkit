@@ -6,9 +6,9 @@
 __all__ = ['warn', 'default_color', 'factorize_w_codes', 'batch', 'loc2iloc', 'match_sum_round', 'min_diff', 'continify',
            'replace_cat_with_dummies', 'match_data', 'replace_constants', 'approx_str_match', 'index_encoder',
            'to_alt_scale', 'multicol_to_vals_cats', 'gradient_to_discrete_color_scale', 'gradient_from_color',
-           'is_datetime', 'rel_wave_times', 'stable_draws', 'deterministic_draws', 'clean_kwargs', 'censor_dict',
-           'cut_nice_labels', 'cut_nice', 'rename_cats', 'str_replace', 'merge_series', 'aggregate_multiselect',
-           'deaggregate_multiselect', 'gb_in', 'gb_in_apply', 'stk_defaultdict', 'cached_fn']
+           'bidir_gradient_from_color', 'is_datetime', 'rel_wave_times', 'stable_draws', 'deterministic_draws',
+           'clean_kwargs', 'censor_dict', 'cut_nice_labels', 'cut_nice', 'rename_cats', 'str_replace', 'merge_series',
+           'aggregate_multiselect', 'deaggregate_multiselect', 'gb_in', 'gb_in_apply', 'stk_defaultdict', 'cached_fn']
 
 # %% ../nbs/10_utils.ipynb 3
 import json, os, warnings, math, inspect
@@ -207,11 +207,24 @@ def gradient_to_discrete_color_scale( grad, num_colors):
 
 # %% ../nbs/10_utils.ipynb 26
 # Create a color gradient from a given single color
-def gradient_from_color(color, l_value=0.3, n_points=7):
+def gradient_from_color(color, l_value=0.3, n_points=7, range=[0,1]):
+    if n_points==0: return [] # Special case useful for bidir below
     h,s,l = hsluv.hex_to_hsluv(mpc.to_hex(color))
     s = min(s,70) # Desaturate the color as it can be very agressive on high L values otherwise
-    ls = np.linspace(100,min(l,100*l_value),n_points) # Create n_points steps in hsluv space
+    maxv = 100-min(l,100*l_value)
+    mi, ma = range[0]*maxv, range[1]*maxv
+    ls = np.linspace(100-mi,100-ma,n_points) # Create n_points steps in hsluv space
     return [ hsluv.hsluv_to_hex((h,s,nl)) for nl in ls ]
+
+def bidir_gradient_from_color(ncol, pcol, l_value=0.3, n_points=11, range=[-1,1]):
+    ami, ama = max(0,-range[0]), max(0,range[1])
+    wneg, wpos = ami/(ami+ama), ama/(ami+ama)
+    n_neg, n_pos = round((n_points)*wneg), round((n_points)*wpos)
+
+    ng = gradient_from_color(ncol, l_value, n_neg, [max(0,-range[1]),ami])
+    pg = gradient_from_color(pcol, l_value, n_pos, [max(0,range[0]),ama])
+    if n_neg and n_pos: return ng[::-1] + pg[1:]
+    else: return ng[::-1] + pg
 
 # %% ../nbs/10_utils.ipynb 27
 def is_datetime(col):

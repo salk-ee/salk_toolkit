@@ -711,7 +711,7 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
 
     if plot_meta.get('no_faceting') and len(factor_cols)>0: return_matrix_of_plots = True
 
-    #pparams['value_range'] = tuple(data[pparams['value_col']].agg([min,max]))
+    pparams['value_range'] = tuple(data[pparams['value_col']].agg([min,max]))
 
     pparams['outer_colors'] = col_meta[factor_cols[0]].get('colors', {}) if factor_cols else {}
 

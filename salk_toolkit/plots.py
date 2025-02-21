@@ -663,9 +663,9 @@ def barbell(data, value_col='value', facets=[], filtered_size=1, val_format='%',
     return chart
 
 # %% ../nbs/03_plots.ipynb 50
-@stk_plot('geoplot', data_format='longform', n_facets=(1,1), requires=[{'topo_feature':'pass'}], no_faceting=True, aspect_ratio=(4.0/3.0), no_question_facet=True, args={'vary_colors':'bool'})
+@stk_plot('geoplot', data_format='longform', n_facets=(1,1), requires=[{'topo_feature':'pass'}], no_faceting=True, aspect_ratio=(4.0/3.0), no_question_facet=True, args={'separate_axes':'bool'})
 def geoplot(data, topo_feature, value_col='value', facets=[], val_format='.2f', tooltip=[],
-                vary_colors=False, outer_factors=[], outer_colors={}, value_range=None):
+                separate_axes=False, outer_factors=[], outer_colors={}, value_range=None):
     f0 = facets[0]
 
     json_url, json_meta, json_col = topo_feature
@@ -674,23 +674,29 @@ def geoplot(data, topo_feature, value_col='value', facets=[], val_format='.2f', 
     else:
         source = alt.topo_feature(json_url, json_meta)
 
-    mi, ma = value_range if value_range else (data[value_col].min(),data[value_col].max())
+    lmi,lma = data[value_col].min(),data[value_col].max() 
+    mi, ma = value_range if value_range and not separate_axes else (lmi,lma)
+    
 
-    if vary_colors: # Vary colors depending on pos or neg values
-        
+    # Only show maximum on legend if min and max too close together
+    legend_vals = [lmi,lma] if (lma-lmi)/(ma-mi) > 0.5 else [lma]
+
+    ofv = data[outer_factors[0]].iloc[0]
+    # If colors provided, create a gradient based on that
+    if (outer_factors and outer_colors and  
+        data[outer_factors[0]].nunique() == 1 and
+        ofv in outer_colors):
+        rel_range = [(lmi-mi)/(ma-mi), (lma-mi)/(ma-mi)]
+        grad = gradient_from_color(outer_colors[ofv],range=rel_range)
+        scale = { 'domain': [lmi,lma], 'range': grad}
+    else: # Blues for pos, reds for neg, redblue for both
         dmax = max(-mi,ma)
-        if mi<0 and ma>0: scale = { 'scheme':'redblue', 'domainMid':0, 'domainMin':-dmax, 'domainMax':dmax, 'rangeMax': 0.1 }
-        elif ma<0: scale = { 'scheme': 'reds', 'reverse': True }#, 'domainMin': 0, 'domainMax':dmax }
-        else: scale = { 'scheme': 'blues' }#, 'domainMin': 0, 'domainMax':dmax }
-    else:
-        ofv = data[outer_factors[0]].iloc[0]
-        if (outer_factors and outer_colors and 
-            data[outer_factors[0]].nunique() == 1 and
-            ofv in outer_colors):
-            grad = gradient_from_color(outer_colors[ofv])
-            scale = { 'domain': [mi,ma], 'range': grad}
-        else:
-            scale = { 'scheme': 'reds' }
+        rel_range = [lmi/dmax, lma/dmax]
+        grad = bidir_gradient_from_color('#c30d24','#1770ab',range=rel_range)
+        scale = { 'domain': [lmi,lma], 'range': grad}
+        # if mi<0 and ma>0: scale = { 'scheme':'redblue', 'domainMid':0, 'domainMin':-dmax, 'domainMax':dmax, 'rangeMax': 0.1 }
+        # elif ma<0: scale = { 'scheme': 'reds', 'reverse': True }#, 'domainMin': 0, 'domainMax':dmax }
+        # else: scale = { 'scheme': 'blues' }#, 'domainMin': 0, 'domainMax':dmax }
 
     plot = alt.Chart(source).mark_geoshape(stroke='white', strokeWidth=0.1).transform_lookup(
         lookup = f"properties.{json_col}",
@@ -706,7 +712,7 @@ def geoplot(data, topo_feature, value_col='value', facets=[], val_format='.2f', 
             f'{value_col}:Q',
             scale=alt.Scale(**scale), # To use color scale, consider switching to opacity for value
             legend=alt.Legend(format=val_format, title=None, orient='top-left',gradientThickness=6, 
-                                values=[mi,ma]),
+                                values=[lmi,lma]),
         )
     ).project('mercator')
     return plot
