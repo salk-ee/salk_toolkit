@@ -692,7 +692,7 @@ def geoplot(data, topo_feature, value_col='value', facets=[], val_format='.2f', 
     else: # Blues for pos, reds for neg, redblue for both
         dmax = max(-mi,ma)
         rel_range = [lmi/dmax, lma/dmax]
-        grad = bidir_gradient_from_color('#c30d24','#1770ab',range=rel_range)
+        grad = gradient_subrange(redblue_gradient, 11, range=rel_range) #bidir_gradient_from_color('#c30d24','#1770ab',range=rel_range)
         scale = { 'domain': [lmi,lma], 'range': grad}
         # if mi<0 and ma>0: scale = { 'scheme':'redblue', 'domainMid':0, 'domainMin':-dmax, 'domainMax':dmax, 'rangeMax': 0.1 }
         # elif ma<0: scale = { 'scheme': 'reds', 'reverse': True }#, 'domainMin': 0, 'domainMax':dmax }

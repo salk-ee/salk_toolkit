@@ -573,11 +573,10 @@ def wrangle_data(raw_df, col_meta, factor_cols, weight_col, pp_desc, n_questions
 
 # %% ../nbs/02_pp.ipynb 27
 # Create a color scale
-ordered_gradient = ["#c30d24", "#f3a583", "#94c6da", "#1770ab"]
 def meta_color_scale(scale: Optional[Dict], column=None, translate=None):
     cats = column.dtype.categories if column.dtype.name=='category' else None
     if scale is None and column is not None and column.dtype.name=='category' and column.dtype.ordered:
-        scale = dict(zip(cats,gradient_to_discrete_color_scale(ordered_gradient, len(cats))))
+        scale = dict(zip(cats,gradient_to_discrete_color_scale(default_bidirectional_gradient, len(cats))))
     if translate and cats is not None:
         remap = dict(zip(cats,[ translate(c) for c in cats ]))
         scale = { (remap[k] if k in remap else k) : v for k,v in scale.items() } if scale else scale
