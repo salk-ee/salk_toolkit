@@ -485,7 +485,7 @@ def replace_data_meta_in_parquet(parquet_name,metafile_name,advanced=True):
     if 'weight_col' in ometa: nmeta['weight_col'] = ometa['weight_col']
     
     meta['original_data'] = meta.get('original_data',meta['data'])
-    meta['data'] = new_data_meta
+    meta['data'] = nmeta
     save_parquet_with_metadata(df,meta,parquet_name)
     
     return df, meta

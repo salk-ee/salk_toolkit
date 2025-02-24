@@ -677,23 +677,28 @@ def geoplot(data, topo_feature, value_col='value', facets=[], val_format='.2f', 
     lmi,lma = data[value_col].min(),data[value_col].max() 
     mi, ma = value_range if value_range and not separate_axes else (lmi,lma)
     
-
     # Only show maximum on legend if min and max too close together
     legend_vals = [lmi,lma] if (lma-lmi)/(ma-mi) > 0.5 else [lma]
+    rel_range = [(lmi-mi)/(ma-mi), (lma-mi)/(ma-mi)]
 
-    ofv = data[outer_factors[0]].iloc[0]
+    ofv = data[outer_factors[0]].iloc[0] if outer_factors else None
     # If colors provided, create a gradient based on that
     if (outer_factors and outer_colors and  
         data[outer_factors[0]].nunique() == 1 and
         ofv in outer_colors):
-        rel_range = [(lmi-mi)/(ma-mi), (lma-mi)/(ma-mi)]
+        
         grad = gradient_from_color(outer_colors[ofv],range=rel_range)
         scale = { 'domain': [lmi,lma], 'range': grad}
     else: # Blues for pos, reds for neg, redblue for both
+
+        # If axis spans both directions
         dmax = max(-mi,ma)
-        rel_range = [lmi/dmax, lma/dmax]
-        grad = gradient_subrange(redblue_gradient, 11, range=rel_range) #bidir_gradient_from_color('#c30d24','#1770ab',range=rel_range)
+        if mi<0.0 and ma>0.0: rel_range = [lmi/dmax, lma/dmax] # Spans both sides, so scale by dmax
+        elif ma<0.0: rel_range = [-rel_range[1], rel_range[0]] # Use negative part i.e. red scale
+        
+        grad = gradient_subrange(redblue_gradient, 11, range=rel_range)
         scale = { 'domain': [lmi,lma], 'range': grad}
+        
         # if mi<0 and ma>0: scale = { 'scheme':'redblue', 'domainMid':0, 'domainMin':-dmax, 'domainMax':dmax, 'rangeMax': 0.1 }
         # elif ma<0: scale = { 'scheme': 'reds', 'reverse': True }#, 'domainMin': 0, 'domainMax':dmax }
         # else: scale = { 'scheme': 'blues' }#, 'domainMin': 0, 'domainMax':dmax }

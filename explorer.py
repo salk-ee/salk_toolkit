@@ -60,7 +60,11 @@ with st.spinner("Loading libraries.."):
 
 
 if 'ls_loaded' not in st.session_state:
-    ls_state = json.loads(st_js_blocking(f'return localStorage.getItem("session_state")') or '{}')
+    try:
+        ls_state = json.loads(st_js_blocking(f'return localStorage.getItem("session_state")') or '{}')
+    except json.JSONDecodeError as e:
+        ls_state = {}
+    
     for k, v in ls_state.items(): st.session_state[k] = v
     st.session_state['ls_loaded'] = True
 
@@ -162,7 +166,6 @@ with st.sidebar: #.expander("Select dimensions"):
     if st.sidebar.button('Reset choices'): 
         st_js_blocking('localStorage.removeItem("session_state")')
         st.session_state.clear()
-        st.session_state['ls_loaded'] = True
 
     draw = st.toggle('Draw plots',True)
 
