@@ -623,8 +623,9 @@ def st_plot(pp_desc,**kwargs):
     draw_plot_matrix(plots)
 
 # %% ../nbs/05_dashboard.ipynb 23
-# TODO: currently only works for a single plot, not matrix
-def plot_matrix_html(pmat, uid='viz', responsive=True):
+# Create an HTML of a matrix of plots
+# Based on what altair plot.save('plot.html') does, but modified to draw a full matrix and autoresize
+def plot_matrix_html(pmat, uid='viz', width=None, responsive=True):
     if not pmat: return
     if not isinstance(pmat,list): pmat, ucw = [[pmat]], False
 
@@ -633,35 +634,60 @@ def plot_matrix_html(pmat, uid='viz', responsive=True):
 <html>
 <head></head>
 <body>
-  <div id="%s"></div>
+  <div id="UID">SUBDIVS</div>
   <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
   <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
   <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
   <script type="text/javascript">
+    UID_delta = 0
     function draw_plot() {
-    width = document.getElementById("%s").parentElement.clientWidth;
-    var spec = %s
-    var opt = {"renderer": "svg", "actions": false};
-    vegaEmbed("#%s", spec, opt);
+        width = document.getElementById("UID").parentElement.clientWidth;
+        var specs = %s;
+        var opt = {"renderer": "canvas", "actions": false};
+        specs.forEach(function(spec,i){ vegaEmbed("#UID-"+i, spec, opt); });
     };
     draw_plot();
+    // This is a hack to fix facet plot width issues
+    setTimeout(function() {
+        wc = %s;
+        wp = document.getElementById("UID").offsetWidth;
+        UID_delta = wp-wc;
+        if (UID_delta!=0) draw_plot();
+    }, 5);
     %s
   </script>
 </body>
 </html>
-'''
+'''.replace('UID',uid)
 
-    pdict = json.loads(pmat[0][0].to_json())
-    pdict['autosize'] = {'type': 'fit', 'contains': 'padding'}
+    rstring = 'XYZresponsiveXZY' # Something we can replace easy
+    specs, ncols = [], len(pmat[0])
+    for i,p in enumerate(pmat):
+        for j, pp in enumerate(p):
+            pdict = json.loads(pp.to_json())
+            pdict['autosize'] = {'type': 'fit', 'contains': 'padding'}
+            
+            if responsive:
+                cwidth = pdict['spec']['width'] if 'spec' in pdict else pdict['width']
+                repl = f'(width-{uid}_delta/{ncols})/{width/cwidth}' 
+                if 'spec' in pdict: pdict['spec']['width'] = rstring
+                else: pdict['width'] = rstring
+                pjson = json.dumps(pdict).replace(f'"{rstring}"', repl)
+            else: pjson = json.dumps(pdict)
+            specs.append(pjson)
 
     if responsive: 
-        pdict['width'] = 'XYZresponsiveXZY'; # Something we can replace easy
+        goal_width = f'document.getElementById("{uid}").parentElement.clientWidth'
         resp_code = 'window.addEventListener("resize", draw_plot);'
-    else: resp_code = '';
+    else: goal_width, resp_code = str(width), '';
 
-    html = template % (uid,uid,json.dumps(pdict, indent=2),uid,resp_code)
+    html = template % (f'[{",".join(specs)}]',goal_width,resp_code)
 
-    if responsive: html = html.replace('"XYZresponsiveXZY"', 'width')
+    # Add subdivs after the plots - otherwise width% needs complex escaping
+    subdivs = ''.join([f'<div id="{uid}-{i}" styles="width: {0.99/ncols:.3}%"></div>' for i in range(sum(map(len,pmat)))])
+    html = html.replace('SUBDIVS',subdivs)
+
+    if responsive: html = html.replace(f'"{rstring}"', repl)
     return html
 
 

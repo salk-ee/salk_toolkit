@@ -264,16 +264,19 @@ with st.sidebar: #.expander("Select dimensions"):
     args['filter'] = filter_ui(first_data,first_data_meta,
                                 dims=all_dims,detailed=detailed)    
 
-    with st.expander('Export'):
-        custom_width = st.checkbox('Custom width',value=False)
-        if custom_width:
-            width = st.slider('Width',value=800,min_value=100,max_value=1200,step=50)
-        else: width = None
-        st.subheader('Export')
-        export_ct = st.container()
-        
-            
 
+    # Export options
+    with st.expander('Export'):
+        width = None
+        # Toggle export options because generating them is slow
+        export = st.toggle('Show export options',value=False)
+        if export:
+            custom_width = st.toggle('Custom width',value=False)
+            if custom_width:
+                width = st.slider('Width',value=800,min_value=100,max_value=1200,step=50)
+            st.subheader('Export')
+            export_ct = st.container()
+    
     #print(list(st.session_state.keys()))
 
     #print(f"localStorage.setItem('args','{json.dumps(args)}');")
@@ -361,16 +364,17 @@ else:
             fargs = args.copy()
             fargs['filter'] = { k:v for k,v in args['filter'].items() if k in loaded[ifile]['columns'] }
             pparams = pp_transform_data(loaded[ifile]['data'], data_meta, fargs)
+            cur_width = width or get_plot_width(f'{i}_{ifile}')
             plot = create_plot(pparams,data_meta,fargs,
                                translate=translate,
-                               width=(width or get_plot_width(f'{i}_{ifile}')),
+                               width=cur_width,
                                return_matrix_of_plots=matrix_form)
 
             # Add export buttons for first data source
-            if i==0:
+            if export and i==0:
                 name = f'{args['res_col']}_{"_".join(args["factor_cols"]) if args["factor_cols"] else "all"}'
                 c1,c2 = export_ct.columns(2)
-                c1.download_button('HTML', plot_matrix_html(plot, uid=name, responsive=not custom_width), f'{name}.html')
+                c1.download_button('HTML', plot_matrix_html(plot, uid=name, width=cur_width, responsive=not custom_width), f'{name}.html')
                 c2.download_button('Data CSV', pparams['data'].to_csv().encode("utf-8"), f'{name}.csv')
 
             #n_questions = pparams['data']['question'].nunique() if 'question' in pparams['data'] else 1

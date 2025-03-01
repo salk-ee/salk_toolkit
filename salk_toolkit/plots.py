@@ -665,7 +665,7 @@ def barbell(data, value_col='value', facets=[], filtered_size=1, val_format='%',
     return chart
 
 # %% ../nbs/03_plots.ipynb 50
-@stk_plot('geoplot', data_format='longform', n_facets=(1,1), requires=[{'topo_feature':'pass'}], no_faceting=True, aspect_ratio=(4.0/3.0), no_question_facet=True, args={'separate_axes':'bool'})
+@stk_plot('geoplot', data_format='longform', factor_columns=2, n_facets=(1,1), requires=[{'topo_feature':'pass'}], no_faceting=True, aspect_ratio=(4.0/3.0), no_question_facet=True, args={'separate_axes':'bool'})
 def geoplot(data, topo_feature, value_col='value', facets=[], val_format='.2f', tooltip=[],
                 separate_axes=False, outer_factors=[], outer_colors={}, value_range=None):
     f0 = facets[0]
@@ -725,7 +725,7 @@ def geoplot(data, topo_feature, value_col='value', facets=[], val_format='.2f', 
     return plot
 
 # %% ../nbs/03_plots.ipynb 51
-@stk_plot('geobest', data_format='longform', n_facets=(2,2), requires=[{},{'topo_feature':'pass'}], no_faceting=True,aspect_ratio=(4.0/3.0))
+@stk_plot('geobest', data_format='longform', factor_columns=2, n_facets=(2,2), requires=[{},{'topo_feature':'pass'}], no_faceting=True,aspect_ratio=(4.0/3.0))
 def geobest(data, topo_feature, value_col='value', facets=[], val_format='.2f', tooltip=[], width=800):
     f0, f1 = facets[0], facets[1]
 
