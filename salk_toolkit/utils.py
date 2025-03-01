@@ -6,10 +6,10 @@
 __all__ = ['warn', 'default_color', 'default_bidirectional_gradient', 'redblue_gradient', 'factorize_w_codes', 'batch',
            'loc2iloc', 'match_sum_round', 'min_diff', 'continify', 'replace_cat_with_dummies', 'match_data',
            'replace_constants', 'approx_str_match', 'index_encoder', 'to_alt_scale', 'multicol_to_vals_cats',
-           'gradient_to_discrete_color_scale', 'gradient_subrange', 'gradient_from_color', 'is_datetime',
-           'rel_wave_times', 'stable_draws', 'deterministic_draws', 'clean_kwargs', 'censor_dict', 'cut_nice_labels',
-           'cut_nice', 'rename_cats', 'str_replace', 'merge_series', 'aggregate_multiselect', 'deaggregate_multiselect',
-           'gb_in', 'gb_in_apply', 'stk_defaultdict', 'cached_fn']
+           'gradient_to_discrete_color_scale', 'gradient_subrange', 'gradient_from_color', 'gradient_from_color_alt',
+           'is_datetime', 'rel_wave_times', 'stable_draws', 'deterministic_draws', 'clean_kwargs', 'censor_dict',
+           'cut_nice_labels', 'cut_nice', 'rename_cats', 'str_replace', 'merge_series', 'aggregate_multiselect',
+           'deaggregate_multiselect', 'gb_in', 'gb_in_apply', 'stk_defaultdict', 'cached_fn']
 
 # %% ../nbs/10_utils.ipynb 3
 import json, os, warnings, math, inspect
@@ -222,8 +222,6 @@ def gradient_subrange(grad, num_colors, range=[-1,1], bidirectional=True):
 # %% ../nbs/10_utils.ipynb 26
 # Create a color gradient from a given single color
 def gradient_from_color(color, l_value=0.3, n_points=7, range=[0,1]):
-    if n_points==0: return [] # Special case useful for bidir below
-
     # Get hue and saturation for color (ignoring luminosity to make scales uniform on that)    
     ch,cs,_ = hsluv.hex_to_hsluv(mpc.to_hex(color))
 
@@ -231,6 +229,21 @@ def gradient_from_color(color, l_value=0.3, n_points=7, range=[0,1]):
     l_diff = max_l - 100*l_value # Difference between max and min luminosity
 
     beg_s, end_s = 3*cs*range[0], 3*cs*range[1] # As we use min(cs, s), this just desaturates on first 1/3 of the range
+    beg_l, end_l = max_l-l_diff*range[0], max_l-l_diff*range[1]
+
+    ls = np.linspace(0,1,n_points) # Create n_points steps in hsluv space
+    return [ hsluv.hsluv_to_hex((ch,min(cs,w*end_s+(1-w)*beg_s),(w*end_l+(1-w)*beg_l))) for w in ls ]
+
+# Alternative version - preserves colors slightly better, but at the cost of more washing out
+def gradient_from_color_alt(color, l_value=0.6, n_points=7, range=[0,1]):
+    # Get hue and saturation for color (ignoring luminosity to make scales uniform on that)    
+    ch,cs,cl = hsluv.hex_to_hsluv(mpc.to_hex(color))
+
+    max_l = 94 # Set max luminosity to be slightly below pure white
+    if cs<50: l_value = 0.3 # For very washed out tones, make sure we have enough luminosity contrast
+    l_diff = max_l - min(cl,100*l_value) # Difference between max and min luminosity
+
+    beg_s, end_s = 3*cs*range[0], 3*cs*range[1] # As we use min(cs, s), this just desaturates on lower part of range
     beg_l, end_l = max_l-l_diff*range[0], max_l-l_diff*range[1]
 
     ls = np.linspace(0,1,n_points) # Create n_points steps in hsluv space

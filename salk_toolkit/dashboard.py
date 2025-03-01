@@ -5,8 +5,9 @@
 # %% auto 0
 __all__ = ['get_plot_width', 'open_fn', 'exists_fn', 'read_annotated_data_lazy_cached', 'load_json', 'load_json_cached',
            'save_json', 'alias_file', 'default_translate', 'SalkDashboardBuilder', 'sqlite_client',
-           'UserAuthenticationManager', 'draw_plot_matrix', 'st_plot', 'stss_safety', 'facet_ui', 'filter_ui',
-           'translate_with_dict', 'log_missing_translations', 'clean_missing_translations', 'add_missing_to_dict']
+           'UserAuthenticationManager', 'draw_plot_matrix', 'st_plot', 'plot_matrix_html', 'stss_safety', 'facet_ui',
+           'filter_ui', 'translate_with_dict', 'log_missing_translations', 'clean_missing_translations',
+           'add_missing_to_dict']
 
 # %% ../nbs/05_dashboard.ipynb 3
 import json, os, csv, re, time, psutil
@@ -622,11 +623,55 @@ def st_plot(pp_desc,**kwargs):
     draw_plot_matrix(plots)
 
 # %% ../nbs/05_dashboard.ipynb 23
+# TODO: currently only works for a single plot, not matrix
+def plot_matrix_html(pmat, uid='viz', responsive=True):
+    if not pmat: return
+    if not isinstance(pmat,list): pmat, ucw = [[pmat]], False
+
+    template = '''
+<!DOCTYPE html>
+<html>
+<head></head>
+<body>
+  <div id="%s"></div>
+  <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+  <script type="text/javascript">
+    function draw_plot() {
+    width = document.getElementById("%s").parentElement.clientWidth;
+    var spec = %s
+    var opt = {"renderer": "svg", "actions": false};
+    vegaEmbed("#%s", spec, opt);
+    };
+    draw_plot();
+    %s
+  </script>
+</body>
+</html>
+'''
+
+    pdict = json.loads(pmat[0][0].to_json())
+    pdict['autosize'] = {'type': 'fit', 'contains': 'padding'}
+
+    if responsive: 
+        pdict['width'] = 'XYZresponsiveXZY'; # Something we can replace easy
+        resp_code = 'window.addEventListener("resize", draw_plot);'
+    else: resp_code = '';
+
+    html = template % (uid,uid,json.dumps(pdict, indent=2),uid,resp_code)
+
+    if responsive: html = html.replace('"XYZresponsiveXZY"', 'width')
+    return html
+
+
+
+# %% ../nbs/05_dashboard.ipynb 24
 # Streamlit session state safety - check and clear session state if it has an unfit value
 def stss_safety(key, opts):
     if key in st.session_state and st.session_state[key] not in opts: del st.session_state[key]
 
-# %% ../nbs/05_dashboard.ipynb 24
+# %% ../nbs/05_dashboard.ipynb 25
 def facet_ui(dims, two=False, uid='base',raw=False, translate=None, force_choice=False, label='Facet'):
     # Set up translation
     tfc = translate if translate else (lambda s,**kwargs: s)
@@ -648,14 +693,14 @@ def facet_ui(dims, two=False, uid='base',raw=False, translate=None, force_choice
         
     return [ r_map[d] for d in fcols ]
 
-# %% ../nbs/05_dashboard.ipynb 25
+# %% ../nbs/05_dashboard.ipynb 26
 # Function that creates reset functions for multiselects in filter
 def ms_reset(cn, all_vals):
     def reset_ms():
         st.session_state[f"{cn}_multiselect"] = all_vals
     return reset_ms
 
-# %% ../nbs/05_dashboard.ipynb 26
+# %% ../nbs/05_dashboard.ipynb 27
 @st.cache_data(show_spinner=False)
 def get_filter_limits(_ldf,dims,dmeta,uid):
     ldf = _ldf
@@ -691,7 +736,7 @@ def get_filter_limits(_ldf,dims,dmeta,uid):
             warn(f"Skipping {d}: {c_meta[d]} in filter")
     return limits
 
-# %% ../nbs/05_dashboard.ipynb 27
+# %% ../nbs/05_dashboard.ipynb 28
 # User interface that outputs a filter for the pp_desc
 def filter_ui(data, dmeta=None, dims=None, uid='base', detailed=False, raw=False, translate=None, force_choice=False):
     
@@ -766,7 +811,7 @@ def filter_ui(data, dmeta=None, dims=None, uid='base', detailed=False, raw=False
     return filters
 
 
-# %% ../nbs/05_dashboard.ipynb 29
+# %% ../nbs/05_dashboard.ipynb 30
 # Use dict here as dicts are ordered as of Python 3.7 and preserving order groups things together better
 
 def translate_with_dict(d):

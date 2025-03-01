@@ -46,7 +46,7 @@ with st.spinner("Loading libraries.."):
     from salk_toolkit.io import read_json, extract_column_meta, read_annotated_data_lazy
     from salk_toolkit.pp import *
     from salk_toolkit.utils import *
-    from salk_toolkit.dashboard import draw_plot_matrix, facet_ui, filter_ui, get_plot_width, default_translate, stss_safety
+    from salk_toolkit.dashboard import draw_plot_matrix, plot_matrix_html, facet_ui, filter_ui, get_plot_width, default_translate, stss_safety
 
     tqdm = lambda x: x # So we can freely copy-paste from notebooks
 
@@ -263,7 +263,17 @@ with st.sidebar: #.expander("Select dimensions"):
     
     args['filter'] = filter_ui(first_data,first_data_meta,
                                 dims=all_dims,detailed=detailed)    
-    
+
+    with st.expander('Export'):
+        custom_width = st.checkbox('Custom width',value=False)
+        if custom_width:
+            width = st.slider('Width',value=800,min_value=100,max_value=1200,step=50)
+        else: width = None
+        st.subheader('Export')
+        export_ct = st.container()
+        
+            
+
     #print(list(st.session_state.keys()))
 
     #print(f"localStorage.setItem('args','{json.dumps(args)}');")
@@ -325,7 +335,7 @@ elif input_files_facet:
     pparams['data'] = fdf
     plot = create_plot(pparams,first_data_meta,args,
                        translate=translate,
-                       width=get_plot_width('full'),
+                       width=(width or get_plot_width('full')),
                        return_matrix_of_plots=matrix_form)
 
     draw_plot_matrix(plot)
@@ -353,8 +363,15 @@ else:
             pparams = pp_transform_data(loaded[ifile]['data'], data_meta, fargs)
             plot = create_plot(pparams,data_meta,fargs,
                                translate=translate,
-                               width=get_plot_width(f'{i}_{ifile}'),
+                               width=(width or get_plot_width(f'{i}_{ifile}')),
                                return_matrix_of_plots=matrix_form)
+
+            # Add export buttons for first data source
+            if i==0:
+                name = f'{args['res_col']}_{"_".join(args["factor_cols"]) if args["factor_cols"] else "all"}'
+                c1,c2 = export_ct.columns(2)
+                c1.download_button('HTML', plot_matrix_html(plot, uid=name, responsive=not custom_width), f'{name}.html')
+                c2.download_button('Data CSV', pparams['data'].to_csv().encode("utf-8"), f'{name}.csv')
 
             #n_questions = pparams['data']['question'].nunique() if 'question' in pparams['data'] else 1
             #st.write('Based on %.1f%% of data' % (100*pparams['n_datapoints']/(len(loaded[ifile]['data_n'])*n_questions)))

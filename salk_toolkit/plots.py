@@ -53,8 +53,9 @@ def estimate_legend_columns_horiz_naive(cats, width):
 
 # More sophisticated version that looks at lengths of individual strings across multiple rows
 # ToDo: it should max over each column separately not just look at max(sum(row)). This is close enough though.
-def estimate_legend_columns_horiz(cats, width):
+def estimate_legend_columns_horiz(cats, width, extra_text=[]):
     max_cols, restart = len(cats), True
+    if extra_text: width -= max(map(legend_font.getlength,extra_text))
     lens = list(map(lambda s: 25+legend_font.getlength(s),cats))
     while restart:
         restart, rl, cc = False, 0, 0
@@ -301,7 +302,7 @@ def make_start_end(x,value_col,cat_col,cat_order):
     return res
 
 @stk_plot('likert_bars', data_format='longform', draws=False, requires=[{'likert':True}], n_facets=(1,3), sort_numeric_first_facet=True, priority=50)
-def likert_bars(data, value_col='value', facets=[],  tooltip=[], outer_factors=[]):
+def likert_bars(data, value_col='value', facets=[],  tooltip=[], outer_factors=[],width=800):
     # First facet is likert, second is labeled question, third is offset. Second is better for question which usually goes last, hence reorder
     if len(facets)==1: # Create a dummy second facet
         facets.append({ 'col': 'question', 'order': [facets[0]['col']], 'colors': alt.Undefined })
@@ -324,6 +325,7 @@ def likert_bars(data, value_col='value', facets=[],  tooltip=[], outer_factors=[
                 legend=alt.Legend(
                     title='Response',
                     orient='bottom',
+                    columns=estimate_legend_columns_horiz(f0['order'],width,extra_text=f1['order'])
                     ),
                 scale=f0["colors"],
             ),
