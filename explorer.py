@@ -54,6 +54,9 @@ with st.spinner("Loading libraries.."):
     # This speeds plots up considerably as altair performs an excessive amount of these validation for some reason
     dm = alt.utils.schemapi.debug_mode(False); dm.__enter__()
 
+    # Disable altair max rows
+    alt.data_transformers.disable_max_rows()
+
 # Override the st_dimensions based version that can cause refresh loops
 #def get_plot_width(str):
 #    return 800

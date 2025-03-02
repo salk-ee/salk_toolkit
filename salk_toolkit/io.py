@@ -6,10 +6,10 @@
 __all__ = ['stk_loaded_files_set', 'stk_file_map', 'max_cats', 'custom_meta_key', 'read_json', 'get_loaded_files',
            'reset_file_tracking', 'get_file_map', 'set_file_map', 'process_annotated_data', 'read_annotated_data',
            'read_annotated_data_lazy', 'fix_df_with_meta', 'extract_column_meta', 'group_columns_dict', 'list_aliases',
-           'change_meta_df', 'replace_data_meta_in_parquet', 'fix_meta_categories', 'fix_parquet_categories',
-           'infer_meta', 'data_with_inferred_meta', 'read_and_process_data', 'save_population_h5', 'load_population_h5',
-           'save_sample_h5', 'find_type_in_dict', 'save_parquet_with_metadata', 'load_parquet_metadata',
-           'load_parquet_with_metadata']
+           'change_df_to_meta', 'update_meta_with_model_fields', 'replace_data_meta_in_parquet', 'fix_meta_categories',
+           'fix_parquet_categories', 'infer_meta', 'data_with_inferred_meta', 'read_and_process_data',
+           'save_population_h5', 'load_population_h5', 'save_sample_h5', 'find_type_in_dict',
+           'save_parquet_with_metadata', 'load_parquet_metadata', 'load_parquet_with_metadata']
 
 # %% ../nbs/01_io.ipynb 3
 import json, os, warnings
@@ -414,7 +414,7 @@ def change_mapping(ot, nt, only_matches=False):
 # Change an existing dataset to correspond better to a new meta_data
 # This is intended to allow making small improvements in the meta even after a model has been run
 # It is by no means perfect, but is nevertheless a useful tool to avoid re-running long pymc models for simple column/translation changes
-def change_meta_df(df, old_dmeta, new_dmeta):
+def change_df_to_meta(df, old_dmeta, new_dmeta):
     warn("This tool handles only simple cases of column name, translation and category order changes.")
     
     # Ready the metafiles for parsing
@@ -447,7 +447,7 @@ def change_meta_df(df, old_dmeta, new_dmeta):
         ot, nt = ocd.get('translate',{}), ncd.get('translate',{})
         remap = change_mapping(ot,nt)
         if remap != {}: print(f"Remapping {c} with {remap}")
-        df[c].replace(remap,inplace=True)
+        df[c] = df[c].replace(remap)
         
         # Reorder categories and/or change ordered status
         if ocd.get('categories') != ncd.get('categories') or ocd.get('ordered') != ncd.get('ordered'):
@@ -456,13 +456,30 @@ def change_meta_df(df, old_dmeta, new_dmeta):
                 print(f"Changing {c} to Cat({cats},ordered={ncd.get('ordered')}")
                 df[c] = pd.Categorical(df[c],categories=cats,ordered=ncd.get('ordered'))
     
-    # column order changes
+    # Column order changes
     gcdict = group_columns_dict(new_dmeta)
     
-    cols = ['draw','obs_idx'] + [ c for g in new_dmeta['structure'] for c in gcdict[g['name']]]
+    cols = ['draw','obs_idx','training_subsample'] + [ c for g in new_dmeta['structure'] for c in gcdict[g['name']]]
+    cols.append( new_dmeta['weight_col'] if new_dmeta.get('weight_col') else 'N')
     cols = [ c for c in cols if c in df.columns ]
+
+    if len(set(df.columns) - set(cols)) > 0:
+        print("Dropping columns:",set(df.columns) - set(cols))
     
     return df[cols]
+
+def update_meta_with_model_fields(meta, donor):
+    # Add the groups added by the model before to data_meta
+    existing_grps = { g['name'] for g in meta['structure'] }
+    meta['structure'] += [ grp for grp in donor['structure']
+        if grp.get('generated') and grp['name'] not in existing_grps ]
+
+    # Add back the fields added/changed by the model in sampling
+    meta['draws_data'] = donor.get('draws_data',[])
+    if 'total_size' in donor: meta['total_size'] = donor['total_size']
+    if 'weight_col' in donor: meta['weight_col'] = donor['weight_col']
+
+    return meta
 
 
 def replace_data_meta_in_parquet(parquet_name,metafile_name,advanced=True):
@@ -470,22 +487,15 @@ def replace_data_meta_in_parquet(parquet_name,metafile_name,advanced=True):
     
     ometa = meta['data']
     nmeta = read_json(metafile_name, replace_const=True)
-
-    # Perform the column name changes and category translations
-    if advanced: df = change_meta_df(df,ometa,nmeta)
     
-    # Add the groups added by the model before to data_meta
-    existing_grps = { g['name'] for g in nmeta['structure'] }
-    nmeta['structure'] += [ grp for grp in ometa['structure']
-        if grp.get('generated') and grp['name'] not in existing_grps ]
-
-    # Add back the fields added/changed by the model in sampling
-    nmeta['draws_data'] = ometa.get('draws_data',[])
-    if 'total_size' in ometa: nmeta['total_size'] = ometa['total_size']
-    if 'weight_col' in ometa: nmeta['weight_col'] = ometa['weight_col']
+    nmeta = update_meta_with_model_fields(nmeta,ometa)
     
     meta['original_data'] = meta.get('original_data',meta['data'])
     meta['data'] = nmeta
+
+    # Perform the column name changes and category translations
+    if advanced: df = change_df_to_meta(df,ometa,nmeta)
+
     save_parquet_with_metadata(df,meta,parquet_name)
     
     return df, meta
