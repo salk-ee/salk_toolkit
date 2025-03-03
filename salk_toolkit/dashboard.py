@@ -342,6 +342,9 @@ class UserAuthenticationManager():
         self.groups, self.s3fs, self.info  = groups, s3_fs, info
         self.org_whitelist = org_whitelist
 
+        # Filled on login
+        self.user = {}
+        self.admin = False
 
         self.client = None
         self.conf_file = auth_conf_file
@@ -355,7 +358,7 @@ class UserAuthenticationManager():
             config['cookie']['expiry_days'],
             [] # config['preauthorized'] - not using preauthorization
         )
-        self.user = {} # Filled on login
+
         self.log_event = logger
         self.tf = translate_func
 
@@ -377,11 +380,14 @@ class UserAuthenticationManager():
             self.conf['credentials']['usernames'] = { u['username']:dict(zip(ures.columns,u)) for u in ures.rows }
         
         if self.org_whitelist is not None:
-            self.conf['credentials']['usernames'] = {
-                un:ud for un,ud in self.conf['credentials']['usernames'].items()
-                if ud.get('group') == 'admin' or # Admins have access to everything
-                    ud.get('organization') in self.org_whitelist
-            }
+            for ud in self.conf['credentials']['usernames'].values():
+                ud['whitelisted'] = ud.get('organization') in self.org_whitelist or ud.get('group') == 'admin'
+
+            if not self.admin:
+                self.conf['credentials']['usernames'] = {
+                    un:ud for un,ud in self.conf['credentials']['usernames'].items()
+                    if ud.get('whitelisted')
+                }
             
         self.users = self.conf['credentials']['usernames']
     
@@ -530,11 +536,17 @@ def admin_page(sdb):
         users = sdb.uam.list_users()
         for u in users:
             last_login = log_data[log_data['username'] == u['username']].timestamp.max()
-            if pd.notnull(last_login):
-                u['last_login'] = last_login.strftime('%d-%b-%Y')
-                
+            u['last_login'] = last_login if pd.notnull(last_login) else None
+
+        users = pd.DataFrame(users)
+        users['last_login'] = pd.to_datetime(users['last_login'])
+        users = users.sort_values(by=['whitelisted','last_login'], ascending=False)
+            
         # Display the data
-        st.dataframe(users, use_container_width=True)
+        st.dataframe(users, use_container_width=True, column_config={
+            "last_login": st.column_config.DatetimeColumn(
+                "last_login", format="D MMM YYYY, HH:mm " )
+        })
 
     elif menu_choice=='Add user':
         with st.form("add_user_form"):
@@ -554,7 +566,9 @@ def admin_page(sdb):
             st.markdown("""---""")
             submitted = st.form_submit_button("Submit")
             if submitted:
-                if not '' in [username, password, user_data['email']]:
+                if username in sdb.uam.users:
+                    sdb.info.error(f'User **{username}** already exists.')
+                elif not '' in [username, password, user_data['email']]:
                     sdb.uam.add_user(username, password, user_data)
                 else:
                     sdb.info.error('Must specify username, password and email.')
@@ -602,7 +616,7 @@ def admin_page(sdb):
                     sdb.uam.delete_user(username)
 
 
-# %% ../nbs/05_dashboard.ipynb 22
+# %% ../nbs/05_dashboard.ipynb 21
 # This is a horrible workaround to get faceting to work with altair geoplots that do not play well with streamlit
 # See https://github.com/altair-viz/altair/issues/2369 -> https://github.com/vega/vega-lite/issues/3729
 
@@ -622,7 +636,7 @@ def st_plot(pp_desc,**kwargs):
     plots = e2e_plot(pp_desc, **kwargs)
     draw_plot_matrix(plots)
 
-# %% ../nbs/05_dashboard.ipynb 23
+# %% ../nbs/05_dashboard.ipynb 22
 # Create an HTML of a matrix of plots
 # Based on what altair plot.save('plot.html') does, but modified to draw a full matrix and autoresize
 def plot_matrix_html(pmat, uid='viz', width=None, responsive=True):
@@ -692,12 +706,12 @@ def plot_matrix_html(pmat, uid='viz', width=None, responsive=True):
 
 
 
-# %% ../nbs/05_dashboard.ipynb 24
+# %% ../nbs/05_dashboard.ipynb 23
 # Streamlit session state safety - check and clear session state if it has an unfit value
 def stss_safety(key, opts):
     if key in st.session_state and st.session_state[key] not in opts: del st.session_state[key]
 
-# %% ../nbs/05_dashboard.ipynb 25
+# %% ../nbs/05_dashboard.ipynb 24
 def facet_ui(dims, two=False, uid='base',raw=False, translate=None, force_choice=False, label='Facet'):
     # Set up translation
     tfc = translate if translate else (lambda s,**kwargs: s)
@@ -719,14 +733,14 @@ def facet_ui(dims, two=False, uid='base',raw=False, translate=None, force_choice
         
     return [ r_map[d] for d in fcols ]
 
-# %% ../nbs/05_dashboard.ipynb 26
+# %% ../nbs/05_dashboard.ipynb 25
 # Function that creates reset functions for multiselects in filter
 def ms_reset(cn, all_vals):
     def reset_ms():
         st.session_state[f"{cn}_multiselect"] = all_vals
     return reset_ms
 
-# %% ../nbs/05_dashboard.ipynb 27
+# %% ../nbs/05_dashboard.ipynb 26
 @st.cache_data(show_spinner=False)
 def get_filter_limits(_ldf,dims,dmeta,uid):
     ldf = _ldf
@@ -762,7 +776,7 @@ def get_filter_limits(_ldf,dims,dmeta,uid):
             warn(f"Skipping {d}: {c_meta[d]} in filter")
     return limits
 
-# %% ../nbs/05_dashboard.ipynb 28
+# %% ../nbs/05_dashboard.ipynb 27
 # User interface that outputs a filter for the pp_desc
 def filter_ui(data, dmeta=None, dims=None, uid='base', detailed=False, raw=False, translate=None, force_choice=False):
     
@@ -837,7 +851,7 @@ def filter_ui(data, dmeta=None, dims=None, uid='base', detailed=False, raw=False
     return filters
 
 
-# %% ../nbs/05_dashboard.ipynb 30
+# %% ../nbs/05_dashboard.ipynb 29
 # Use dict here as dicts are ordered as of Python 3.7 and preserving order groups things together better
 
 def translate_with_dict(d):
