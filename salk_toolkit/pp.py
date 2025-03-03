@@ -217,12 +217,6 @@ def ensure_ldf_categories(col_meta, col, ldf):
         col_meta[col]['categories'] = cats
     return col_meta[col]
 
-# Get the categories that are in use
-def get_cats(col, cats=None):
-    if cats is None or len(set(col.dtype.categories)-set(cats))>0: cats = col.dtype.categories
-    uvals = col.unique()
-    return [ c for c in cats if c in uvals ]
-
 
 # %% ../nbs/02_pp.ipynb 21
 def pp_filter_data_lz(df, filter_dict, c_meta):
@@ -393,7 +387,7 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     # Discretize factor columns that are numeric
     for c in factor_cols:
         if c in cols and schema[c].is_numeric():    
-            raw_df, labels = discretize_continuous(raw_df,c,c_meta.get(c,{}))
+            filtered_df, labels = discretize_continuous(filtered_df,c,c_meta.get(c,{}))
             # Make sure it gets restored to pandas properly
             c_meta[c].update({ 'categories': labels, 'ordered': True, 'continuous': False })
 
@@ -562,9 +556,15 @@ def wrangle_data(raw_df, col_meta, factor_cols, weight_col, pp_desc, n_questions
     # Also filter out unused categories so plots are cleaner
     for c in data.columns:
         if col_meta.get(c,{}).get('categories'): 
-            m_cats = col_meta[c]['categories'] if col_meta[c].get('categories','infer')!='infer' else None
-            f_cats = get_cats(data[c],m_cats) if c != pp_desc['res_col'] or not col_meta[c].get('likert') else m_cats # Do not trim likert as plots need to be symmetric
-            data[c] = pd.Categorical(data[c],f_cats,ordered=col_meta[c].get('ordered',False))
+            m_cats = col_meta[c]['categories'] if col_meta[c].get('categories','infer')!='infer' else sorted(list(data[c].unique()))
+            if len(set(data[c].dtype.categories)-set(m_cats))>0: m_cats = col.dtype.categories
+
+            # Get the categories that are in use
+            if c != pp_desc['res_col'] or not col_meta[c].get('likert'):
+                u_cats = [ cv for cv in m_cats if cv in data[c].unique() ]
+            else: u_cats = m_cats
+
+            data[c] = pd.Categorical(data[c],u_cats,ordered=col_meta[c].get('ordered',False))
 
     pparams['col_meta'] = col_meta # As this has been adjusted for discretization etc
     pparams['data'] = data

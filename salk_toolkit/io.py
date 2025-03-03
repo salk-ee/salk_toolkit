@@ -450,10 +450,12 @@ def change_df_to_meta(df, old_dmeta, new_dmeta):
         df[c] = df[c].replace(remap)
         
         # Reorder categories and/or change ordered status
-        if ocd.get('categories') != ncd.get('categories') or ocd.get('ordered') != ncd.get('ordered'):
-            cats = ncd.get('categories')
+        if ((ncd.get('categories','infer')!='infer' and 
+            list(df[c].dtype.categories) != ncd.get('categories'))
+            or ocd.get('ordered') != ncd.get('ordered')):
+            cats = ncd.get('categories') if ncd.get('categories','infer') != 'infer' else df[c].dtype.categories
             if isinstance(cats,list):
-                print(f"Changing {c} to Cat({cats},ordered={ncd.get('ordered')}")
+                print(f"Changing {c} to Cat({cats},ordered={ncd.get('ordered')})")
                 df[c] = pd.Categorical(df[c],categories=cats,ordered=ncd.get('ordered'))
     
     # Column order changes
@@ -489,6 +491,7 @@ def replace_data_meta_in_parquet(parquet_name,metafile_name,advanced=True):
     nmeta = read_json(metafile_name, replace_const=True)
     
     nmeta = update_meta_with_model_fields(nmeta,ometa)
+    nmeta = fix_meta_categories(nmeta,df) # replace infer with values
     
     meta['original_data'] = meta.get('original_data',meta['data'])
     meta['data'] = nmeta
@@ -509,7 +512,7 @@ def fix_meta_categories(data_meta, df, infers_only=False, warnings=True):
 
     for g in data_meta['structure']:
         all_cats = set()
-        prefix = g.get('col_prefix','')
+        prefix = g.get('scale',{}).get('col_prefix','')
         for c in g.get('columns',[]):
             if isinstance(c,str): c = [c]
             if prefix+c[0] in df.columns and df[prefix+c[0]].dtype.name == 'category':
@@ -524,7 +527,9 @@ def fix_meta_categories(data_meta, df, infers_only=False, warnings=True):
                 all_cats |= set(cats)
 
         if g.get('scale') and g['scale'].get('categories')=='infer':
-            g['scale']['categories'] = sorted(list(all_cats))
+            # IF they all share same categories, keep the category order
+            scats = cats if all_cats == set(cats) else sorted(list(all_cats))
+            g['scale']['categories'] = scats
         elif ((not infers_only) and g.get('scale') and g['scale'].get('categories') and 
                 not set(g['scale']['categories'])>=all_cats):
             diff = all_cats - set(g['scale']['categories'])
