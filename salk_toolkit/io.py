@@ -446,8 +446,9 @@ def change_df_to_meta(df, old_dmeta, new_dmeta):
         # Handle translation changes
         ot, nt = ocd.get('translate',{}), ncd.get('translate',{})
         remap = change_mapping(ot,nt)
-        if remap != {}: print(f"Remapping {c} with {remap}")
-        df[c] = df[c].replace(remap)
+        if remap != {}: 
+            print(f"Remapping {c} with {remap}")
+            df[c] = df[c].cat.rename_categories(remap)
         
         # Reorder categories and/or change ordered status
         if ((ncd.get('categories','infer')!='infer' and 
@@ -491,13 +492,16 @@ def replace_data_meta_in_parquet(parquet_name,metafile_name,advanced=True):
     nmeta = read_json(metafile_name, replace_const=True)
     
     nmeta = update_meta_with_model_fields(nmeta,ometa)
+    
+    # Perform the column name changes and category translations
+    # Do this before inferring meta as categories might change in this step
+    if advanced: df = change_df_to_meta(df,ometa,nmeta)
+
     nmeta = fix_meta_categories(nmeta,df) # replace infer with values
     
     meta['original_data'] = meta.get('original_data',meta['data'])
     meta['data'] = nmeta
 
-    # Perform the column name changes and category translations
-    if advanced: df = change_df_to_meta(df,ometa,nmeta)
 
     save_parquet_with_metadata(df,meta,parquet_name)
     

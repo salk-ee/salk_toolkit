@@ -117,9 +117,12 @@ def boxplot_manual(data, value_col='value', facets=[], val_format='%', width=800
 
     size = 12
 
+    minv,maxv = df['tmin'].min(), df['tmax'].max()
+    if val_format[-1] == '%': minv = 0.0
+
     # Compose each layer individually
     lower_plot = root.mark_rule().encode(
-        x=alt.X('tmin:Q', axis=alt.Axis(title=value_col, format=val_format)),
+        x=alt.X('tmin:Q', axis=alt.Axis(title=value_col, format=val_format), scale=alt.Scale(domain=[minv,maxv])),
         x2=alt.X2('q1:Q'),
     )
 

@@ -190,9 +190,12 @@ def matching_plots(pp_desc, df, data_meta, details=False, list_hidden=False):
     else: return [ n for (n,p,i) in sorted(res,key=lambda t: t[1], reverse=True) if p >= 0 ] # Return list of possibilities in decreasing order of fit
 
 # %% ../nbs/02_pp.ipynb 18
-cont_transform_options = ['center','zscore','proportion','softmax','softmax-ratio']
+custom_row_transforms = {}
 
-# %% ../nbs/02_pp.ipynb 19
+def apply_npf_on_pl_df(df,cols,npf):
+    df[cols] = npf(df[cols].to_numpy())
+    return df
+
 # Polars is annoyingly verbose for these but it is fast enough to be worth it
 def transform_cont(data, cols, transform, val_format='.1f', val_range=None):
     if not transform: return data, val_format, val_range
@@ -205,9 +208,37 @@ def transform_cont(data, cols, transform, val_format='.1f', val_range=None):
     elif transform.startswith('softmax'): 
         mult, val_format = (len(cols),'.1f') if transform == 'softmax-ratio' else (1.0,'.1%') # Ratio is just a multiplier
         return data.with_columns(pl.col(cols).exp()*mult / pl.sum_horizontal(pl.col(cols).exp())), val_format, (0.0,1.0*mult)
+    elif transform in custom_row_transforms:
+        data = data.map_batches(lambda bdf: 
+                    apply_npf_on_pl_df(bdf, cols, custom_row_transforms[transform]))
+        return data,'.1f',None
+        
     else: raise Exception(f"Unknown transform '{transform}'")
 
+# %% ../nbs/02_pp.ipynb 19
+# Expected rank given Plackett-luce log-odds
+def plackett_luce_expected_ranks(p):
+    
+    # Convert from log-odds to proportions, but reverse probabilities
+    p = np.exp(-p)
+    
+    # Create a matrix where element [i,j] is p[j]/(p[i] + p[j])
+    sum_matrix = p[...,:,None] + p[...,None,:] + 1e-10 # Shape (..., n, n)
+    m = p[...,None,:] / sum_matrix
+
+    # Sum over columns
+    sums = m.sum(axis=-1)
+
+    # Subtract diagonal term (0.5) and add 1
+    expected_ranks = 1 + (sums - 0.5)  
+    return expected_ranks
+
+custom_row_transforms['pl_ranking'] = plackett_luce_expected_ranks
+
 # %% ../nbs/02_pp.ipynb 20
+cont_transform_options = ['center','zscore','proportion','softmax','softmax-ratio'] + list(custom_row_transforms.keys())
+
+# %% ../nbs/02_pp.ipynb 21
 # Get categories from a lazy frame. 
 def ensure_ldf_categories(col_meta, col, ldf):
     cats = col_meta[col]['categories']
@@ -218,7 +249,7 @@ def ensure_ldf_categories(col_meta, col, ldf):
     return col_meta[col]
 
 
-# %% ../nbs/02_pp.ipynb 21
+# %% ../nbs/02_pp.ipynb 22
 def pp_filter_data_lz(df, filter_dict, c_meta):
 
     colnames = df.collect_schema().names()
@@ -261,7 +292,7 @@ def pp_filter_data(df, filter_dict, c_meta):
     return pp_filter_data_lz(pl.DataFrame(df).lazy(), filter_dict, c_meta).collect().to_pandas()
 
 
-# %% ../nbs/02_pp.ipynb 22
+# %% ../nbs/02_pp.ipynb 23
 # While polars-ized, it is still slow because of the collects. 
 # This can likely be improved by batching all of the required collects into a single select (over all columns)
 # In practice, this is probably not worth it because this is not used very often
@@ -293,7 +324,7 @@ def discretize_continuous(ldf, col, col_meta={}):
         
     return ldf, labels
 
-# %% ../nbs/02_pp.ipynb 23
+# %% ../nbs/02_pp.ipynb 24
 # Get all data required for a given graph
 # Only return columns and rows that are needed, aggregated to the format plot requires
 # Internally works with polars LazyDataFrame for large data set performance
@@ -454,7 +485,7 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
 
     return pparams
 
-# %% ../nbs/02_pp.ipynb 25
+# %% ../nbs/02_pp.ipynb 26
 # Helper function that handles reformating data for create_plot
 def wrangle_data(raw_df, col_meta, factor_cols, weight_col, pp_desc, n_questions):
     
@@ -571,7 +602,7 @@ def wrangle_data(raw_df, col_meta, factor_cols, weight_col, pp_desc, n_questions
 
     return pparams
 
-# %% ../nbs/02_pp.ipynb 27
+# %% ../nbs/02_pp.ipynb 28
 # Create a color scale
 def meta_color_scale(scale: Optional[Dict], column=None, translate=None):
     cats = column.dtype.categories if column.dtype.name=='category' else None
@@ -583,7 +614,7 @@ def meta_color_scale(scale: Optional[Dict], column=None, translate=None):
         cats = [ remap[c] for c in cats ]
     return to_alt_scale(scale,cats)
 
-# %% ../nbs/02_pp.ipynb 28
+# %% ../nbs/02_pp.ipynb 29
 def translate_df(df, translate):
     df.columns = [ (translate(c) if c not in special_columns else c) for c in df.columns ]
     for c in df.columns:
@@ -593,7 +624,7 @@ def translate_df(df, translate):
             df[c] = df[c].cat.rename_categories(remap)
     return df
 
-# %% ../nbs/02_pp.ipynb 29
+# %% ../nbs/02_pp.ipynb 30
 def create_tooltip(pparams,tc_meta):
     
     data, tfn = pparams['data'], pparams['translate']
@@ -625,7 +656,7 @@ def create_tooltip(pparams,tc_meta):
     return tooltips
     
 
-# %% ../nbs/02_pp.ipynb 30
+# %% ../nbs/02_pp.ipynb 31
 # Small helper function to move columns from internal to external columns
 def remove_from_internal_fcols(cname, factor_cols, n_inner):
     if cname not in factor_cols[:n_inner]: return n_inner
@@ -648,7 +679,7 @@ def inner_outer_factors(factor_cols, pp_desc, plot_meta):
     
     return factor_cols, n_inner
 
-# %% ../nbs/02_pp.ipynb 31
+# %% ../nbs/02_pp.ipynb 32
 # Function that takes filtered raw data and plot information and outputs the plot
 # Handles all of the data wrangling and parameter formatting
 def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=False, width=200, height=None, return_matrix_of_plots=False, translate=None):
@@ -807,7 +838,7 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
     return plot
 
 
-# %% ../nbs/02_pp.ipynb 33
+# %% ../nbs/02_pp.ipynb 34
 # Compute the full factor_cols list, including question and res_col as needed
 def impute_factor_cols(pp_desc, col_meta, plot_meta=None):
     factor_cols = pp_desc.get('factor_cols',[]).copy()
@@ -833,7 +864,7 @@ def impute_factor_cols(pp_desc, col_meta, plot_meta=None):
 
     return factor_cols
 
-# %% ../nbs/02_pp.ipynb 34
+# %% ../nbs/02_pp.ipynb 35
 # A convenience function to draw a plot straight from a dataset
 def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, height=None, check_match=True, impute=True, **kwargs):
     if data_file is None and full_df is None:
