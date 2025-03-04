@@ -10,7 +10,7 @@ __all__ = ['get_plot_width', 'open_fn', 'exists_fn', 'read_annotated_data_lazy_c
            'plot_matrix_html']
 
 # %% ../nbs/05_dashboard.ipynb 3
-import json, os, csv, re, time, psutil
+import json, os, csv, re, time, types, inspect, psutil
 import itertools as it
 from collections import defaultdict
 
@@ -95,11 +95,41 @@ def log_event(event, username, path, s3_fs=None):
         writer.writerow([timestamp, event, username])
 
 # %% ../nbs/05_dashboard.ipynb 8
+st_wrap_list = ['write','markdown','title','header','subheader','caption','text','divider',
+                'button','download_button','link_button','checkbox','toggle','radio','selectbox',
+                'multiselect','slider','select_slider','text_input','number_input','text_area',
+                'date_input','time_input','file_uploader','camera_input','color_picker', 'popover',
+                'expander', 'pills', {'name':'tabs', 'args':['list']}
+                ]
+
+# def debugf(f,*args,**kwargs):
+#     print(f.__name__,args,kwargs)
+#     return f(*args,**kwargs)
+
+# Some keyword arguments can be translated
+def transform_kws(kws,tfo):
+    if 'format_func' in kws: 
+        ff = kws['format_func']
+        kws['format_func'] = lambda s: tfo.tf(ff(s))
+    if 'placeholder' in kws: kws['placeholder'] = tfo.tf(kws['placeholder'])
+    return kws
+
 # wrap the first parameter of streamlit function with self.translate
 # has to be a separate function instead of in a for loop for scoping reasons
-def wrap_st_with_translate(fn,self):
-    func = getattr(st,fn)
-    setattr(self, fn, lambda s, *args, **kwargs: func(self.tf(s),*args,**kwargs) )
+def wrap_st_with_translate(base, to, fd, tfo):
+    if isinstance(fd, str): fd = { 'name': fd, 'args': ['str'] }
+    func = getattr(base,fd['name'])
+
+    # If format_func is a parameter, overwrite it with the translate function
+    kw_defaults = ({ 'format_func': tfo.tf } 
+            if 'format_func' in inspect.signature(func).parameters 
+            else {})
+
+    tfs = { 'str': tfo.tf, 'list': lambda l: [tfo.tf(s) for s in l] }
+    setattr(to, fd['name'], lambda *args, **kwargs: func( # debugf(func,
+        *[tfs[tt](args[i]) for i,tt in enumerate(fd['args'])],
+        *args[len(fd['args']):],**{**kw_defaults,**transform_kws(kwargs,tfo)}) )
+    
 
 # %% ../nbs/05_dashboard.ipynb 9
 def default_translate(s,**kwargs):
@@ -140,9 +170,11 @@ def translate_fn_from_po(po_file):
     td = { entry.msgid: entry.msgstr for entry in po }
     return lambda s, **kwargs: td.get(s,s)
 
-def load_translate(translate):
+def load_translate(translate, cc_translations={}):
 
-    if translate is None: return default_translate
+    if (translate is None or 
+        (translate in cc_translations and cc_translations[translate] is None)):
+        return default_translate
     elif callable(translate): return translate
     elif isinstance(translate,dict): return lambda s, **kwargs: translate.get(s,s)
     elif isinstance(translate,str):
@@ -155,11 +187,25 @@ def load_translate(translate):
                 return lambda s, **kwargs: td.get(s,s)
             else:
                 raise ValueError(f"Unknown translation file type: {ext}")
-        elif len(translate)==2: # country code
-            bname = os.path.splitext(os.path.basename(__main__.__file__))[0]
-            return translate_fn_from_po(f'locale/{translate}/{bname}.po')
+        elif translate in cc_translations: # country code
+            return cc_translations[translate]
         else:
             raise ValueError(f"Translation file not found: {translate}")
+
+@st.cache_resource(show_spinner=False,ttl=3600)
+def load_po_translations():
+    # Get base filename from __main__ 
+    bname = os.path.splitext(os.path.basename(__main__.__file__))[0]
+    
+    # Find all locale subdirectories
+    translations = { 'en': None } # English is the default
+    if os.path.exists('locale'):
+        for country_code in os.listdir('locale'):
+            po_path = f'locale/{country_code}/{bname}.po'
+            if os.path.exists(po_path):
+                translations[country_code] = translate_fn_from_po(po_path)
+                
+    return translations
 
 
 # %% ../nbs/05_dashboard.ipynb 11
@@ -188,9 +234,12 @@ class SalkDashboardBuilder:
         self.page_name = None
         
         # Set up translation
-        pot_updater = po_template_updater()
-        translate = load_translate(translate)
-        self.tf = lambda s,**kwargs: translate(pot_updater(s,**kwargs))
+        self.pot_updater = po_template_updater()
+        self.cc_translations = load_po_translations()
+
+        if translate is None and len(self.cc_translations)>1:
+            translate = st.sidebar.selectbox("Language",self.cc_translations.keys())
+        self.set_translate(translate)
         
         self.p_widths = {}
         
@@ -202,14 +251,19 @@ class SalkDashboardBuilder:
 
         if not public:
             self.uam.login_screen()
-            
+                    
         # Wrap some streamlit functions with translate
-        wrap_list = ['write','markdown','title','header','subheader','caption','text','divider','tabs',
-                     'button','download_button','link_button','checkbox','toggle','radio','selectbox',
-                     'multiselect','slider','select_slider','text_input','number_input','text_area',
-                     'date_input','time_input','file_uploader','camera_input','color_picker', 'popover']
-        for fn in wrap_list:
-            if hasattr(st,fn): wrap_st_with_translate(fn,self)
+        self.sidebar = types.SimpleNamespace() # Create dummy object to add sidebar functions to 
+        for fd in st_wrap_list:
+            fn = fd['name'] if isinstance(fd, dict) else fd
+            if not hasattr(st,fn): continue
+            wrap_st_with_translate(st,self,fd,self)
+            wrap_st_with_translate(st.sidebar,self.sidebar,fd,self)
+
+    def set_translate(self,translate):
+        translate = load_translate(translate, self.cc_translations)
+        self.tf = lambda s,**kwargs: translate(self.pot_updater(s,**kwargs))
+
 
     # Get the pandas dataframe with given columns
     def get_df(self,columns=None):
