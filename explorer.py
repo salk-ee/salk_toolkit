@@ -58,8 +58,8 @@ with st.spinner("Loading libraries.."):
     alt.data_transformers.disable_max_rows()
 
 # Override the st_dimensions based version that can cause refresh loops
-#def get_plot_width(str):
-#    return 800
+def get_plot_width(str,ncols=1):
+    return min(800,1200/ncols)
 
 
 if 'ls_loaded' not in st.session_state:
@@ -341,7 +341,7 @@ elif input_files_facet:
     pparams['data'] = fdf
     plot = create_plot(pparams,first_data_meta,args,
                        translate=translate,
-                       width=(width or get_plot_width('full')),
+                       width=(width or get_plot_width('full',1)),
                        return_matrix_of_plots=matrix_form)
 
     draw_plot_matrix(plot)
@@ -367,7 +367,7 @@ else:
             fargs = args.copy()
             fargs['filter'] = { k:v for k,v in args['filter'].items() if k in loaded[ifile]['columns'] }
             pparams = pp_transform_data(loaded[ifile]['data'], data_meta, fargs)
-            cur_width = width or get_plot_width(f'{i}_{ifile}')
+            cur_width = width or get_plot_width(f'{i}_{ifile}',len(input_files))
             plot = create_plot(pparams,data_meta,fargs,
                                translate=translate,
                                width=cur_width,

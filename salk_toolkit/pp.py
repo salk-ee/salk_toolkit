@@ -190,8 +190,9 @@ def matching_plots(pp_desc, df, data_meta, details=False, list_hidden=False):
     else: return [ n for (n,p,i) in sorted(res,key=lambda t: t[1], reverse=True) if p >= 0 ] # Return list of possibilities in decreasing order of fit
 
 # %% ../nbs/02_pp.ipynb 18
+# Mechanics to allow row-wise numpy transformations here
+# They are noticeably slower, so only use them if polars expression is infeasible
 custom_row_transforms = {}
-
 def apply_npf_on_pl_df(df,cols,npf):
     df[cols] = npf(df[cols].to_numpy())
     return df
@@ -210,13 +211,15 @@ def transform_cont(data, cols, transform, val_format='.1f', val_range=None):
         return data.with_columns(pl.col(cols).exp()*mult / pl.sum_horizontal(pl.col(cols).exp())), val_format, (0.0,1.0*mult)
     elif transform in custom_row_transforms:
         data = data.map_batches(lambda bdf: 
-                    apply_npf_on_pl_df(bdf, cols, custom_row_transforms[transform]))
+                    apply_npf_on_pl_df(bdf, cols, custom_row_transforms[transform]),
+                    streamable=True, validate_output_schema=False) # NB! Set validate to true if debugging this
         return data,'.1f',None
         
     else: raise Exception(f"Unknown transform '{transform}'")
 
 # %% ../nbs/02_pp.ipynb 19
 # Expected rank given Plackett-luce log-odds
+# Relies on the fact that sum of probs of pairwise comparisons is average rank
 def plackett_luce_expected_ranks(p):
     
     # Convert from log-odds to proportions, but reverse probabilities

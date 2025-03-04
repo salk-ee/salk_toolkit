@@ -5,9 +5,9 @@
 # %% auto 0
 __all__ = ['get_plot_width', 'open_fn', 'exists_fn', 'read_annotated_data_lazy_cached', 'load_json', 'load_json_cached',
            'save_json', 'alias_file', 'default_translate', 'SalkDashboardBuilder', 'sqlite_client',
-           'UserAuthenticationManager', 'draw_plot_matrix', 'st_plot', 'plot_matrix_html', 'stss_safety', 'facet_ui',
-           'filter_ui', 'translate_with_dict', 'log_missing_translations', 'clean_missing_translations',
-           'add_missing_to_dict']
+           'UserAuthenticationManager', 'draw_plot_matrix', 'st_plot', 'stss_safety', 'facet_ui', 'filter_ui',
+           'translate_with_dict', 'log_missing_translations', 'clean_missing_translations', 'add_missing_to_dict',
+           'plot_matrix_html']
 
 # %% ../nbs/05_dashboard.ipynb 3
 import json, os, csv, re, time, psutil
@@ -629,7 +629,7 @@ def draw_plot_matrix(pmat):
     for j,c in enumerate(cols):
         for i, row in enumerate(pmat):
             if j>=len(pmat[i]): continue
-            c.altair_chart(pmat[i][j],use_container_width=ucw)
+            c.altair_chart(pmat[i][j],use_container_width=ucw)#,theme=None)
 
 # Draw the plot described by pp_desc 
 def st_plot(pp_desc,**kwargs):
@@ -637,81 +637,11 @@ def st_plot(pp_desc,**kwargs):
     draw_plot_matrix(plots)
 
 # %% ../nbs/05_dashboard.ipynb 22
-# Create an HTML of a matrix of plots
-# Based on what altair plot.save('plot.html') does, but modified to draw a full matrix and autoresize
-def plot_matrix_html(pmat, uid='viz', width=None, responsive=True):
-    if not pmat: return
-    if not isinstance(pmat,list): pmat, ucw = [[pmat]], False
-
-    template = '''
-<!DOCTYPE html>
-<html>
-<head></head>
-<body>
-  <div id="UID">SUBDIVS</div>
-  <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
-  <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
-  <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
-  <script type="text/javascript">
-    UID_delta = 0
-    function draw_plot() {
-        width = document.getElementById("UID").parentElement.clientWidth;
-        var specs = %s;
-        var opt = {"renderer": "canvas", "actions": false};
-        specs.forEach(function(spec,i){ vegaEmbed("#UID-"+i, spec, opt); });
-    };
-    draw_plot();
-    // This is a hack to fix facet plot width issues
-    setTimeout(function() {
-        wc = %s;
-        wp = document.getElementById("UID").offsetWidth;
-        UID_delta = wp-wc;
-        if (UID_delta!=0) draw_plot();
-    }, 5);
-    %s
-  </script>
-</body>
-</html>
-'''.replace('UID',uid)
-
-    rstring = 'XYZresponsiveXZY' # Something we can replace easy
-    specs, ncols = [], len(pmat[0])
-    for i,p in enumerate(pmat):
-        for j, pp in enumerate(p):
-            pdict = json.loads(pp.to_json())
-            pdict['autosize'] = {'type': 'fit', 'contains': 'padding'}
-            
-            if responsive:
-                cwidth = pdict['spec']['width'] if 'spec' in pdict else pdict['width']
-                repl = f'(width-{uid}_delta/{ncols})/{width/cwidth}' 
-                if 'spec' in pdict: pdict['spec']['width'] = rstring
-                else: pdict['width'] = rstring
-                pjson = json.dumps(pdict).replace(f'"{rstring}"', repl)
-            else: pjson = json.dumps(pdict)
-            specs.append(pjson)
-
-    if responsive: 
-        goal_width = f'document.getElementById("{uid}").parentElement.clientWidth'
-        resp_code = 'window.addEventListener("resize", draw_plot);'
-    else: goal_width, resp_code = str(width), '';
-
-    html = template % (f'[{",".join(specs)}]',goal_width,resp_code)
-
-    # Add subdivs after the plots - otherwise width% needs complex escaping
-    subdivs = ''.join([f'<div id="{uid}-{i}" styles="width: {0.99/ncols:.3}%"></div>' for i in range(sum(map(len,pmat)))])
-    html = html.replace('SUBDIVS',subdivs)
-
-    if responsive: html = html.replace(f'"{rstring}"', repl)
-    return html
-
-
-
-# %% ../nbs/05_dashboard.ipynb 23
 # Streamlit session state safety - check and clear session state if it has an unfit value
 def stss_safety(key, opts):
     if key in st.session_state and st.session_state[key] not in opts: del st.session_state[key]
 
-# %% ../nbs/05_dashboard.ipynb 24
+# %% ../nbs/05_dashboard.ipynb 23
 def facet_ui(dims, two=False, uid='base',raw=False, translate=None, force_choice=False, label='Facet'):
     # Set up translation
     tfc = translate if translate else (lambda s,**kwargs: s)
@@ -733,14 +663,14 @@ def facet_ui(dims, two=False, uid='base',raw=False, translate=None, force_choice
         
     return [ r_map[d] for d in fcols ]
 
-# %% ../nbs/05_dashboard.ipynb 25
+# %% ../nbs/05_dashboard.ipynb 24
 # Function that creates reset functions for multiselects in filter
 def ms_reset(cn, all_vals):
     def reset_ms():
         st.session_state[f"{cn}_multiselect"] = all_vals
     return reset_ms
 
-# %% ../nbs/05_dashboard.ipynb 26
+# %% ../nbs/05_dashboard.ipynb 25
 @st.cache_data(show_spinner=False)
 def get_filter_limits(_ldf,dims,dmeta,uid):
     ldf = _ldf
@@ -776,7 +706,7 @@ def get_filter_limits(_ldf,dims,dmeta,uid):
             warn(f"Skipping {d}: {c_meta[d]} in filter")
     return limits
 
-# %% ../nbs/05_dashboard.ipynb 27
+# %% ../nbs/05_dashboard.ipynb 26
 # User interface that outputs a filter for the pp_desc
 def filter_ui(data, dmeta=None, dims=None, uid='base', detailed=False, raw=False, translate=None, force_choice=False):
     
@@ -851,7 +781,7 @@ def filter_ui(data, dmeta=None, dims=None, uid='base', detailed=False, raw=False
     return filters
 
 
-# %% ../nbs/05_dashboard.ipynb 29
+# %% ../nbs/05_dashboard.ipynb 28
 # Use dict here as dicts are ordered as of Python 3.7 and preserving order groups things together better
 
 def translate_with_dict(d):
@@ -870,3 +800,208 @@ def clean_missing_translations(nonchanged_dict, tdict={}):
 
 def add_missing_to_dict(missing_dict, tdict):
     return {**tdict, **{ s:s for s in missing_dict}}
+
+# %% ../nbs/05_dashboard.ipynb 31
+# This is the default theme for Streamlit (v1.42.1)
+# We want to match it in our exports
+altair_default_config = {
+    "font": "\"Source Sans Pro\", sans-serif",
+    "background": "#ffffff",
+    "fieldTitle": "verbal",
+    "autosize": {"type": "fit", "contains": "padding"},
+    "title": {
+      "align": "left",
+      "anchor": "start",
+      "color": "#31333F",
+      "titleFontStyle": "normal",
+      "fontWeight": 600,
+      "fontSize": 16,
+      "orient": "top",
+      "offset": 26
+    },
+    "header": {
+      "titleFontWeight": 400,
+      "titleFontSize": 16,
+      "titleColor": "#808495",
+      "titleFontStyle": "normal",
+      "labelFontSize": 12,
+      "labelFontWeight": 400,
+      "labelColor": "#808495",
+      "labelFontStyle": "normal"
+    },
+    "axis": {
+      "labelFontSize": 12,
+      "labelFontWeight": 400,
+      "labelColor": "#808495",
+      "labelFontStyle": "normal",
+      "titleFontWeight": 400,
+      "titleFontSize": 14,
+      "titleColor": "#808495",
+      "titleFontStyle": "normal",
+      "ticks": False,
+      "gridColor": "#e6eaf1",
+      "domain": False,
+      "domainWidth": 1,
+      "domainColor": "#e6eaf1",
+      "labelFlush": True,
+      "labelFlushOffset": 1,
+      "labelBound": False,
+      "labelLimit": 100,
+      "titlePadding": 16,
+      "labelPadding": 16,
+      "labelSeparation": 4,
+      "labelOverlap": True
+    },
+    "legend": {
+      "labelFontSize": 14,
+      "labelFontWeight": 400,
+      "labelColor": "#808495",
+      "titleFontSize": 14,
+      "titleFontWeight": 400,
+      "titleFontStyle": "normal",
+      "titleColor": "#808495",
+      "titlePadding": 5,
+      "labelPadding": 16,
+      "columnPadding": 8,
+      "rowPadding": 4,
+      "padding": 7,
+      "symbolStrokeWidth": 4
+    },
+    "range": {
+      "category": [
+        "#0068c9",
+        "#83c9ff",
+        "#ff2b2b",
+        "#ffabab",
+        "#29b09d",
+        "#7defa1",
+        "#ff8700",
+        "#ffd16a",
+        "#6d3fc0",
+        "#d5dae5"
+      ],
+      "diverging": [
+        "#7d353b",
+        "#bd4043",
+        "#ff4b4b",
+        "#ff8c8c",
+        "#ffc7c7",
+        "#a6dcff",
+        "#60b4ff",
+        "#1c83e1",
+        "#0054a3",
+        "#004280"
+      ],
+      "ramp": [
+        "#e4f5ff",
+        "#c7ebff",
+        "#a6dcff",
+        "#83c9ff",
+        "#60b4ff",
+        "#3d9df3",
+        "#1c83e1",
+        "#0068c9",
+        "#0054a3",
+        "#004280"
+      ],
+      "heatmap": [
+        "#e4f5ff",
+        "#c7ebff",
+        "#a6dcff",
+        "#83c9ff",
+        "#60b4ff",
+        "#3d9df3",
+        "#1c83e1",
+        "#0068c9",
+        "#0054a3",
+        "#004280"
+      ]
+    },
+    "view": {
+      "columns": 1,
+      "strokeWidth": 0,
+      "stroke": "transparent",
+      "continuousHeight": 350,
+      "continuousWidth": 400,
+      "discreteHeight": {"step": 20}
+    },
+    "concat": {"columns": 1},
+    "facet": {"columns": 1},
+    "mark": {"tooltip": True, "color": "#0068c9"},
+    "bar": {"binSpacing": 4, "discreteBandSize": {"band": 0.85}},
+    "axisDiscrete": {"grid": False},
+    "axisXPoint": {"grid": False},
+    "axisTemporal": {"grid": False},
+    "axisXBand": {"grid": False}
+}
+
+# %% ../nbs/05_dashboard.ipynb 32
+# Create an HTML of a matrix of plots
+# Based on what altair plot.save('plot.html') does, but modified to draw a full matrix and autoresize
+def plot_matrix_html(pmat, uid='viz', width=None, responsive=True):
+    if not pmat: return
+    if not isinstance(pmat,list): pmat, ucw = [[pmat]], False
+
+    template = '''
+<!DOCTYPE html>
+<html>
+<head></head>
+<body>
+  <div id="UID">SUBDIVS</div>
+  <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+  <script type="text/javascript">
+    UID_delta = 0
+    function draw_plot() {
+        width = document.getElementById("UID").parentElement.clientWidth;
+        var specs = %s;
+        var opt = {"renderer": "canvas", "actions": false};
+        specs.forEach(function(spec,i){ vegaEmbed("#UID-"+i, spec, opt); });
+    };
+    draw_plot();
+    // This is a hack to fix facet plot width issues
+    setTimeout(function() {
+        wc = %s;
+        wp = document.getElementById("UID").offsetWidth;
+        UID_delta = wp-wc;
+        if (UID_delta!=0) draw_plot();
+    }, 5);
+    %s
+  </script>
+</body>
+</html>
+'''.replace('UID',uid)
+
+    rstring = 'XYZresponsiveXZY' # Something we can replace easy
+    specs, ncols = [], len(pmat[0])
+    for i,p in enumerate(pmat):
+        for j, pp in enumerate(p):
+            pdict = json.loads(pp.to_json())
+            pdict['autosize'] = {'type': 'fit', 'contains': 'padding'}
+            pdict['config'] = altair_default_config
+            
+            if responsive:
+                cwidth = pdict['spec']['width'] if 'spec' in pdict else pdict['width']
+                repl = f'(width-{uid}_delta/{ncols})/{width/cwidth}' 
+                if 'spec' in pdict: pdict['spec']['width'] = rstring
+                else: pdict['width'] = rstring
+                pjson = json.dumps(pdict).replace(f'"{rstring}"', repl)
+            else: pjson = json.dumps(pdict)
+            specs.append(pjson)
+
+    if responsive: 
+        goal_width = f'document.getElementById("{uid}").parentElement.clientWidth'
+        resp_code = 'window.addEventListener("resize", draw_plot);'
+    else: goal_width, resp_code = str(width), '';
+
+    html = template % (f'[{",".join(specs)}]',goal_width,resp_code)
+
+    # Add subdivs after the plots - otherwise width% needs complex escaping
+    subdivs = ''.join([f'<div id="{uid}-{i}" styles="width: {0.99/ncols:.3}%"></div>' for i in range(sum(map(len,pmat)))])
+    html = html.replace('SUBDIVS',subdivs)
+
+    if responsive: html = html.replace(f'"{rstring}"', repl)
+    return html
+
+
