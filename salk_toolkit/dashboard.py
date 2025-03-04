@@ -136,6 +136,7 @@ def default_translate(s,**kwargs):
     return (s[0].upper() + s[1:]).replace('_',' ') if isinstance(s,str) and len(s)>0 else s
 
 # %% ../nbs/05_dashboard.ipynb 10
+# A function that automatically updates the pot file with untranslated strings
 def po_template_updater(pot_file = None):
     if pot_file is None:
         bname = os.path.splitext(os.path.basename(__main__.__file__))[0]
@@ -143,7 +144,10 @@ def po_template_updater(pot_file = None):
 
     if os.path.exists(pot_file):
         po  = polib.pofile(pot_file)
-        td = { entry.msgid for entry in po }
+        tdc = defaultdict(set)
+        for entry in po:
+            context = entry.msgctxt or ''
+            tdc[context].add(entry.msgid)
     else:
         po = polib.POFile()
         po.metadata = {
@@ -153,18 +157,21 @@ def po_template_updater(pot_file = None):
             'Content-Type': 'text/plain; charset=utf-8',
             'Content-Transfer-Encoding': '8bit',
         }
-        td = set()
+        tdc = defaultdict(set)
 
     def translate(s,**kwargs):
-        if isinstance(s,str) and s not in td:
+        ctx = kwargs.get('context') or ''
+        if isinstance(s,str) and s not in tdc[ctx]:
             po.append(polib.POEntry(msgid=s,msgstr=default_translate(s), 
                                     **{'msgctxt': kwargs.get('context'), 'comment': kwargs.get('comment')}))
             po.save(pot_file)
-            td.add(s)
+            tdc[ctx].add(s)
         return s
     
     return translate
 
+
+# %% ../nbs/05_dashboard.ipynb 11
 def translate_fn_from_po(po_file):
     po = polib.pofile(po_file)
     td = { entry.msgid: entry.msgstr for entry in po }
@@ -208,11 +215,11 @@ def load_po_translations():
     return translations
 
 
-# %% ../nbs/05_dashboard.ipynb 11
+# %% ../nbs/05_dashboard.ipynb 12
 # Main dashboard wrapper - WIP
 class SalkDashboardBuilder:
 
-    def __init__(self, data_source, auth_conf, logfile, groups=['guest','user','admin'], org_whitelist=None, public=False, translate=None):
+    def __init__(self, data_source, auth_conf, logfile, groups=['guest','user','admin'], org_whitelist=None, public=False, default_lang='en'):
         
         # Allow deployment.json to redirect files from local to s3 if local missing (i.e. in deployment scenario)
         if os.path.exists('./deployment.json'):
@@ -236,10 +243,32 @@ class SalkDashboardBuilder:
         # Set up translation
         self.pot_updater = po_template_updater()
         self.cc_translations = load_po_translations()
+        self.default_lang = default_lang
+        login_lang_choice = st.sidebar.empty()
 
-        if translate is None and len(self.cc_translations)>1:
-            translate = st.sidebar.selectbox("Language",self.cc_translations.keys())
-        self.set_translate(translate)
+        #print("LANG",st.session_state.get('lang'),st.session_state.get('chosen_lang'),st.session_state.get('login_lang'))
+
+        # If only one language is available, set it as the one in use
+        if len(self.cc_translations) == 1: 
+            st.session_state['lang'] = next(iter(self.cc_translations.keys()))
+
+        # Set language from session state if present      
+        if st.session_state.get('lang'): 
+            self.set_translate(st.session_state.get('lang'))
+        else: # Alternatively (if on login page) - show the choice at the top of the sidebar
+            # This is messy because streamlit is ... not great at this kind of thing
+            opts = [self.default_lang] + [l for l in self.cc_translations.keys() if l != self.default_lang]
+
+            # chosen_lang is a temporary variable to store the chosen language on the login page
+            clang = st.session_state.get('chosen_lang') or self.default_lang
+            self.set_translate(clang)
+            def set_login_lang():
+                st.session_state['chosen_lang'] = st.session_state['login_lang']
+
+            ind = opts.index(st.session_state.get('login_lang',self.default_lang)) # FIXES lang not updating
+            lang = login_lang_choice.selectbox(self.tf("Language:",context='ui'), opts, 
+                                                index=ind, on_change=set_login_lang, key='login_lang')
+            if lang != clang: self.set_translate(lang)
         
         self.p_widths = {}
         
@@ -251,7 +280,24 @@ class SalkDashboardBuilder:
 
         if not public:
             self.uam.login_screen()
-                    
+        
+        if self.user:
+            login_lang_choice.empty()
+
+            # If user has chosen a language on the login page
+            if st.session_state.get('chosen_lang'): 
+                self.set_translate(st.session_state['chosen_lang'],remember=True) # Make it persistent
+                st.session_state['chosen_lang'] = None # Only do this once, at login
+
+                # If the value differs from the user's current language, update it
+                if st.session_state['lang'] != self.user['lang']:
+                    self.uam.users[st.session_state['username']]['lang'] = st.session_state['lang']
+                    self.uam.update_user(st.session_state['username'])
+            # Load language from user's profile if present
+            elif (not st.session_state.get('lang') and self.user.get('lang') 
+                and self.user['lang'] in self.cc_translations):
+                self.set_translate(self.user['lang'],remember=True)
+            
         # Wrap some streamlit functions with translate
         self.sidebar = types.SimpleNamespace() # Create dummy object to add sidebar functions to 
         for fd in st_wrap_list:
@@ -260,9 +306,11 @@ class SalkDashboardBuilder:
             wrap_st_with_translate(st,self,fd,self)
             wrap_st_with_translate(st.sidebar,self.sidebar,fd,self)
 
-    def set_translate(self,translate):
-        translate = load_translate(translate, self.cc_translations)
+    def set_translate(self,lang,remember=False):
+        if lang is None: lang = self.default_lang
+        translate = load_translate(lang, self.cc_translations)
         self.tf = lambda s,**kwargs: translate(self.pot_updater(s,**kwargs))
+        if remember: st.session_state['lang'] = lang
 
 
     # Get the pandas dataframe with given columns
@@ -279,7 +327,7 @@ class SalkDashboardBuilder:
 
     @property
     def user(self):
-        return self.uam.user    
+        return self.uam.user
     
     def log_event(self, event, username=None):
         log_event(event, username or st.session_state['username'], self.log_path, s3_fs=self.s3fs)
@@ -379,7 +427,7 @@ class SalkDashboardBuilder:
     def __exit__(self, exc_type, exc_value, exc_tb):
         self.build()
 
-# %% ../nbs/05_dashboard.ipynb 14
+# %% ../nbs/05_dashboard.ipynb 15
 # TODO
 # - centralize the db connection, getting url and token from env
 # - move other conf (cookie token) to streamlit env variables
@@ -476,9 +524,9 @@ class UserAuthenticationManager():
     def update_user(self,username):
         if 'libsql' in self.conf:
             user_data = self.users[username]
-            self.client.execute('UPDATE users SET name = ?, email = ?, organization = ?, "group" = ?, password = ? WHERE username = ?',
+            self.client.execute('UPDATE users SET name = ?, email = ?, organization = ?, "group" = ?, password = ?, lang = ? WHERE username = ?',
                          [user_data['name'], user_data['email'], user_data['organization'], 
-                          user_data['group'], user_data['password'], username])
+                          user_data['group'], user_data['password'], user_data['lang'], username])
         else: self.update_conf()
             
     def add_user(self, username, password, user_data):
@@ -535,10 +583,21 @@ class UserAuthenticationManager():
         return [ censor_dict({'username': k, **v},['password']) for k,v in self.users.items() ]
 
 
-# %% ../nbs/05_dashboard.ipynb 16
+# %% ../nbs/05_dashboard.ipynb 17
 # Password reset
 def user_settings_page(sdb):
     if not sdb.user: return
+
+    cur_lang = st.session_state.get('lang')
+    opts = [cur_lang] + [l for l in sdb.cc_translations.keys() if l != cur_lang]
+    lang = st.selectbox(sdb.tf("Language:",context='ui'), opts)
+    if lang != cur_lang:
+        sdb.set_translate(lang,remember=True)
+        if lang!=sdb.user['lang']:
+            sdb.uam.users[st.session_state["username"]]['lang'] = lang
+            sdb.uam.update_user(st.session_state["username"])    
+        st.rerun()
+
     try:
         tf = lambda s: sdb.tf(s,context='ui')
         if sdb.uam.auth.reset_password(st.session_state["username"], 
@@ -550,7 +609,7 @@ def user_settings_page(sdb):
     except Exception as e:
         st.error(e)
 
-# %% ../nbs/05_dashboard.ipynb 17
+# %% ../nbs/05_dashboard.ipynb 18
 # Helper function to highlight log rows
 def highlight_cells(val):
     if 'fail' in val:
@@ -564,7 +623,7 @@ def highlight_cells(val):
         color = ''
     return 'color: {}'.format(color)
 
-# %% ../nbs/05_dashboard.ipynb 18
+# %% ../nbs/05_dashboard.ipynb 19
 # Admin page to manage users
 
 def admin_page(sdb):
@@ -617,6 +676,7 @@ def admin_page(sdb):
                 st.markdown("""---""")
                 user_data['email'] = st.text_input("E-mail:")
                 user_data['organization'] = st.text_input("Organization:")
+                user_data['lang'] = st.selectbox("Language:", list(sdb.cc_translations.keys())+[None], index=0)
             st.markdown("""---""")
             submitted = st.form_submit_button("Submit")
             if submitted:
@@ -648,6 +708,11 @@ def admin_page(sdb):
                 st.markdown("""---""")
                 user_data['email'] = st.text_input("E-mail:", value=user_data['email'])
                 user_data['organization'] = st.text_input("Organization:", value=user_data.get('organization',''))
+                cur_lang = user_data.get('lang',None)
+                l_opts = [cur_lang] + [l for l in list(sdb.cc_translations.keys())+[None] if l != cur_lang]
+                user_data['lang'] = st.selectbox("Language:", l_opts)
+                # NB! it is known changing language here for current user does not lead to a change. 
+                # It's not worth the extra code overhead to make it work. 
                 
             st.markdown("""---""")
             submitted = st.form_submit_button("Submit")
@@ -670,7 +735,7 @@ def admin_page(sdb):
                     sdb.uam.delete_user(username)
 
 
-# %% ../nbs/05_dashboard.ipynb 21
+# %% ../nbs/05_dashboard.ipynb 22
 # This is a horrible workaround to get faceting to work with altair geoplots that do not play well with streamlit
 # See https://github.com/altair-viz/altair/issues/2369 -> https://github.com/vega/vega-lite/issues/3729
 
@@ -690,12 +755,12 @@ def st_plot(pp_desc,**kwargs):
     plots = e2e_plot(pp_desc, **kwargs)
     draw_plot_matrix(plots)
 
-# %% ../nbs/05_dashboard.ipynb 22
+# %% ../nbs/05_dashboard.ipynb 23
 # Streamlit session state safety - check and clear session state if it has an unfit value
 def stss_safety(key, opts):
     if key in st.session_state and st.session_state[key] not in opts: del st.session_state[key]
 
-# %% ../nbs/05_dashboard.ipynb 23
+# %% ../nbs/05_dashboard.ipynb 24
 def facet_ui(dims, two=False, uid='base',raw=False, translate=None, force_choice=False, label='Facet'):
     # Set up translation
     tfc = translate if translate else (lambda s,**kwargs: s)
@@ -717,14 +782,14 @@ def facet_ui(dims, two=False, uid='base',raw=False, translate=None, force_choice
         
     return [ r_map[d] for d in fcols ]
 
-# %% ../nbs/05_dashboard.ipynb 24
+# %% ../nbs/05_dashboard.ipynb 25
 # Function that creates reset functions for multiselects in filter
 def ms_reset(cn, all_vals):
     def reset_ms():
         st.session_state[f"{cn}_multiselect"] = all_vals
     return reset_ms
 
-# %% ../nbs/05_dashboard.ipynb 25
+# %% ../nbs/05_dashboard.ipynb 26
 @st.cache_data(show_spinner=False)
 def get_filter_limits(_ldf,dims,dmeta,uid):
     ldf = _ldf
@@ -760,7 +825,7 @@ def get_filter_limits(_ldf,dims,dmeta,uid):
             warn(f"Skipping {d}: {c_meta[d]} in filter")
     return limits
 
-# %% ../nbs/05_dashboard.ipynb 26
+# %% ../nbs/05_dashboard.ipynb 27
 # User interface that outputs a filter for the pp_desc
 def filter_ui(data, dmeta=None, dims=None, uid='base', detailed=False, raw=False, translate=None, force_choice=False):
     
@@ -835,7 +900,7 @@ def filter_ui(data, dmeta=None, dims=None, uid='base', detailed=False, raw=False
     return filters
 
 
-# %% ../nbs/05_dashboard.ipynb 28
+# %% ../nbs/05_dashboard.ipynb 29
 # Use dict here as dicts are ordered as of Python 3.7 and preserving order groups things together better
 
 def translate_with_dict(d):
@@ -855,7 +920,7 @@ def clean_missing_translations(nonchanged_dict, tdict={}):
 def add_missing_to_dict(missing_dict, tdict):
     return {**tdict, **{ s:s for s in missing_dict}}
 
-# %% ../nbs/05_dashboard.ipynb 31
+# %% ../nbs/05_dashboard.ipynb 32
 # This is the default theme for Streamlit (v1.42.1)
 # We want to match it in our exports
 altair_default_config = {
@@ -989,7 +1054,7 @@ altair_default_config = {
     "axisXBand": {"grid": False}
 }
 
-# %% ../nbs/05_dashboard.ipynb 32
+# %% ../nbs/05_dashboard.ipynb 33
 # Create an HTML of a matrix of plots
 # Based on what altair plot.save('plot.html') does, but modified to draw a full matrix and autoresize
 def plot_matrix_html(pmat, uid='viz', width=None, responsive=True):
