@@ -278,13 +278,13 @@ def massplot(data, value_col='value', facets=[], filtered_size=1, val_format='%'
 # Make the likert bar pieces
 def make_start_end(x,value_col,cat_col,cat_order):
     #print("######################")
-    #print(value_col,cat_col)
+    #print(value_col,cat_order)
     #print(x)
     if len(x) != len(cat_order):
         # Fill in missing rows with value zero so they would just be skipped
-        x = pd.merge(pd.DataFrame({cat_col:cat_order}),x,on=cat_col,how='left').fillna({value_col:0})
+        mdf = pd.DataFrame({cat_col:pd.Categorical(cat_order,cat_order,ordered=True)})
+        x = pd.merge(mdf,x,on=cat_col,how='left').fillna({value_col:0})
     mid = len(x)//2
-
     x = x.sort_values(by=cat_col)
         
     if len(x)%2==1: # odd:
@@ -302,6 +302,7 @@ def make_start_end(x,value_col,cat_col,cat_order):
     x_other.loc[:,'end'] = x_other[value_col].cumsum() - x_other[:mid][value_col].sum()
     x_other.loc[:,'start'] = (x_other[value_col][::-1].cumsum()[::-1] - x_other[mid:][value_col].sum())*-1
     res = pd.concat([x_other] + x_mid).dropna(subset=[value_col]) # drop any na rows added in the filling in step
+    #print("RES",res)
     return res
 
 @stk_plot('likert_bars', data_format='longform', draws=False, requires=[{'likert':True}], n_facets=(1,3), sort_numeric_first_facet=True, priority=50)
