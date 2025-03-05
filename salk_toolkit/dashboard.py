@@ -7,7 +7,7 @@ __all__ = ['get_plot_width', 'open_fn', 'exists_fn', 'read_annotated_data_lazy_c
            'save_json', 'alias_file', 'default_translate', 'SalkDashboardBuilder', 'sqlite_client',
            'UserAuthenticationManager', 'draw_plot_matrix', 'st_plot', 'stss_safety', 'facet_ui', 'filter_ui',
            'translate_with_dict', 'log_missing_translations', 'clean_missing_translations', 'add_missing_to_dict',
-           'plot_matrix_html']
+           'translate_pot', 'plot_matrix_html']
 
 # %% ../nbs/05_dashboard.ipynb 3
 import json, os, csv, re, time, types, inspect, psutil
@@ -108,6 +108,7 @@ st_wrap_list = ['write','markdown','title','header','subheader','caption','text'
 
 # Some keyword arguments can be translated
 def transform_kws(kws,tfo):
+    if 'context' in kws: del kws['context']
     if 'format_func' in kws: 
         ff = kws['format_func']
         kws['format_func'] = lambda s: tfo.tf(ff(s))
@@ -125,9 +126,10 @@ def wrap_st_with_translate(base, to, fd, tfo):
             if 'format_func' in inspect.signature(func).parameters 
             else {})
 
-    tfs = { 'str': tfo.tf, 'list': lambda l: [tfo.tf(s) for s in l] }
+    tfs = { 'str': lambda c: (lambda s: tfo.tf(s,context=c)), 
+            'list': lambda c: (lambda l: [tfo.tf(s,context=c) for s in l]) }
     setattr(to, fd['name'], lambda *args, **kwargs: func( # debugf(func,
-        *[tfs[tt](args[i]) for i,tt in enumerate(fd['args'])],
+        *[tfs[tt](kwargs.get('context'))(args[i]) for i,tt in enumerate(fd['args'])],
         *args[len(fd['args']):],**{**kw_defaults,**transform_kws(kwargs,tfo)}) )
     
 
@@ -413,7 +415,7 @@ class SalkDashboardBuilder:
             #self.df = self.ldf.collect().to_pandas() # Backwards compatibility
         
         # Render the chosen page
-        self.subheader(pname)
+        self.subheader(pname,context='ui')
         pfunc(**clean_kwargs(pfunc,{'sdb':self}))
 
         if self.user.get('group')=='admin':
@@ -920,7 +922,56 @@ def clean_missing_translations(nonchanged_dict, tdict={}):
 def add_missing_to_dict(missing_dict, tdict):
     return {**tdict, **{ s:s for s in missing_dict}}
 
-# %% ../nbs/05_dashboard.ipynb 32
+# %% ../nbs/05_dashboard.ipynb 30
+def translate_pot(template, dest, tfunc, sources=[]):
+    pot  = polib.pofile(template)
+
+    if os.path.exists(dest):
+        po  = polib.pofile(dest)
+    else:
+        po = polib.POFile()
+        po.metadata = pot.metadata
+
+    todo = { (entry.msgctx,entry.msgid) for entry in pot }
+    existing = { (entry.msgctx,entry.msgid) for entry in po }
+
+    from tqdm import tqdm
+
+    # Go through sources and add translations found there to the pot
+    if sources:
+        n_existing = len(existing)
+        for source in tqdm(sources,desc='Checking existing translations'):
+            spo = polib.pofile(source)
+            for entry in spo:
+                if (entry.msgctx,entry.msgid) not in todo: continue
+                if (entry.msgctx,entry.msgid) in existing: continue
+                
+                if entry.msgstr: entry.msgstr = tfunc(entry.msgstr)
+                po.append(entry)
+                existing.add((entry.msgctx,entry.msgid))
+
+        n_found = len(existing) - n_existing
+        if n_found: print(f'Found {n_found} translations in {sources}')
+
+    n = len(pot) - len(existing)
+    progress = tqdm(pot,desc='Translating',total=n)
+
+    for entry in pot:
+        if (entry.msgctx,entry.msgid) in existing: continue
+
+        if not entry.msgstr: continue
+        entry.msgstr = t_func(entry.msgstr)
+        po.append(entry)
+
+        progress.update(1)
+
+    progress.close()
+
+    po.save(dest)
+
+
+
+# %% ../nbs/05_dashboard.ipynb 33
 # This is the default theme for Streamlit (v1.42.1)
 # We want to match it in our exports
 altair_default_config = {
@@ -1054,7 +1105,7 @@ altair_default_config = {
     "axisXBand": {"grid": False}
 }
 
-# %% ../nbs/05_dashboard.ipynb 33
+# %% ../nbs/05_dashboard.ipynb 34
 # Create an HTML of a matrix of plots
 # Based on what altair plot.save('plot.html') does, but modified to draw a full matrix and autoresize
 def plot_matrix_html(pmat, uid='viz', width=None, responsive=True):
