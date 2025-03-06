@@ -281,11 +281,13 @@ def make_start_end(x,value_col,cat_col,cat_order):
     #print(value_col,cat_order)
     #print(x)
     if len(x) != len(cat_order):
+        shared = x.to_dict(orient='records')[0]
         # Fill in missing rows with value zero so they would just be skipped
         mdf = pd.DataFrame({cat_col:pd.Categorical(cat_order,cat_order,ordered=True)})
-        x = pd.merge(mdf,x,on=cat_col,how='left').fillna({value_col:0})
+        x = pd.merge(mdf,x,on=cat_col,how='left').fillna({**shared,value_col:0})
     mid = len(x)//2
     x = x.sort_values(by=cat_col)
+    #print(x)
         
     if len(x)%2==1: # odd:
         scale_start=1.0
@@ -944,7 +946,13 @@ def marimekko(data, value_col='value', facets=[], val_format='%', width=800, too
 
     #xcol, ycol, ycol_scale = f1["col"], f0["col"], f0["colors"]
     xcol, ycol, ycol_scale = f0["col"], f1["col"], f1["colors"]
-     
+
+    # Fill in missing values with zero
+    mdf = pd.DataFrame(it.product(f0['order'],f1['order'],*[data[c].unique() for c in outer_factors]),columns=[xcol,ycol]+outer_factors)
+    mdf[xcol] = pd.Categorical(mdf[xcol],f0['order'],ordered=True)
+    mdf[ycol] = pd.Categorical(mdf[ycol],f1['order'],ordered=True)
+    data = mdf.merge(data,on=[xcol,ycol]+outer_factors,how='left').fillna({value_col:0,'group_size':1})
+
     data['w'] = data['group_size']*data[value_col]
     data.sort_values([xcol,ycol],ascending=[True,False],inplace=True)
 
