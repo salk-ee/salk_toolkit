@@ -825,7 +825,7 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
             if n_facet_cols==1:
                 plot = alt_wrapper(plot_fn(**pparams).properties(**dims, **alt_properties).facet(
                     row=alt.Row(f'{factor_cols[0]}:O', sort=list(data[factor_cols[0]].dtype.categories), header=alt.Header(labelOrient='top'))))
-            elif n_facet_cols==len(data[factor_cols[0]].dtype.categories):
+            elif len(factor_cols)>1:
                 plot = alt_wrapper(plot_fn(**pparams).properties(**dims, **alt_properties).facet(
                     column=alt.Column(f'{factor_cols[1]}:O', sort=list(data[factor_cols[1]].dtype.categories)),
                     row=alt.Row(f'{factor_cols[0]}:O', sort=list(data[factor_cols[0]].dtype.categories), header=alt.Header(labelOrient='top'))))

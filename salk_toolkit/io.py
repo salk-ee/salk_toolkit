@@ -15,6 +15,7 @@ __all__ = ['stk_loaded_files_set', 'stk_file_map', 'max_cats', 'custom_meta_key'
 import json, os, warnings
 import itertools as it
 from collections import defaultdict
+from collections.abc import Iterable
 
 import numpy as np
 import pandas as pd
@@ -140,7 +141,9 @@ def read_concatenate_files_list(meta,data_file=None,path=None,**kwargs):
     if len(cat_dtypes)>0:
         for c, dtype in cat_dtypes.items():
             if dtype is None: # Added as an extra field, infer categories
-                dtype = pd.Categorical([],list(fdf[c].dropna().unique())).dtype
+                s = fdf[c].dropna()
+                if s.dtype.name == 'object' and isinstance(s.iloc[0],Iterable): continue # Skip if it's a list
+                dtype = pd.Categorical([],list(s.unique())).dtype
             elif not set(fdf[c].dropna().unique()) <= set(dtype.categories): # If the categories are not the same, create a new dtype
                 #print(set(fdf[c].dropna().unique()), set(dtype.categories))
                 dtype = pd.Categorical([],list(fdf[c].dropna().unique())).dtype
