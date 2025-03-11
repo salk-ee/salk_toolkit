@@ -50,6 +50,9 @@ def str_from_list(val):
 # This is here so we can easily track which files would be needed for a model
 # so we can package them together if needed
 
+# NB! for unpacking to work, the processing needs to not be changed w.r.t. paths
+# For this, we only map values when loading actual files, not when calling other functions here
+
 #  a global list of files that have been loaded
 stk_loaded_files_set = set()
 
@@ -92,25 +95,26 @@ def read_concatenate_files_list(meta,data_file=None,path=None,**kwargs):
         
         data_file, opts = fd['file'], fd['opts']
         if path: data_file = os.path.join(os.path.dirname(path),data_file)
-        if data_file in stk_file_map: data_file = stk_file_map[data_file]
+        mapped_file = stk_file_map.get(data_file,data_file)
 
         if data_file[-4:] == 'json' or data_file[-7:] == 'parquet': # Allow loading metafiles or annotated data
             if data_file[-4:] == 'json': warn(f"Processing {data_file}") # Print this to separate warnings for input jsons from main 
+            # Pass in orig_data_file here as it might loop back to this function here and we need to preserve paths
             raw_data, meta = read_annotated_data(data_file, infer=False, **kwargs)
             if meta is not None: metas.append(meta)
         elif data_file[-3:] in ['csv', '.gz']:
-            raw_data = pd.read_csv(data_file, low_memory=False, **opts)
+            raw_data = pd.read_csv(mapped_file, low_memory=False, **opts)
         elif data_file[-3:] in ['sav','dta']:
-            read_fn = getattr(pyreadstat,'read_'+data_file[-3:])
+            read_fn = getattr(pyreadstat,'read_'+mapped_file[-3:])
             with warnings.catch_warnings(): # While pyreadstat has not been updated to pandas 2.2 standards
                 warnings.simplefilter("ignore")
-                raw_data, _ = read_fn(data_file, **{ 'apply_value_formats':True, 'dates_as_pandas_datetime':True },**opts)
+                raw_data, _ = read_fn(mapped_file, **{ 'apply_value_formats':True, 'dates_as_pandas_datetime':True },**opts)
         elif data_file[-4:] in ['.xls', 'xlsx', 'xlsm', 'xlsb', '.odf', '.ods', '.odt']:
-            raw_data = pd.read_excel(data_file, **opts)
+            raw_data = pd.read_excel(mapped_file, **opts)
         else:
             raise Exception(f"Not a known file format for {data_file}")
 
-        stk_loaded_files_set.add(data_file)
+        stk_loaded_files_set.add(mapped_file)
         
         # If data is multi-indexed, flatten the index
         if isinstance(raw_data.columns,pd.MultiIndex): raw_data.columns = [" | ".join(tpl) for tpl in raw_data.columns]
@@ -171,7 +175,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
                         return_meta=False, ignore_exclusions=False, only_fix_categories=False, return_raw=False, add_original_inds=False, virtual_pass=False):
     # Read metafile
     if meta_fname is not None:
-        meta = read_json(meta_fname,replace_const=False)
+        meta = read_json(stk_file_map.get(meta_fname,meta_fname),replace_const=False)
 
     # Print any issues with the meta without raising an error - for now
     if not virtual_pass: soft_validate(meta,DataMeta)
