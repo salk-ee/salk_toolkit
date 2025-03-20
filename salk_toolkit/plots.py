@@ -94,8 +94,8 @@ def boxplot_vals(s,extent=1.5):
     },index=['row'])
 
 
-@stk_plot('boxplots', data_format='longform', draws=True, n_facets=(1,2), priority=50, group_sizes=True, args={'fit_beta_dist':'bool'})
-def boxplot_manual(data, value_col='value', facets=[], val_format='%', width=800, tooltip=[], outer_factors=[], fit_beta_dist=False):
+@stk_plot('boxplots', data_format='longform', draws=True, n_facets=(1,2), priority=50, group_sizes=True)
+def boxplot_manual(data, value_col='value', facets=[], val_format='%', width=800, tooltip=[], outer_factors=[]):
     f0, f1 = facets[0], facets[1] if len(facets)>1 else None
 
     if val_format[-1] == '%': # Boxplots being a compound plot, this workaround is needed for axis & tooltips to be proper
@@ -104,10 +104,7 @@ def boxplot_manual(data, value_col='value', facets=[], val_format='%', width=800
     else: fit_beta_dist = False # Only use beta binomial for categoricals 
 
     f_cols = outer_factors+[f['col'] for f in facets[:2] if f is not None]
-    if fit_beta_dist: 
-        data['count'] = (data['group_size']*(data[value_col]/100)).round(0).astype('int')
-        df = beta_binomial_fit(data,f_cols)
-    else: df = data.groupby(f_cols,observed=True)[value_col].apply(boxplot_vals).reset_index()
+    df = data.groupby(f_cols,observed=True)[value_col].apply(boxplot_vals).reset_index()
     
     shared = {'y': alt.Y(f'{f0["col"]}:N', title=None, sort=f0['order']),
               **({'yOffset':alt.YOffset(f'{f1["col"]}:N', title=None, sort=f1['order'])} if f1 else {}),
@@ -1012,76 +1009,3 @@ def marimekko(data, value_col='value', facets=[], val_format='%', width=800, too
         #.add_params(selection)
     
     return plot
-
-# %% ../nbs/03_plots.ipynb 68
-# Beta binomial fitting using PyMC with a partially pooled model
-use_partial_pooling = False # bypass pymc and just use method of moments
-
-# Estimate boxplot for p by fitting beta binomial distribution
-def estimate_box_from_beta_pk(row,beta_max_k=1000):
-    p,k = row['p'],row['k']
-    qs = sps.beta.ppf([0.03,0.25,0.5,0.75,0.97],p*k,(1-p)*k)*100
-
-    return pd.Series({
-        'tmin': qs[0],
-        'min': qs[0],
-        'q1': qs[1],
-        'median': qs[2],
-        'q3': qs[3],
-        'max': qs[4],
-        'tmax': qs[4]
-    })
-
-# Beta-binomial partially pooled fitting function
-bb_pp_ff = None
-def compile_bb_pp_ff():
-    import pytensor, pytensor.tensor as pt
-    import pymc as pm
-
-    log_pv = pt.dvector('log_pv')
-    pv = pt.exp(log_pv)
-    mm,s,mv = pv[0],pv[1],pt.minimum(pv[2:],10000) # Thresholding is important to avoid large mv-s for betabinomial
-
-    c,n = pt.dmatrix('c'), pt.dmatrix('n')
-    p = (c.sum(axis=0)+1e-3)/(n.sum(axis=0)+2e-3)
-    lp = (
-        pm.BetaBinomial.logp(value=c,n=n,alpha=p*mv,beta=(1-p)*mv).sum() + #+ #p*mv,beta=(1-p)*mv).sum() +
-        pm.LogNormal.logp(mv, mu=mm, sigma=s).sum() + # Partially pooled means
-        pm.Normal.logp(mm, mu=4, sigma=3).sum() + # Prior for mean 
-        pm.Gamma.logp(s, alpha=2, scale=1).sum() # Prior for scale
-    )
-
-    lpf = pytensor.function([log_pv,c,n], lp, on_unused_input='warn')
-    lpf_jac = pytensor.function([log_pv,c,n], pytensor.gradient.jacobian(lp,[log_pv]))
-    return lambda v,c,n: (-lpf(v,c,n), -np.clip(lpf_jac(v,c,n)[0],-1e3,1e3)) # Clipping is importatnt to avoid exploding gradients
-
-def beta_binomial_fit(data,f_cols,beta_max_k=5000):
-    from scipy.optimize import minimize
-    global bb_pp_ff
-
-    data.to_csv('~/boxplot_data.csv') # If needed for debugging
-
-    cdf = data.pivot(index='draw', columns=f_cols, values='count').fillna(0)
-    cv, res_inds = cdf.to_numpy(), cdf.columns
-    nv = data.pivot(index='draw', columns=f_cols, values='group_size').fillna(0).to_numpy()
-
-    # Calculate method-of-moments estimates for k    
-    m, m2 = cv.mean(axis=0), (cv**2).mean(axis=0)
-    n, n2 = nv.mean(axis=0), (nv**2).mean(axis=0)
-    p = m/(n+1e-5) # p = a/(a+b)
-    kmm = (p*n2 - m2)/(m2 - n2*p*p - p*(1-p)*n + 1e-5) # k = a+b
-    kmm[(kmm<=0) | (kmm>beta_max_k)] = beta_max_k
-
-    if use_partial_pooling:
-
-        if bb_pp_ff is None: bb_pp_ff = compile_bb_pp_ff()
-
-        res = minimize(bb_pp_ff, [3, 1.5] + list(np.log(kmm)), args=(cv,nv), jac=True, method='L-BFGS-B')
-        if not res.success: raise ValueError(f"Beta-binomial fit failed: {res.message}")
-
-        print(np.exp(res.x[:2]), np.exp(res.x[2:]).mean())
-    
-    rdf = pd.DataFrame({ 'p':p,'k':kmm },index=res_inds).reset_index()
-
-    return rdf.groupby(f_cols,observed=True)[['p','k']].apply(estimate_box_from_beta_pk).reset_index()
-
