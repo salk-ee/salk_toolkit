@@ -9,7 +9,8 @@ __all__ = ['warn', 'default_color', 'default_bidirectional_gradient', 'redblue_g
            'gradient_to_discrete_color_scale', 'gradient_subrange', 'gradient_from_color', 'gradient_from_color_alt',
            'is_datetime', 'rel_wave_times', 'stable_draws', 'deterministic_draws', 'clean_kwargs', 'censor_dict',
            'cut_nice_labels', 'cut_nice', 'rename_cats', 'str_replace', 'merge_series', 'aggregate_multiselect',
-           'deaggregate_multiselect', 'gb_in', 'gb_in_apply', 'stk_defaultdict', 'cached_fn']
+           'deaggregate_multiselect', 'gb_in', 'gb_in_apply', 'stk_defaultdict', 'cached_fn',
+           'scores_to_ordinal_rankings']
 
 # %% ../nbs/10_utils.ipynb 3
 import json, os, warnings, math, inspect
@@ -407,3 +408,26 @@ def cached_fn(fn):
             cache[x] = fn(x)
         return cache[x]
     return cf
+
+# %% ../nbs/10_utils.ipynb 46
+def scores_to_ordinal_rankings(df, cols, name):
+
+    # Add a col with sub-min values to find the cutoff points for nan values
+    sinds = np.argsort(-df[cols].values,axis=1)
+    
+    rmat = df[cols].rank(method='max', ascending=False, axis=1).values
+    #rmat = np.concatenate([rmat,np.full((len(rmat),1),0)],axis=1)
+    rvals = rmat[np.tile(np.arange(len(rmat)),(len(rmat[0]),1)).T,sinds]
+
+    names_a, ties_a = [], []
+    for cns, rs in zip(np.array(cols)[sinds],rvals):
+        if np.isnan(rs[-1]):
+            l = np.where(np.isnan(rs))[0][0]
+            cns, rs = cns[:l], rs[:l]
+        ties = (rs-np.arange(len(rs))-1).astype(int)
+        names_a.append(list(cns))
+        ties_a.append(list(ties))
+    df[f'{name}_orank'] = names_a
+    df[f'{name}_ties'] = ties_a
+    return df
+
