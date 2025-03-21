@@ -707,7 +707,10 @@ def read_and_process_data(desc, return_meta=False, constants={}, skip_postproces
     # Validate the data desc format 
     desc = DataDescription.validate(desc).dict()
 
-    df, meta, einfo = read_concatenate_files_list(desc, **kwargs)
+    if desc.get('data') is not None:
+        df, meta, einfo = pd.DataFrame(data=desc['data']), None, {}
+    else:
+        df, meta, einfo = read_concatenate_files_list(desc, **kwargs)
 
     if meta is None and return_meta:
         raise Exception("No meta found on any of the files")
