@@ -19,6 +19,7 @@ from collections.abc import Iterable
 
 import numpy as np
 import pandas as pd
+import scipy as sp
 import polars as pl
 import datetime as dt
 
@@ -90,7 +91,7 @@ def read_concatenate_files_list(meta,data_file=None,path=None,**kwargs):
                     {'opts': opts, 'file': f } for f in data_files ]
     
     cat_dtypes = {}
-    raw_dfs, metas = [], []
+    raw_dfs, metas, einfo = [], [], {}
     for fi, fd in enumerate(data_files):
         
         data_file, opts = fd['file'], fd['opts']
@@ -108,7 +109,9 @@ def read_concatenate_files_list(meta,data_file=None,path=None,**kwargs):
             read_fn = getattr(pyreadstat,'read_'+mapped_file[-3:])
             with warnings.catch_warnings(): # While pyreadstat has not been updated to pandas 2.2 standards
                 warnings.simplefilter("ignore")
-                raw_data, _ = read_fn(mapped_file, **{ 'apply_value_formats':True, 'dates_as_pandas_datetime':True },**opts)
+                raw_data, fmeta = read_fn(mapped_file, **{ 'apply_value_formats':True, 'dates_as_pandas_datetime':True },**opts)
+                bname = os.path.splitext(os.path.basename(data_file))[0]
+                einfo[f'{bname}_meta'] = fmeta
         elif data_file[-4:] in ['.xls', 'xlsx', 'xlsm', 'xlsb', '.odf', '.ods', '.odt']:
             raw_data = pd.read_excel(mapped_file, **opts)
         else:
@@ -159,8 +162,8 @@ def read_concatenate_files_list(meta,data_file=None,path=None,**kwargs):
         # This will fix categories inside meta too
         fix_meta_categories(meta,fdf,warnings=False)
         # TODO: one should also merge the structures in case the columns don't match
-        return fdf, meta
-    else: return fdf, None
+        return fdf, meta, einfo
+    else: return fdf, None, einfo
 
 # %% ../nbs/01_io.ipynb 8
 # convert number series to categorical, avoiding long and unweildy fractions like 24.666666666667
@@ -186,12 +189,12 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
     
     # Read datafile(s)
     if raw_data is None:
-        raw_data, inp_meta = read_concatenate_files_list(meta,data_file,path=meta_fname)
+        raw_data, inp_meta, einfo = read_concatenate_files_list(meta,data_file,path=meta_fname)
         if inp_meta is not None: warn(f"Processing main meta file") # Print this to separate warnings for input jsons from main 
 
     if return_raw: return (raw_data, meta) if return_meta else raw_data
     
-    globs = {'pd':pd, 'np':np, 'stk':stk, 'df':raw_data, **constants }
+    globs = {'pd':pd, 'np':np, 'sp':sp, 'stk':stk, 'df':raw_data, **einfo, **constants }
     
     pp_key = 'preprocessing' if not virtual_pass else 'virtual_preprocessing'
     if pp_key in meta and not only_fix_categories:
@@ -704,13 +707,13 @@ def read_and_process_data(desc, return_meta=False, constants={}, skip_postproces
     # Validate the data desc format 
     desc = DataDescription.validate(desc).dict()
 
-    df, meta = read_concatenate_files_list(desc, **kwargs)
+    df, meta, einfo = read_concatenate_files_list(desc, **kwargs)
 
     if meta is None and return_meta:
         raise Exception("No meta found on any of the files")
     
     # Perform transformation and filtering
-    globs = {'pd':pd, 'np':np, 'stk':stk, 'df':df, **constants}
+    globs = {'pd':pd, 'np':np, 'sp':sp, 'stk':stk, 'df':df, **einfo,**constants}
     if desc.get('preprocessing'): exec(str_from_list(desc['preprocessing']), globs)
     if desc.get('filter'): globs['df'] = globs['df'][eval(desc['filter'], globs)]
     if desc.get('merge'): globs['df'] = perform_merges(globs['df'],desc.get('merge'),constants)
