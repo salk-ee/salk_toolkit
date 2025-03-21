@@ -187,6 +187,7 @@ class DataDescription(BaseModel):
     # NB! BaseModel not PBase to allow for extensions such as PopulationDescription
     file: Optional[str] = None # Single file to read
     files: Optional[List[Union[str,Dict]]] = None # Multiple files to parse
+    data: Optional[Dict[str,Any]] = None # Alternative to file, files. Dictionary of column {name: values} pairs.
     preprocessing: Optional[Union[str,List[str]]] = None # String of python code that can reference df
     filter: Optional[str] = None # String of python code that can reference df and is evaluated as df[filter code]
     merge: MergeSpec = [] # Optionally merge another data source into this one
