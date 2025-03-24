@@ -110,8 +110,7 @@ def read_concatenate_files_list(meta,data_file=None,path=None,**kwargs):
             with warnings.catch_warnings(): # While pyreadstat has not been updated to pandas 2.2 standards
                 warnings.simplefilter("ignore")
                 raw_data, fmeta = read_fn(mapped_file, **{ 'apply_value_formats':True, 'dates_as_pandas_datetime':True },**opts)
-                bname = os.path.splitext(os.path.basename(data_file))[0]
-                einfo[f'{bname}_meta'] = fmeta
+                einfo.update(fmeta.__dict__) # Allow the fields in meta to be used just like self-defined constants
         elif data_file[-4:] in ['.xls', 'xlsx', 'xlsm', 'xlsb', '.odf', '.ods', '.odt']:
             raw_data = pd.read_excel(mapped_file, **opts)
         else:
@@ -262,7 +261,8 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
                 if cd['categories'] == 'infer':
                     if s.dtype.name=='category': cd['categories'] = list(s.dtype.categories) # Categories come from data file
                     elif 'translate' in cd and 'transform' not in cd and set(cd['translate'].values()) >= set(s.dropna().unique()): # Infer order from translation dict
-                        cd['categories'] = pd.unique(np.array(list(cd['translate'].values())).astype('str')).tolist()
+                        cats = [ str(c) for c in cd['translate'].values() if c in s.unique() ]
+                        cd['categories'] = list(dict.fromkeys(cats)) # As mapping can be many-to-one, we need to use unique
                         s = s.astype('str')
                     else: # Just use lexicographic ordering
                         if cd.get('ordered',False) and not pd.api.types.is_numeric_dtype(s):

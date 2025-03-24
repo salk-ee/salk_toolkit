@@ -210,10 +210,11 @@ def transform_cont(data, cols, transform, val_format='.1f', val_range=None):
         mult, val_format = (len(cols),'.1f') if transform == 'softmax-ratio' else (1.0,'.1%') # Ratio is just a multiplier
         return data.with_columns(pl.col(cols).exp()*mult / pl.sum_horizontal(pl.col(cols).exp())), val_format, (0.0,1.0*mult)
     elif transform in custom_row_transforms:
+        tfunc, fmt = custom_row_transforms[transform]
         data = data.map_batches(lambda bdf: 
-                    apply_npf_on_pl_df(bdf, cols, custom_row_transforms[transform]),
+                    apply_npf_on_pl_df(bdf, cols, tfunc),
                     streamable=True, validate_output_schema=False) # NB! Set validate to true if debugging this
-        return data,'.1f',None
+        return data,fmt,None
         
     else: raise Exception(f"Unknown transform '{transform}'")
 
@@ -236,7 +237,19 @@ def plackett_luce_expected_ranks(p):
     expected_ranks = 1 + (sums - 0.5)  
     return expected_ranks
 
-custom_row_transforms['pl_ranking'] = plackett_luce_expected_ranks
+custom_row_transforms['pl_ranking'] = plackett_luce_expected_ranks,'.1f'
+
+# Average rank order 
+def avg_rank(ovs):
+    return 1+np.argsort(np.argsort(ovs,axis=1),axis=1) 
+    # Rankdata is insanely slow for some reason
+    #return sps.rankdata(ovs, axis=1, method='average')
+
+def highest_ranked(ovs):
+    return (ovs == np.max(ovs,axis=1)[:,None]).astype('int')
+
+custom_row_transforms['ranking'] = avg_rank,'.1f'
+custom_row_transforms['highest_ranked'] = highest_ranked,'.1%'
 
 # %% ../nbs/02_pp.ipynb 20
 cont_transform_options = ['center','zscore','proportion','softmax','softmax-ratio'] + list(custom_row_transforms.keys())
