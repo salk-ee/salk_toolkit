@@ -80,13 +80,16 @@ def estimate_legend_columns_horiz(cats, width, extra_text=[]):
 
 # %% ../nbs/03_plots.ipynb 13
 # Regular boxplot with quantiles and Tukey whiskers
-def boxplot_vals(s,extent=1.5):
+def boxplot_vals(s,extent=1.5, delta=1e-4):
     q1, q3 = s.quantile(0.25), s.quantile(0.75)
+    if q3-q1>2*delta: delta = 0.0 # only inflate when we need to
     return pd.DataFrame({
         'min': s.min(),
         'q1': q1,
+        'q1p': q1-delta,
         'median': s.median(),
         'q3': q3,
+        'q3p': q3+delta,
         'max': s.max(),
         # Tukey values
         'tmin': s[s>q1-extent*(q3-q1)].min(),
@@ -103,8 +106,13 @@ def boxplot_manual(data, value_col='value', facets=[], val_format='%', width=800
         val_format = val_format[:-1]+'f'
     else: fit_beta_dist = False # Only use beta binomial for categoricals 
 
+
+    minv,maxv = data[value_col].min(), data[value_col].max()
+    if val_format[-1] == '%': minv = 0.0
+    if minv==maxv: minv, maxv = minv-0.01, maxv+0.01
+
     f_cols = outer_factors+[f['col'] for f in facets[:2] if f is not None]
-    df = data.groupby(f_cols,observed=True)[value_col].apply(boxplot_vals).reset_index()
+    df = data.groupby(f_cols,observed=True)[value_col].apply(boxplot_vals,delta=(maxv-minv)/400).reset_index()
     
     shared = {'y': alt.Y(f'{f0["col"]}:N', title=None, sort=f0['order']),
               **({'yOffset':alt.YOffset(f'{f1["col"]}:N', title=None, sort=f1['order'])} if f1 else {}),
@@ -114,8 +122,6 @@ def boxplot_manual(data, value_col='value', facets=[], val_format='%', width=800
 
     size = 12
 
-    minv,maxv = df['tmin'].min(), df['tmax'].max()
-    if val_format[-1] == '%': minv = 0.0
 
     # Compose each layer individually
     lower_plot = root.mark_rule().encode(
@@ -124,8 +130,8 @@ def boxplot_manual(data, value_col='value', facets=[], val_format='%', width=800
     )
 
     middle_plot = root.mark_bar(size=size).encode(
-        x=alt.X('q1:Q'),
-        x2=alt.X2('q3:Q'),
+        x=alt.X('q1p:Q'),
+        x2=alt.X2('q3p:Q'),
         **({
             'color': alt.Color(f'{f0["col"]}:N', scale=f0['colors'], legend=None)    
             } if not f1 else {

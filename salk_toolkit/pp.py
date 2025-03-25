@@ -206,7 +206,7 @@ def transform_cont(data, cols, transform, val_format='.1f', val_range=None):
         return data.with_columns((pl.col(cols) - pl.col(cols).mean()) / pl.col(cols).std(0)), '.2f', None
     elif transform == 'proportion': 
         return data.with_columns(pl.col(cols)/pl.sum_horizontal(pl.col(cols).abs())), '.1%', (0.0,1.0)
-    elif transform.startswith('softmax'): 
+    elif transform in ['softmax','softmax-ratio']: 
         mult, val_format = (len(cols),'.1f') if transform == 'softmax-ratio' else (1.0,'.1%') # Ratio is just a multiplier
         return data.with_columns(pl.col(cols).exp()*mult / pl.sum_horizontal(pl.col(cols).exp())), val_format, (0.0,1.0*mult)
     elif transform in custom_row_transforms:
@@ -219,9 +219,9 @@ def transform_cont(data, cols, transform, val_format='.1f', val_range=None):
     else: raise Exception(f"Unknown transform '{transform}'")
 
 # %% ../nbs/02_pp.ipynb 19
-# Expected rank given Plackett-luce log-odds
+# Expected rank given Plackett-luce (softmax) log-odds
 # Relies on the fact that sum of probs of pairwise comparisons is average rank
-def plackett_luce_expected_ranks(p):
+def softmax_expected_ranks(p):
     
     # Convert from log-odds to proportions, but reverse probabilities
     p = np.exp(-p)
@@ -237,7 +237,7 @@ def plackett_luce_expected_ranks(p):
     expected_ranks = 1 + (sums - 0.5)  
     return expected_ranks
 
-custom_row_transforms['pl_ranking'] = plackett_luce_expected_ranks,'.1f'
+custom_row_transforms['softmax-avgrank'] = softmax_expected_ranks,'.1f'
 
 # Average rank order 
 def avg_rank(ovs):
@@ -248,8 +248,8 @@ def avg_rank(ovs):
 def highest_ranked(ovs):
     return (ovs == np.max(ovs,axis=1)[:,None]).astype('int')
 
-custom_row_transforms['ranking'] = avg_rank,'.1f'
-custom_row_transforms['highest_ranked'] = highest_ranked,'.1%'
+custom_row_transforms['ordered-avgrank'] = avg_rank,'.1f'
+custom_row_transforms['ordered-maxrank'] = highest_ranked,'.1%'
 
 # %% ../nbs/02_pp.ipynb 20
 cont_transform_options = ['center','zscore','proportion','softmax','softmax-ratio'] + list(custom_row_transforms.keys())
@@ -409,6 +409,7 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     
     # Convert ordered categorical to continuous if we can
     rcl = gc_dict.get(pp_desc['res_col'], [pp_desc['res_col']])
+    rcl = [ c for c in rcl if c in cols]
     for rc in rcl:
         res_meta = c_meta[rc]
         if pp_desc.get('convert_res') == 'continuous' and res_meta.get('ordered'):
