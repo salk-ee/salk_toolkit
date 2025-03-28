@@ -248,8 +248,12 @@ def avg_rank(ovs):
 def highest_ranked(ovs):
     return (ovs == np.max(ovs,axis=1)[:,None]).astype('int')
 
+def topk_ranked(ovs,k=3): # Todo: make this k changeable with pp_desc
+    return (np.argsort(np.argsort(ovs,axis=1),axis=1)>=ovs.shape[1]-k)
+
 custom_row_transforms['ordered-avgrank'] = avg_rank,'.1f'
 custom_row_transforms['ordered-maxrank'] = highest_ranked,'.1%'
+custom_row_transforms['ordered-topk'] = topk_ranked,'.1%'
 
 # %% ../nbs/02_pp.ipynb 20
 cont_transform_options = ['center','zscore','proportion','softmax','softmax-ratio'] + list(custom_row_transforms.keys())

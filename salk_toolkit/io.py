@@ -190,6 +190,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
     if raw_data is None:
         raw_data, inp_meta, einfo = read_concatenate_files_list(meta,data_file,path=meta_fname)
         if inp_meta is not None: warn(f"Processing main meta file") # Print this to separate warnings for input jsons from main 
+    else: einfo = {}
 
     if return_raw: return (raw_data, meta) if return_meta else raw_data
     
