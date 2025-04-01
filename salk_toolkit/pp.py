@@ -408,6 +408,13 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     if (not pp_desc.get('poststrat',True)) and 'training_subsample' in cols:
         filtered_df = filtered_df.filter(pl.col('training_subsample'))
 
+    # Discretize factor columns that are numeric
+    for c in factor_cols:
+        if c in cols and schema[c].is_numeric():    
+            filtered_df, labels = discretize_continuous(filtered_df,c,c_meta.get(c,{}))
+            # Make sure it gets restored to pandas properly
+            c_meta[c].update({ 'categories': labels, 'ordered': True, 'continuous': False })
+
     # Sample from filtered data
     if 'sample' in pp_desc: filtered_df = filtered_df.sample(n=pp_desc['sample'], with_replacement=True)
     
@@ -436,14 +443,6 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     val_format = pp_desc.get('val_format') or val_format # Plot can override the default
     val_range = pp_desc.get('val_range') or val_range
 
-    # Discretize factor columns that are numeric
-    for c in factor_cols:
-        if c in cols and schema[c].is_numeric():    
-            filtered_df, labels = discretize_continuous(filtered_df,c,c_meta.get(c,{}))
-            # Make sure it gets restored to pandas properly
-            c_meta[c].update({ 'categories': labels, 'ordered': True, 'continuous': False })
-
-    
 
     # Compute draws if needed - Nb: also applies if the draws are shared for the group of questions
     if 'draw' in cols and pp_desc['res_col'] in data_meta.get('draws_data',{}):
