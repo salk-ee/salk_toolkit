@@ -103,7 +103,7 @@ class ColumnBlockMeta(PBase):
     # Block level flags
     generated: bool = False # This block is for data that is generated, i.e. not initially in the file. 
     hidden: bool = False # Use this to hide the block in explorer.py
-    virtual: bool = False # This block is for the virtual pass (i.e. works on already sampled data)
+    virtual: bool = False # This block is virtual (i.e. just used in display. NB! Ignores all transformations on values)
 
 # %% ../nbs/06_validation.ipynb 9
 # Again, convert list to dict for easier debugging in case errors get thrown

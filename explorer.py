@@ -47,6 +47,7 @@ with st.spinner("Loading libraries.."):
     from salk_toolkit.pp import *
     from salk_toolkit.utils import *
     from salk_toolkit.dashboard import draw_plot_matrix, plot_matrix_html, facet_ui, filter_ui, get_plot_width, default_translate, stss_safety
+    from copy import deepcopy
 
     tqdm = lambda x: x # So we can freely copy-paste from notebooks
 
@@ -158,6 +159,12 @@ def get_dimensions(data_meta, present_cols, observations=True):
 
 args = {}
 
+# If we have an override, add the column block to the data meta
+raw_first_data_meta = deepcopy(first_data_meta)
+if st.session_state.get('override'):
+    pp = eval(st.session_state['override'])
+    first_data_meta = update_data_meta_with_pp_desc(first_data_meta, pp)
+
 c_meta = extract_column_meta(first_data_meta)
 
 with st.sidebar: #.expander("Select dimensions"):
@@ -265,8 +272,7 @@ with st.sidebar: #.expander("Select dimensions"):
         if override: args.update(eval(override))
     
     args['filter'] = filter_ui(first_data,first_data_meta,
-                                dims=all_dims,detailed=detailed)    
-
+                                dims=all_dims,detailed=detailed)
 
     # Export options
     with st.expander('Export'):
@@ -325,7 +331,7 @@ elif input_files_facet:
         df, fargs = loaded[ifile]['data'], args.copy()
         fargs['filter'] = { k:v for k,v in fargs['filter'].items() if k in loaded[ifile]['columns'] }
         fargs['factor_cols'] = [ f for f in fargs['factor_cols'] if f!='input_file' ]
-        pparams = pp_transform_data(df, first_data_meta, fargs)
+        pparams = pp_transform_data(df, raw_first_data_meta, fargs)
         dfs.append(pparams['data'])
 
     fdf = pd.concat(dfs)
@@ -339,7 +345,7 @@ elif input_files_facet:
         [ v for i,f in enumerate(input_files) for v in [f]*len(dfs[i]) ],input_files)
 
     pparams['data'] = fdf
-    plot = create_plot(pparams,first_data_meta,args,
+    plot = create_plot(pparams,raw_first_data_meta,args,
                        translate=translate,
                        width=(width or get_plot_width('full',1)),
                        return_matrix_of_plots=matrix_form)
@@ -356,7 +362,7 @@ else:
             st.header(os.path.splitext(ifile.replace('_',' '))[0])
 
             data_meta = loaded[ifile]['data_meta'] if global_data_meta is None else global_data_meta
-            if data_meta is None: data_meta = first_data_meta
+            if data_meta is None: data_meta = raw_first_data_meta
 
             if (args['res_col'] in all_cols   # I.e. it is a column, not a group
                 and args['res_col'] not in loaded[ifile]['columns']):

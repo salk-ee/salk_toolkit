@@ -5,8 +5,8 @@
 # %% auto 0
 __all__ = ['special_columns', 'registry', 'registry_meta', 'stk_plot_defaults', 'n_a', 'priority_weights',
            'cont_transform_options', 'get_cat_num_vals', 'stk_plot', 'stk_deregister', 'get_plot_fn', 'get_plot_meta',
-           'get_all_plots', 'calculate_priority', 'matching_plots', 'pp_transform_data', 'create_plot',
-           'impute_factor_cols', 'e2e_plot', 'test_new_plot']
+           'get_all_plots', 'calculate_priority', 'update_data_meta_with_pp_desc', 'matching_plots',
+           'pp_transform_data', 'create_plot', 'impute_factor_cols', 'e2e_plot', 'test_new_plot']
 
 # %% ../nbs/02_pp.ipynb 3
 import json, os
@@ -18,6 +18,7 @@ import pandas as pd
 import polars as pl
 import datetime as dt
 import scipy.stats as sps
+from copy import deepcopy
 
 from typing import List, Tuple, Dict, Union, Optional
 
@@ -151,8 +152,17 @@ def calculate_priority(plot_meta, match):
     return priority, reasons
 
 
+# Allow pp_desc to modify data meta
+def update_data_meta_with_pp_desc(data_meta, pp_desc):
+    if pp_desc.get('res_meta'):
+        data_meta, rmeta = deepcopy(data_meta), deepcopy(pp_desc['res_meta'])
+        rmeta = replace_constants(rmeta,data_meta.get('constants',{}))
+        data_meta['structure'].append(rmeta)
+    return data_meta
+
 # Get a list of plot types matching required spec
 def matching_plots(pp_desc, df, data_meta, details=False, list_hidden=False):
+    data_meta = update_data_meta_with_pp_desc(data_meta, pp_desc)
     col_meta = extract_column_meta(data_meta)
     
     rc = pp_desc['res_col']
@@ -355,6 +365,7 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
 
     plot_meta = get_plot_meta(pp_desc['plot'])
     
+    data_meta = update_data_meta_with_pp_desc(data_meta, pp_desc)
     gc_dict = group_columns_dict(data_meta)
     c_meta = extract_column_meta(data_meta)
 
@@ -705,6 +716,7 @@ def inner_outer_factors(factor_cols, pp_desc, plot_meta):
 # Handles all of the data wrangling and parameter formatting
 def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=False, width=200, height=None, return_matrix_of_plots=False, translate=None):
     data, col_meta = pparams['data'], pparams['col_meta']
+    data_meta = update_data_meta_with_pp_desc(data_meta, pp_desc)
 
     plot_meta = get_plot_meta(pp_desc['plot'])
     
