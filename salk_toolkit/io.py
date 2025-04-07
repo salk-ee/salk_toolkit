@@ -148,7 +148,9 @@ def read_concatenate_files_list(meta,data_file=None,path=None,**kwargs):
         for c, dtype in cat_dtypes.items():
             if dtype is None: # Added as an extra field, infer categories
                 s = fdf[c].dropna()
-                if s.dtype.name == 'object' and isinstance(s.iloc[0],Iterable): continue # Skip if it's a list
+                if (s.dtype.name == 'object' and
+                    not isinstance(s.iloc[0],str) and # Check for string as string is also iterable
+                    isinstance(s.iloc[0],Iterable)): continue # Skip if it's a list or tuple or ndarray
                 dtype = pd.Categorical([],list(s.unique())).dtype
             elif not set(fdf[c].dropna().unique()) <= set(dtype.categories): # If the categories are not the same, create a new dtype
                 #print(set(fdf[c].dropna().unique()), set(dtype.categories))
