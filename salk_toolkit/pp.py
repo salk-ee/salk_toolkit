@@ -13,6 +13,8 @@ import json, os
 import itertools as it
 from collections import defaultdict
 
+import gc
+
 import numpy as np
 import pandas as pd
 import polars as pl
@@ -455,7 +457,6 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     val_format = pp_desc.get('val_format') or val_format # Plot can override the default
     val_range = pp_desc.get('val_range') or val_range
 
-
     # Compute draws if needed - Nb: also applies if the draws are shared for the group of questions
     if 'draw' in cols and pp_desc['res_col'] in data_meta.get('draws_data',{}):
         uid, ndraws = data_meta['draws_data'][pp_desc['res_col']]
@@ -609,8 +610,11 @@ def wrangle_data(raw_df, col_meta, factor_cols, weight_col, pp_desc, n_questions
     # For new_stream, polars 1.23 considers categoricals to still be broken
     # TODO: Check back here when 1.24+ is released
     #print("final\n",data.explain(streaming=True))
+    #data = data.collect(engine='streaming').to_pandas()
     data = data.collect(streaming=True).to_pandas()
-    #print("DATA\n",data)
+
+    # Force immediate garbage collection
+    gc.collect() # Does not help much, but unlikely to hurt either
 
     # How many datapoints the plot is based on. This is useful metainfo to display sometimes
     pparams['filtered_size'] = raw_df.select(pl.col(weight_col).sum()).collect().item()/n_questions

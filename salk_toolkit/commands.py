@@ -47,8 +47,6 @@ def translate_pot(template, dest, t_func, sources=[]):
         if (entry.msgctxt,entry.msgid) in existing: continue
         todo[entry.msgid].append(entry)
 
-    print(len(todo),todo)
-
     # Go through sources and add translations found there to the pot
     if sources and len(todo) > 0:
         n_existing = len(existing)

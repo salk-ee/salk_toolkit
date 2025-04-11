@@ -279,11 +279,14 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
                     # Many things in pp and model pipeline assume categories are set so this is a necessity
                     #o_cd['categories'] = cd['categories'] # Done later in fix_meta_categories
                 elif pd.api.types.is_numeric_dtype(s): # Numeric datatype being coerced into categorical - map to nearest category value
-                    fcats = np.array(cd['categories']).astype(float)
-                    s = pd.Series(np.array(cd['categories'])[np.abs(s.values[:,None] - fcats[None,:]).argmin(axis=1)], 
+                    try:
+                        fcats = np.array(cd['categories']).astype(float)
+                        s = pd.Series(np.array(cd['categories'])[np.abs(s.values[:,None] - fcats[None,:]).argmin(axis=1)], 
                                 index=s.index, name=s.name,
                                 dtype=pd.CategoricalDtype(categories=cd['categories'],ordered=cd['ordered']))
-
+                    except:
+                        raise ValueError(f"Categories for {cn} are not numeric: {cd['categories']}")
+                
                 cats = cd['categories']
                 s_rep = s.dropna().iloc[0] # Find a non-na element
                 if isinstance(s_rep,list) or isinstance(s_rep,np.ndarray): 
@@ -812,7 +815,7 @@ def save_parquet_with_metadata(df, meta, file_name):
     }
     table = table.replace_schema_metadata(combined_meta)
     
-    pq.write_table(table, file_name, compression='GZIP')
+    pq.write_table(table, file_name, compression='ZSTD')
     
 # Just load the metadata from the parquet file
 def load_parquet_metadata(file_name):
