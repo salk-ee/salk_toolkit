@@ -221,7 +221,7 @@ def load_po_translations():
 # Main dashboard wrapper - WIP
 class SalkDashboardBuilder:
 
-    def __init__(self, data_source, auth_conf, logfile, groups=['guest','user','admin'], org_whitelist=None, public=False, default_lang='en', plot_caching=False):
+    def __init__(self, data_source, auth_conf, logfile, groups=['guest','user','admin'], org_whitelist=None, public=False, default_lang='en', plot_caching=True):
         
         # Allow deployment.json to redirect files from local to s3 if local missing (i.e. in deployment scenario)
         if os.path.exists('./deployment.json'):

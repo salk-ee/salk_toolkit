@@ -263,10 +263,6 @@ def massplot(data, value_col='value', facets=[], filtered_size=1, val_format='%'
         opacity=alt.value(1.0),
         stroke=alt.value('#777'),
         tooltip = tooltip + [ alt.Tooltip('group_size:N',format='.1%',title='Group size') ],
-        #tooltip=[
-        #    'response:N',
-            #alt.Tooltip('mean(support):Q',format='.1%')
-        #    ],
         **({
                 'color': alt.Color(f'{f0["col"]}:N', scale=f0["colors"], legend=None)    
             } if not f1 else {
@@ -332,7 +328,7 @@ def likert_bars(data, value_col='value', facets=[],  tooltip=[], outer_factors=[
             color=alt.Color(
                 f'{f0["col"]}:N',
                 legend=alt.Legend(
-                    title='Response',
+                    title=None,#f0["col"],
                     orient='bottom',
                     columns=estimate_legend_columns_horiz(f0['order'],width,extra_text=f1['order'])
                     ),
@@ -545,6 +541,8 @@ def lines_hdi(data, value_col='value', facets=[], width=800, tooltip=[], val_for
     # Also draw wider hdi before the narrower
     hdf.sort_values([f0["col"],'hdi'],ascending=[False,False],inplace=True)
 
+    selection = alt.selection_point(fields=[f0["col"]], bind='legend')
+
     plot = alt.Chart(hdf).mark_area(interpolate='basis').encode(
         alt.X(f'{f1["col"]}:O', title=None, sort=f1["order"]),
         y=alt.Y('lo:Q',
@@ -552,17 +550,21 @@ def lines_hdi(data, value_col='value', facets=[], width=800, tooltip=[], val_for
             title=value_col
             ),
         y2=alt.Y2('hi:Q'),
-        color=alt.Color(
+        fill=alt.Fill(
             f'{f0["col"]}:N',
             sort=f0["order"],
-            scale=f0["colors"]
+            scale=f0["colors"],
+            legend=alt.Legend(symbolOpacity=1)
             ),
-        opacity=alt.Opacity('hdi:N',legend=None,scale=to_alt_scale({0.5:0.75,0.94:0.25})),
+        opacity=alt.condition(selection, 
+            alt.Opacity('hdi:N', legend=None, scale=to_alt_scale({0.5:0.75, 0.94:0.25})),
+            alt.value(0.1)
+        ),
         tooltip=[
             alt.Tooltip('hdi:N', title='HDI', format='.0%'),
             alt.Tooltip('lo:Q', title='HDI lower', format=val_format),
             alt.Tooltip('hi:Q', title='HDI upper', format=val_format),] + tooltip[1:]
-        )
+        ).add_params(selection)
     return plot
 
 # %% ../nbs/03_plots.ipynb 43

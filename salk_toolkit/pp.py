@@ -624,7 +624,7 @@ def wrangle_data(raw_df, col_meta, factor_cols, weight_col, pp_desc, n_questions
     for c in data.columns:
         if col_meta.get(c,{}).get('categories'): 
             m_cats = col_meta[c]['categories'] if col_meta[c].get('categories','infer')!='infer' else sorted(list(data[c].unique()))
-            if len(set(data[c].dtype.categories)-set(m_cats))>0: m_cats = col.dtype.categories
+            if len(set(data[c].dtype.categories)-set(m_cats))>0: m_cats = data[c].dtype.categories
 
             # Get the categories that are in use
             if c != pp_desc['res_col'] or not col_meta[c].get('likert'):
@@ -719,10 +719,13 @@ def inner_outer_factors(factor_cols, pp_desc, plot_meta):
 # Function that takes filtered raw data and plot information and outputs the plot
 # Handles all of the data wrangling and parameter formatting
 def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=False, width=200, height=None, return_matrix_of_plots=False, translate=None):
+    # Make a shallow copy so we don't mess with the original object. Important for caching
+    pparams = {**pparams}
+    pparams['data'] = pparams['data'].copy() # Also copy data as we mutate it w translate
+
+    # Get most commonly needed things in usable forms
     data, col_meta = pparams['data'], pparams['col_meta']
     data_meta = update_data_meta_with_pp_desc(data_meta, pp_desc)
-    pparams = {**pparams} # Make a shallow copy so we don't mess with the original object
-
     plot_meta = get_plot_meta(pp_desc['plot'])
     
     if 'question' in data.columns: # TODO: this should be in io.py already, probably
