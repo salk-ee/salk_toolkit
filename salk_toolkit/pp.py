@@ -721,6 +721,7 @@ def inner_outer_factors(factor_cols, pp_desc, plot_meta):
 def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=False, width=200, height=None, return_matrix_of_plots=False, translate=None):
     data, col_meta = pparams['data'], pparams['col_meta']
     data_meta = update_data_meta_with_pp_desc(data_meta, pp_desc)
+    pparams = {**pparams} # Make a shallow copy so we don't mess with the original object
 
     plot_meta = get_plot_meta(pp_desc['plot'])
     
@@ -903,7 +904,7 @@ def impute_factor_cols(pp_desc, col_meta, plot_meta=None):
 
 # %% ../nbs/02_pp.ipynb 35
 # A convenience function to draw a plot straight from a dataset
-def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, height=None, check_match=True, impute=True, **kwargs):
+def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, height=None, check_match=True, impute=True, plot_cache=None, **kwargs):
     if data_file is None and full_df is None:
         raise Exception('Data must be provided either as data_file or full_df')
     if data_file is None and data_meta is None:
@@ -924,8 +925,16 @@ def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, h
         fit, imp = matches[pp_desc['plot']]
         if  fit<0:
             raise Exception(f"Plot {pp_desc['plot']} not applicable in this situation because of flags {imp}")
-            
-    pparams = pp_transform_data(full_df, data_meta, pp_desc)
+
+    if plot_cache is not None:
+        key = json.dumps(pp_desc, sort_keys=True)
+        if key in plot_cache:
+            pparams = plot_cache[key]
+        else:
+            pparams = pp_transform_data(full_df, data_meta, pp_desc)
+            plot_cache[key] = pparams
+    else: # No caching
+        pparams = pp_transform_data(full_df, data_meta, pp_desc)
     return create_plot(pparams, data_meta, pp_desc, width=width,height=height,**kwargs)
 
 # Another convenience function to simplify testing new plots

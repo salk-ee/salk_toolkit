@@ -5,9 +5,9 @@
 # %% auto 0
 __all__ = ['get_plot_width', 'open_fn', 'exists_fn', 'read_annotated_data_lazy_cached', 'load_json', 'load_json_cached',
            'save_json', 'alias_file', 'default_translate', 'SalkDashboardBuilder', 'sqlite_client',
-           'UserAuthenticationManager', 'draw_plot_matrix', 'st_plot', 'stss_safety', 'facet_ui', 'filter_ui',
-           'translate_with_dict', 'log_missing_translations', 'clean_missing_translations', 'add_missing_to_dict',
-           'translate_pot', 'plot_matrix_html']
+           'UserAuthenticationManager', 'draw_plot_matrix', 'st_plot', 'plot_cache', 'stss_safety', 'facet_ui',
+           'filter_ui', 'translate_with_dict', 'log_missing_translations', 'clean_missing_translations',
+           'add_missing_to_dict', 'translate_pot', 'plot_matrix_html']
 
 # %% ../nbs/05_dashboard.ipynb 3
 import json, os, csv, re, time, types, inspect, psutil
@@ -221,7 +221,7 @@ def load_po_translations():
 # Main dashboard wrapper - WIP
 class SalkDashboardBuilder:
 
-    def __init__(self, data_source, auth_conf, logfile, groups=['guest','user','admin'], org_whitelist=None, public=False, default_lang='en'):
+    def __init__(self, data_source, auth_conf, logfile, groups=['guest','user','admin'], org_whitelist=None, public=False, default_lang='en', plot_caching=False):
         
         # Allow deployment.json to redirect files from local to s3 if local missing (i.e. in deployment scenario)
         if os.path.exists('./deployment.json'):
@@ -238,6 +238,7 @@ class SalkDashboardBuilder:
         self.pages = []
         self.sb_info = st.sidebar.empty()
         self.info = st.empty()
+        self.plot_caching = plot_caching
 
         # Current page name
         self.page_name = None
@@ -339,10 +340,14 @@ class SalkDashboardBuilder:
         if width is None: # Find or reuse auto-width
             width = self.p_widths[pos_id] if pos_id in self.p_widths else get_plot_width(pos_id)
             self.p_widths[pos_id] = width
+
+        # If multiple data sources are used, make sure we key it in for caching purposes
+        pp_desc['data'] = self.data_source
         
         # Draw plot
         st_plot(pp_desc,
                 width=width, translate=lambda s: self.tf(s,context='data'),
+                plot_cache=plot_cache() if self.plot_caching else None,
                 full_df=self.ldf,data_meta=self.meta,**kwargs)
         
     def filter_ui(self, dims, detailed=False, raw=False, force_choice=False, key=''):
@@ -420,6 +425,9 @@ class SalkDashboardBuilder:
 
         if self.user.get('group')=='admin':
             st.sidebar.write("Mem: %.1fMb" % (psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2))
+            if self.plot_caching:
+                pcache = plot_cache()
+                st.sidebar.write("Plot cache: %d items (%.1fMb)" % (len(pcache), get_size(pcache) / 1024 ** 2))
         
     # Add enter and exit so it can be used as a context
     def __enter__(self):
@@ -751,11 +759,17 @@ def draw_plot_matrix(pmat):
         for i, row in enumerate(pmat):
             if j>=len(pmat[i]): continue
             c.altair_chart(pmat[i][j],use_container_width=ucw)#,theme=None)
-
 # Draw the plot described by pp_desc 
 def st_plot(pp_desc,**kwargs):
     plots = e2e_plot(pp_desc, **kwargs)
     draw_plot_matrix(plots)
+
+# Create a global plot cache
+@st.cache_resource(show_spinner=False,ttl=None)
+def plot_cache():
+    return dict_cache(size=100)
+
+
 
 # %% ../nbs/05_dashboard.ipynb 23
 # Streamlit session state safety - check and clear session state if it has an unfit value

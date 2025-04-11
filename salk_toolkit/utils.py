@@ -10,12 +10,12 @@ __all__ = ['warn', 'default_color', 'default_bidirectional_gradient', 'redblue_g
            'is_datetime', 'rel_wave_times', 'stable_draws', 'deterministic_draws', 'clean_kwargs', 'censor_dict',
            'cut_nice_labels', 'cut_nice', 'rename_cats', 'str_replace', 'merge_series', 'aggregate_multiselect',
            'deaggregate_multiselect', 'gb_in', 'gb_in_apply', 'stk_defaultdict', 'cached_fn',
-           'scores_to_ordinal_rankings']
+           'scores_to_ordinal_rankings', 'dict_cache', 'get_size']
 
 # %% ../nbs/10_utils.ipynb 3
-import json, os, warnings, math, inspect
+import json, os, warnings, math, inspect, sys
 import itertools as it
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 
 import numpy as np
 import pandas as pd
@@ -433,3 +433,47 @@ def scores_to_ordinal_rankings(df, cols, name):
     df[f'{name}_ties'] = ties_a
     return df
 
+
+# %% ../nbs/10_utils.ipynb 48
+# Basic limited length cache
+class dict_cache(OrderedDict):
+
+    def __init__(self, size = 10, *args, **kwargs):
+        self.size = size
+        super().__init__(*args, **kwargs)
+
+    def __setitem__(self, key, value):
+
+        # If we would hit the limit, remove the oldest item
+        if len(self) >= self.size:
+            old = next(iter(self))
+            super().__delitem__(old)
+
+        # Add the new item
+        super().__setitem__(key, value)
+
+    def __getitem__(self, key):
+        res = super().__getitem__(key)
+        super().move_to_end(key) # Move it up to indicate recent use
+        return res
+
+# %% ../nbs/10_utils.ipynb 49
+# Borrowed from https://goshippo.com/blog/measure-real-size-any-python-object
+# Get the size of an object recursively
+def get_size(obj, seen=None):
+    
+    size = sys.getsizeof(obj)
+    if seen is None:
+        seen = set()
+    obj_id = id(obj)
+    if obj_id in seen:
+        return 0
+    seen.add(obj_id)
+    if isinstance(obj, dict):
+        size += sum([get_size(v, seen) for v in obj.values()])
+        size += sum([get_size(k, seen) for k in obj.keys()])
+    elif hasattr(obj, '__dict__'):
+        size += get_size(obj.__dict__, seen)
+    elif hasattr(obj, '__iter__') and not isinstance(obj, (str, bytes, bytearray)):
+        size += sum([get_size(i, seen) for i in obj])
+    return size
