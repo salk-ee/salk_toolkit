@@ -371,7 +371,8 @@ def fix_df_with_meta(df, dmeta):
         if c not in cmeta: continue
         cd = cmeta[c]
         if cd.get('categories'):
-            df[c] = pd.Categorical(df[c],categories=cd['categories'],ordered=cd.get('ordered',False))
+            cats = list(df[c].unique()) if cd['categories'] == 'infer' else cd['categories']
+            df[c] = pd.Categorical(df[c],categories=cats,ordered=cd.get('ordered',False))
     return df
 
 # %% ../nbs/01_io.ipynb 11
