@@ -361,7 +361,7 @@ class SalkDashboardBuilder:
             groups = kwargs.get('groups')
             if (groups is None or # Page is available to all
                 self.user.get('group')=='admin' or # Admin sees all
-                self.user.get('group','guests') in groups): # group is whitelisted
+                self.user.get('group','guest') in groups): # group is whitelisted
                 self.pages.append( (name,pfunc,kwargs) )
         return decorator
 
@@ -500,7 +500,7 @@ class UserAuthenticationManager():
                     un:ud for un,ud in self.conf['credentials']['usernames'].items()
                     if ud.get('whitelisted')
                 }
-            
+
         self.users = self.conf['credentials']['usernames']
     
     def login_screen(self):
@@ -525,9 +525,21 @@ class UserAuthenticationManager():
         
         self.admin = (self.user.get('group') == 'admin')
         
-    def update_conf(self):
+    def update_conf(self, username):
+
+        # Read full conf file (can have more users, as load_conf filters them)
+        full_conf = load_json(self.conf_file, _s3_fs = self.s3fs)
+
+        full_u = full_conf['credentials']['usernames']
+        cur_u = self.users
+
+        # Update the user's entry
+        if username not in cur_u and username in full_u:
+            del full_u[username] # Delete
+        else: full_u[username] = cur_u[username] # Update
+
         with open_fn(self.conf_file,'w',s3_fs=self.s3fs) as jf:
-            json.dump(self.conf,jf)
+            json.dump(full_conf,jf)
         time.sleep(3) # Give some time for messages to display etc
         st.rerun() # Force a rerun to reload the new file
 
@@ -537,7 +549,7 @@ class UserAuthenticationManager():
             self.client.execute('UPDATE users SET name = ?, email = ?, organization = ?, "group" = ?, password = ?, lang = ? WHERE username = ?',
                          [user_data['name'], user_data['email'], user_data['organization'], 
                           user_data['group'], user_data['password'], user_data['lang'], username])
-        else: self.update_conf()
+        else: self.update_conf(username)
             
     def add_user(self, username, password, user_data):
         self.require_admin()
@@ -551,7 +563,7 @@ class UserAuthenticationManager():
                 self.client.execute('INSERT INTO users (username, name, email, organization, "group", password) VALUES (?, ?, ?, ?, ?, ?)',
                                [username, user_data['name'], user_data['email'], user_data['organization'], 
                                 user_data['group'], user_data['password']])
-            else: self.update_conf()
+            else: self.update_conf(username)
             return True
         else:
             self.info.error(f'User **{username}** already exists.')
@@ -586,7 +598,7 @@ class UserAuthenticationManager():
         if 'libsql' in self.conf:
             self.client.execute('DELETE FROM users WHERE username = ?', [username])
         else:
-            self.update_conf()
+            self.update_conf(username)
 
     def list_users(self):
         self.require_admin()
@@ -702,7 +714,7 @@ def admin_page(sdb):
         
         user_data = sdb.uam.users[username].copy()
         #st.write(user_data)
-        group_index = sdb.uam.groups.index(user_data['group'])
+        group_index = sdb.uam.groups.index(user_data.get('group','guest'))
 
         with st.form("edit_user_form"):
             st.subheader("Edit user data:")
