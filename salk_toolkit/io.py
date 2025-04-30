@@ -559,13 +559,13 @@ def fix_meta_categories(data_meta, df, infers_only=False, warnings=True):
 
         if g.get('scale') and g['scale'].get('categories')=='infer':
             # IF they all share same categories, keep the category order
-            scats = cats if all_cats == set(cats) else sorted(list(all_cats))
+            scats = list(cats) if all_cats == set(cats) else sorted(list(all_cats))
             g['scale']['categories'] = scats
         elif ((not infers_only) and g.get('scale') and g['scale'].get('categories') and 
                 not set(g['scale']['categories'])>=all_cats):
             diff = all_cats - set(g['scale']['categories'])
             if warnings: warn(f"Fixing missing categories for group {g['name']}: {diff}")
-            g['scale']['categories'] = all_cats
+            g['scale']['categories'] = list(all_cats)
 
     return data_meta
 
