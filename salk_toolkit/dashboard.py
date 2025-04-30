@@ -221,7 +221,8 @@ def load_po_translations():
 # Main dashboard wrapper - WIP
 class SalkDashboardBuilder:
 
-    def __init__(self, data_source, auth_conf, logfile, groups=['guest','user','admin'], org_whitelist=None, public=False, default_lang='en', plot_caching=True):
+    def __init__(self, data_source, auth_conf, logfile, groups=['guest','user','admin'], org_whitelist=None, 
+                public=False, default_lang='en', plot_caching=True, header=None, footer=None):
         
         # Allow deployment.json to redirect files from local to s3 if local missing (i.e. in deployment scenario)
         if os.path.exists('./deployment.json'):
@@ -239,6 +240,7 @@ class SalkDashboardBuilder:
         self.sb_info = st.sidebar.empty()
         self.info = st.empty()
         self.plot_caching = plot_caching
+        self.header,self.footer = header,footer # Header and footer functions
 
         # Current page name
         self.page_name = None
@@ -418,10 +420,14 @@ class SalkDashboardBuilder:
 
             self.ldf, self.meta = read_annotated_data_lazy_cached(self.data_source)
             #self.df = self.ldf.collect().to_pandas() # Backwards compatibility
-        
+
         # Render the chosen page
         self.subheader(pname,context='ui')
-        pfunc(**clean_kwargs(pfunc,{'sdb':self}))
+
+        shared = call_kwsafe(self.header,sdb=self) if self.header else {}
+        pres = call_kwsafe(pfunc, sdb=self, shared=shared)
+        if pres: shared.update(pres)
+        if self.footer: call_kwsafe(self.footer, sdb=self, shared=shared)
 
         if self.user.get('group')=='admin':
             st.sidebar.write("Mem: %.1fMb" % (psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2))
@@ -770,7 +776,9 @@ def draw_plot_matrix(pmat):
     for j,c in enumerate(cols):
         for i, row in enumerate(pmat):
             if j>=len(pmat[i]): continue
+            #print(pmat[i][j].to_json()) # to debug json
             c.altair_chart(pmat[i][j],use_container_width=ucw)#,theme=None)
+
 # Draw the plot described by pp_desc 
 def st_plot(pp_desc,**kwargs):
     plots = e2e_plot(pp_desc, **kwargs)

@@ -7,9 +7,9 @@ __all__ = ['warn', 'default_color', 'default_bidirectional_gradient', 'redblue_g
            'loc2iloc', 'match_sum_round', 'min_diff', 'continify', 'replace_cat_with_dummies', 'match_data',
            'replace_constants', 'approx_str_match', 'index_encoder', 'to_alt_scale', 'multicol_to_vals_cats',
            'gradient_to_discrete_color_scale', 'gradient_subrange', 'gradient_from_color', 'gradient_from_color_alt',
-           'is_datetime', 'rel_wave_times', 'stable_draws', 'deterministic_draws', 'clean_kwargs', 'censor_dict',
-           'cut_nice_labels', 'cut_nice', 'rename_cats', 'str_replace', 'merge_series', 'aggregate_multiselect',
-           'deaggregate_multiselect', 'gb_in', 'gb_in_apply', 'stk_defaultdict', 'cached_fn',
+           'is_datetime', 'rel_wave_times', 'stable_draws', 'deterministic_draws', 'clean_kwargs', 'call_safe_kwargs',
+           'censor_dict', 'cut_nice_labels', 'cut_nice', 'rename_cats', 'str_replace', 'merge_series',
+           'aggregate_multiselect', 'deaggregate_multiselect', 'gb_in', 'gb_in_apply', 'stk_defaultdict', 'cached_fn',
            'scores_to_ordinal_rankings', 'dict_cache', 'get_size']
 
 # %% ../nbs/10_utils.ipynb 3
@@ -291,6 +291,9 @@ def clean_kwargs(fn, kwargs):
     aspec = inspect.getfullargspec(fn)
     return { k:v for k,v in kwargs.items() if k in aspec.args } if aspec.varkw is None else kwargs
 
+def call_safe_kwargs(fn,*args,**kwargs):
+    return fn(*args,**clean_kwargs(fn,kwargs))
+
 # %% ../nbs/10_utils.ipynb 33
 # Simple one-liner to remove certain keys from a dict
 def censor_dict(d,vs):
@@ -412,9 +415,13 @@ def cached_fn(fn):
     return cf
 
 # %% ../nbs/10_utils.ipynb 46
-def scores_to_ordinal_rankings(df, cols, name):
+def scores_to_ordinal_rankings(df, cols, name, prefix=''):
 
-    # Add a col with sub-min values to find the cutoff points for nan values
+    # If cols is a string, treat it as a prefix and find all columns that start with it
+    if isinstance(cols,str):
+        prefix = prefix or cols
+        cols = [ c for c in df.columns if c.startswith(cols) ]
+
     sinds = np.argsort(-df[cols].values,axis=1)
     
     rmat = df[cols].rank(method='max', ascending=False, axis=1).values
@@ -427,7 +434,7 @@ def scores_to_ordinal_rankings(df, cols, name):
             l = np.where(np.isnan(rs))[0][0]
             cns, rs = cns[:l], rs[:l]
         ties = (rs-np.arange(len(rs))-1).astype(int)
-        names_a.append(list(cns))
+        names_a.append([ c[len(prefix):] for c in cns ])
         ties_a.append(list(ties))
     df[f'{name}_orank'] = names_a
     df[f'{name}_ties'] = ties_a
