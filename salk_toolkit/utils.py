@@ -7,7 +7,7 @@ __all__ = ['warn', 'default_color', 'default_bidirectional_gradient', 'redblue_g
            'loc2iloc', 'match_sum_round', 'min_diff', 'continify', 'replace_cat_with_dummies', 'match_data',
            'replace_constants', 'approx_str_match', 'index_encoder', 'to_alt_scale', 'multicol_to_vals_cats',
            'gradient_to_discrete_color_scale', 'gradient_subrange', 'gradient_from_color', 'gradient_from_color_alt',
-           'is_datetime', 'rel_wave_times', 'stable_draws', 'deterministic_draws', 'clean_kwargs', 'call_safe_kwargs',
+           'is_datetime', 'rel_wave_times', 'stable_draws', 'deterministic_draws', 'clean_kwargs', 'call_kwsafe',
            'censor_dict', 'cut_nice_labels', 'cut_nice', 'rename_cats', 'str_replace', 'merge_series',
            'aggregate_multiselect', 'deaggregate_multiselect', 'gb_in', 'gb_in_apply', 'stk_defaultdict', 'cached_fn',
            'scores_to_ordinal_rankings', 'dict_cache', 'get_size']
@@ -291,7 +291,7 @@ def clean_kwargs(fn, kwargs):
     aspec = inspect.getfullargspec(fn)
     return { k:v for k,v in kwargs.items() if k in aspec.args } if aspec.varkw is None else kwargs
 
-def call_safe_kwargs(fn,*args,**kwargs):
+def call_kwsafe(fn,*args,**kwargs):
     return fn(*args,**clean_kwargs(fn,kwargs))
 
 # %% ../nbs/10_utils.ipynb 33

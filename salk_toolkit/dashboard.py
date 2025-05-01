@@ -222,7 +222,7 @@ def load_po_translations():
 class SalkDashboardBuilder:
 
     def __init__(self, data_source, auth_conf, logfile, groups=['guest','user','admin'], org_whitelist=None, 
-                public=False, default_lang='en', plot_caching=True, header=None, footer=None):
+                public=False, default_lang='en', plot_caching=True, header_fn=None, footer_fn=None):
         
         # Allow deployment.json to redirect files from local to s3 if local missing (i.e. in deployment scenario)
         if os.path.exists('./deployment.json'):
@@ -240,7 +240,7 @@ class SalkDashboardBuilder:
         self.sb_info = st.sidebar.empty()
         self.info = st.empty()
         self.plot_caching = plot_caching
-        self.header,self.footer = header,footer # Header and footer functions
+        self.header_fn,self.footer_fn = header_fn,footer_fn # Header and footer functions
 
         # Current page name
         self.page_name = None
@@ -424,10 +424,10 @@ class SalkDashboardBuilder:
         # Render the chosen page
         self.subheader(pname,context='ui')
 
-        shared = call_kwsafe(self.header,sdb=self) if self.header else {}
+        shared = call_kwsafe(self.header_fn,sdb=self) if self.header_fn else {}
         pres = call_kwsafe(pfunc, sdb=self, shared=shared)
         if pres: shared.update(pres)
-        if self.footer: call_kwsafe(self.footer, sdb=self, shared=shared)
+        if self.footer_fn: call_kwsafe(self.footer_fn, sdb=self, shared=shared)
 
         if self.user.get('group')=='admin':
             st.sidebar.write("Mem: %.1fMb" % (psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2))
