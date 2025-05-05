@@ -216,6 +216,9 @@ def transform_cont(data, cols, transform, val_format='.1f', val_range=None):
         return data.with_columns(pl.col(cols) - pl.col(cols).mean()), val_format, None
     elif transform == 'zscore': 
         return data.with_columns((pl.col(cols) - pl.col(cols).mean()) / pl.col(cols).std(0)), '.2f', None
+    elif transform == '01range':
+        return data.with_columns( (pl.col(cols) - pl.col(cols).min()) / 
+                                    (pl.col(cols).max() - pl.col(cols).min())), '.2f', None
     elif transform == 'proportion': 
         return data.with_columns(pl.col(cols)/pl.sum_horizontal(pl.col(cols).abs())), '.1%', (0.0,1.0)
     elif transform in ['softmax','softmax-ratio']: 
@@ -269,7 +272,7 @@ custom_row_transforms['ordered-top2'] = lambda ovs: topk_ranked(ovs,2),'.1%'
 custom_row_transforms['ordered-top3'] = lambda ovs: topk_ranked(ovs,3),'.1%'
 
 # %% ../nbs/02_pp.ipynb 20
-cont_transform_options = ['center','zscore','proportion','softmax','softmax-ratio'] + list(custom_row_transforms.keys())
+cont_transform_options = ['center','zscore','01range','proportion','softmax','softmax-ratio'] + list(custom_row_transforms.keys())
 
 # %% ../nbs/02_pp.ipynb 21
 # Get categories from a lazy frame. 
