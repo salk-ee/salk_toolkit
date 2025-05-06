@@ -87,7 +87,8 @@ def boxplot_vals(s,extent=1.5, delta=1e-4):
         'min': s.min(),
         'q1': q1,
         'q1p': q1-delta,
-        'median': s.median(),
+        'mean': s.mean(),
+        'q2 (median)': s.median(),
         'q3': q3,
         'q3p': q3+delta,
         'max': s.max(),
@@ -116,7 +117,7 @@ def boxplot_manual(data, value_col='value', facets=[], val_format='%', width=800
     
     shared = {'y': alt.Y(f'{f0["col"]}:N', title=None, sort=f0['order']),
               **({'yOffset':alt.YOffset(f'{f1["col"]}:N', title=None, sort=f1['order'])} if f1 else {}),
-              'tooltip': [ alt.Tooltip(f'{vn}:Q',format=val_format,title=f'{vn[0].upper()+vn[1:]} of {value_col}') for vn in ['min','q1','median','q3','max'] ] + tooltip[1:] }
+              'tooltip': [ alt.Tooltip(f'{vn}:Q',format=val_format,title=f'{vn[0].upper()+vn[1:]} of {value_col}') for vn in ['min','q1','mean','q2 (median)','q3','max'] ] + tooltip[1:] }
     
     root = alt.Chart(df).encode(**shared)
 
@@ -149,7 +150,7 @@ def boxplot_manual(data, value_col='value', facets=[], val_format='%', width=800
         color='white',
         size=size
     ).encode(
-        x='median:Q',
+        x='mean:Q',
     )
 
     return (lower_plot + middle_plot + upper_plot + middle_tick)
