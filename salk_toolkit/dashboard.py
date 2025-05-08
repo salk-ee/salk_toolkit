@@ -99,8 +99,7 @@ st_wrap_list = ['write','markdown','title','header','subheader','caption','text'
                 'button','download_button','link_button','checkbox','toggle','radio','selectbox',
                 'multiselect','slider','select_slider','text_input','number_input','text_area',
                 'date_input','time_input','file_uploader','camera_input','color_picker', 'popover',
-                'expander', 'pills', {'name':'tabs', 'args':['list']}
-                ]
+                'expander', 'pills', {'name':'tabs', 'args':['list']} ]
 
 # def debugf(f,*args,**kwargs):
 #     print(f.__name__,args,kwargs)
@@ -118,6 +117,7 @@ def transform_kws(kws,tfo):
 # wrap the first parameter of streamlit function with self.translate
 # has to be a separate function instead of in a for loop for scoping reasons
 def wrap_st_with_translate(base, to, fd, tfo):
+
     if isinstance(fd, str): fd = { 'name': fd, 'args': ['str'] }
     func = getattr(base,fd['name'])
 
@@ -131,7 +131,19 @@ def wrap_st_with_translate(base, to, fd, tfo):
     setattr(to, fd['name'], lambda *args, **kwargs: func( # debugf(func,
         *[tfs[tt](kwargs.get('context'))(args[i]) for i,tt in enumerate(fd['args'])],
         *args[len(fd['args']):],**{**kw_defaults,**transform_kws(kwargs,tfo)}) )
+
+def wrap_all_st_functions(base, tfo, to=None):
+    if to is None: to = types.SimpleNamespace() # Create dummy object to add sidebar functions to 
+    for fd in st_wrap_list:
+        fn = fd['name'] if isinstance(fd, dict) else fd
+        if not hasattr(st,fn): continue
+        wrap_st_with_translate(base,to,fd,tfo)
     
+    # Columns needs to be wrapped recursively
+    setattr(to,'columns',lambda *args,**kwargs: 
+            tuple( wrap_all_st_functions(c,tfo) 
+                for c in base.columns(*args,**kwargs)) )
+    return to
 
 # %% ../nbs/05_dashboard.ipynb 9
 def default_translate(s,**kwargs):
@@ -302,15 +314,10 @@ class SalkDashboardBuilder:
             elif (not st.session_state.get('lang') and self.user.get('lang') 
                 and self.user['lang'] in self.cc_translations):
                 self.set_translate(self.user['lang'],remember=True)
-            
-        # Wrap some streamlit functions with translate
-        self.sidebar = types.SimpleNamespace() # Create dummy object to add sidebar functions to 
-        for fd in st_wrap_list:
-            fn = fd['name'] if isinstance(fd, dict) else fd
-            if not hasattr(st,fn): continue
-            wrap_st_with_translate(st,self,fd,self)
-            wrap_st_with_translate(st.sidebar,self.sidebar,fd,self)
 
+        wrap_all_st_functions(st, self, to=self)
+        self.sidebar = wrap_all_st_functions(st.sidebar, self)    
+        
     def set_translate(self,lang,remember=False):
         if lang is None: lang = self.default_lang
         translate = load_translate(lang, self.cc_translations)

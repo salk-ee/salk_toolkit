@@ -266,7 +266,12 @@ def highest_ranked(ovs):
 def topk_ranked(ovs,k=3): # Todo: make this k changeable with pp_desc
     return (np.argsort(np.argsort(ovs,axis=1),axis=1)>=ovs.shape[1]-k)
 
+def win_against_random_field(ovs, opponents=12):
+    p = np.argsort(np.argsort(ovs,axis=1),axis=1)/ovs.shape[1]
+    return np.power(p,opponents)
+
 custom_row_transforms['ordered-avgrank'] = avg_rank,'.1f'
+custom_row_transforms['ordered-warf'] = win_against_random_field,'.1%'
 custom_row_transforms['ordered-top1'] = highest_ranked,'.1%'
 custom_row_transforms['ordered-top2'] = lambda ovs: topk_ranked(ovs,2),'.1%'
 custom_row_transforms['ordered-top3'] = lambda ovs: topk_ranked(ovs,3),'.1%'
@@ -409,12 +414,18 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     if not pp_desc.get('calculated_draws',True):
         data_meta = data_meta.copy()
         del data_meta['draws_data']
+
+    # For more customized filtering in dashboards
+    # Has to be done before downselecting to only needed columns
+    if pp_desc.get('pl_filter'):
+        full_df = full_df.filter(eval(pp_desc['pl_filter'],{'pl':pl}))
     
     df = full_df.select(cols) # Select only the columns we need
     total_n = df.select(pl.len()).collect().item()
 
     # Add row id-s - needs to happen before filtering
     df = df.with_row_count('id')
+
     
     # Filter the data with given filters
     if pp_desc.get('filter'):

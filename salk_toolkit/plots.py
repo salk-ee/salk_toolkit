@@ -308,7 +308,7 @@ def make_start_end(x,value_col,cat_col,cat_order):
     return res
 
 @stk_plot('likert_bars', data_format='longform', draws=False, requires=[{'likert':True}], n_facets=(1,3), sort_numeric_first_facet=True, priority=50)
-def likert_bars(data, value_col='value', facets=[],  tooltip=[], outer_factors=[],width=800):
+def likert_bars(data, value_col='value', facets=[],  tooltip=[], outer_factors=[], width=800):
     # First facet is likert, second is labeled question, third is offset. Second is better for question which usually goes last, hence reorder
     if len(facets)==1: # Create a dummy second facet
         facets.append({ 'col': 'question', 'order': [facets[0]['col']], 'colors': alt.Undefined })
