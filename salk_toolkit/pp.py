@@ -415,17 +415,16 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
         data_meta = data_meta.copy()
         del data_meta['draws_data']
 
+    # Add row id-s and find count - both need to happen before filtering
+    full_df = full_df.with_row_count('id')
+    total_n = full_df.select(pl.len()).collect().item()
+
     # For more customized filtering in dashboards
     # Has to be done before downselecting to only needed columns
     if pp_desc.get('pl_filter'):
         full_df = full_df.filter(eval(pp_desc['pl_filter'],{'pl':pl}))
     
-    df = full_df.select(cols) # Select only the columns we need
-    total_n = df.select(pl.len()).collect().item()
-
-    # Add row id-s - needs to happen before filtering
-    df = df.with_row_count('id')
-
+    df = full_df.select(cols + ['id']) # Select only the columns we need
     
     # Filter the data with given filters
     if pp_desc.get('filter'):
