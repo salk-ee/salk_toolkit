@@ -480,10 +480,32 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     # If res_col is a group of questions, melt i.e. unpivot the questions and handle draws if needed
     if pp_desc['res_col'] in gc_dict:
         n_questions = len(gc_dict[pp_desc['res_col']])
-
-        # Melt i.e. unpivot the questions
         value_vars = [ c for c in gc_dict[pp_desc['res_col']] if c in cols ]
         id_vars = ['id'] + [ c for c in cols if (c not in value_vars or c in factor_cols) ]
+
+        if 'draw' in cols and data_meta.get('draws_data') is not None:
+            draw_dfs, ddf_cache = [], {}
+            for c in value_vars:
+                if c in data_meta.get('draws_data',{}):
+                    uid, ndraws = data_meta['draws_data'][c]
+                    if (uid,ndraws) not in ddf_cache:
+                        draws = stable_draws(total_n, ndraws, uid)
+                        ddf_cache[(uid,ndraws)] = pl.DataFrame({
+                                    'draw': draws, 'question': c, 'id': np.arange(0, total_n) })
+                    ddf = ddf_cache[(uid,ndraws)]
+                    draw_dfs.append(ddf)
+
+            # Check if they all have the same draws. If yes (very common), perform a single merge
+            # This is a lot more memory efficient than merging one by one post-unpivot
+            if len(ddf_cache)==1 and len(draw_dfs)==len(value_vars):
+                filtered_df = filtered_df.drop('draw').join(
+                    draw_dfs[0].drop('question').lazy(),
+                    on=['id'],
+                    how='left'
+                )
+                draw_dfs = [] # To avoid adding draws again below
+
+        # Melt i.e. unpivot the questions
         filtered_df = filtered_df.unpivot(
             variable_name='question',
             value_name=pp_desc['res_col'],
@@ -492,16 +514,7 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
         )
 
         # Handle draws for each question
-        if 'draw' in cols and data_meta.get('draws_data') is not None:
-            draw_dfs = []
-            for c in value_vars:
-                if c in data_meta.get('draws_data',{}):
-                    uid, ndraws = data_meta['draws_data'][c]
-                    draws = stable_draws(total_n, ndraws, uid)
-                    draw_df = pl.DataFrame({ 'draw': draws, 'question': c, 'id': np.arange(0, total_n) })
-                    draw_dfs.append(draw_df)
-            
-            if len(draw_dfs)>0:
+        if 'draw' in cols and data_meta.get('draws_data') is not None and len(draw_dfs)>0:
                 filtered_df = filtered_df.rename({'draw':'old_draw'}).join(
                     pl.concat(draw_dfs).lazy(),
                     on=['id', 'question'],
