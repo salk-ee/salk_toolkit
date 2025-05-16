@@ -276,7 +276,7 @@ def massplot(data, value_col='value', facets=[], filtered_size=1, val_format='%'
 
 # %% ../nbs/03_plots.ipynb 25
 # Make the likert bar pieces
-def make_start_end(x,value_col,cat_col,cat_order):
+def make_start_end(x,value_col,cat_col,cat_order,n_neutral):
     #print("######################")
     #print(value_col,cat_order)
     #print(x)
@@ -285,30 +285,38 @@ def make_start_end(x,value_col,cat_col,cat_order):
         # Fill in missing rows with value zero so they would just be skipped
         mdf = pd.DataFrame({cat_col:pd.Categorical(cat_order,cat_order,ordered=True)})
         x = pd.merge(mdf,x,on=cat_col,how='left').fillna({**shared,value_col:0})
-    mid = len(x)//2
     x = x.sort_values(by=cat_col)
     #print(x)
-        
-    if len(x)%2==1: # odd:
-        scale_start=1.0
-        x_mid = x.iloc[[mid],:]
-        x_mid.loc[:,['start','end']] = -scale_start
-        x_mid.loc[:,'end'] = -scale_start+x_mid[value_col]
-        nonmid = [ i for i in range(len(x)) if i!=mid ]
-        x_mid = [x_mid]
-    else: # even - no separate mid
-        nonmid = np.arange(len(x))
-        x_mid = []
+
+    if n_neutral==0: # No neutrals
+        x_other = x.copy()
+        x_mids = []
+    else: # Handle neutrals
+
+        # Handle the non-neutral part
+        n_other = (len(x)-n_neutral)
+        nonmid = list(range(n_other//2)) + list(range(-(n_other//2+n_other%2),0))
+        x_other = x.iloc[nonmid,:].copy()
+
+        # Extract the neutrals
+        mids = list(range(n_other//2,n_other//2+n_neutral))
+        scale_start = -1.0
+        x_mid = x.iloc[mids,:].copy()
+
+        # Compute the positions of the neutrals
+        x_mid.loc[:,'end'] = scale_start + x_mid[value_col].cumsum()
+        x_mid.loc[:,'start'] = x_mid.loc[:,'end'] - x_mid[value_col]
+        x_mids = [x_mid]                
     
-    x_other = x.iloc[nonmid,:].copy()
-    x_other.loc[:,'end'] = x_other[value_col].cumsum() - x_other[:mid][value_col].sum()
-    x_other.loc[:,'start'] = (x_other[value_col][::-1].cumsum()[::-1] - x_other[mid:][value_col].sum())*-1
-    res = pd.concat([x_other] + x_mid).dropna(subset=[value_col]) # drop any na rows added in the filling in step
+    o_mid = len(x_other)//2
+    x_other.loc[:,'end'] = x_other[value_col].cumsum() - x_other[:o_mid][value_col].sum()
+    x_other.loc[:,'start'] = (x_other[value_col][::-1].cumsum()[::-1] - x_other[o_mid:][value_col].sum())*-1
+    res = pd.concat([x_other] + x_mids).dropna(subset=[value_col]) # drop any na rows added in the filling in step
     #print("RES",res)
     return res
 
-@stk_plot('likert_bars', data_format='longform', draws=False, requires=[{'likert':True}], n_facets=(1,3), sort_numeric_first_facet=True, priority=50)
-def likert_bars(data, value_col='value', facets=[],  tooltip=[], outer_factors=[], width=800):
+@stk_plot('likert_bars', data_format='longform', draws=False, requires=[{'likert':True}], n_facets=(1,3), args={'n_neutral': ('int',-1) }, sort_numeric_first_facet=True, priority=50)
+def likert_bars(data, value_col='value', facets=[],  tooltip=[], outer_factors=[], width=800, n_neutral=-1):
     # First facet is likert, second is labeled question, third is offset. Second is better for question which usually goes last, hence reorder
     if len(facets)==1: # Create a dummy second facet
         facets.append({ 'col': 'question', 'order': [facets[0]['col']], 'colors': alt.Undefined })
@@ -316,9 +324,13 @@ def likert_bars(data, value_col='value', facets=[],  tooltip=[], outer_factors=[
     if len(facets)>=3: f0, f1, f2 = facets[0], facets[2], facets[1]
     elif len(facets)==2: f0, f1, f2 = facets[0], facets[1], None
 
+    # If n_neutral set to -1 (default), use 1 if odd and 0 if even
+    if n_neutral==-1: n_neutral = len(f0["order"])%2
+
     gb_cols = outer_factors+[f["col"] for f in facets[1:]] # There can be other extra cols (like labels) that should be ignored
     options_cols = list(data[f0["col"]].dtype.categories) # Get likert scale names
-    bar_data = data.groupby(gb_cols, group_keys=False, observed=False)[data.columns].apply(make_start_end, value_col=value_col,cat_col=f0["col"],cat_order=f0["order"],include_groups=False)
+    bar_data = data.groupby(gb_cols, group_keys=False, observed=False)[data.columns]\
+                        .apply(make_start_end, value_col=value_col,cat_col=f0["col"],cat_order=f0["order"],include_groups=False,n_neutral=n_neutral)
     
     plot = alt.Chart(bar_data).mark_bar() \
         .encode(

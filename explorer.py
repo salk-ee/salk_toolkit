@@ -234,12 +234,16 @@ with st.sidebar: #.expander("Select dimensions"):
 
     # Plot arguments
     plot_args = {} # 'n_facet_cols':2 }
-    for k, v in plot_meta.get('args',{}).items():
-        if v=='bool':
-            plot_args[k] = st.toggle(k,key=k)
-        elif isinstance(v, list):
-            stss_safety(k,v)
-            plot_args[k] = st.selectbox(k,v,key=k)
+    for k, t in plot_meta.get('args',{}).items():
+        vt, dv = t if isinstance(t, tuple) else (t, None)
+        if vt=='bool':
+            plot_args[k] = st.toggle(k,key=k,value=dv)
+        elif vt=='int':
+            plot_args[k] = st.number_input(k,key=k,value=(dv or 0))
+        elif isinstance(vt, list):
+            stss_safety(k,vt)
+            ind = (vt.index(dv) if dv in vt else 0)
+            plot_args[k] = st.selectbox(k,vt,key=k,index=ind)
 
     args['plot_args'] = {**args.get('plot_args',{}),**plot_args}
 
