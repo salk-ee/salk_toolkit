@@ -164,7 +164,7 @@ def simulate_election_pp(data, mandates, electoral_system, cat_col, value_col, f
     # Run the actual electoral simulation
     nmandates = np.array([ mandates[d] for d in factor_order ])
     edt = simulate_election(sdata,nmandates,**electoral_system)
-    if edt.shape[1]>sdata.shape[1]: factor_order = factor_order+['Compensation']
+    if edt.shape[1]>sdata.shape[1]: factor_order = factor_order+[cname]
     
     # Shape it back into a data frame
     df = pd.DataFrame( edt.reshape( (-1,) ), columns=['mandates'])
@@ -175,14 +175,19 @@ def simulate_election_pp(data, mandates, electoral_system, cat_col, value_col, f
 # %% ../nbs/04_election_models.ipynb 14
 # This fits into the pp framework as: f0['col']=party_pref, factor=electoral_district, hence the as_is and hidden flags
 @stk_plot('mandate_plot', data_format='longform', draws=True, requires_factor=True, agg_fn='sum', n_facets=(2,2), requires=[{},{'mandates':'pass','electoral_system':'pass'}], as_is=True, priority=-500)#, hidden=True)
-def mandate_plot(data, mandates, electoral_system, value_col='value', facets=[], width=None, alt_properties={}, outer_factors=[], translate=None):
+def mandate_plot(data, mandates, electoral_system, value_col='value', facets=[], width=None, alt_properties={}, outer_factors=[], translate=None, sim_done=False):
     f0, f1 = facets[0], facets[1]
     tf = translate if translate else (lambda s: s)
     
     if outer_factors: raise Exception("This plot does not work with extra factors")
     
-    mandates = { tf(k):v for k,v in mandates.items() }
-    df = simulate_election_pp(data, mandates, electoral_system, f0['col'], value_col, f1['col'], f0['order'], f1['order'])
+    if not sim_done:
+        mandates = { tf(k):v for k,v in mandates.items() }
+        df = simulate_election_pp(data, mandates, electoral_system, f0['col'], value_col, f1['col'], f0['order'], f1['order'])
+    else:
+        df = data
+
+    df[f1['col']] = df[f1['col']].replace({'Compensation':tf('Compensation')})
     
     # Shape it into % values for each vote count
     maxv = df['mandates'].max()
@@ -220,7 +225,7 @@ def mandate_plot(data, mandates, electoral_system, value_col='value', facets=[],
         #header=alt.Header(labelAngle=-90),
         row=alt.X(
             f'{f1["col"]}:N',
-            sort=f1["order"]+['Compensation'],
+            sort=f1["order"]+[tf('Compensation')],
             title=None,
             header=alt.Header(labelOrient='top')
             ),
@@ -235,8 +240,10 @@ def mandate_plot(data, mandates, electoral_system, value_col='value', facets=[],
 
 # %% ../nbs/04_election_models.ipynb 17
 # This fits into the pp framework as: f0['col']=party_pref, factor=electoral_district, hence the as_is and hidden flags
-@stk_plot('coalition_applet', data_format='longform', draws=True, requires_factor=True, agg_fn='sum', requires=[{},{'mandates':'pass','electoral_system':'pass'}], as_is=True, n_facets=(2,2), priority=-1000)#, hidden=True)
-def coalition_applet(data, mandates, electoral_system, value_col='value', facets=[], width=None, alt_properties={}, outer_factors=[], translate=None):
+@stk_plot('coalition_applet', data_format='longform', draws=True, requires_factor=True, agg_fn='sum', args={'initial_coalition':'list'},
+                requires=[{},{'mandates':'pass','electoral_system':'pass'}], as_is=True, n_facets=(2,2), priority=-1000)#, hidden=True)
+def coalition_applet(data, mandates, electoral_system, value_col='value', facets=[], width=None, alt_properties={}, 
+                        outer_factors=[], translate=None, initial_coalition=[], sim_done=False):
     
     f0, f1 = facets[0], facets[1]
     tf = translate if translate else (lambda s: s)
@@ -245,7 +252,10 @@ def coalition_applet(data, mandates, electoral_system, value_col='value', facets
 
     mandates = { tf(k):v for k,v in mandates.items() }
     
-    sdf = simulate_election_pp(data, mandates, electoral_system, f0['col'], value_col, f1['col'], f0['order'], f1['order'])
+    if not sim_done:
+        sdf = simulate_election_pp(data, mandates, electoral_system, f0['col'], value_col, f1['col'], f0['order'], f1['order'])
+    else:
+        sdf = data
 
     # Aggregate to total mandate counts
     odf = sdf.groupby(['draw',f0['col']])['mandates'].sum().reset_index()
@@ -255,7 +265,7 @@ def coalition_applet(data, mandates, electoral_system, value_col='value', facets
     parties = list(adf[f0['col']].unique()) # Leave only parties that have mandates
 
     coalition = st.multiselect(tf('Select the coalition:'),
-        f0["order"],
+        f0["order"], default=initial_coalition,
         help=tf('Choose the parties whose coalition to model'))
 
     st.markdown("""___""")
@@ -267,7 +277,7 @@ def coalition_applet(data, mandates, electoral_system, value_col='value', facets
     ddf = (adf.groupby(f0['col'])['mandates'].value_counts()/odf.groupby(f0['col']).size()).rename('percent').reset_index()
     ddf = ddf.merge(odf.groupby(f0['col'])['mandates'].median().rename(tf('median')),left_on=f0['col'],right_index=True)
     ddf = ddf.merge(odf.groupby(f0['col'])['over_t'].mean().rename(tf('over_threshold')),left_on=f0['col'],right_index=True)
-     
+
     p_plot = alt.Chart(
             ddf,
             #title=var
