@@ -886,6 +886,7 @@ def filter_ui(data, dmeta=None, dims=None, uid='base', detailed=False, raw=False
     if not force_choice: f_info = st.sidebar.container()
     
     stc = st.sidebar.expander(tfc('Filters',context='ui')) if not raw else st
+    stss = st.session_state
     
     # Different selector for different category types
     # Also - make sure filter is clean and only applies when it is changed from the default 'all' value
@@ -905,8 +906,10 @@ def filter_ui(data, dmeta=None, dims=None, uid='base', detailed=False, raw=False
             r_map.update(dict(zip([tf(c) for c in grp_names],grp_names)))
         
         # Multiselect
-        if detailed and limits[cn].get('categories'): 
-            filters[cn] = stc.multiselect(tf(cn), all_vals, all_vals, key=f"filter_{uid}_{cn}_multiselect")
+        if detailed and limits[cn].get('categories'):
+            key = f"filter_{uid}_{cn}_multiselect"
+            if key in stss and stss[key] not in all_vals: del stss[key]  
+            filters[cn] = stc.multiselect(tf(cn), all_vals, all_vals, key=key)
             if set(filters[cn]) == set(all_vals): del filters[cn]
             else: 
                 stc.button(tf("Reset"),key=f"filter_{uid}_{cn}_ms_reset",on_click=ms_reset(cn,all_vals))
@@ -917,14 +920,18 @@ def filter_ui(data, dmeta=None, dims=None, uid='base', detailed=False, raw=False
             choices = [gt for gt,g in r_map.items() if g in grp_names] + all_vals
             if not force_choice: choices = [tf('All')] + choices
             stss_safety(f'filter_{cn}_sel',choices)
-            filters[cn] = stc.selectbox(tf(cn),choices,key=f'filter_{uid}_{cn}_sel')
+            key = f'filter_{uid}_{cn}_sel'
+            if key in stss and stss[key] not in all_vals: del stss[key]
+            filters[cn] = stc.selectbox(tf(cn),choices,key=key)
             if filters[cn] == tf('All'): del filters[cn]
             else: filters[cn] = r_map[filters[cn]]
 
         # Ordered categorical - slider
         # Use [None,<start>,<end>] for ranges, both categorical and continuous to distinguish them from list of values
         elif limits[cn].get('categories') and limits[cn].get('ordered'): # Ordered categorical - slider
-            f_res = stc.select_slider(tf(cn),all_vals,value=(all_vals[0],all_vals[-1]),key=f'filter_{uid}_{cn}_ocat')
+            key = f'filter_{uid}_{cn}_ocat'
+            if key in stss and stss[key] not in all_vals: del stss[key] 
+            f_res = stc.select_slider(tf(cn),all_vals,value=(all_vals[0],all_vals[-1]),key=key)
             if f_res != (all_vals[0],all_vals[-1]): 
                 filters[cn] = [None]+[r_map[f_res[0]],r_map[f_res[1]]]
 

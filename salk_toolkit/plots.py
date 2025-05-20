@@ -959,8 +959,9 @@ def ordered_population(data, value_col='value', facets=[], tooltip=[], outer_fac
 
 # %% ../nbs/03_plots.ipynb 62
 @stk_plot('marimekko', data_format='longform', draws=False, group_sizes=True, args={'separate':'bool'}, n_facets=(2,2))
-def marimekko(data, value_col='value', facets=[], val_format='%', width=800, tooltip=[], outer_factors=[], separate=False):
+def marimekko(data, value_col='value', facets=[], val_format='%', width=800, tooltip=[], outer_factors=[], separate=False, translate=None):
     f0, f1 = facets[0], facets[1]
+    tf = translate if translate else (lambda s: s)
 
     #xcol, ycol, ycol_scale = f1["col"], f0["col"], f0["colors"]
     xcol, ycol, ycol_scale = f0["col"], f1["col"], f1["colors"]
@@ -988,11 +989,18 @@ def marimekko(data, value_col='value', facets=[], val_format='%', width=800, too
     
     ndata = ndata.groupby(outer_factors+[ycol],observed=False)[[xcol,'yv','y1','y2','w']].apply(lambda df: pd.DataFrame({ xcol: df[xcol], 'xv': df['w']/df['w'].sum(), 'x2': df['w'].cumsum()/df['w'].sum(), 'yv':df['yv'], 'y1':df['y1'], 'y2':df['y2']})).reset_index()
     ndata['x1'] = ndata['x2']-ndata['xv']
-    
+
+    ndata['tprop'] = ndata['xv']*ndata['yv'] # Overall proportion
+
+    ndata['xmid'] = (ndata['x1']+ndata['x2'])/2
+    ndata['text'] = ndata[xcol].astype(str)
+    #ndata['text'] = list(map(lambda x: x[0]+' '+x[1],zip(ndata[xcol].astype(str),ndata['xv'].round(2).astype(str))))
+    ndata.loc[ndata[ycol]!=f1['order'][-1],'text'] = ''
 
     #selection = alt.selection_point(fields=[yvar], bind="legend")
     STROKE = 0.25
-    plot = alt.Chart(ndata).mark_rect(
+    base = alt.Chart(ndata)
+    plot = base.mark_rect(
             strokeWidth=STROKE,
             stroke="white",
             xOffset=STROKE / 2,
@@ -1003,30 +1011,43 @@ def marimekko(data, value_col='value', facets=[], val_format='%', width=800, too
             x=alt.X(
                 "x1:Q",
                 axis=alt.Axis(
-                    zindex=1, format="%", title=[f"{xcol} (% of total)", " "], grid=False
+                    zindex=1, format="%", grid=False,
+                    orient='top', title=xcol
                 ),
                 scale=alt.Scale(domain=[0, 1]),
             ),
-            x2="x2:Q",
+            x2=alt.X2("x2:Q"),
             y=alt.Y(
                 "y1:Q",
                 axis=alt.Axis(
-                    zindex=1, format="%", title=f"{ycol} (% of total)", grid=False, labels=not separate
+                    zindex=1, format="%", title='', grid=False, labels=not separate
                     ),
                 scale=alt.Scale(domain=[0, 1])
             ),
-            y2="y2:Q",
+            y2=alt.Y2("y2:Q"),
             color=alt.Color(
                 f"{ycol}:N",
-                legend=alt.Legend(title=None, symbolStrokeWidth=0), #title=f"{yvar}"),
+                legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f1['order'],width)),
+                #legend=alt.Legend(title=None, symbolStrokeWidth=0), #title=f"{yvar}"),
                 scale=ycol_scale,
             ),
             tooltip=[
-                alt.Tooltip("yv:Q", title=f'{ycol} proportion', format='.1%' ),
-                alt.Tooltip("xv:Q", title=f'{xcol} proportion', format='.1%' ),
-            ]+tooltip[1:],
+                alt.Tooltip(xcol),
+                alt.Tooltip(ycol),
+                alt.Tooltip("yv:Q", title=tf('Of %s category') % xcol, format='.1%' ),
+                alt.Tooltip("tprop:Q", title=tf('Of population'), format='.1%'),
+            ]+tooltip[3:],
+            
             #opacity=alt.condition(selection, alt.value(1), alt.value(0.3)),
         )
+    text = base.mark_text(
+        baseline='top', align='center', dy=3,
+        fontSize=14
+    ).encode(
+        text=alt.Text(f'text:N'),
+        x=alt.X('xmid:Q'),y=alt.Y('y1:Q'),
+        tooltip=[alt.Tooltip('xv:Q',title=tf('%s size') % xcol, format='.1%')]
+    )
         #.add_params(selection)
     
-    return plot
+    return plot + text
