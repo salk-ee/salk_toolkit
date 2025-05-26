@@ -13,6 +13,7 @@ __all__ = ['get_plot_width', 'open_fn', 'exists_fn', 'read_annotated_data_lazy_c
 import json, os, csv, re, time, types, inspect, psutil
 import itertools as it
 from collections import defaultdict
+from contextlib import AbstractContextManager
 
 import numpy as np
 import pandas as pd
@@ -99,7 +100,7 @@ st_wrap_list = ['write','markdown','title','header','subheader','caption','text'
                 'button','download_button','link_button','checkbox','toggle','radio','selectbox',
                 'multiselect','slider','select_slider','text_input','number_input','text_area',
                 'date_input','time_input','file_uploader','camera_input','color_picker', 'popover',
-                'expander', 'pills', {'name':'tabs', 'args':['list']} ]
+                'spinner', 'info', 'error', 'warning', 'success', 'pills' ]
 
 # def debugf(f,*args,**kwargs):
 #     print(f.__name__,args,kwargs)
@@ -116,7 +117,7 @@ def transform_kws(kws,tfo):
 
 # wrap the first parameter of streamlit function with self.translate
 # has to be a separate function instead of in a for loop for scoping reasons
-def wrap_st_with_translate(base, to, fd, tfo):
+def wrap_st_with_translate(base, fd, tfo):
 
     if isinstance(fd, str): fd = { 'name': fd, 'args': ['str'] }
     func = getattr(base,fd['name'])
@@ -128,21 +129,41 @@ def wrap_st_with_translate(base, to, fd, tfo):
 
     tfs = { 'str': lambda c: (lambda s: tfo.tf(s,context=c)), 
             'list': lambda c: (lambda l: [tfo.tf(s,context=c) for s in l]) }
-    setattr(to, fd['name'], lambda *args, **kwargs: func( # debugf(func,
+    return lambda *args, **kwargs: func( # debugf(func,
         *[tfs[tt](kwargs.get('context'))(args[i]) for i,tt in enumerate(fd['args'])],
-        *args[len(fd['args']):],**{**kw_defaults,**transform_kws(kwargs,tfo)}) )
+        *args[len(fd['args']):],**{**kw_defaults,**transform_kws(kwargs,tfo)})
+
+# A class that wraps another context manager
+class ContextManagerWrapper(AbstractContextManager):
+    def __init__(self, obj):
+        self.obj = obj
+    def __enter__(self):
+        return self.obj.__enter__()
+    def __exit__(self, *args):
+        self.obj.__exit__(*args)
 
 def wrap_all_st_functions(base, tfo, to=None):
-    if to is None: to = types.SimpleNamespace() # Create dummy object to add sidebar functions to 
+    if to is None:
+        to = ContextManagerWrapper(base)
+    
     for fd in st_wrap_list:
         fn = fd['name'] if isinstance(fd, dict) else fd
         if not hasattr(st,fn): continue
-        wrap_st_with_translate(base,to,fd,tfo)
+        setattr(to, fn, wrap_st_with_translate(base,fd,tfo))
     
-    # Columns needs to be wrapped recursively
+    # Container creators need to be wrapped recursively
+    setattr(to,'tabs',lambda *args,**kwargs: 
+            tuple( wrap_all_st_functions(c,tfo) 
+                for c in wrap_st_with_translate(base,{'name':'tabs', 'args':['list']},tfo)(*args,**kwargs)))
     setattr(to,'columns',lambda *args,**kwargs: 
             tuple( wrap_all_st_functions(c,tfo) 
-                for c in base.columns(*args,**kwargs)) )
+                    for c in base.columns(*args,**kwargs)))
+
+    setattr(to,'expander',lambda *args,**kwargs: 
+            wrap_all_st_functions(wrap_st_with_translate(base,'expander',tfo)(*args,**kwargs),tfo))
+    setattr(to,'container',lambda *args,**kwargs: 
+            wrap_all_st_functions(base.container(*args,**kwargs),tfo))
+
     return to
 
 # %% ../nbs/05_dashboard.ipynb 9
