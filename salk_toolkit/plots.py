@@ -54,6 +54,7 @@ def estimate_legend_columns_horiz_naive(cats, width):
 # More sophisticated version that looks at lengths of individual strings across multiple rows
 # ToDo: it should max over each column separately not just look at max(sum(row)). This is close enough though.
 def estimate_legend_columns_horiz(cats, width, extra_text=[]):
+    
     max_cols, restart = len(cats), True
     if extra_text: width -= max(map(legend_font.getlength,extra_text))
     lens = list(map(lambda s: 25+legend_font.getlength(s),cats))
@@ -963,14 +964,13 @@ def marimekko(data, value_col='value', facets=[], val_format='%', width=800, too
     f0, f1 = facets[0], facets[1]
     tf = translate if translate else (lambda s: s)
 
-    #xcol, ycol, ycol_scale = f1["col"], f0["col"], f0["colors"]
-    xcol, ycol, ycol_scale = f0["col"], f1["col"], f1["colors"]
+    xcol, ycol, ycol_scale, yorder = f1["col"], f0["col"], f0["colors"], list(reversed(f0["order"]))
 
     # Fill in missing values with zero
-    mdf = pd.DataFrame(it.product(f0['order'],f1['order'],*[data[c].unique() for c in outer_factors]),columns=[xcol,ycol]+outer_factors)
+    mdf = pd.DataFrame(it.product(f1['order'],f0['order'],*[data[c].unique() for c in outer_factors]),columns=[xcol,ycol]+outer_factors)
     data = mdf.merge(data,on=[xcol,ycol]+outer_factors,how='left').fillna({value_col:0,'group_size':1})
-    data[xcol] = pd.Categorical(data[xcol],f0['order'],ordered=True)
-    data[ycol] = pd.Categorical(data[ycol],f1['order'],ordered=True)
+    data[xcol] = pd.Categorical(data[xcol],f1['order'],ordered=True)
+    data[ycol] = pd.Categorical(data[ycol],yorder,ordered=True)
 
     data['w'] = data['group_size']*data[value_col]
     data.sort_values([ycol,xcol],ascending=[True,False],inplace=True)
@@ -995,9 +995,14 @@ def marimekko(data, value_col='value', facets=[], val_format='%', width=800, too
     ndata['xmid'] = (ndata['x1']+ndata['x2'])/2
     ndata['text'] = ndata[xcol].astype(str)
     #ndata['text'] = list(map(lambda x: x[0]+' '+x[1],zip(ndata[xcol].astype(str),ndata['xv'].round(2).astype(str))))
-    ndata.loc[ndata[ycol]!=f1['order'][0],'text'] = ''
+    ndata.loc[ndata[ycol]!=yorder[0],'text'] = ''
 
-    #selection = alt.selection_point(fields=[yvar], bind="legend")
+    # Hack an axis title to those text labels. Not pretty but it works
+    ndata['text2'] = ''
+    ndata.iloc[0,-1] = xcol
+
+    #selection = alt.selection_point(fields=[yvar], bind="legend"
+    
     STROKE = 0.25
     base = alt.Chart(ndata)
     plot = base.mark_rect(
@@ -1012,7 +1017,7 @@ def marimekko(data, value_col='value', facets=[], val_format='%', width=800, too
                 "x1:Q",
                 axis=alt.Axis(
                     zindex=1, format="%", grid=False,
-                    orient='top', title=xcol
+                    orient='top', title=None
                 ),
                 scale=alt.Scale(domain=[0, 1]),
             ),
@@ -1027,27 +1032,40 @@ def marimekko(data, value_col='value', facets=[], val_format='%', width=800, too
             y2=alt.Y2("y2:Q"),
             color=alt.Color(
                 f"{ycol}:N",
-                legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f1['order'],width)),
-                #legend=alt.Legend(title=None, symbolStrokeWidth=0), #title=f"{yvar}"),
+                legend=(alt.Legend(orient='top',titleAlign='center',titleOrient='left',columns=estimate_legend_columns_horiz(f0['order'],width,f0['col'])) 
+                        if len(f0['order'])<=5 else alt.Legend(orient='right')), # This plot needs the vertical space to be useful for 5+ cats
+                #legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f0['order'],width)),
+                #legend=alt.Legend(orient='top',titleOrient='left', symbolStrokeWidth=0), #title=f"{yvar}"),
                 scale=ycol_scale,
             ),
             tooltip=[
-                alt.Tooltip(xcol),
                 alt.Tooltip(ycol),
-                alt.Tooltip("yv:Q", title=tf('Of %s category') % xcol, format='.1%' ),
+                alt.Tooltip(xcol),
+                alt.Tooltip("yv:Q", title=tf('Of column'), format='.1%' ),
                 alt.Tooltip("tprop:Q", title=tf('Of population'), format='.1%'),
-            ]+tooltip[3:],
-            
+            ]+tooltip[3:]
             #opacity=alt.condition(selection, alt.value(1), alt.value(0.3)),
         )
     text = base.mark_text(
         baseline='top', align='center', dy=3,
-        fontSize=14
+        fontSize=14, color='#808495' # Streamlit default theme, which we use for the app
     ).encode(
         text=alt.Text(f'text:N'),
         x=alt.X('xmid:Q'),y=alt.Y('y1:Q'),
         tooltip=[alt.Tooltip('xv:Q',title=tf('%s size') % xcol, format='.1%')]
     )
-        #.add_params(selection)
+
+    custom_title = base.mark_text(
+        align="center",
+        baseline="top",     # Position text at the bottom
+        fontSize=14, color='#808495',
+        #font='"Source Sans Pro", sans-serif',
+        fontWeight=200,
+        dy=20
+    ).encode(
+        text=alt.Text(f'text2:N'),
+        #x=alt.datum(0),     # Center the title horizontally
+        y=alt.datum(0)      # Anchor to the bottom
+    )
     
-    return plot + text
+    return plot + text + custom_title
