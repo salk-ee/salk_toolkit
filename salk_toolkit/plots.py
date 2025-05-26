@@ -968,12 +968,12 @@ def marimekko(data, value_col='value', facets=[], val_format='%', width=800, too
 
     # Fill in missing values with zero
     mdf = pd.DataFrame(it.product(f0['order'],f1['order'],*[data[c].unique() for c in outer_factors]),columns=[xcol,ycol]+outer_factors)
-    mdf[xcol] = pd.Categorical(mdf[xcol],f0['order'],ordered=True)
-    mdf[ycol] = pd.Categorical(mdf[ycol],f1['order'],ordered=True)
     data = mdf.merge(data,on=[xcol,ycol]+outer_factors,how='left').fillna({value_col:0,'group_size':1})
+    data[xcol] = pd.Categorical(data[xcol],f0['order'],ordered=True)
+    data[ycol] = pd.Categorical(data[ycol],f1['order'],ordered=True)
 
     data['w'] = data['group_size']*data[value_col]
-    data.sort_values([xcol,ycol],ascending=[True,False],inplace=True)
+    data.sort_values([ycol,xcol],ascending=[True,False],inplace=True)
 
     if separate: # Split and center each ycol group so dynamics can be better tracked for all of them
         ndata = data.groupby(outer_factors+[xcol],observed=False)[[ycol,value_col,'w']].apply(lambda df: pd.DataFrame({ ycol: df[ycol], 'yv': df['w']/df['w'].sum(), 'w': df['w']})).reset_index()
@@ -983,8 +983,8 @@ def marimekko(data, value_col='value', facets=[], val_format='%', width=800, too
                                                                                                                         'y2': (df['ym'].cumsum()- df['ym']/2 + df['yv']/2)/df['ym'].sum(), })).reset_index()
     else: # Regular marimekko
         ndata = data.groupby(outer_factors+[xcol],observed=False)[[ycol,value_col,'w']].apply(lambda df: pd.DataFrame({ ycol: df[ycol], 'w': df['w'].sum(),
-                                                                                                                       'yv': df['w']/df['w'].sum(), 
-                                                                                                                       'y2': df['w'].cumsum()/df['w'].sum()})).reset_index()
+                                                                                                                        'yv': df['w']/df['w'].sum(), 
+                                                                                                                        'y2': df['w'].cumsum()/df['w'].sum()})).reset_index()
         ndata['y1'] = ndata['y2']-ndata['yv']
     
     ndata = ndata.groupby(outer_factors+[ycol],observed=False)[[xcol,'yv','y1','y2','w']].apply(lambda df: pd.DataFrame({ xcol: df[xcol], 'xv': df['w']/df['w'].sum(), 'x2': df['w'].cumsum()/df['w'].sum(), 'yv':df['yv'], 'y1':df['y1'], 'y2':df['y2']})).reset_index()
@@ -995,7 +995,7 @@ def marimekko(data, value_col='value', facets=[], val_format='%', width=800, too
     ndata['xmid'] = (ndata['x1']+ndata['x2'])/2
     ndata['text'] = ndata[xcol].astype(str)
     #ndata['text'] = list(map(lambda x: x[0]+' '+x[1],zip(ndata[xcol].astype(str),ndata['xv'].round(2).astype(str))))
-    ndata.loc[ndata[ycol]!=f1['order'][-1],'text'] = ''
+    ndata.loc[ndata[ycol]!=f1['order'][0],'text'] = ''
 
     #selection = alt.selection_point(fields=[yvar], bind="legend")
     STROKE = 0.25
@@ -1021,7 +1021,7 @@ def marimekko(data, value_col='value', facets=[], val_format='%', width=800, too
                 "y1:Q",
                 axis=alt.Axis(
                     zindex=1, format="%", title='', grid=False, labels=not separate
-                    ),
+                    ),  
                 scale=alt.Scale(domain=[0, 1])
             ),
             y2=alt.Y2("y2:Q"),

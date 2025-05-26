@@ -303,7 +303,7 @@ def censor_dict(d,vs):
 # Create nice labels for a cut
 # Used by the cut_nice below as well as for a lazy polars version in pp
 def cut_nice_labels(breaks, mi, ma, isint, format='', separator=' - '):
-    
+
     # Extend breaks if needed
     lopen, ropen = False, False
     if ma > breaks[-1]:
@@ -316,9 +316,10 @@ def cut_nice_labels(breaks, mi, ma, isint, format='', separator=' - '):
     if isint:
         breaks = list(map(int, breaks))
         format = ''  # No need for decimal places if all integers
+        breaks[-1] += 1 # to counter the -1 applied below 
     
     tuples = [(breaks[i], breaks[i + 1] - (1 if isint else 0)) for i in range(len(breaks) - 1)]
-    labels = [f"{t[0]:{format}}{separator}{t[1]:{format}}" for t in tuples]
+    labels = [f"{t[0]:{format}}{separator}{t[1]:{format}}" if t[0] != t[1] else f"{t[0]:{format}}" for t in tuples]
     
     if lopen: labels[0] = f"<{breaks[1]:{format}}"
     if ropen: labels[-1] = f"{breaks[-2]:{format}}+"
