@@ -167,16 +167,25 @@ def calculate_priority(plot_meta, match):
 
 # Allow pp_desc to modify data meta
 def update_data_meta_with_pp_desc(data_meta, pp_desc):
+    # Allow creating a new meta group for res_col
     if pp_desc.get('res_meta'):
         data_meta, rmeta = deepcopy(data_meta), deepcopy(pp_desc['res_meta'])
         rmeta = replace_constants(rmeta,data_meta.get('constants',{}))
         data_meta['structure'].append(rmeta)
-    return data_meta
+
+    # Reshape the meta into a more usable format
+    col_meta = extract_column_meta(data_meta)
+    gc_dict = group_columns_dict(data_meta)
+
+    # Allow overriding parts of existing metas for specific columns
+    for k, v in pp_desc.get('col_meta',{}).items():
+        if k in col_meta: col_meta[k].update(v)
+
+    return col_meta, gc_dict
 
 # Get a list of plot types matching required spec
 def matching_plots(pp_desc, df, data_meta, details=False, list_hidden=False):
-    data_meta = update_data_meta_with_pp_desc(data_meta, pp_desc)
-    col_meta = extract_column_meta(data_meta)
+    col_meta, _ = update_data_meta_with_pp_desc(data_meta, pp_desc)
     
     rc = pp_desc['res_col']
     rcm = col_meta[rc]
@@ -385,11 +394,8 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     pl.enable_string_cache() # So we can work on categorical columns
 
     plot_meta = get_plot_meta(pp_desc['plot'])
+    c_meta, gc_dict = update_data_meta_with_pp_desc(data_meta, pp_desc)
     
-    data_meta = update_data_meta_with_pp_desc(data_meta, pp_desc)
-    gc_dict = group_columns_dict(data_meta)
-    c_meta = extract_column_meta(data_meta)
-
     # Setup lazy frame if not already:
     if not isinstance(full_df,pl.LazyFrame):
         full_df = pl.DataFrame(full_df).lazy()
@@ -421,11 +427,10 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     # If any aliases are used, cconvert them to column names according to the data_meta
     cols = [ c for c in np.unique(list_aliases(cols,gc_dict)) if c in all_col_names ]
 
-    # Remove draws_data if calcualted_draws is disabled       
-    if not pp_desc.get('calculated_draws',True):
-        data_meta = data_meta.copy()
-        del data_meta['draws_data']
-
+    # Remove draws_data if calcualted_draws is disabled
+    draws_data = data_meta.get('draws_data',{})
+    if not pp_desc.get('calculated_draws',True): draws_data = {}
+        
     # Add row id-s and find count - both need to happen before filtering
     full_df = full_df.with_row_count('id')
     total_n = full_df.select(pl.len()).collect().item()
@@ -482,8 +487,8 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     val_range = pp_desc.get('val_range') or val_range
 
     # Compute draws if needed - Nb: also applies if the draws are shared for the group of questions
-    if 'draw' in cols and pp_desc['res_col'] in data_meta.get('draws_data',{}):
-        uid, ndraws = data_meta['draws_data'][pp_desc['res_col']]
+    if 'draw' in cols and pp_desc['res_col'] in draws_data:
+        uid, ndraws = draws_data[pp_desc['res_col']]
         draws = stable_draws(total_n, ndraws, uid)
         draw_df = pl.DataFrame({ 'draw': draws, 'id': np.arange(0, total_n) })
         filtered_df = filtered_df.drop('draw').join(draw_df.lazy(), on=['id'], how='left')
@@ -494,11 +499,11 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
         value_vars = [ c for c in gc_dict[pp_desc['res_col']] if c in cols ]
         id_vars = ['id'] + [ c for c in cols if (c not in value_vars or c in factor_cols) ]
 
-        if 'draw' in cols and data_meta.get('draws_data') is not None:
+        if 'draw' in cols and draws_data:
             draw_dfs, ddf_cache = [], {}
             for c in value_vars:
-                if c in data_meta.get('draws_data',{}):
-                    uid, ndraws = data_meta['draws_data'][c]
+                if c in draws_data:
+                    uid, ndraws = draws_data[c]
                     if (uid,ndraws) not in ddf_cache:
                         draws = stable_draws(total_n, ndraws, uid)
                         ddf_cache[(uid,ndraws)] = pl.DataFrame({
@@ -525,7 +530,7 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
         )
 
         # Handle draws for each question
-        if 'draw' in cols and data_meta.get('draws_data') is not None and len(draw_dfs)>0:
+        if 'draw' in cols and draws_data and len(draw_dfs)>0:
                 filtered_df = filtered_df.rename({'draw':'old_draw'}).join(
                     pl.concat(draw_dfs).lazy(),
                     on=['id', 'question'],
@@ -717,13 +722,13 @@ def create_tooltip(pparams,tc_meta):
         label_dict[question_tn] = { c: tc_meta[c].get('label') or '' for c in data[question_tn].unique() if c in tc_meta and tc_meta[c].get('label') }
     
     # Create the tooltips
-    tooltips = [ alt.Tooltip(f"{pparams['value_col']}:Q", format=pparams['val_format']) ]
+    tooltips = [ alt.Tooltip(field=pparams['value_col'], type='quantitative', format=pparams['val_format']) ]
     for cn in tcols:
         if label_dict.get(cn):
             data[cn+'_label'] = data[cn].astype('object').replace({ k:tfn(v) for k,v in label_dict[cn].items() })
-            t = alt.Tooltip(f"{cn}_label:N",title=cn)
+            t = alt.Tooltip(field=f"{cn}_label", type='nominal', title=cn)
         else:
-            t = alt.Tooltip(f"{cn}:N")
+            t = alt.Tooltip(field=cn, type='nominal')
         tooltips.append(t)
             
     return tooltips
@@ -755,14 +760,13 @@ def inner_outer_factors(factor_cols, pp_desc, plot_meta):
 # %% ../nbs/02_pp.ipynb 32
 # Function that takes filtered raw data and plot information and outputs the plot
 # Handles all of the data wrangling and parameter formatting
-def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=False, width=200, height=None, return_matrix_of_plots=False, translate=None):
+def create_plot(pparams, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=False, width=200, height=None, return_matrix_of_plots=False, translate=None):
     # Make a shallow copy so we don't mess with the original object. Important for caching
     pparams = {**pparams}
     pparams['data'] = pparams['data'].copy() # Also copy data as we mutate it w translate
 
     # Get most commonly needed things in usable forms
     data, col_meta = pparams['data'], pparams['col_meta']
-    data_meta = update_data_meta_with_pp_desc(data_meta, pp_desc)
     plot_meta = get_plot_meta(pp_desc['plot'])
     
     if 'question' in data.columns: # TODO: this should be in io.py already, probably
@@ -899,13 +903,15 @@ def create_plot(pparams, data_meta, pp_desc, alt_properties={}, alt_wrapper=None
         else: # Use faceting
             if n_facet_cols==1:
                 plot = alt_wrapper(plot_fn(**pparams).properties(**dims, **alt_properties).facet(
-                    row=alt.Row(f'{factor_cols[0]}:O', sort=list(data[factor_cols[0]].dtype.categories), header=alt.Header(labelOrient='top'))))
+                    row=alt.Row(field=factor_cols[0], type='ordinal', sort=list(data[factor_cols[0]].dtype.categories), header=alt.Header(labelOrient='top'))))
             elif len(factor_cols)>1:
                 plot = alt_wrapper(plot_fn(**pparams).properties(**dims, **alt_properties).facet(
-                    column=alt.Column(f'{factor_cols[1]}:O', sort=list(data[factor_cols[1]].dtype.categories)),
-                    row=alt.Row(f'{factor_cols[0]}:O', sort=list(data[factor_cols[0]].dtype.categories), header=alt.Header(labelOrient='top'))))
+                    column=alt.Column(field=factor_cols[1], type='ordinal', sort=list(data[factor_cols[1]].dtype.categories)),
+                    row=alt.Row(field=factor_cols[0], type='ordinal', sort=list(data[factor_cols[0]].dtype.categories), header=alt.Header(labelOrient='top'))))
             else: # n_facet_cols!=1 but just one facet
-                plot = alt_wrapper(plot_fn(**pparams).properties(**dims, **alt_properties).facet(f'{factor_cols[0]}:O',columns=n_facet_cols))
+                plot = (alt_wrapper(plot_fn(**pparams).properties(**dims, **alt_properties)
+                            .facet(field=factor_cols[0], type='ordinal', 
+                                    sort=list(data[factor_cols[0]].dtype.categories), columns=n_facet_cols)))
             plot = plot.configure_view(discreteHeight={'step':20})
     else:
         plot = alt_wrapper(plot_fn(**pparams).properties(**dims, **alt_properties)
@@ -975,7 +981,7 @@ def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, h
             plot_cache[key] = pparams
     else: # No caching
         pparams = pp_transform_data(full_df, data_meta, pp_desc)
-    return create_plot(pparams, data_meta, pp_desc, width=width,height=height,**kwargs)
+    return create_plot(pparams, pp_desc, width=width,height=height,**kwargs)
 
 # Another convenience function to simplify testing new plots
 def test_new_plot(fn, pp_desc, *args, plot_meta={}, **kwargs):

@@ -161,11 +161,13 @@ args = {}
 
 # If we have an override, add the column block to the data meta
 raw_first_data_meta = deepcopy(first_data_meta)
-if st.session_state.get('override'):
-    pp = eval(st.session_state['override'])
-    first_data_meta = update_data_meta_with_pp_desc(first_data_meta, pp)
-
 c_meta = extract_column_meta(first_data_meta)
+if st.session_state.get('override'):
+    try:
+        pp = eval(st.session_state['override'])
+        c_meta, _ = update_data_meta_with_pp_desc(first_data_meta, pp)
+    except Exception as e:
+        st.error(f"Error parsing override: {e}")
 
 with st.sidebar: #.expander("Select dimensions"):
 
@@ -349,7 +351,7 @@ elif input_files_facet:
         [ v for i,f in enumerate(input_files) for v in [f]*len(dfs[i]) ],input_files)
 
     pparams['data'] = fdf
-    plot = create_plot(pparams,raw_first_data_meta,args,
+    plot = create_plot(pparams,args,
                        translate=translate,
                        width=(width or get_plot_width('full',1)),
                        return_matrix_of_plots=matrix_form)
@@ -378,7 +380,7 @@ else:
             fargs['filter'] = { k:v for k,v in args['filter'].items() if k in loaded[ifile]['columns'] }
             pparams = pp_transform_data(loaded[ifile]['data'], data_meta, fargs)
             cur_width = width or get_plot_width(f'{i}_{ifile}',len(input_files))
-            plot = create_plot(pparams,data_meta,fargs,
+            plot = create_plot(pparams,fargs,
                                translate=translate,
                                width=cur_width,
                                return_matrix_of_plots=matrix_form)

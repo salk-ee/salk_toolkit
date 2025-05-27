@@ -116,14 +116,21 @@ def boxplot_manual(data, value_col='value', facets=[], val_format='%', width=800
     f_cols = outer_factors+[f['col'] for f in facets[:2] if f is not None]
     df = data.groupby(f_cols,observed=True)[value_col].apply(boxplot_vals,delta=(maxv-minv)/400).reset_index()
     
-    shared = {'y': alt.Y(f'{f0["col"]}:N', title=None, sort=f0['order']),
-              **({'yOffset':alt.YOffset(f'{f1["col"]}:N', title=None, sort=f1['order'])} if f1 else {}),
-              'tooltip': [ alt.Tooltip(f'{vn}:Q',format=val_format,title=f'{vn[0].upper()+vn[1:]} of {value_col}') for vn in ['min','q1','mean','q2 (median)','q3','max'] ] + tooltip[1:] }
+    shared = {
+        'y': alt.Y(field=f0["col"], type='nominal', title=None, sort=f0['order']),
+        **(
+            {'yOffset': alt.YOffset(field=f1["col"], type='nominal', title=None, sort=f1['order'])} 
+            if f1 else {}
+        ),
+        'tooltip': [
+            alt.Tooltip(field=vn, type='quantitative', format=val_format, 
+                       title=f'{vn[0].upper()+vn[1:]} of {value_col}') 
+            for vn in ['min','q1','mean','q2 (median)','q3','max']
+        ] + tooltip[1:]
+    }
     
     root = alt.Chart(df).encode(**shared)
-
     size = 12
-
 
     # Compose each layer individually
     lower_plot = root.mark_rule().encode(
@@ -135,10 +142,11 @@ def boxplot_manual(data, value_col='value', facets=[], val_format='%', width=800
         x=alt.X('q1p:Q'),
         x2=alt.X2('q3p:Q'),
         **({
-            'color': alt.Color(f'{f0["col"]}:N', scale=f0['colors'], legend=None)    
-            } if not f1 else {
-                'color': alt.Color(f'{f1["col"]}:N', scale=f1['colors'], 
-                                    legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f1['order'],width)))
+            'color': alt.Color(field=f0["col"], type='nominal', scale=f0['colors'], legend=None)    
+        } if not f1 else {
+            'color': alt.Color(field=f1["col"], type='nominal', scale=f1['colors'],
+                            legend=alt.Legend(orient='top',
+                                            columns=estimate_legend_columns_horiz(f1['order'],width)))
         })
     )
 
@@ -155,7 +163,6 @@ def boxplot_manual(data, value_col='value', facets=[], val_format='%', width=800
     )
 
     return (lower_plot + middle_plot + upper_plot + middle_tick)
-
 # Also create a raw version for the same plot 
 stk_plot('boxplots-raw', data_format="raw", n_facets=(1,2), priority=0)(boxplot_manual)
 
@@ -165,19 +172,21 @@ def columns(data, value_col='value', facets=[], val_format='%', width=800, toolt
     f0, f1 = facets[0], facets[1] if len(facets)>1 else None
     plot = alt.Chart(data).mark_bar().encode(
         x=alt.X(
-            f'{value_col}:Q',
+            field=value_col,
+            type='quantitative',
             title=value_col,
             axis=alt.Axis(format=val_format),
         ),
-        y=alt.Y(f'{f0["col"]}:N', title=None, sort=f0["order"]),
+        y=alt.Y(field=f0["col"], type='nominal', title=None, sort=f0["order"]),
         tooltip = tooltip,
         **({
-                'color': alt.Color(f'{f0["col"]}:N', scale=f0["colors"], legend=None)    
-            } if not f1 else {
-                'yOffset':alt.YOffset(f'{f1["col"]}:N', title=None, sort=f1["order"]),
-                'color': alt.Color(f'{f1["col"]}:N', scale=f1["colors"],
-                                    legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f1["order"],width)))
-            }),
+            'color': alt.Color(field=f0["col"], type='nominal', scale=f0["colors"], legend=None)    
+        } if not f1 else {
+            'yOffset': alt.YOffset(field=f1["col"], type='nominal', title=None, sort=f1["order"]),
+            'color': alt.Color(field=f1["col"], type='nominal', scale=f1["colors"],
+                            legend=alt.Legend(orient='top',
+                                            columns=estimate_legend_columns_horiz(f1["order"],width)))
+        }),
     )
     return plot
 
@@ -194,21 +203,23 @@ def stacked_columns(data, value_col='value', facets=[], filtered_size=1, val_for
     plot = alt.Chart(round(data, 3), width = 'container' \
     ).mark_bar().encode(
         x=alt.X(
-            f'{value_col}:Q',
+            field=value_col,
+            type='quantitative',
             title=value_col,
             axis=alt.Axis(format=val_format),
             **({'stack':'normalize'} if normalized else {})
             #scale=alt.Scale(domain=[0,30]) #see lõikab mõnedes jaotustes parema ääre ära
         ),
-        y=alt.Y(f'{f0["col"]}:N', title=None, sort=f0["order"]),
+        y=alt.Y(field=f0["col"], type='nominal', title=None, sort=f0["order"]),
         tooltip = tooltip,
         **({
-                'color': alt.Color(f'{f0["col"]}:N', scale=f0["colors"], legend=None)    
-            } if len(facets)<=1 else {
-                'order': alt.Order('f_order:O'),
-                'color': alt.Color(f'{f1["col"]}:N', scale=f1["colors"],
-                                    legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f1["order"],width)))
-            }),
+            'color': alt.Color(field=f0["col"], type='nominal', scale=f0["colors"], legend=None)    
+        } if len(facets)<=1 else {
+            'order': alt.Order('f_order:O'),
+            'color': alt.Color(field=f1["col"], type='nominal', scale=f1["colors"],
+                            legend=alt.Legend(orient='top',
+                                            columns=estimate_legend_columns_horiz(f1["order"],width)))
+        }),
     )
     return plot
 
@@ -227,25 +238,24 @@ def diff_columns(data, value_col='value', facets=[], val_format='%', sort_descen
     
     plot = alt.Chart(round(diff, 3), width = 'container' \
     ).mark_bar().encode(
-        y=alt.Y(f'{f0["col"]}:N', title=None, sort=f0["order"]),
+        y=alt.Y(field=f0["col"], type='nominal', title=None, sort=f0["order"]),
         x=alt.X(
-            f'{value_col}:Q',
+            field=value_col,
+            type='quantitative',
             title=f"{factors[1]} - {factors[0]}",
             axis=alt.Axis(format=val_format, title=f"{factors[0]} <> {factors[1]}"),
             #scale=alt.Scale(domain=[0,30]) #see lõikab mõnedes jaotustes parema ääre ära
-            ),
-        
+        ), 
         tooltip=[
-            alt.Tooltip(f'{f0["col"]}:N'),
-            alt.Tooltip(f'{value_col}:Q',format=val_format, title=f'{value_col} difference')
-            ],
-        color=alt.Color(f'{f0["col"]}:N', scale=f0["colors"], legend=None)    
+            alt.Tooltip(field=f0["col"], type='nominal'),
+            alt.Tooltip(field=value_col, type='quantitative', format=val_format, title=f'{value_col} difference')
+        ],
+        color=alt.Color(field=f0["col"], type='nominal', scale=f0["colors"], legend=None)    
     )
     return plot
 
 # %% ../nbs/03_plots.ipynb 23
 # The idea was to also visualize the size of each cluster. Currently not very useful, may need to be rethought
-
 @stk_plot('massplot', data_format='longform', draws=False, group_sizes=True, n_facets=(1,2), hidden=True)
 def massplot(data, value_col='value', facets=[], filtered_size=1, val_format='%', width=800, tooltip=[]):
     f0, f1 = facets[0], facets[1] if len(facets)>1 else None
@@ -254,9 +264,10 @@ def massplot(data, value_col='value', facets=[], filtered_size=1, val_format='%'
 
     plot = alt.Chart(round(data, 3), width = 'container' \
     ).mark_circle().encode(
-        y=alt.Y(f'{f0["col"]}:N', title=None, sort=f0["order"]),
+        y=alt.Y(field=f0["col"], type='nominal', title=None, sort=f0["order"]),
         x=alt.X(
-            f'{value_col}:Q',
+            field=value_col,
+            type='quantitative',
             title=value_col,
             axis=alt.Axis(format=val_format),
             #scale=alt.Scale(domain=[0,30]) #see lõikab mõnedes jaotustes parema ääre ära
@@ -266,12 +277,13 @@ def massplot(data, value_col='value', facets=[], filtered_size=1, val_format='%'
         stroke=alt.value('#777'),
         tooltip = tooltip + [ alt.Tooltip('group_size:N',format='.1%',title='Group size') ],
         **({
-                'color': alt.Color(f'{f0["col"]}:N', scale=f0["colors"], legend=None)    
-            } if not f1 else {
-                'yOffset':alt.YOffset(f'{f1["col"]}:N', title=None, sort=f1["order"]), 
-                'color': alt.Color(f'{f1["col"]}:N', scale=f1["colors"],
-                                legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f1["order"],width)))
-            }),
+            'color': alt.Color(field=f0["col"], type='nominal', scale=f0["colors"], legend=None)    
+        } if not f1 else {
+            'yOffset': alt.YOffset(field=f1["col"], type='nominal', title=None, sort=f1["order"]), 
+            'color': alt.Color(field=f1["col"], type='nominal', scale=f1["colors"],
+                            legend=alt.Legend(orient='top',
+                                            columns=estimate_legend_columns_horiz(f1["order"],width)))
+        }),
     )
     return plot
 
@@ -337,20 +349,23 @@ def likert_bars(data, value_col='value', facets=[],  tooltip=[], outer_factors=[
         .encode(
             x=alt.X('start:Q', axis=alt.Axis(title=None, format = '%')),
             x2=alt.X2('end:Q'),
-            y=alt.Y(f'{f1["col"]}:N', axis=alt.Axis(title=None, offset=5, ticks=False, minExtent=60, domain=False), sort=f1["order"]),
+            y=alt.Y(field=f1["col"], type='nominal', 
+                    axis=alt.Axis(title=None, offset=5, ticks=False, minExtent=60, domain=False), 
+                    sort=f1["order"]),
             tooltip=tooltip,
             color=alt.Color(
-                f'{f0["col"]}:N',
+                field=f0["col"],
+                type='nominal',
                 legend=alt.Legend(
                     title=None,#f0["col"],
                     orient='bottom',
                     columns=estimate_legend_columns_horiz(f0['order'],width,extra_text=f1['order'])
-                    ),
+                ),
                 scale=f0["colors"],
             ),
-            **({ 'yOffset':alt.YOffset(f'{f2["col"]}:N', title=None, sort=f2["order"]),
-                 #'strokeWidth': alt.value(3)
-               } if f2 else {})
+            **({ 
+                'yOffset': alt.YOffset(field=f2["col"], type='nominal', title=None, sort=f2["order"])
+            } if f2 else {})
         )
     return plot
 
@@ -391,24 +406,28 @@ def density(data, value_col='value', facets=[], tooltip=[], outer_factors=[], st
         
         ndata['density'] /= len(data)
         plot=alt.Chart(ndata).mark_area(interpolate='natural').encode(
-                x=alt.X(f"{value_col}:Q"),
-                y=alt.Y('density:Q',axis=alt.Axis(title=None, format = '%'),stack='zero'),
-                tooltip = tooltip[1:],
-                **({'fill': alt.Fill(f'{f0["col"]}:N', scale=f0["colors"], 
-                            legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f0["order"],width))), 
-                    'order': alt.Order('order:O'), 'opacity': alt.condition(selection, alt.value(1), alt.value(0.15))
-                    } if f0 else {})
-            )
+            x=alt.X(field=value_col, type='quantitative'),
+            y=alt.Y('density:Q', axis=alt.Axis(title=None, format='%'), stack='zero'),
+            tooltip=tooltip[1:],
+            **({'fill': alt.Fill(field=f0["col"], type='nominal', scale=f0["colors"], 
+                                legend=alt.Legend(orient='top',
+                                                columns=estimate_legend_columns_horiz(f0["order"],width))), 
+                'order': alt.Order('order:O'), 
+                'opacity': alt.condition(selection, alt.value(1), alt.value(0.15))
+                } if f0 else {})
+        )
     else:
         plot = alt.Chart(ndata).mark_line().encode(
-                x=alt.X(f"{value_col}:Q"),
-                y=alt.Y('density:Q',axis=alt.Axis(title=None, format = '%')),
-                tooltip = tooltip[1:],
-                **({'color': alt.Color(f'{f0["col"]}:N', scale=f0["colors"], 
-                    legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f0["order"],width))),
-                    'order': alt.Order('order:O'), 'opacity': alt.condition(selection, alt.value(1), alt.value(0.15))
-                    } if f0 else {})
-            )
+            x=alt.X(field=value_col, type='quantitative'),
+            y=alt.Y('density:Q', axis=alt.Axis(title=None, format='%')),
+            tooltip=tooltip[1:],
+            **({'color': alt.Color(field=f0["col"], type='nominal', scale=f0["colors"], 
+                                legend=alt.Legend(orient='top',
+                                        columns=estimate_legend_columns_horiz(f0["order"],width))),
+                'order': alt.Order('order:O'), 
+                'opacity': alt.condition(selection, alt.value(1), alt.value(0.15))
+                } if f0 else {})
+        )
 
     if f0: plot = plot.add_params(selection)
 
@@ -433,13 +452,17 @@ def violin(data, value_col='value', facets=[], tooltip=[], outer_factors=[], bw=
 
     ndata['density'] /= len(data)
     plot=alt.Chart(ndata).mark_area(interpolate='natural').encode(
-            x=alt.X(f"{value_col}:Q"),
+            x=alt.X(field=value_col, type='quantitative'),
             y=alt.Y('density:Q',axis=alt.Axis(title=None, labels=False, values=[0], grid=False),stack='center'),
-            row=alt.Row(f'{f0["col"]}:N',header=alt.Header(orient='top',title=None),spacing=5,sort=f0["order"]),
+            row=alt.Row(field=f0["col"], type='nominal', 
+                header=alt.Header(orient='top',title=None), spacing=5, sort=f0["order"]),
             tooltip = tooltip[1:],
             #color=alt.Color(f'{question_col}:N'),
-            **({'color': alt.Color(f'{f1["col"]}:N', scale=f1["colors"], legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f1["order"],width))), 'order': alt.Order('order:O')} if f1 else 
-               {'color': alt.Color(f'{f0["col"]}:N', scale=f0["colors"], legend=None)})
+            **({'color': alt.Color(field=f1["col"], type='nominal', scale=f1["colors"], 
+                    legend=alt.Legend(orient='top',
+                            columns=estimate_legend_columns_horiz(f1["order"],width))), 
+                    'order': alt.Order('order:O')} if f1 else 
+                {'color': alt.Color(field=f0["col"], type='nominal', scale=f0["colors"], legend=None)})
         ).properties(width=width,height=70)
 
     return plot
@@ -478,18 +501,20 @@ def matrix(data, value_col='value', facets=[], val_format='%', reorder=False, lo
 
     # Draw colored boxes
     plot = alt.Chart(data).mark_rect().encode(
-            x=alt.X(f'{f1["col"]}:N', title=None, sort=f1["order"]),
-            y=alt.Y(f'{f0["col"]}:N', title=None, sort=f0["order"]),
-            color=alt.Color(f'{scale_v}:Q', scale=alt.Scale(**scale), legend=(alt.Legend(title=None) if not log_colors else None) ),
-            tooltip=tooltip,
-        )
+        x=alt.X(field=f1["col"], type='nominal', title=None, sort=f1["order"]),
+        y=alt.Y(field=f0["col"], type='nominal', title=None, sort=f0["order"]),
+        color=alt.Color(field=scale_v, type='quantitative', 
+                        scale=alt.Scale(**scale), 
+                        legend=(alt.Legend(title=None) if not log_colors else None)),
+        tooltip=tooltip,
+    )
     
     # Add in numerical values
     if len(f1["order"])<20: # only if we have less than 20 columns
         text = plot.mark_text().encode(
-            text=alt.Text(f'{value_col}:Q', format=val_format),
+            text=alt.Text(field=value_col, type='quantitative', format=val_format),
             color=alt.condition(
-                (alt.datum[f'{scale_v}']-smid)**2 > (0.25*swidth)**2,
+                (alt.datum[scale_v]-smid)**2 > (0.25*swidth)**2,
                 alt.value('white'),
                 alt.value('black')
             ),
@@ -513,7 +538,7 @@ def corr_matrix(data, value_col='value', facets=[], val_format='%', reorder=Fals
     cm_long = cm_long[lower_tri]
     
     return matrix(cm_long, value_col=value_col, facets=[{'col':'index','order':facets[0]['order']},{'col':facets[0]['col'],'order':facets[0]['order']}], val_format=val_format,
-                  tooltip=[alt.Tooltip(f'{value_col}:Q'),alt.Tooltip('index:N'),alt.Tooltip(f"{facets[0]['col']}:N")])
+                  tooltip=[alt.Tooltip(field=value_col, type='quantitative'),alt.Tooltip('index:N'),alt.Tooltip(field=facets[0]['col'], type='nominal')])
 
 # %% ../nbs/03_plots.ipynb 39
 @stk_plot('lines',data_format='longform', draws=False, requires=[{},{'ordered':True}], n_facets=(2,2), args={'smooth':'bool'}, priority=10)
@@ -526,11 +551,12 @@ def lines(data, value_col='value', facets=[], smooth=False, width=800, tooltip=[
         smoothing = 'natural'
         points = True
     plot = alt.Chart(data).mark_line(point=points, interpolate=smoothing).encode(
-        alt.X(f'{f1["col"]}:N', title=None, sort=f1["order"]),
-        alt.Y(f'{value_col}:Q', axis=alt.Axis(format=val_format)),
+        x=alt.X(field=f1["col"], type='nominal', title=None, sort=f1["order"],axis=alt.Axis(labelAngle=0)),
+        y=alt.Y(field=value_col, type='quantitative', axis=alt.Axis(format=val_format)),
         tooltip=tooltip,
-        color=alt.Color(f'{f0["col"]}:N', scale=f0["colors"], sort=f0["order"],
-                        legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f0["order"],width)))
+        color=alt.Color(field=f0["col"], type='nominal', scale=f0["colors"], sort=f0["order"],
+                        legend=alt.Legend(orient='top',
+                                    columns=estimate_legend_columns_horiz(f0["order"],width)))
     )
     return plot
 
@@ -558,14 +584,15 @@ def lines_hdi(data, value_col='value', facets=[], width=800, tooltip=[], val_for
     selection = alt.selection_point(fields=[f0["col"]], bind='legend')
 
     plot = alt.Chart(hdf).mark_area(interpolate='basis').encode(
-        alt.X(f'{f1["col"]}:O', title=None, sort=f1["order"]),
+        x=alt.X(field=f1["col"], type='ordinal', title=None, sort=f1["order"], axis=alt.Axis(labelAngle=0)),
         y=alt.Y('lo:Q',
             axis=alt.Axis(format=val_format),
             title=value_col
             ),
         y2=alt.Y2('hi:Q'),
         fill=alt.Fill(
-            f'{f0["col"]}:N',
+            field=f0["col"],
+            type='nominal',
             sort=f0["order"],
             scale=f0["colors"],
             legend=alt.Legend(symbolOpacity=1)
@@ -589,12 +616,12 @@ def area_smooth(data, value_col='value', facets=[], width=800, tooltip=[]):
     data.loc[:,'order'] = data[f0["col"]].astype('object').replace(ldict).astype('int')
     plot=alt.Chart(data
         ).mark_area(interpolate='natural').encode(
-            x=alt.X(f'{f1["col"]}:O', title=None, sort=f1["order"]),
-            y=alt.Y(f'{value_col}:Q', title=None, stack='normalize',
+            x=alt.X(field=f1["col"], type='ordinal', title=None, sort=f1["order"], axis=alt.Axis(labelAngle=0)),
+            y=alt.Y(field=value_col, type='quantitative', title=None, stack='normalize',
                  scale=alt.Scale(domain=[0, 1]), axis=alt.Axis(format='%')
                  ),
             order=alt.Order('order:O'),
-            color=alt.Color(f'{f0["col"]}:N',
+            color=alt.Color(field=f0["col"], type='nominal',
                 legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f0["order"],width)),
                 sort=f0["order"], scale=f0["colors"]
                 ),
@@ -646,8 +673,8 @@ def likert_rad_pol(data, value_col='value', facets=[], normalized=True, width=80
             alt.Tooltip('polarisation:Q', format='.2'),
             alt.Tooltip('relevance:Q', format='.2')
         ] + tooltip[2:],
-        **({'color': alt.Color(f'{f1["col"]}:N', scale=f1["colors"], 
-                               legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f1["order"],width))),
+        **({'color': alt.Color(field=f1["col"], type='nominal', scale=f1["colors"], 
+                                legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f1["order"],width))),
             'opacity':alt.condition(selection, alt.value(1), alt.value(0.15)),
             } if f1 else {})
         )
@@ -661,13 +688,13 @@ def barbell(data, value_col='value', facets=[], filtered_size=1, val_format='%',
     f0, f1 = facets[0], facets[1]
     
     chart_base = alt.Chart(data).encode(
-        alt.X(f'{value_col}:Q', title=None, axis=alt.Axis(format=val_format)),
-        alt.Y(f'{f0["col"]}:N', title=None, sort=f0["order"]),
+        x=alt.X(field=value_col, type='quantitative', title=None, axis=alt.Axis(format=val_format)),
+        y=alt.Y(field=f0["col"], type='nominal', title=None, sort=f0["order"]),
         tooltip=tooltip
     )
 
     chart = chart_base.mark_line(color='lightgrey', size=1, opacity=1.0).encode(
-        detail=f'{f0["col"]}:N'
+        detail=alt.Detail(field=f0["col"], type='nominal')
     )
     selection = alt.selection_point(fields=[f1["col"]], bind='legend')
 
@@ -676,7 +703,7 @@ def barbell(data, value_col='value', facets=[], filtered_size=1, val_format='%',
         opacity=1,
         filled=True
     ).encode(
-        color=alt.Color(f'{f1["col"]}:N',
+        color=alt.Color(field=f1["col"], type='nominal',
             #legend=alt.Legend(orient='right', title=None),
             legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f1["order"],width)),
             scale=f1["colors"],
@@ -741,7 +768,7 @@ def geoplot(data, topo_feature, value_col='value', facets=[], val_format='.2f', 
         tooltip=tooltip, #[alt.Tooltip(f'properties.{json_col}:N', title=f1["col"]),
                 #alt.Tooltip(f'{value_col}:Q', title=value_col, format=val_format)],
         color=alt.Color(
-            f'{value_col}:Q',
+            field=value_col, type='quantitative',
             scale=alt.Scale(**scale), # To use color scale, consider switching to opacity for value
             legend=alt.Legend(format=val_format, title=None, orient='top-left',gradientThickness=6, 
                                 values=[lmi,lma]),
@@ -774,7 +801,7 @@ def geobest(data, topo_feature, value_col='value', facets=[], val_format='.2f', 
         tooltip=tooltip, #[alt.Tooltip(f'properties.{json_col}:N', title=f1["col"]),
                 #alt.Tooltip(f'{value_col}:Q', title=value_col, format=val_format)],
         color=alt.Color(
-            f'{f0['col']}:N',
+            field=f0['col'], type='nominal',
             scale=f0['colors'],
             legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f0["order"],width)),
         )
@@ -911,7 +938,7 @@ def ordered_population(data, value_col='value', facets=[], tooltip=[], outer_fac
         # Perform the equivalent of groupby
         ocols = data.iloc[[0]+list(splits)][outer_factors]
         tdf = pd.concat([linevals(g,value_col=value_col,dim=fcol, ccodes=gc, cats=cats, n_points=n_points,ocols=ocols.iloc[i,:],gc=group_categories) 
-                         for i,(g,gc) in enumerate(zip(groups,cgroups))])
+                        for i,(g,gc) in enumerate(zip(groups,cgroups))])
 
         #tdf = data.groupby(outer_factors,observed=True).apply(linevals,value_col=value_col,dim=fcol,cats=cats,n_points=n_points,gc=group_categories,include_groups=False).reset_index()
     else:
@@ -936,7 +963,7 @@ def ordered_population(data, value_col='value', facets=[], tooltip=[], outer_fac
         y=alt.Y(f"{value_col}:Q",impute={'value':None}, title='', axis=alt.Axis(grid=True)),
         #opacity=alt.condition(selection, alt.Opacity("matches:Q",scale=None), alt.value(0.1)),
         color=alt.Color(
-            f'{f0["col"]}',
+            field=f0["col"], type='nominal',
             sort=f0["order"],
             scale=f0["colors"]
             ) if len(facets)>=1 else alt.value('red'),
@@ -1039,8 +1066,8 @@ def marimekko(data, value_col='value', facets=[], val_format='%', width=800, too
                 scale=ycol_scale,
             ),
             tooltip=[
-                alt.Tooltip(ycol),
-                alt.Tooltip(xcol),
+                alt.Tooltip(field=ycol),
+                alt.Tooltip(field=xcol),
                 alt.Tooltip("yv:Q", title=tf('Of column'), format='.1%' ),
                 alt.Tooltip("tprop:Q", title=tf('Of population'), format='.1%'),
             ]+tooltip[3:]
