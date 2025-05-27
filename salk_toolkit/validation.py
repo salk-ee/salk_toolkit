@@ -10,6 +10,7 @@ __all__ = ['DataDescription', 'DataSpec', 'MergeSpec', 'FileDesc', 'DataMeta', '
 import numpy as np
 from typing import *
 from pydantic import BaseModel, ConfigDict, model_validator, BeforeValidator
+from pydantic_extra_types.color import Color
 from salk_toolkit.utils import replace_constants
 
 # %% ../nbs/06_validation.ipynb 5
@@ -39,7 +40,7 @@ class ColumnMeta(PBase):
     label: Optional[str] = None # Longer description of the column for tooltips
     labels: Optional[Dict[str,str]] = None # Dict matching categories to labels
     groups: Optional[Dict[str,List[str]]] = None # Dict of lists of category values defining groups for easier filtering
-    colors: Optional[Dict[str,str]] = None # Dict matching colors to categories
+    colors: Optional[Dict[str,Color]] = None # Dict matching colors to categories
     num_values: Optional[List[Union[float,None]]] = None # For categoricals - how to convert the categories to numbers
     val_format: Optional[str] = None # Format string for the column values - only used with continuous display
     val_range: Optional[Tuple[float,float]] = None # Range of possible values for continuous variables - used for filter bounds etc
@@ -69,7 +70,7 @@ class BlockScaleMeta(ColumnMeta):
 
     # Only useful in 'scale' block
     col_prefix: Optional[str] = None # If column name should have the prefix added. Usually used in scale block
-    question_colors: Optional[Dict[str,str]] = None # Dict mapping columns to different colors
+    question_colors: Optional[Dict[str,Color]] = None # Dict mapping columns to different colors
 
 
 # %% ../nbs/06_validation.ipynb 7
@@ -152,6 +153,7 @@ class DataMeta(PBase):
     def check_file(self) -> Self:
         if self.file is None and self.files is None:
             raise ValueError("One of 'file' or 'files' has to be provided")
+        return self
 
 
 # %% ../nbs/06_validation.ipynb 11
