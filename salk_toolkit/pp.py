@@ -110,14 +110,25 @@ def get_all_plots():
 # This is very much a placeholder right now
 n_a = -1000000
 priority_weights = {
-    'draws': [n_a, 50],
-    'nonnegative': [n_a, 50],
+    'draws': [n_a, 0],
+    'nonnegative': [n_a, 40],
     'hidden': [n_a, 0],
     
-    'ordered': [n_a, 100],
+    'ordered': [n_a, 10],
     'likert': [n_a, 200],
     'required_meta': [n_a, 500],
 }
+
+# More agressive old version:
+# priority_weights = {
+#     'draws': [n_a, 50],
+#     'nonnegative': [n_a, 50],
+#     'hidden': [n_a, 0],
+    
+#     'ordered': [n_a, 100],
+#     'likert': [n_a, 200],
+#     'required_meta': [n_a, 500],
+# }
 
 # Method for choosing a sensible default plot based on the data and plot metadata
 def calculate_priority(plot_meta, match):

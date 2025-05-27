@@ -516,7 +516,7 @@ def corr_matrix(data, value_col='value', facets=[], val_format='%', reorder=Fals
                   tooltip=[alt.Tooltip(f'{value_col}:Q'),alt.Tooltip('index:N'),alt.Tooltip(f"{facets[0]['col']}:N")])
 
 # %% ../nbs/03_plots.ipynb 39
-@stk_plot('lines',data_format='longform', draws=False, requires=[{},{'ordered':True}], n_facets=(2,2), args={'smooth':'bool'})
+@stk_plot('lines',data_format='longform', draws=False, requires=[{},{'ordered':True}], n_facets=(2,2), args={'smooth':'bool'}, priority=10)
 def lines(data, value_col='value', facets=[], smooth=False, width=800, tooltip=[], val_format='.2f',):
     f0, f1 = facets[0], facets[1]
     if smooth:
@@ -959,7 +959,7 @@ def ordered_population(data, value_col='value', facets=[], tooltip=[], outer_fac
     return plot
 
 # %% ../nbs/03_plots.ipynb 62
-@stk_plot('marimekko', data_format='longform', draws=False, group_sizes=True, args={'separate':'bool'}, n_facets=(2,2))
+@stk_plot('marimekko', data_format='longform', draws=False, group_sizes=True, args={'separate':'bool'}, n_facets=(2,2), priority=55)
 def marimekko(data, value_col='value', facets=[], val_format='%', width=800, tooltip=[], outer_factors=[], separate=False, translate=None):
     f0, f1 = facets[0], facets[1]
     tf = translate if translate else (lambda s: s)
