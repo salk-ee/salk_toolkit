@@ -354,34 +354,33 @@ def pp_filter_data(df, filter_dict, c_meta):
 
 
 # %% ../nbs/02_pp.ipynb 23
+# Efficient way to calculate multiple quantiles at once with polars
+def pl_quantiles(ldf, cname, qs):
+    return ldf.select([ pl.col(cname).quantile(q).alias(str(q)) for q in qs ]).collect().to_numpy()[0]
+
 # While polars-ized, it is still slow because of the collects. 
 # This can likely be improved by batching all of the required collects into a single select (over all columns)
 # In practice, this is probably not worth it because this is not used very often
 def discretize_continuous(ldf, col, col_meta={}):
-    if 'bin_breaks' in col_meta and 'bin_labels' in col_meta:
-        breaks, labels = col_meta['bin_breaks'], col_meta['bin_labels']
-        ldf = ldf.with_columns(pl.col(col).cut(breaks[1:-1], labels=labels, left_closed=True).cast(pl.Categorical))
-    else:
-        breaks = col_meta.get('bin_breaks',5)
-        fmt = col_meta.get('val_format','.1f') 
-        if False: # Precise computation is slow
-            if isinstance(breaks,int): # This requires computing quantiles for each break - slow
-                breaks = list(np.unique([
-                    ldf.select([pl.col(col).quantile(br).alias(str(br))  
-                    for br in np.linspace(0,1,breaks+1) ]).collect().to_pandas().values.T
-                ]))
-            mima = ldf.select([pl.col(col).min().alias('min'),pl.col(col).max().alias('max')]).collect().to_pandas()
-            mi, ma = mima['min'].values[0], mima['max'].values[0]
-        else: # Approximate computation is considerably faster
-            nbreaks = len(breaks) if isinstance(breaks,list) else breaks
-            vals = ldf.select(pl.col(col).sample(200*nbreaks,with_replacement=True)).collect().to_pandas()[col].values
-            if isinstance(breaks,int):
-                breaks = list(np.unique(np.quantile(vals,np.linspace(0,1,breaks+1))))
-            mi, ma = vals.min(), vals.max()
+    breaks = col_meta.get('bin_breaks',5)
+    labels = col_meta.get('bin_labels',None)
+    fmt = col_meta.get('val_format','.1f')
+    schema = ldf.collect_schema()
+    isint = schema[col].is_integer()
 
-        isint = ldf.collect_schema()[col].is_integer()
-        breaks, labels = cut_nice_labels(breaks, mi, ma, isint, fmt)
-        ldf = ldf.with_columns(pl.col(col).cut(breaks[1:-1], labels=labels, left_closed=True).cast(pl.Categorical))
+    if isinstance(breaks,int): # Quantiles
+        if isint: ldf = ldf.with_columns(pl.col(col).map_batches(lambda x: x+np.random.uniform(-0.5,0.5,len(x)), is_elementwise=True))
+        bpoints = np.linspace(0,1,breaks+1)
+        breaks = list(pl_quantiles(ldf,col,bpoints))
+        if not labels:
+            labels = [f'{bpoints[i]:.0%} - {bpoints[i+1]:.0%}' for i in range(len(bpoints)-1)]
+            labels[0], labels[-1] = f'Bottom {bpoints[1]:.0%}', f'Top {bpoints[1]:.0%}'
+    else: # Given breaks
+        mi, ma = tuple(pl_quantiles(ldf,col,[0,1])) # Determine range of values
+        breaks, labs = cut_nice_labels(breaks, mi, ma, isint, fmt) # Adds mi/ma to breaks if not in range
+        if labels is None: labels = labs
+
+    ldf = ldf.with_columns(pl.col(col).cut(breaks[1:-1], labels=labels, left_closed=True).cast(pl.Categorical))
         
     return ldf, labels
 

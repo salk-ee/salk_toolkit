@@ -302,7 +302,7 @@ def censor_dict(d,vs):
 # %% ../nbs/10_utils.ipynb 34
 # Create nice labels for a cut
 # Used by the cut_nice below as well as for a lazy polars version in pp
-def cut_nice_labels(breaks, mi, ma, isint, format='', separator=' - '):
+def cut_nice_labels(breaks, mi=-np.inf, ma=np.inf, isint=False, format='', separator=' - '):
 
     # Extend breaks if needed
     lopen, ropen = False, False
