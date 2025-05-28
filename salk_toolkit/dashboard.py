@@ -929,7 +929,7 @@ def filter_ui(data, dmeta=None, dims=None, uid='base', detailed=False, raw=False
         # Multiselect
         if detailed and limits[cn].get('categories'):
             key = f"filter_{uid}_{cn}_multiselect"
-            if key in stss and stss[key] not in all_vals: del stss[key]  
+            if key in stss and not set(stss[key]) <= set(all_vals): del stss[key]  
             filters[cn] = stc.multiselect(tf(cn), all_vals, all_vals, key=key)
             if set(filters[cn]) == set(all_vals): del filters[cn]
             else: 
@@ -951,7 +951,7 @@ def filter_ui(data, dmeta=None, dims=None, uid='base', detailed=False, raw=False
         # Use [None,<start>,<end>] for ranges, both categorical and continuous to distinguish them from list of values
         elif limits[cn].get('categories') and limits[cn].get('ordered'): # Ordered categorical - slider
             key = f'filter_{uid}_{cn}_ocat'
-            if key in stss and stss[key] not in all_vals: del stss[key] 
+            if key in stss and not set(stss[key]) <= set(all_vals): del stss[key] 
             f_res = stc.select_slider(tf(cn),all_vals,value=(all_vals[0],all_vals[-1]),key=key)
             if f_res != (all_vals[0],all_vals[-1]): 
                 filters[cn] = [None]+[r_map[f_res[0]],r_map[f_res[1]]]
