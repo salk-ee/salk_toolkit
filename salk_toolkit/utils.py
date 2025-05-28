@@ -312,6 +312,8 @@ def cut_nice_labels(breaks, mi=-np.inf, ma=np.inf, isint=False, format='', separ
     if mi < breaks[0]:
         breaks.insert(0, mi)
         lopen = True
+
+    obreaks = breaks.copy()
     
     if isint:
         breaks = list(map(int, breaks))
@@ -324,7 +326,7 @@ def cut_nice_labels(breaks, mi=-np.inf, ma=np.inf, isint=False, format='', separ
     if lopen: labels[0] = f"<{breaks[1]:{format}}"
     if ropen: labels[-1] = f"{breaks[-2]:{format}}+"
 
-    return breaks,labels
+    return obreaks, labels
 
 # A nicer behaving wrapper around pd.cut
 def cut_nice(s, breaks, format='', separator=' - '):
