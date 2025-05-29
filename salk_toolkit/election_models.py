@@ -164,7 +164,7 @@ def simulate_election_pp(data, mandates, electoral_system, cat_col, value_col, f
     # Run the actual electoral simulation
     nmandates = np.array([ mandates[d] for d in factor_order ])
     edt = simulate_election(sdata,nmandates,**electoral_system)
-    if edt.shape[1]>sdata.shape[1]: factor_order = factor_order+[cname]
+    if edt.shape[1]>sdata.shape[1]: factor_order = factor_order+['Compensation']
     
     # Shape it back into a data frame
     df = pd.DataFrame( edt.reshape( (-1,) ), columns=['mandates'])
