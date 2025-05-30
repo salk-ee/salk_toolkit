@@ -909,8 +909,8 @@ def create_plot(pparams, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=F
                     row=alt.Row(field=factor_cols[0], type='ordinal', sort=list(data[factor_cols[0]].dtype.categories), header=alt.Header(labelOrient='top'))))
             else: # n_facet_cols!=1 but just one facet
                 plot = (alt_wrapper(plot_fn(**pparams).properties(**dims, **alt_properties)
-                            .facet(f'{factor_cols[0]}:O', #type='ordinal', 
-                                    #sort=list(data[factor_cols[0]].dtype.categories), 
+                            .facet(alt.Facet(field=factor_cols[0], type='ordinal', 
+                                    sort=list(data[factor_cols[0]].dtype.categories)), 
                                     columns=n_facet_cols)))
             plot = plot.configure_view(discreteHeight={'step':20})
     else:
