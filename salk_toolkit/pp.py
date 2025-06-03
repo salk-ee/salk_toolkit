@@ -21,6 +21,7 @@ import polars as pl
 import datetime as dt
 import scipy.stats as sps
 from copy import deepcopy
+from math import ceil
 
 from typing import List, Tuple, Dict, Union, Optional
 
@@ -363,7 +364,7 @@ def pl_quantiles(ldf, cname, qs):
 # In practice, this is probably not worth it because this is not used very often
 def discretize_continuous(ldf, col, col_meta={}):
     breaks = col_meta.get('bin_breaks',5)
-    labels = col_meta.get('bin_labels',None)
+    labels = col_meta.get('bin_labels')
     fmt = col_meta.get('val_format','.1f')
     schema = ldf.collect_schema()
     isint = schema[col].is_integer()
@@ -372,7 +373,11 @@ def discretize_continuous(ldf, col, col_meta={}):
         if isint: ldf = ldf.with_columns(pl.col(col).map_batches(lambda x: x+np.random.uniform(-0.5,0.5,len(x)), is_elementwise=True))
         bpoints = np.linspace(0,1,breaks+1)
         breaks = list(pl_quantiles(ldf,col,bpoints))
-        if not labels:
+        span = breaks[-1]-breaks[0]
+        if isint and ceil(span) < len(breaks)-1: # Fewer categories than breaks - just show the categories
+            breaks = list(np.linspace(breaks[0],breaks[-1],int(ceil(span))+1))
+            if not labels: labels = [f'{round(b+0.5)}' for b in breaks[:-1]]
+        elif not labels:
             labels = [f'{bpoints[i]:.0%} - {bpoints[i+1]:.0%}' for i in range(len(bpoints)-1)]
             labels[0], labels[-1] = f'Bottom {bpoints[1]:.0%}', f'Top {bpoints[1]:.0%}'
     else: # Given breaks
