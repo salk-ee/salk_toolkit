@@ -1,4 +1,4 @@
-__version__ = "0.6.4"
+__version__ = "0.7.0"
 from .utils import *
 from .io import *
 from .pp import *

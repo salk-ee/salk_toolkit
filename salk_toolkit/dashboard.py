@@ -319,7 +319,8 @@ class SalkDashboardBuilder:
         if not public:
             self.uam.login_screen()
         
-        if self.user:
+        # TODO: language handling missing for oauth
+        if self.uam.authenticated and self.uam.type == 'st-auth':
             login_lang_choice.empty()
 
             # If user has chosen a language on the login page
@@ -335,6 +336,8 @@ class SalkDashboardBuilder:
             elif (not st.session_state.get('lang') and self.user.get('lang') 
                 and self.user['lang'] in self.cc_translations):
                 self.set_translate(self.user['lang'],remember=True)
+        else:
+            self.set_translate(self.user.get('lang'),remember=True)
 
         wrap_all_st_functions(st, self, to=self)
         self.sidebar = wrap_all_st_functions(st.sidebar, self)    
@@ -363,7 +366,7 @@ class SalkDashboardBuilder:
         return self.uam.user
     
     def log_event(self, event, username=None):
-        log_event(event, username or st.session_state['username'], self.log_path, s3_fs=self.s3fs)
+        log_event(event, username or self.user['username'], self.log_path, s3_fs=self.s3fs)
 
     # pos_id is for plot_width to work in columns
     def plot(self, pp_desc, pos_id='main', width=None, **kwargs):
@@ -388,10 +391,11 @@ class SalkDashboardBuilder:
 
     def page(self, name, **kwargs):
         def decorator(pfunc):
-            groups = kwargs.get('groups')
-            if (groups is None or # Page is available to all
-                self.user.get('group')=='admin' or # Admin sees all
-                self.user.get('group','guest') in groups): # group is whitelisted
+            needed_groups = kwargs.get('groups')
+            if (needed_groups is None or # Page is available to all
+                'admin' in self.user.get('groups') or # Admin sees all
+                'guest' in needed_groups or # some views might be open to all
+                len(set(self.user.get('groups',[])) & set(needed_groups)) > 0): # one of the groups is whitelisted
                 self.pages.append( (name,pfunc,kwargs) )
         return decorator
 
@@ -399,26 +403,29 @@ class SalkDashboardBuilder:
         # This is to avoid a bug of the option menu not showing up on reload
         # I don't get how this row fixes the issue, but it does
         #https://github.com/victoryhb/streamlit-option-menu/issues/68
-        if st.session_state["authentication_status"] and st.session_state["logout"] is None:
+        if self.uam.type == 'st-auth' and st.session_state["authentication_status"] and st.session_state["logout"] is None:
             st.session_state["logout"] = True 
             st.rerun()
 
         # If login failed and is required, don't go any further
-        if not self.public and not st.session_state["authentication_status"]: return
-    
-        # Add user settings page if logged in
-        if self.user:  self.pages.append( ('Settings',user_settings_page,{'icon': 'sliders'}) )
+        if not self.public and not self.uam.authenticated: return
+
+        # Settings / admin currently only work for st-auth    
+        if self.uam.type == 'st-auth':
+
+            # Add user settings page if logged in
+            if self.uam.authenticated: self.pages.append( ('Settings',user_settings_page,{'icon': 'sliders'}) )
         
-        # Add admin page for admins
-        if self.user.get('group')=='admin':  self.pages.append( ('Administration', admin_page,{'icon': 'terminal'}) )
-        
+            # Add admin page for admins
+            if self.uam.admin:  self.pages.append( ('Administration', admin_page,{'icon': 'terminal'}) )
+            
         # Draw the menu listing pages
         pnames = [t[0] for t in self.pages]
         with st.sidebar:
 
-            if self.user:
+            if self.uam.authenticated:
                 self.sb_info.info(self.tf('Logged in as **%s**',context='ui') % self.user["name"])
-                self.uam.auth.logout(self.tf('Log out',context='ui'), 'sidebar')
+                self.uam.logout(self.tf('Log out',context='ui'), 'sidebar')
             
             t_pnames = [ self.tf(pn,context='ui') for pn in pnames]
             menu_choice = option_menu("Pages",
@@ -457,7 +464,7 @@ class SalkDashboardBuilder:
         if pres: shared.update(pres)
         if self.footer_fn: call_kwsafe(self.footer_fn, sdb=self, shared=shared)
 
-        if self.user.get('group')=='admin':
+        if self.uam.admin:
             st.sidebar.write("Mem: %.1fMb" % (psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2))
             if self.plot_caching:
                 pcache = plot_cache()
@@ -488,32 +495,81 @@ class UserAuthenticationManager():
         self.groups, self.s3fs, self.info  = groups, s3_fs, info
         self.org_whitelist = org_whitelist
 
-        # Filled on login
-        self.user = {}
-        self.admin = False
-
-        self.client = None
-        self.conf_file = auth_conf_file
-        self.load_conf()
-        config = self.conf 
+        self.type = ('oauth' if st.secrets.get('auth',{}).get('use_oauth') else 'st-auth')
         
-        self.auth = stauth.Authenticate(
-            config['credentials'],
-            config['cookie']['name'],
-            config['cookie']['key'],
-            config['cookie']['expiry_days'],
-            [] # config['preauthorized'] - not using preauthorization
-        )
+        if self.type == 'st-auth':
+            self.stuser = {}
+            self.client = None
+            self.conf_file = auth_conf_file
+            self.load_conf()
+            config = self.conf
+            self.auth = stauth.Authenticate(
+                config['credentials'],
+                config['cookie']['name'],
+                config['cookie']['key'],
+                config['cookie']['expiry_days'],
+                [] # config['preauthorized'] - not using preauthorization
+            )
 
         self.log_event = logger
         self.tf = translate_func
 
         # Mark that we should log the next login
         if 'log_event' not in st.session_state: st.session_state['log_event'] = True
+    
+    @property
+    def authenticated(self):
+        if self.type == 'st-auth':
+            return st.session_state["authentication_status"]
+        else:
+            return st.user['is_logged_in']
 
-                          
+    @property
+    def user(self):
+        if self.type == 'st-auth':
+            if self.stuser:
+                return {
+                    'name': self.stuser['name'],
+                    'username': self.stuser['username'],
+                    'group': self.stuser['group'],
+                    'organization': self.stuser['organization'],
+                    'lang': self.stuser['lang'],
+                    'admin': (self.stuser['group'] == 'admin'),
+                    'authenticated': True,
+
+                }
+            else:
+                return { 'admin': False, 'authenticated': False }
+        else:
+            if not st.user['is_logged_in']:
+                return { 'admin': False, 'authenticated': False }
+
+            grps = [ g for g in st.user['cognito:groups'] if g != 'Admin' ]
+            return {
+                'name': st.user['given_name'],
+                'username': st.user['cognito:username'],
+                'group': 'admin' if 'Admin' in st.user['cognito:groups'] else 'user',
+                'organization': grps[0] if grps else None,
+                'lang': st.user.get('cognito:lang'),
+                'admin': ('Admin' in st.user['cognito:groups']),
+                'authenticated': True,   
+            }
+            
+
+    @property
+    def admin(self):
+        return self.user['admin']
+
     def require_admin(self):
         if not self.admin: raise Exception("This action requires administrator privileges")
+
+    def logout(self, text, location='sidebar'):
+        if self.type == 'st-auth':
+            self.auth.logout(text, location)
+        else:
+            where = st.sidebar if location == 'sidebar' else st
+            if st.button(text):
+                st.logout()
     
     def load_conf(self,cached=True):
         if cached: self.conf = load_json_cached(self.conf_file, _s3_fs = self.s3fs)
@@ -538,28 +594,32 @@ class UserAuthenticationManager():
         self.users = self.conf['credentials']['usernames']
     
     def login_screen(self):
-        tf = self.tf
-        _, _, username = self.auth.login('sidebar', fields={'Form name':tf('Login page'), 'Username':tf('Username'), 'Password':tf('Password'), 'Log in':tf('Log in')})
-        
-        if st.session_state["authentication_status"] is False:
-            st.error(tf('Username/password is incorrect'))
-            self.log_event('login-fail', username=username)
-        if st.session_state["authentication_status"] is None:
-            st.warning(tf('Please enter your username and password'))
-            st.session_state['log_event'] = True 
-        elif st.session_state["authentication_status"]:
-            self.user = {'name': st.session_state['name'], 
-                         'username': username,
-                         **self.users[username] }
-            
-            #check if signing in has been logged - if not, log it and flip the flag
-            if st.session_state['log_event']:
-                self.log_event('login-success')
-                st.session_state['log_event'] = False
-        
-        self.admin = (self.user.get('group') == 'admin')
+
+        if self.type == 'oauth':
+            if not self.authenticated:
+                st.login()
+        else:
+            tf = self.tf
+            _, _, username = self.auth.login('sidebar', fields={'Form name':tf('Login page'), 'Username':tf('Username'), 'Password':tf('Password'), 'Log in':tf('Log in')})
+                
+            if st.session_state["authentication_status"] is False:
+                st.error(tf('Username/password is incorrect'))
+                self.log_event('login-fail', username=username)
+            if st.session_state["authentication_status"] is None:
+                st.warning(tf('Please enter your username and password'))
+                st.session_state['log_event'] = True 
+            elif st.session_state["authentication_status"]:
+                self.stuser = {'name': st.session_state['name'], 
+                            'username': username,
+                            **self.users[username] }
+                
+                #check if signing in has been logged - if not, log it and flip the flag
+                if st.session_state['log_event']:
+                    self.log_event('login-success')
+                    st.session_state['log_event'] = False
         
     def update_conf(self, username):
+        if self.type == 'oauth': return
 
         # Read full conf file (can have more users, as load_conf filters them)
         full_conf = load_json(self.conf_file, _s3_fs = self.s3fs)
@@ -578,6 +638,7 @@ class UserAuthenticationManager():
         st.rerun() # Force a rerun to reload the new file
 
     def update_user(self,username):
+        if self.type == 'oauth': return
         if 'libsql' in self.conf:
             user_data = self.users[username]
             self.client.execute('UPDATE users SET name = ?, email = ?, organization = ?, "group" = ?, password = ?, lang = ? WHERE username = ?',
@@ -586,6 +647,7 @@ class UserAuthenticationManager():
         else: self.update_conf(username)
             
     def add_user(self, username, password, user_data):
+        if self.type == 'oauth': return
         self.require_admin()
         if username not in self.users:
             user_data['password'] = stauth.Hasher([password]).generate()[0]
@@ -604,6 +666,7 @@ class UserAuthenticationManager():
             return False
         
     def change_user(self, username, user_data):
+        if self.type == 'oauth': return
         
         # Change username
         if 'username' in user_data and username != user_data['username']:
@@ -624,6 +687,8 @@ class UserAuthenticationManager():
         self.update_user(username)
         
     def delete_user(self, username): 
+        if self.type == 'oauth': return
+
         self.require_admin()
         del self.users[username]
         self.info.warning(f'User **{username}** deleted.')
@@ -635,6 +700,7 @@ class UserAuthenticationManager():
             self.update_conf(username)
 
     def list_users(self):
+        if self.type == 'oauth': return
         self.require_admin()
         return [ censor_dict({'username': k, **v},['password']) for k,v in self.users.items() ]
 
