@@ -5,7 +5,7 @@
 # %% auto 0
 __all__ = ['get_plot_width', 'open_fn', 'exists_fn', 'read_annotated_data_lazy_cached', 'load_json', 'load_json_cached',
            'save_json', 'alias_file', 'default_translate', 'SalkDashboardBuilder', 'sqlite_client',
-           'UserAuthenticationManager', 'draw_plot_matrix', 'st_plot', 'plot_cache', 'stss_safety', 'facet_ui',
+           'StreamlitAuthenticationManager', 'draw_plot_matrix', 'st_plot', 'plot_cache', 'stss_safety', 'facet_ui',
            'filter_ui', 'translate_with_dict', 'log_missing_translations', 'clean_missing_translations',
            'add_missing_to_dict', 'translate_pot', 'plot_matrix_html']
 
@@ -14,6 +14,7 @@ import json, os, csv, re, time, types, inspect, psutil
 import itertools as it
 from collections import defaultdict
 from contextlib import AbstractContextManager
+from abc import ABC, abstractmethod
 
 import numpy as np
 import pandas as pd
@@ -44,8 +45,36 @@ def get_plot_width(key):
     return min(800,int(0.8*wobj['width'])) # Needs to be adjusted down  to leave margin for plots
 
 # %% ../nbs/05_dashboard.ipynb 5
+def update_manifest(fname):
+    # Create manifests directory if it doesn't exist
+    os.makedirs('manifests', exist_ok=True)
+    
+    # Get name of main python file without extension
+    main_name = os.path.splitext(os.path.basename(__main__.__file__))[0]
+    
+    # Create manifest json file
+    manifest_path = os.path.join('manifests', f'{main_name}.json')
+    if os.path.exists(manifest_path):
+        with open(manifest_path,'r') as f:
+            manifest = json.load(f)
+        if 'files' not in manifest: manifest['files'] = []
+    else:
+        manifest = {
+            'id': main_name,
+            'app': main_name + '.py',
+            'requirements': 'requirements.txt',
+            'files': ['deployment.json'] # TODO: This system should be rethought
+        }
+    
+    if fname not in manifest['files']:
+        manifest['files'].append(fname)
+        with open(manifest_path,'w') as f:
+            json.dump(manifest, f, indent=4)
+
+# %% ../nbs/05_dashboard.ipynb 6
 # Open either a local or an s3 file
 def open_fn(fname, *args, s3_fs=None, **kwargs):
+    #update_manifest(fname) # Actually these tend to be the files we want to be in S3
     if fname[:3] == 's3:':
         if s3_fs is None: s3_fs = s3fs.S3FileSystem(anon=False)
         return s3_fs.open(fname,*args,**kwargs)
@@ -59,7 +88,7 @@ def exists_fn(fname, *args, s3_fs=None, **kwargs):
     else:
         return os.path.exists(fname,*args,**kwargs)
 
-# %% ../nbs/05_dashboard.ipynb 6
+# %% ../nbs/05_dashboard.ipynb 7
 # ttl=None - never expire. Makes sense for potentially big data files
 @st.cache_resource(show_spinner=False,ttl=None)
 def read_annotated_data_lazy_cached(data_source,**kwargs):
@@ -88,14 +117,14 @@ def alias_file(fname, file_map):
         return file_map[fname]
     else: return fname
 
-# %% ../nbs/05_dashboard.ipynb 7
-def log_event(event, username, path, s3_fs=None):
+# %% ../nbs/05_dashboard.ipynb 8
+def log_event(event, uid, path, s3_fs=None):
     timestamp = dt.datetime.now(dt.timezone.utc).strftime('%d-%m-%Y, %H:%M:%S')
     with open_fn(path,'a',s3_fs=s3_fs) as f:
         writer = csv.writer(f)
-        writer.writerow([timestamp, event, username])
+        writer.writerow([timestamp, event, uid])
 
-# %% ../nbs/05_dashboard.ipynb 8
+# %% ../nbs/05_dashboard.ipynb 9
 st_wrap_list = ['write','markdown','title','header','subheader','caption','text','divider',
                 'button','download_button','link_button','checkbox','toggle','radio','selectbox',
                 'multiselect','slider','select_slider','text_input','number_input','text_area',
@@ -166,11 +195,11 @@ def wrap_all_st_functions(base, tfo, to=None):
 
     return to
 
-# %% ../nbs/05_dashboard.ipynb 9
+# %% ../nbs/05_dashboard.ipynb 10
 def default_translate(s,**kwargs):
     return (s[0].upper() + s[1:]).replace('_',' ') if isinstance(s,str) and len(s)>0 else s
 
-# %% ../nbs/05_dashboard.ipynb 10
+# %% ../nbs/05_dashboard.ipynb 11
 # A function that automatically updates the pot file with untranslated strings
 def po_template_updater(pot_file = None):
     if pot_file is None:
@@ -193,6 +222,7 @@ def po_template_updater(pot_file = None):
             'Content-Transfer-Encoding': '8bit',
         }
         tdc = defaultdict(set)
+    update_manifest(pot_file)
 
     def translate(s,**kwargs):
         ctx = kwargs.get('context') or ''
@@ -206,7 +236,7 @@ def po_template_updater(pot_file = None):
     return translate
 
 
-# %% ../nbs/05_dashboard.ipynb 11
+# %% ../nbs/05_dashboard.ipynb 12
 def translate_fn_from_po(po_file):
     po = polib.pofile(po_file)
     td = { entry.msgid: entry.msgstr for entry in po }
@@ -214,12 +244,13 @@ def translate_fn_from_po(po_file):
 
 def load_translate(translate, cc_translations={}):
 
-    if (translate is None or 
-        (translate in cc_translations and cc_translations[translate] is None)):
-        return default_translate
+    if translate is None: return default_translate
     elif callable(translate): return translate
     elif isinstance(translate,dict): return lambda s, **kwargs: translate.get(s,s)
     elif isinstance(translate,str):
+        if (translate not in cc_translations or 
+            (translate in cc_translations and cc_translations[translate] is None)):
+            return default_translate
         if os.path.exists(translate):
             ext = os.path.splitext(translate)[1]
             if ext == '.po' or ext == '.pot':
@@ -245,12 +276,13 @@ def load_po_translations():
         for country_code in os.listdir('locale'):
             po_path = f'locale/{country_code}/{bname}.po'
             if os.path.exists(po_path):
+                update_manifest(po_path)
                 translations[country_code] = translate_fn_from_po(po_path)
                 
     return translations
 
 
-# %% ../nbs/05_dashboard.ipynb 12
+# %% ../nbs/05_dashboard.ipynb 13
 # Main dashboard wrapper - WIP
 class SalkDashboardBuilder:
 
@@ -312,15 +344,20 @@ class SalkDashboardBuilder:
         
         # Set up authentication
         with st.spinner(self.tf("Setting up authentication...",context='ui')):
-            self.uam = UserAuthenticationManager(auth_conf, groups, org_whitelist=org_whitelist,
+            if st.secrets.get('auth',{}).get('use_oauth'):
+                self.uam = FronteggAuthenticationManager(groups, org_whitelist=org_whitelist,
+                                                info=self.info, logger=self.log_event, 
+                                                translate_func=lambda t: self.tf(t,context='ui'))
+            else:
+                self.uam = StreamlitAuthenticationManager(auth_conf, groups, org_whitelist=org_whitelist,
                                                 s3_fs=self.s3fs, info=self.info, logger=self.log_event, 
                                                 translate_func=lambda t: self.tf(t,context='ui'))
 
         if not public:
             self.uam.login_screen()
         
-        # TODO: language handling missing for oauth
-        if self.uam.authenticated and self.uam.type == 'st-auth':
+        # TODO: language handling is overengineered. Remove the complexity
+        if self.uam.authenticated and isinstance(self.uam,StreamlitAuthenticationManager):
             login_lang_choice.empty()
 
             # If user has chosen a language on the login page
@@ -343,7 +380,7 @@ class SalkDashboardBuilder:
         self.sidebar = wrap_all_st_functions(st.sidebar, self)    
         
     def set_translate(self,lang,remember=False):
-        if lang is None: lang = self.default_lang
+        if lang is None or lang not in self.cc_translations: lang = self.default_lang
         translate = load_translate(lang, self.cc_translations)
         self.tf = lambda s,**kwargs: translate(self.pot_updater(s,**kwargs))
         if remember: st.session_state['lang'] = lang
@@ -365,8 +402,8 @@ class SalkDashboardBuilder:
     def user(self):
         return self.uam.user
     
-    def log_event(self, event, username=None):
-        log_event(event, username or self.user['username'], self.log_path, s3_fs=self.s3fs)
+    def log_event(self, event, uid=None):
+        log_event(event, uid or self.user['uid'], self.log_path, s3_fs=self.s3fs)
 
     # pos_id is for plot_width to work in columns
     def plot(self, pp_desc, pos_id='main', width=None, **kwargs):
@@ -400,32 +437,23 @@ class SalkDashboardBuilder:
         return decorator
 
     def build(self):
-        # This is to avoid a bug of the option menu not showing up on reload
-        # I don't get how this row fixes the issue, but it does
-        #https://github.com/victoryhb/streamlit-option-menu/issues/68
-        if self.uam.type == 'st-auth' and st.session_state["authentication_status"] and st.session_state["logout"] is None:
-            st.session_state["logout"] = True 
-            st.rerun()
 
         # If login failed and is required, don't go any further
         if not self.public and not self.uam.authenticated: return
 
-        # Settings / admin currently only work for st-auth    
-        if self.uam.type == 'st-auth':
-
-            # Add user settings page if logged in
-            if self.uam.authenticated: self.pages.append( ('Settings',user_settings_page,{'icon': 'sliders'}) )
+        # Add user settings page if logged in
+        if self.uam.authenticated: self.pages.append( ('Settings',user_settings_page,{'icon': 'sliders'}) )
+    
+        # Add admin page for admins
+        if self.uam.admin:  self.pages.append( ('Administration', admin_page,{'icon': 'terminal'}) )
         
-            # Add admin page for admins
-            if self.uam.admin:  self.pages.append( ('Administration', admin_page,{'icon': 'terminal'}) )
-            
         # Draw the menu listing pages
         pnames = [t[0] for t in self.pages]
         with st.sidebar:
 
             if self.uam.authenticated:
                 self.sb_info.info(self.tf('Logged in as **%s**',context='ui') % self.user["name"])
-                self.uam.logout(self.tf('Log out',context='ui'), 'sidebar')
+                self.uam.logout_button(self.tf('Log out',context='ui'), 'sidebar')
             
             t_pnames = [ self.tf(pn,context='ui') for pn in pnames]
             menu_choice = option_menu("Pages",
@@ -446,6 +474,8 @@ class SalkDashboardBuilder:
         # Load data
         self.data_source = meta.get('data_source',self.data_source)
         with st.spinner(self.tf("Loading data...",context='ui')):
+
+            update_manifest(self.data_source)
 
             # Download the data if it's not already locally present
             # This is done because lazy loading over s3 is very painfully slow as data files are big
@@ -478,7 +508,70 @@ class SalkDashboardBuilder:
     def __exit__(self, exc_type, exc_value, exc_tb):
         self.build()
 
-# %% ../nbs/05_dashboard.ipynb 15
+# %% ../nbs/05_dashboard.ipynb 16
+class UserAuthenticationManager:
+
+    def __init__(self, groups, info, org_whitelist, logger, translate_func):
+        self.groups, self.info  = groups,  info
+        self.org_whitelist = org_whitelist
+        self.log_event = logger
+        self.tf = translate_func
+        self.passwordless = False
+
+        # Mark that we should log the next login
+        if 'log_event' not in st.session_state: st.session_state['log_event'] = True
+
+    @property
+    @abstractmethod
+    def authenticated(self):
+        pass
+
+    @property
+    @abstractmethod
+    def admin(self):
+        pass
+
+    def require_admin(self):
+        if not self.admin: raise Exception("This action requires administrator privileges")
+
+    @property
+    @abstractmethod
+    def user(self):
+        pass
+
+    @abstractmethod
+    def login_screen(self):
+        pass
+
+    @abstractmethod
+    def logout_button(self,text,location='sidebar'):
+        pass
+
+    @abstractmethod
+    def add_user(self, user_data):
+        pass
+
+    @abstractmethod
+    def change_user(self, uid, user_data):
+        pass
+
+    @abstractmethod
+    def delete_user(self, uid):
+        pass
+
+    @abstractmethod
+    def list_users(self):
+        pass
+
+    @abstractmethod
+    def log_event(self, event):
+        pass
+
+    @abstractmethod
+    def update_user(self, uid):
+        pass
+
+# %% ../nbs/05_dashboard.ipynb 17
 # TODO
 # - centralize the db connection, getting url and token from env
 # - move other conf (cookie token) to streamlit env variables
@@ -489,87 +582,60 @@ def sqlite_client(url, token):
     print(f"User database from {url}")
     return libsql_client.create_client_sync(url=url, auth_token=token)
 
-class UserAuthenticationManager():
+class StreamlitAuthenticationManager(UserAuthenticationManager):
     
     def __init__(self,auth_conf_file,groups,org_whitelist,s3_fs,info,logger,translate_func):
-        self.groups, self.s3fs, self.info  = groups, s3_fs, info
-        self.org_whitelist = org_whitelist
+        super().__init__(groups, info, org_whitelist, logger, translate_func)
+        self.s3fs = s3_fs
+        self.stuser = {}
+        self.client = None
+        self.conf_file = auth_conf_file
+        self.load_conf()
+        self.passwordless = False
+        config = self.conf
+        self.auth = stauth.Authenticate(
+            config['credentials'],
+            config['cookie']['name'],
+            config['cookie']['key'],
+            config['cookie']['expiry_days'],
+            [] # config['preauthorized'] - not using preauthorization
+        )
 
-        self.type = ('oauth' if st.secrets.get('auth',{}).get('use_oauth') else 'st-auth')
-        
-        if self.type == 'st-auth':
-            self.stuser = {}
-            self.client = None
-            self.conf_file = auth_conf_file
-            self.load_conf()
-            config = self.conf
-            self.auth = stauth.Authenticate(
-                config['credentials'],
-                config['cookie']['name'],
-                config['cookie']['key'],
-                config['cookie']['expiry_days'],
-                [] # config['preauthorized'] - not using preauthorization
-            )
+        # This is to avoid a bug of the option menu not showing up on reload
+        # I don't get how this row fixes the issue, but it does
+        #https://github.com/victoryhb/streamlit-option-menu/issues/68
+        if st.session_state["authentication_status"] and st.session_state["logout"] is None:
+            st.session_state["logout"] = True 
+            st.rerun()
 
-        self.log_event = logger
-        self.tf = translate_func
-
-        # Mark that we should log the next login
-        if 'log_event' not in st.session_state: st.session_state['log_event'] = True
-    
     @property
     def authenticated(self):
-        if self.type == 'st-auth':
-            return st.session_state["authentication_status"]
-        else:
-            return st.user['is_logged_in']
+        return st.session_state["authentication_status"]
 
     @property
     def user(self):
-        if self.type == 'st-auth':
-            if self.stuser:
-                return {
-                    'name': self.stuser['name'],
-                    'username': self.stuser['username'],
-                    'group': self.stuser['group'],
-                    'organization': self.stuser['organization'],
-                    'lang': self.stuser['lang'],
-                    'admin': (self.stuser['group'] == 'admin'),
-                    'authenticated': True,
-
-                }
-            else:
-                return { 'admin': False, 'authenticated': False }
-        else:
-            if not st.user['is_logged_in']:
-                return { 'admin': False, 'authenticated': False }
-
-            grps = [ g for g in st.user['cognito:groups'] if g != 'Admin' ]
+        if self.stuser:
             return {
-                'name': st.user['given_name'],
-                'username': st.user['cognito:username'],
-                'group': 'admin' if 'Admin' in st.user['cognito:groups'] else 'user',
-                'organization': grps[0] if grps else None,
-                'lang': st.user.get('cognito:lang'),
-                'admin': ('Admin' in st.user['cognito:groups']),
-                'authenticated': True,   
+                'uid': self.stuser['username'],
+                'name': self.stuser['name'],
+                'username': self.stuser['username'],
+                'group': self.stuser['group'],
+                'organization': self.stuser['organization'],
+                'lang': self.stuser['lang'],
+                'admin': (self.stuser['group'] == 'admin'),
+                'authenticated': True,
+
             }
-            
+        else:
+            return { 'admin': False, 'authenticated': False }            
 
     @property
     def admin(self):
         return self.user['admin']
 
-    def require_admin(self):
-        if not self.admin: raise Exception("This action requires administrator privileges")
 
-    def logout(self, text, location='sidebar'):
-        if self.type == 'st-auth':
-            self.auth.logout(text, location)
-        else:
-            where = st.sidebar if location == 'sidebar' else st
-            if st.button(text):
-                st.logout()
+    def logout_button(self, text, location='sidebar'):
+        self.auth.logout(text, location)
     
     def load_conf(self,cached=True):
         if cached: self.conf = load_json_cached(self.conf_file, _s3_fs = self.s3fs)
@@ -595,31 +661,26 @@ class UserAuthenticationManager():
     
     def login_screen(self):
 
-        if self.type == 'oauth':
-            if not self.authenticated:
-                st.login()
-        else:
-            tf = self.tf
-            _, _, username = self.auth.login('sidebar', fields={'Form name':tf('Login page'), 'Username':tf('Username'), 'Password':tf('Password'), 'Log in':tf('Log in')})
-                
-            if st.session_state["authentication_status"] is False:
-                st.error(tf('Username/password is incorrect'))
-                self.log_event('login-fail', username=username)
-            if st.session_state["authentication_status"] is None:
-                st.warning(tf('Please enter your username and password'))
-                st.session_state['log_event'] = True 
-            elif st.session_state["authentication_status"]:
-                self.stuser = {'name': st.session_state['name'], 
-                            'username': username,
-                            **self.users[username] }
-                
-                #check if signing in has been logged - if not, log it and flip the flag
-                if st.session_state['log_event']:
-                    self.log_event('login-success')
-                    st.session_state['log_event'] = False
+        tf = self.tf
+        _, _, username = self.auth.login('sidebar', fields={'Form name':tf('Login page'), 'Username':tf('Username'), 'Password':tf('Password'), 'Log in':tf('Log in')})
+            
+        if st.session_state["authentication_status"] is False:
+            st.error(tf('Username/password is incorrect'))
+            self.log_event('login-fail', username=username)
+        if st.session_state["authentication_status"] is None:
+            st.warning(tf('Please enter your username and password'))
+            st.session_state['log_event'] = True 
+        elif st.session_state["authentication_status"]:
+            self.stuser = {'name': st.session_state['name'], 
+                        'username': username,
+                        **self.users[username] }
+            
+            #check if signing in has been logged - if not, log it and flip the flag
+            if st.session_state['log_event']:
+                self.log_event('login-success')
+                st.session_state['log_event'] = False
         
     def update_conf(self, username):
-        if self.type == 'oauth': return
 
         # Read full conf file (can have more users, as load_conf filters them)
         full_conf = load_json(self.conf_file, _s3_fs = self.s3fs)
@@ -638,7 +699,6 @@ class UserAuthenticationManager():
         st.rerun() # Force a rerun to reload the new file
 
     def update_user(self,username):
-        if self.type == 'oauth': return
         if 'libsql' in self.conf:
             user_data = self.users[username]
             self.client.execute('UPDATE users SET name = ?, email = ?, organization = ?, "group" = ?, password = ?, lang = ? WHERE username = ?',
@@ -646,10 +706,11 @@ class UserAuthenticationManager():
                           user_data['group'], user_data['password'], user_data['lang'], username])
         else: self.update_conf(username)
             
-    def add_user(self, username, password, user_data):
-        if self.type == 'oauth': return
+    def add_user(self, user_data):
         self.require_admin()
+        username = user_data['username']
         if username not in self.users:
+            password = user_data.get('password')
             user_data['password'] = stauth.Hasher([password]).generate()[0]
             self.users[username] = user_data
             self.info.success(f'User {username} successfully added.')
@@ -666,8 +727,6 @@ class UserAuthenticationManager():
             return False
         
     def change_user(self, username, user_data):
-        if self.type == 'oauth': return
-        
         # Change username
         if 'username' in user_data and username != user_data['username']:
             self.users[user_data['username']] = self.users[username]
@@ -687,8 +746,6 @@ class UserAuthenticationManager():
         self.update_user(username)
         
     def delete_user(self, username): 
-        if self.type == 'oauth': return
-
         self.require_admin()
         del self.users[username]
         self.info.warning(f'User **{username}** deleted.')
@@ -700,12 +757,132 @@ class UserAuthenticationManager():
             self.update_conf(username)
 
     def list_users(self):
-        if self.type == 'oauth': return
         self.require_admin()
-        return [ censor_dict({'username': k, **v},['password']) for k,v in self.users.items() ]
+        self.load_conf(cached=False) # so all admin updates would immediately be visible
+        return { k: censor_dict({'uid': k, **v},['password','admin','authenticated']) for k,v in self.users.items() }
 
 
-# %% ../nbs/05_dashboard.ipynb 17
+# %% ../nbs/05_dashboard.ipynb 18
+@st.cache_resource
+def frontegg_client():
+    from frontegg.common.clients import HttpClient
+    base_url = "https://api.frontegg.com/audits"
+    auth = st.secrets['auth']
+    return HttpClient(client_id=auth['client_id'], api_key=auth['client_secret'], base_url=base_url)
+
+class FronteggAuthenticationManager(UserAuthenticationManager):
+
+    def __init__(self, groups, info, org_whitelist, logger, translate_func):
+        super().__init__(groups, info, org_whitelist, logger, translate_func)
+        self.client = frontegg_client()
+        self.passwordless = True
+
+    @property
+    def authenticated(self):
+        return st.user['is_logged_in']
+
+    @property
+    def admin(self):
+        return 'Admin' in st.user.get('roles',[])
+
+    def reform_user(self, user):
+        meta = user.get('metadata',{})
+        if isinstance(meta,str): meta = json.loads(meta)
+        admin = ('Admin' in user.get('roles',[]))
+        return {
+            'uid': user['email'],
+            'name': user.get('name',''),
+            'email': user['email'],
+            #'username': st.user['cognito:username'],
+            'group': 'admin' if admin else 'user',
+            'organization': meta.get('organization'),
+            'lang': meta.get('lang'),
+            'admin': admin,
+            'authenticated': True,   
+        }
+
+    @property
+    def user(self):
+        # As st.user is not updated unless you log out, and is not writable
+        # We need the hacky workaround to allow changing user info (like lang) during session
+        # Normally, one would just do an oauth refresh on user change, but streamlit does not support that (yet?)
+        if not st.user['is_logged_in']:
+            return { 'admin': False, 'authenticated': False }
+        if 'OAUser' not in st.session_state: st.session_state['OAUser'] = self.reform_user(st.user)
+        return st.session_state.get('OAUser')
+
+    def login_screen(self):
+        if not self.authenticated:
+            st.login()
+            if st.user['is_logged_in'] and not st.session_state.get('OAUser'): 
+                st.session_state['OAUser'] = self.reform_user(st.user)
+            elif not st.user['is_logged_in'] and 'OAUser' in st.session_state: 
+                del st.session_state['OAUser']
+
+    def logout_button(self,text,location='sidebar'):
+        where = st.sidebar if location == 'sidebar' else st
+        #if st.button(text): # As logout just restarts login flow, effectively logging back in immediately
+        #   st.logout() 
+        #st.write(st.user) # Debug: show st.user
+
+    def add_user(self, user_data):
+        self.require_admin()
+        res = self.client.post(url='identity/resources/users/v1/', data={
+            'email':user_data['email'],
+            #'password':user_data['password'],
+            'name':user_data['name'],
+            'metadata':json.dumps({
+                'organization':user_data['organization'],
+                'lang':user_data['lang']
+            })
+        },headers={'frontegg-tenant-id':st.user['tenantId']}).json() # Add to same tenant as admin
+        
+        if res.get('error'): raise Exception(res['error'])
+        self.info.info(f'User **{res['email']}** added.')
+        self.log_event(f'add-user: {res['email']}')
+
+    def change_user(self, uid, user_data):
+        st.write(user_data)
+        if uid != self.user['uid']: self.require_admin()
+        uinfo = self.client.get(f'identity/resources/users/v1/email?email={uid}').json()
+        if 'email' in user_data and user_data['email'] != uinfo['email']:
+            eres = self.client.put(url=f'identity/resources/users/v1/{uinfo['id']}/email',data={'email':user_data['email']})
+            if eres.get('error'): raise Exception(res['error'])
+
+        # Change everything else:
+        res = self.client.put(url=f'identity/resources/users/v1/{uinfo['id']}',data={
+            'name':user_data['name'],
+            'metadata':json.dumps({
+                'organization':user_data['organization'],
+                'lang':user_data['lang']
+            })
+        }).json()
+
+        if res.get('error'): raise Exception(res['error'])
+        self.info.info(f'User **{uid}** updated.')
+        self.log_event(f'change-user: {uid}')
+
+        if uid == self.user['uid']:
+            st.session_state['OAUser'] = self.reform_user(res)
+        
+    def delete_user(self, uid):
+        self.require_admin()
+        uinfo = self.client.get(f'identity/resources/users/v1/email?email={uid}').json()
+        res = self.client.delete(f'identity/resources/users/v1/{uinfo['id']}').json()
+
+        if res.get('error'): raise Exception(res['error'])
+        self.info.info(f'User **{uid}** deleted.')
+        self.log_event(f'delete-user: {uid}')
+
+
+    def list_users(self):
+        self.require_admin()
+        # TODO: this endpoint is paginated, so we may need to cycle over all pages here
+        res = self.client.get('identity/resources/users/v1/?_limit=200',headers={'frontegg-tenant-id':'7779b9fb-f279-4cd3-8f61-e751a0d06145'})
+        return { i['email']: censor_dict(self.reform_user(i),['admin','group','authenticated']) for i in res.json()['items'] }
+        
+
+# %% ../nbs/05_dashboard.ipynb 20
 # Password reset
 def user_settings_page(sdb):
     if not sdb.user: return
@@ -716,22 +893,24 @@ def user_settings_page(sdb):
     if lang != cur_lang:
         sdb.set_translate(lang,remember=True)
         if lang!=sdb.user['lang']:
-            sdb.uam.users[st.session_state["username"]]['lang'] = lang
-            sdb.uam.update_user(st.session_state["username"])    
+            user = sdb.user.copy()
+            user['lang'] = lang
+            sdb.uam.change_user(sdb.user['uid'],user)
         st.rerun()
 
-    try:
-        tf = lambda s: sdb.tf(s,context='ui')
-        if sdb.uam.auth.reset_password(st.session_state["username"], 
-                                       fields={'Form name':tf('Reset password'), 'Current password':tf('Current password'), 
-                                               'New password':tf('New password'), 'Repeat password': tf('Repeat password'), 
-                                               'Reset':tf('Reset')}):
-            sdb.uam.update_user(st.session_state["username"])
-            st.success(tf('Password modified successfully'))
-    except Exception as e:
-        st.error(e)
+    if isinstance(sdb.uam,StreamlitAuthenticationManager):
+        try:
+            tf = lambda s: sdb.tf(s,context='ui')
+            if sdb.uam.auth.reset_password(st.session_state["username"], 
+                                        fields={'Form name':tf('Reset password'), 'Current password':tf('Current password'), 
+                                                'New password':tf('New password'), 'Repeat password': tf('Repeat password'), 
+                                                'Reset':tf('Reset')}):
+                sdb.uam.update_user(st.session_state["username"])
+                st.success(tf('Password modified successfully'))
+        except Exception as e:
+            st.error(e)
 
-# %% ../nbs/05_dashboard.ipynb 18
+# %% ../nbs/05_dashboard.ipynb 21
 # Helper function to highlight log rows
 def highlight_cells(val):
     if 'fail' in val:
@@ -745,33 +924,39 @@ def highlight_cells(val):
         color = ''
     return 'color: {}'.format(color)
 
-# %% ../nbs/05_dashboard.ipynb 19
+# %% ../nbs/05_dashboard.ipynb 22
 # Admin page to manage users
 
 def admin_page(sdb):
     sdb.uam.require_admin()
-    sdb.uam.load_conf(cached=False) # so all admin updates would immediately be visible
     
     menu_choice = option_menu(None,[ 'Log management', 'List users', 'Add user', 'Change user', 'Delete user' ], 
                               icons=['card-list','people-fill','person-fill-add','person-lines-fill','person-fill-dash'], orientation='horizontal')
     st.write(" ")
 
+    all_users = sdb.uam.list_users()
+
     if menu_choice=='Log management':
-        log_data=pd.read_csv(alias_file(sdb.log_path,sdb.filemap),names=['timestamp','event','username'])
+        log_data=pd.read_csv(alias_file(sdb.log_path,sdb.filemap),names=['timestamp','event','uid'])
         st.dataframe(log_data.sort_index(ascending=False
             ).style.map(highlight_cells, subset=['event']), width=1200) #use_container_width=True
         
     elif menu_choice=='List users':
         # Read log to get last login:
-        log_data = pd.read_csv(alias_file(sdb.log_path,sdb.filemap),names=['timestamp','event','username'])
+        log_data = pd.read_csv(alias_file(sdb.log_path,sdb.filemap),names=['timestamp','event','uid'])
         log_data = log_data[log_data['event']=='login-success']
         log_data['timestamp'] = pd.to_datetime(log_data['timestamp'], utc=True, format='%d-%m-%Y, %H:%M:%S')
         
         # Add last login to users
-        users = sdb.uam.list_users()
+        users = list(all_users.values())
         for u in users:
-            last_login = log_data[log_data['username'] == u['username']].timestamp.max()
+            last_login = log_data[log_data['uid'] == u['uid']].timestamp.max()
             u['last_login'] = last_login if pd.notnull(last_login) else None
+
+        if sdb.uam.org_whitelist is not None:
+            for ud in users:
+                ud['whitelisted'] = ud.get('organization') in sdb.uam.org_whitelist or ud.get('group') == 'admin'
+
 
         users = pd.DataFrame(users)
         users['last_login'] = pd.to_datetime(users['last_login'])
@@ -792,8 +977,10 @@ def admin_page(sdb):
             with col1:
                 user_data['group'] = st.radio("Group:", sdb.uam.groups)
             with col2:
-                username = st.text_input("Username:")
-                password = st.text_input("Password:", type='password')
+                if not sdb.uam.passwordless:
+                    username = st.text_input("Username:")
+                    password = st.text_input("Password:", type='password')
+
                 user_data['name'] = st.text_input("Name:")
                 st.markdown("""---""")
                 user_data['email'] = st.text_input("E-mail:")
@@ -802,17 +989,27 @@ def admin_page(sdb):
             st.markdown("""---""")
             submitted = st.form_submit_button("Submit")
             if submitted:
-                if username in sdb.uam.users:
-                    sdb.info.error(f'User **{username}** already exists.')
-                elif not '' in [username, password, user_data['email']]:
-                    sdb.uam.add_user(username, password, user_data)
+                if not sdb.uam.passwordless:
+                    if username in all_users:
+                        sdb.info.error(f'User **{username}** already exists.')
+                    elif not '' in [username, password, user_data['email']]:
+                        user_data['username'] = username
+                        user_data['password'] = password
+                        sdb.uam.add_user(user_data)
+                    else:
+                        sdb.info.error('Must specify username, password and email.')
                 else:
-                    sdb.info.error('Must specify username, password and email.')
+                    if user_data['email'] in all_users:
+                        sdb.info.error(f'User **{user_data['email']}** already exists.')
+                    elif '' in [user_data['email']]:
+                        sdb.info.error('Must specify email.')
+                    else:
+                        sdb.uam.add_user(user_data)
 
     elif menu_choice=='Change user':
-        username=st.selectbox('Edit user', list(sdb.uam.users.keys()))
+        uid = st.selectbox('Edit user', list(all_users.keys()))
         
-        user_data = sdb.uam.users[username].copy()
+        user_data = all_users[uid].copy()
         #st.write(user_data)
         group_index = sdb.uam.groups.index(user_data.get('group','guest'))
 
@@ -821,12 +1018,14 @@ def admin_page(sdb):
             st.markdown("""---""")
             col1,col2 = st.columns((1,2))
             with col1:
-                user_data['username'] = st.text_input("Username:", value=username, disabled=True)
+                if not sdb.uam.passwordless:
+                    user_data['username'] = st.text_input("Username:", value=user_data['username'], disabled=True)
                 user_data['group'] = st.radio("Group:", sdb.uam.groups, index=group_index) #, disabled=True)
             with col2:
                 #new_user = st.text_input("Kasutaja:", value=username, disabled=True)
                 user_data['name'] = st.text_input("Name:", value=user_data['name'])
-                user_data['password'] = st.text_input("Password:", type='password')
+                if not sdb.uam.passwordless:
+                    user_data['password'] = st.text_input("Password:", type='password')
                 st.markdown("""---""")
                 user_data['email'] = st.text_input("E-mail:", value=user_data['email'])
                 user_data['organization'] = st.text_input("Organization:", value=user_data.get('organization',''))
@@ -839,25 +1038,25 @@ def admin_page(sdb):
             st.markdown("""---""")
             submitted = st.form_submit_button("Submit")
             if submitted:
-                sdb.uam.change_user(username,user_data)
+                sdb.uam.change_user(uid,user_data)
                 
     elif menu_choice=='Delete user':
         with st.form("delete_user_form"):
             st.subheader('Delete user:')
-            username = st.selectbox('Select username:', list(sdb.uam.users.keys()))
+            uid = st.selectbox('Select username:', list(all_users.keys()))
             check = st.checkbox('Deletion is FINAL and cannot be undone!')
             st.markdown("""___""")
             submitted = st.form_submit_button("Delete")
             if submitted:
                 if not check:
-                    sdb.info.warning(f'Tick the checkbox in order to delete user **{username}**.')
-                elif username == sdb.user['username']:
+                    sdb.info.warning(f'Tick the checkbox in order to delete user **{uid}**.')
+                elif uid == sdb.uam.user['uid']:
                     sdb.info.error('Cannot delete the current user.')
                 else:
-                    sdb.uam.delete_user(username)
+                    sdb.uam.delete_user(uid)
 
 
-# %% ../nbs/05_dashboard.ipynb 22
+# %% ../nbs/05_dashboard.ipynb 25
 # This is a horrible workaround to get faceting to work with altair geoplots that do not play well with streamlit
 # See https://github.com/altair-viz/altair/issues/2369 -> https://github.com/vega/vega-lite/issues/3729
 
@@ -885,12 +1084,12 @@ def plot_cache():
 
 
 
-# %% ../nbs/05_dashboard.ipynb 23
+# %% ../nbs/05_dashboard.ipynb 26
 # Streamlit session state safety - check and clear session state if it has an unfit value
 def stss_safety(key, opts):
     if key in st.session_state and st.session_state[key] not in opts: del st.session_state[key]
 
-# %% ../nbs/05_dashboard.ipynb 24
+# %% ../nbs/05_dashboard.ipynb 27
 def facet_ui(dims, two=False, uid='base',raw=False, translate=None, force_choice=False, label='Facet'):
     # Set up translation
     tfc = translate if translate else (lambda s,**kwargs: s)
@@ -912,14 +1111,14 @@ def facet_ui(dims, two=False, uid='base',raw=False, translate=None, force_choice
         
     return [ r_map[d] for d in fcols ]
 
-# %% ../nbs/05_dashboard.ipynb 25
+# %% ../nbs/05_dashboard.ipynb 28
 # Function that creates reset functions for multiselects in filter
 def ms_reset(cn, all_vals):
     def reset_ms():
         st.session_state[f"{cn}_multiselect"] = all_vals
     return reset_ms
 
-# %% ../nbs/05_dashboard.ipynb 26
+# %% ../nbs/05_dashboard.ipynb 29
 @st.cache_data(show_spinner=False)
 def get_filter_limits(_ldf,dims,dmeta,uid):
     ldf = _ldf
@@ -955,7 +1154,7 @@ def get_filter_limits(_ldf,dims,dmeta,uid):
             warn(f"Skipping {d}: {c_meta[d]} in filter")
     return limits
 
-# %% ../nbs/05_dashboard.ipynb 27
+# %% ../nbs/05_dashboard.ipynb 30
 # User interface that outputs a filter for the pp_desc
 def filter_ui(data, dmeta=None, dims=None, uid='base', detailed=False, raw=False, translate=None, force_choice=False):
     
@@ -1037,7 +1236,7 @@ def filter_ui(data, dmeta=None, dims=None, uid='base', detailed=False, raw=False
     return filters
 
 
-# %% ../nbs/05_dashboard.ipynb 29
+# %% ../nbs/05_dashboard.ipynb 32
 # Use dict here as dicts are ordered as of Python 3.7 and preserving order groups things together better
 
 def translate_with_dict(d):
@@ -1057,7 +1256,7 @@ def clean_missing_translations(nonchanged_dict, tdict={}):
 def add_missing_to_dict(missing_dict, tdict):
     return {**tdict, **{ s:s for s in missing_dict}}
 
-# %% ../nbs/05_dashboard.ipynb 30
+# %% ../nbs/05_dashboard.ipynb 33
 def translate_pot(template, dest, tfunc, sources=[]):
     pot  = polib.pofile(template)
 
@@ -1106,7 +1305,7 @@ def translate_pot(template, dest, tfunc, sources=[]):
 
 
 
-# %% ../nbs/05_dashboard.ipynb 33
+# %% ../nbs/05_dashboard.ipynb 36
 # This is the default theme for Streamlit (v1.42.1)
 # We want to match it in our exports
 altair_default_config = {
@@ -1240,7 +1439,7 @@ altair_default_config = {
     "axisXBand": {"grid": False}
 }
 
-# %% ../nbs/05_dashboard.ipynb 34
+# %% ../nbs/05_dashboard.ipynb 37
 # Create an HTML of a matrix of plots
 # Based on what altair plot.save('plot.html') does, but modified to draw a full matrix and autoresize
 def plot_matrix_html(pmat, uid='viz', width=None, responsive=True):
