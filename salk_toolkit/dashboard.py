@@ -322,24 +322,30 @@ class SalkDashboardBuilder:
         if len(self.cc_translations) == 1: 
             st.session_state['lang'] = next(iter(self.cc_translations.keys()))
 
-        # Set language from session state if present      
-        if st.session_state.get('lang'): 
-            self.set_translate(st.session_state.get('lang'))
-        else: # Alternatively (if on login page) - show the choice at the top of the sidebar
-            # This is messy because streamlit is ... not great at this kind of thing
-            opts = [self.default_lang] + [l for l in self.cc_translations.keys() if l != self.default_lang]
+        if not st.secrets.get('auth',{}).get('use_oauth'):  
+            # This for language select during login page, which is unnecessar
+            # Set language from session state if present 
+            if st.session_state.get('lang'): 
+                self.set_translate(st.session_state.get('lang'))
+            else: # Alternatively (if on login page) - show the choice at the top of the sidebar
+                # This is messy because streamlit is ... not great at this kind of thing
+                opts = [self.default_lang] + [l for l in self.cc_translations.keys() if l != self.default_lang]
 
-            # chosen_lang is a temporary variable to store the chosen language on the login page
-            clang = st.session_state.get('chosen_lang') or self.default_lang
-            self.set_translate(clang)
-            def set_login_lang():
-                st.session_state['chosen_lang'] = st.session_state['login_lang']
+                # chosen_lang is a temporary variable to store the chosen language on the login page
+                clang = st.session_state.get('chosen_lang') or self.default_lang
+                self.set_translate(clang)
+                def set_login_lang():
+                    st.session_state['chosen_lang'] = st.session_state['login_lang']
 
-            ind = opts.index(st.session_state.get('login_lang',self.default_lang)) # FIXES lang not updating
-            lang = login_lang_choice.selectbox(self.tf("Language:",context='ui'), opts, 
-                                                index=ind, on_change=set_login_lang, key='login_lang')
-            if lang != clang: self.set_translate(lang)
-        
+                ind = opts.index(st.session_state.get('login_lang',self.default_lang)) # FIXES lang not updating
+                lang = login_lang_choice.selectbox(self.tf("Language:",context='ui'), opts, 
+                                                    index=ind, on_change=set_login_lang, key='login_lang')
+                if lang != clang: self.set_translate(lang)
+        else:
+            self.set_translate(self.default_lang)
+            
+
+            
         self.p_widths = {}
         
         # Set up authentication
@@ -375,6 +381,7 @@ class SalkDashboardBuilder:
                 self.set_translate(self.user['lang'],remember=True)
         else:
             self.set_translate(self.user.get('lang'),remember=True)
+            
 
         wrap_all_st_functions(st, self, to=self)
         self.sidebar = wrap_all_st_functions(st.sidebar, self)    
@@ -430,7 +437,7 @@ class SalkDashboardBuilder:
         def decorator(pfunc):
             needed_groups = kwargs.get('groups')
             if (needed_groups is None or # Page is available to all
-                'admin' in self.user.get('groups') or # Admin sees all
+                self.uam.admin or # Admin sees all
                 'guest' in needed_groups or # some views might be open to all
                 len(set(self.user.get('groups',[])) & set(needed_groups)) > 0): # one of the groups is whitelisted
                 self.pages.append( (name,pfunc,kwargs) )
@@ -621,17 +628,14 @@ class StreamlitAuthenticationManager(UserAuthenticationManager):
                 'username': self.stuser['username'],
                 'group': self.stuser['group'],
                 'organization': self.stuser['organization'],
-                'lang': self.stuser['lang'],
-                'admin': (self.stuser['group'] == 'admin'),
-                'authenticated': True,
-
+                'lang': self.stuser['lang']
             }
         else:
-            return { 'admin': False, 'authenticated': False }            
+            return { }            
 
     @property
     def admin(self):
-        return self.user['admin']
+        return (self.stuser['group'] == 'admin')
 
 
     def logout_button(self, text, location='sidebar'):
@@ -759,7 +763,7 @@ class StreamlitAuthenticationManager(UserAuthenticationManager):
     def list_users(self):
         self.require_admin()
         self.load_conf(cached=False) # so all admin updates would immediately be visible
-        return { k: censor_dict({'uid': k, **v},['password','admin','authenticated']) for k,v in self.users.items() }
+        return { k: censor_dict({'uid': k, **v},['password']) for k,v in self.users.items() }
 
 
 # %% ../nbs/05_dashboard.ipynb 18
@@ -781,25 +785,22 @@ class FronteggAuthenticationManager(UserAuthenticationManager):
     def authenticated(self):
         return st.user['is_logged_in']
 
-    @property
-    def admin(self):
-        return 'Admin' in st.user.get('roles',[])
-
     def reform_user(self, user):
-        meta = user.get('metadata',{})
+        meta = user.get('metadata') or {}
         if isinstance(meta,str): meta = json.loads(meta)
-        admin = ('Admin' in user.get('roles',[]))
         return {
             'uid': user['email'],
             'name': user.get('name',''),
             'email': user['email'],
             #'username': st.user['cognito:username'],
-            'group': 'admin' if admin else 'user',
+            'group': meta.get('group','guest'),
             'organization': meta.get('organization'),
             'lang': meta.get('lang'),
-            'admin': admin,
-            'authenticated': True,   
         }
+
+    @property
+    def admin(self):
+        return (self.reform_user(st.user)['group'] == 'admin')
 
     @property
     def user(self):
@@ -807,9 +808,20 @@ class FronteggAuthenticationManager(UserAuthenticationManager):
         # We need the hacky workaround to allow changing user info (like lang) during session
         # Normally, one would just do an oauth refresh on user change, but streamlit does not support that (yet?)
         if not st.user['is_logged_in']:
-            return { 'admin': False, 'authenticated': False }
-        if 'OAUser' not in st.session_state: st.session_state['OAUser'] = self.reform_user(st.user)
+            return {}
+        elif 'OAUser' not in st.session_state:
+            st.session_state['OAUser'] = self.reform_user(st.user)
         return st.session_state.get('OAUser')
+
+
+    # Use the silent login profile to just refresh the user info if prompt config is present
+    def refresh_user(self):
+        # If prompr config present, assume default conf is silent login
+        # In that case, logout + silent login can be used to refresh the user info
+        if 'prompt' in st.secrets['auth']:
+            st.logout()
+            st.rerun()
+        else: print('User refresh needs [auth.prompt] segment in secrets.toml')
 
     def login_screen(self):
         if not self.authenticated:
@@ -818,59 +830,69 @@ class FronteggAuthenticationManager(UserAuthenticationManager):
                 st.session_state['OAUser'] = self.reform_user(st.user)
             elif not st.user['is_logged_in'] and 'OAUser' in st.session_state: 
                 del st.session_state['OAUser']
+        elif not st.session_state.get('OA_fresh') and time.time()-st.user['iat']>60:
+            # IF authenticated, but token not refreshed this session and is at least 60 sec old
+            # This is to ensure that settings changes are also visible if logging in on another device
+            # Also good for keeping users logged in for a while as it refreshes the access token
+            print('Refreshing user info')
+            self.refresh_user()
+        else: st.session_state['OA_fresh'] = True
 
     def logout_button(self,text,location='sidebar'):
         where = st.sidebar if location == 'sidebar' else st
-        #if st.button(text): # As logout just restarts login flow, effectively logging back in immediately
-        #   st.logout() 
-        #st.write(st.user) # Debug: show st.user
+        if 'prompt' in st.secrets['auth'] and st.button(text):
+            st.login('prompt') 
+        #st.write(self.reform_user(st.user)) # Debug: show sdb.user
 
     def add_user(self, user_data):
         self.require_admin()
         res = self.client.post(url='identity/resources/users/v1/', data={
-            'email':user_data['email'],
-            #'password':user_data['password'],
-            'name':user_data['name'],
+            'email':user_data['email'].strip(),
+            'verified':True,
+            'name':user_data['name'].strip(),
             'metadata':json.dumps({
+                'group':user_data['group'],
                 'organization':user_data['organization'],
                 'lang':user_data['lang']
-            })
+            }),
+            'roleIds': []
         },headers={'frontegg-tenant-id':st.user['tenantId']}).json() # Add to same tenant as admin
         
-        if res.get('error'): raise Exception(res['error'])
+        if res.get('errors'): raise Exception(str(res['errors']))
         self.info.info(f'User **{res['email']}** added.')
         self.log_event(f'add-user: {res['email']}')
 
     def change_user(self, uid, user_data):
-        st.write(user_data)
         if uid != self.user['uid']: self.require_admin()
         uinfo = self.client.get(f'identity/resources/users/v1/email?email={uid}').json()
         if 'email' in user_data and user_data['email'] != uinfo['email']:
-            eres = self.client.put(url=f'identity/resources/users/v1/{uinfo['id']}/email',data={'email':user_data['email']})
-            if eres.get('error'): raise Exception(res['error'])
+            eres = self.client.put(url=f'identity/resources/users/v1/{uinfo['id']}/email',data={'email':user_data['email'].strip()})
+            if eres.get('errors'): raise Exception(str(eres['errors']))
 
         # Change everything else:
         res = self.client.put(url=f'identity/resources/users/v1/{uinfo['id']}',data={
             'name':user_data['name'],
             'metadata':json.dumps({
+                'group':user_data['group'],
                 'organization':user_data['organization'],
                 'lang':user_data['lang']
             })
         }).json()
 
-        if res.get('error'): raise Exception(res['error'])
+        if res.get('errors'): raise Exception(str(res['errors']))
         self.info.info(f'User **{uid}** updated.')
         self.log_event(f'change-user: {uid}')
 
         if uid == self.user['uid']:
-            st.session_state['OAUser'] = self.reform_user(res)
+            self.refresh_user()
+            #st.session_state['OAUser'] = self.reform_user(res)
         
     def delete_user(self, uid):
         self.require_admin()
         uinfo = self.client.get(f'identity/resources/users/v1/email?email={uid}').json()
-        res = self.client.delete(f'identity/resources/users/v1/{uinfo['id']}').json()
+        res = self.client.delete(f'identity/resources/users/v1/{uinfo['id']}')
 
-        if res.get('error'): raise Exception(res['error'])
+        #if res.get('error'): raise Exception(res['error'])
         self.info.info(f'User **{uid}** deleted.')
         self.log_event(f'delete-user: {uid}')
 
@@ -879,7 +901,7 @@ class FronteggAuthenticationManager(UserAuthenticationManager):
         self.require_admin()
         # TODO: this endpoint is paginated, so we may need to cycle over all pages here
         res = self.client.get('identity/resources/users/v1/?_limit=200',headers={'frontegg-tenant-id':'7779b9fb-f279-4cd3-8f61-e751a0d06145'})
-        return { i['email']: censor_dict(self.reform_user(i),['admin','group','authenticated']) for i in res.json()['items'] }
+        return { i['email']: censor_dict(self.reform_user(i),[]) for i in res.json()['items'] }
         
 
 # %% ../nbs/05_dashboard.ipynb 20
@@ -890,8 +912,11 @@ def user_settings_page(sdb):
     cur_lang = st.session_state.get('lang')
     opts = [cur_lang] + [l for l in sdb.cc_translations.keys() if l != cur_lang]
     lang = st.selectbox(sdb.tf("Language:",context='ui'), opts)
-    if lang != cur_lang:
-        sdb.set_translate(lang,remember=True)
+
+    if sdb.button('Save'):
+        if lang != cur_lang:
+            sdb.set_translate(lang,remember=True)
+
         if lang!=sdb.user['lang']:
             user = sdb.user.copy()
             user['lang'] = lang
@@ -1049,9 +1074,9 @@ def admin_page(sdb):
             submitted = st.form_submit_button("Delete")
             if submitted:
                 if not check:
-                    sdb.info.warning(f'Tick the checkbox in order to delete user **{uid}**.')
+                    sdb.warning(f'Tick the checkbox in order to delete user **{uid}**.')
                 elif uid == sdb.uam.user['uid']:
-                    sdb.info.error('Cannot delete the current user.')
+                    sdb.error('Cannot delete the current user.')
                 else:
                     sdb.uam.delete_user(uid)
 
