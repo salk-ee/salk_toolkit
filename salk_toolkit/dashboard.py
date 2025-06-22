@@ -15,6 +15,7 @@ import itertools as it
 from collections import defaultdict
 from contextlib import AbstractContextManager
 from abc import ABC, abstractmethod
+from copy import deepcopy
 
 import numpy as np
 import pandas as pd
@@ -427,8 +428,8 @@ class SalkDashboardBuilder:
                 plot_cache=plot_cache() if self.plot_caching else None,
                 full_df=self.ldf,data_meta=self.meta,**kwargs)
         
-    def filter_ui(self, dims, detailed=False, raw=False, force_choice=False, key=''):
-        return filter_ui(self.ldf, self.meta, uid=f'{key}_{self.page_name}', dims=dims, detailed=detailed, raw=raw, translate=self.tf, force_choice=force_choice)
+    def filter_ui(self, dims, flt={}, detailed=False, raw=False, force_choice=False, key=''):
+        return filter_ui(self.ldf, self.meta, uid=f'{key}_{self.page_name}', dims=dims, flt=flt, detailed=detailed, raw=raw, translate=self.tf, force_choice=force_choice)
     
     def facet_ui(self, dims, two=False, raw=False, force_choice=False, label='Facet', key=''):
         return facet_ui(dims, two=two, raw=raw, uid=f'{key}_{self.page_name}', translate=self.tf,force_choice=force_choice,label=label)
@@ -820,12 +821,12 @@ class FronteggAuthenticationManager(UserAuthenticationManager):
         # In that case, logout + silent login can be used to refresh the user info
         if 'prompt' in st.secrets['auth']:
             st.logout()
-            st.rerun()
         else: print('User refresh needs [auth.prompt] segment in secrets.toml')
 
     def login_screen(self):
         if not self.authenticated:
             st.login()
+            st.session_state['OA_fresh'] = True # just logged in, so no need to refresh
             if st.user['is_logged_in'] and not st.session_state.get('OAUser'): 
                 st.session_state['OAUser'] = self.reform_user(st.user)
             elif not st.user['is_logged_in'] and 'OAUser' in st.session_state: 
@@ -841,7 +842,7 @@ class FronteggAuthenticationManager(UserAuthenticationManager):
     def logout_button(self,text,location='sidebar'):
         where = st.sidebar if location == 'sidebar' else st
         if 'prompt' in st.secrets['auth'] and st.button(text):
-            st.login('prompt') 
+            st.login('prompt')
         #st.write(self.reform_user(st.user)) # Debug: show sdb.user
 
     def add_user(self, user_data):
@@ -1174,14 +1175,13 @@ def get_filter_limits(_ldf,dims,dmeta,uid):
                 limits[d] = { 'categories': c_meta[d]['categories'] } 
                 
             limits[d]['ordered'] = c_meta[d].get('ordered',False)
-            
         else:
             warn(f"Skipping {d}: {c_meta[d]} in filter")
     return limits
 
 # %% ../nbs/05_dashboard.ipynb 30
 # User interface that outputs a filter for the pp_desc
-def filter_ui(data, dmeta=None, dims=None, uid='base', detailed=False, raw=False, translate=None, force_choice=False):
+def filter_ui(data, dmeta=None, dims=None, flt={}, uid='base', detailed=False, raw=False, translate=None, force_choice=False):
     
     tfc = translate if translate else (lambda s,**kwargs: s)
     tf = lambda s: tfc(s,context='data')
@@ -1202,12 +1202,23 @@ def filter_ui(data, dmeta=None, dims=None, uid='base', detailed=False, raw=False
     # Different selector for different category types
     # Also - make sure filter is clean and only applies when it is changed from the default 'all' value
     # This has considerable speed and efficiency implications
-    filters = {}
+    filters = deepcopy(flt)
     for cn in dims:
         
         # Shared prep for all cateogoricals
         if limits[cn].get('categories'):
             cats = limits[cn]['categories']
+
+            if cn in flt: # Already a filter set
+                cflt = flt[cn]
+                if not isinstance(cflt,list): cflt = [cflt] # Single value
+                if cflt[0] is None:
+                    miv, mav = cflt[1:]
+                    if not {miv,mav} <= set(cats):
+                        raise ValueError(f"Invalid filter for {cn}: {cflt}")
+                    cflt = cats[cats.index(miv):cats.index(mav)+1]
+                cats = cflt # Set the list of options to the current filter
+
             if len(cats)==1: continue
             
             # Do some prep for translations
@@ -1243,8 +1254,10 @@ def filter_ui(data, dmeta=None, dims=None, uid='base', detailed=False, raw=False
             key = f'filter_{uid}_{cn}_ocat'
             if key in stss and not set(stss[key]) <= set(all_vals): del stss[key] 
             f_res = stc.select_slider(tf(cn),all_vals,value=(all_vals[0],all_vals[-1]),key=key)
-            if f_res != (all_vals[0],all_vals[-1]): 
-                filters[cn] = [None]+[r_map[f_res[0]],r_map[f_res[1]]]
+            if f_res != (all_vals[0],all_vals[-1]):
+                miv, mav = r_map[f_res[0]], r_map[f_res[1]]
+                if cn in flt: filters[cn] = cats[cats.index(miv):cats.index(mav)+1] # As cats itself might already be a subset
+                else: filters[cn] = [None]+[miv,mav] # Just use the range syntax for better legibility
 
         # Numeric values - slider
         elif limits[cn].get('continuous'): # Continuous
