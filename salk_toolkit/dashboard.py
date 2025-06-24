@@ -323,7 +323,8 @@ class SalkDashboardBuilder:
         if len(self.cc_translations) == 1: 
             st.session_state['lang'] = next(iter(self.cc_translations.keys()))
 
-        if not st.secrets.get('auth',{}).get('use_oauth'):  
+        # Don't ask for language in public dashboards
+        if not public and not st.secrets.get('auth',{}).get('use_oauth'):  
             # This for language select during login page, which is unnecessar
             # Set language from session state if present 
             if st.session_state.get('lang'): 
@@ -343,9 +344,7 @@ class SalkDashboardBuilder:
                                                     index=ind, on_change=set_login_lang, key='login_lang')
                 if lang != clang: self.set_translate(lang)
         else:
-            self.set_translate(self.default_lang)
-            
-
+            self.set_translate(self.default_lang)            
             
         self.p_widths = {}
         
@@ -464,16 +463,18 @@ class SalkDashboardBuilder:
                 self.uam.logout_button(self.tf('Log out',context='ui'), 'sidebar')
             
             t_pnames = [ self.tf(pn,context='ui') for pn in pnames]
-            menu_choice = option_menu("Pages",
-                t_pnames,
-                icons=[t[2].get('icon') for t in self.pages],
-                styles={
-                    "container": {"padding": "5!important"}, #, "background-color": "#fafafa"},
-                    #"icon": {"color": "red", "font-size": "15px"},
-                    "nav-link": {"font-size": "12px", "text-align": "left", "margin":"0px", "--hover-color": "#eee"},
-                    "nav-link-selected": {"background-color": "#red"},
-                    "menu-title": {"display":"none"}
-                })
+            if len(t_pnames) == 1: menu_choice = t_pnames[0]
+            else:
+                menu_choice = option_menu("Pages",
+                    t_pnames,
+                    icons=[t[2].get('icon') for t in self.pages],
+                    styles={
+                        "container": {"padding": "5!important"}, #, "background-color": "#fafafa"},
+                        #"icon": {"color": "red", "font-size": "15px"},
+                        "nav-link": {"font-size": "12px", "text-align": "left", "margin":"0px", "--hover-color": "#eee"},
+                        "nav-link-selected": {"background-color": "#red"},
+                        "menu-title": {"display":"none"}
+                    })
             
         # Find the page
         pname, pfunc, meta = self.pages[t_pnames.index(menu_choice)]
@@ -801,7 +802,7 @@ class FronteggAuthenticationManager(UserAuthenticationManager):
 
     @property
     def admin(self):
-        return (self.reform_user(st.user)['group'] == 'admin')
+        return self.authenticated and self.reform_user(st.user)['group'] == 'admin'
 
     @property
     def user(self):
