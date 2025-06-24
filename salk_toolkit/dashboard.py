@@ -637,7 +637,7 @@ class StreamlitAuthenticationManager(UserAuthenticationManager):
 
     @property
     def admin(self):
-        return (self.stuser['group'] == 'admin')
+        return self.authenticated and (self.stuser['group'] == 'admin')
 
 
     def logout_button(self, text, location='sidebar'):
