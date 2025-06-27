@@ -619,7 +619,7 @@ class StreamlitAuthenticationManager(UserAuthenticationManager):
 
     @property
     def authenticated(self):
-        return st.session_state["authentication_status"]
+        return st.session_state.get("authentication_status") or False
 
     @property
     def user(self):
