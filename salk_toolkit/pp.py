@@ -497,10 +497,11 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
         draw_df = pl.DataFrame({ 'draw': draws, 'id': np.arange(0, total_n) })
         filtered_df = filtered_df.drop('draw').join(draw_df.lazy(), on=['id'], how='left')
 
+
     # If res_col is a group of questions, melt i.e. unpivot the questions and handle draws if needed
     if pp_desc['res_col'] in gc_dict:
-        n_questions = len(gc_dict[pp_desc['res_col']])
         value_vars = [ c for c in gc_dict[pp_desc['res_col']] if c in cols ]
+        n_questions = len(value_vars) # Only cols that exist in the data
         id_vars = ['id'] + [ c for c in cols if (c not in value_vars or c in factor_cols) ]
 
         if 'draw' in cols and draws_data:
