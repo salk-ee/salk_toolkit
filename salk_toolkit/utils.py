@@ -10,7 +10,7 @@ __all__ = ['warn', 'default_color', 'default_bidirectional_gradient', 'redblue_g
            'is_datetime', 'rel_wave_times', 'stable_draws', 'deterministic_draws', 'clean_kwargs', 'call_kwsafe',
            'censor_dict', 'cut_nice_labels', 'cut_nice', 'rename_cats', 'str_replace', 'merge_series',
            'aggregate_multiselect', 'deaggregate_multiselect', 'gb_in', 'gb_in_apply', 'stk_defaultdict', 'cached_fn',
-           'scores_to_ordinal_rankings', 'dict_cache', 'get_size']
+           'scores_to_ordinal_rankings', 'dict_cache', 'get_size', 'escape_vega_label']
 
 # %% ../nbs/10_utils.ipynb 3
 import json, os, warnings, math, inspect, sys
@@ -487,3 +487,9 @@ def get_size(obj, seen=None):
     elif hasattr(obj, '__iter__') and not isinstance(obj, (str, bytes, bytearray)):
         size += sum([get_size(i, seen) for i in obj])
     return size
+
+# %% ../nbs/10_utils.ipynb 50
+# Vega Lite (Altair) will fail with certain column names, so we need to escape them
+# To do that, we use unicode symbols that are visually similar to the problematic characters
+def escape_vega_label(label):
+    return label.replace('.','․').replace('[','［').replace(']','］')

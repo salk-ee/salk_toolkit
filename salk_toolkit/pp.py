@@ -470,9 +470,14 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     rcl = [ c for c in rcl if c in cols]
     for rc in rcl:
         res_meta = c_meta[rc]
-        if pp_desc.get('convert_res') == 'continuous' and res_meta.get('ordered'):
+        if pp_desc.get('convert_res') == 'continuous':
             res_meta = ensure_ldf_categories(c_meta,rc,filtered_df)
             nvals = get_cat_num_vals(res_meta,pp_desc)
+
+            # Conversion only makes sense for ordered (or binary) data
+            if len(nvals)>2 and not res_meta.get('ordered'):
+                raise Exception(f"Cannot convert {rc} to continuous because it has more than 2 values and is not ordered")
+
             cmap = dict(zip(res_meta['categories'],nvals))
             filtered_df = filtered_df.with_columns(pl.col(rc).cast(pl.String).replace(cmap).cast(pl.Float32).fill_nan(None))
             nvals = np.array(nvals,dtype='float') # To handle null as nan
@@ -804,7 +809,10 @@ def create_plot(pparams, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=F
     
     # Handle translation funcion
     if translate is None: translate = (lambda s: s)
-    pparams['translate'] = translate
+    # Add escaping as Vega Lite goes crazy for symbols like ".[]"
+    # It would be enough to do it just for column names, but it's easier to do it for all
+    tfunc = lambda s: escape_vega_label(translate(s)) 
+    pparams['translate'] = tfunc
 
     # Handle internal facets (and translate as needed)
     pparams['facets'] = []
@@ -812,10 +820,10 @@ def create_plot(pparams, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=F
     if n_inner>0:
         for cn in factor_cols[:n_inner]:
             fd = {
-                'col': translate(cn),
+                'col': tfunc(cn),
                 'ocol': cn,
-                'order': [ translate(c) for c in data[cn].dtype.categories ],
-                'colors': meta_color_scale(col_meta[cn].get('colors',None), data[cn], translate=translate), 
+                'order': [ tfunc(c) for c in data[cn].dtype.categories ],
+                'colors': meta_color_scale(col_meta[cn].get('colors',None), data[cn], translate=tfunc), 
             }
             pparams['facets'].append(fd)
 
@@ -844,10 +852,10 @@ def create_plot(pparams, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=F
         pparams['value_col'] = label
 
     # Translate the data itself
-    pparams['data'] = data = translate_df(data,translate)
-    pparams['value_col'] = translate(pparams['value_col'])  
-    factor_cols = [ translate(c) for c in factor_cols ]
-    t_col_meta = { translate(c): v for c,v in col_meta.items() }
+    pparams['data'] = data = translate_df(data,tfunc)
+    pparams['value_col'] = tfunc(pparams['value_col'])  
+    factor_cols = [ tfunc(c) for c in factor_cols ]
+    t_col_meta = { tfunc(c): v for c,v in col_meta.items() }
 
     # Handle tooltip
     pparams['tooltip'] = create_tooltip(pparams,t_col_meta)

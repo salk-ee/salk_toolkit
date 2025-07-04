@@ -757,6 +757,8 @@ def geoplot(data, topo_feature, value_col='value', facets=[], val_format='.2f', 
         # elif ma<0: scale = { 'scheme': 'reds', 'reverse': True }#, 'domainMin': 0, 'domainMax':dmax }
         # else: scale = { 'scheme': 'blues' }#, 'domainMin': 0, 'domainMax':dmax }
 
+    print(f0["col"],value_col)
+
     plot = alt.Chart(source).mark_geoshape(stroke='white', strokeWidth=0.1).transform_lookup(
         lookup = f"properties.{json_col}",
         from_ = alt.LookupData(
