@@ -306,20 +306,22 @@ def make_start_end(x,value_col,cat_col,cat_order,n_neutral):
         x_mids = []
     else: # Handle neutrals
 
-        # Handle the non-neutral part
-        n_other = (len(x)-n_neutral)
-        nonmid = list(range(n_other//2)) + list(range(-(n_other//2+n_other%2),0))
-        x_other = x.iloc[nonmid,:].copy()
+        if isinstance(n_neutral,list): # We are given neutral values as a list of indices
+            mids = n_neutral
+            nonmid = [ i for i in range(len(x)) if i not in mids ]
+        else: # We are just told how many neutrals there are
+            n_other = (len(x)-n_neutral)
+            mids = list(range(n_other//2,n_other//2+n_neutral))
+            nonmid = list(range(n_other//2)) + list(range(-(n_other//2+n_other%2),0))
 
-        # Extract the neutrals
-        mids = list(range(n_other//2,n_other//2+n_neutral))
         scale_start = -1.0
         x_mid = x.iloc[mids,:].copy()
+        x_other = x.iloc[nonmid,:].copy()        
 
         # Compute the positions of the neutrals
         x_mid.loc[:,'end'] = scale_start + x_mid[value_col].cumsum()
         x_mid.loc[:,'start'] = x_mid.loc[:,'end'] - x_mid[value_col]
-        x_mids = [x_mid]                
+        x_mids = [x_mid]
     
     o_mid = len(x_other)//2
     x_other.loc[:,'end'] = x_other[value_col].cumsum() - x_other[:o_mid][value_col].sum()
