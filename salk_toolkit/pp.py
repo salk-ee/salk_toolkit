@@ -171,8 +171,10 @@ def update_data_meta_with_pp_desc(data_meta, pp_desc):
     # Allow creating a new meta group for res_col
     if pp_desc.get('res_meta'):
         data_meta, rmeta = deepcopy(data_meta), deepcopy(pp_desc['res_meta'])
-        rmeta = replace_constants(rmeta,data_meta.get('constants',{}))
         data_meta['structure'].append(rmeta)
+
+    # Do the constants replacement after the res_meta is added
+    data_meta = replace_constants(data_meta,data_meta.get('constants',{}))
 
     # Reshape the meta into a more usable format
     col_meta = extract_column_meta(data_meta)
