@@ -352,18 +352,18 @@ class SalkDashboardBuilder:
         with st.spinner(self.tf("Setting up authentication...",context='ui')):
             if st.secrets.get('auth',{}).get('use_oauth'):
                 self.uam = FronteggAuthenticationManager(groups, org_whitelist=org_whitelist,
-                                                info=self.info, logger=self.log_event, 
+                                                info=self.info, logger=self.log_event, languages=self.cc_translations, 
                                                 translate_func=lambda t: self.tf(t,context='ui'))
             else:
                 self.uam = StreamlitAuthenticationManager(auth_conf, groups, org_whitelist=org_whitelist,
-                                                s3_fs=self.s3fs, info=self.info, logger=self.log_event, 
+                                                s3_fs=self.s3fs, info=self.info, logger=self.log_event, languages=self.cc_translations,
                                                 translate_func=lambda t: self.tf(t,context='ui'))
 
         if not public:
             self.uam.login_screen()
         
         # TODO: language handling is overengineered. Remove the complexity
-        if self.uam.authenticated and isinstance(self.uam,StreamlitAuthenticationManager):
+        if self.authenticated and isinstance(self.uam,StreamlitAuthenticationManager):
             login_lang_choice.empty()
 
             # If user has chosen a language on the login page
@@ -405,6 +405,15 @@ class SalkDashboardBuilder:
         warn("sdb.df is very inefficient. Use sdb.get_df([columns]) instead to get only the columns you need")
         return self.get_df()
 
+    # Try to keep uam abstracted away
+    @property
+    def authenticated(self):
+        return self.uam.authenticated
+    
+    @property
+    def admin(self):
+        return self.uam.admin
+
     @property
     def user(self):
         return self.uam.user
@@ -437,7 +446,7 @@ class SalkDashboardBuilder:
         def decorator(pfunc):
             needed_groups = kwargs.get('groups')
             if (needed_groups is None or # Page is available to all
-                self.uam.admin or # Admin sees all
+                self.admin or # Admin sees all
                 'guest' in needed_groups or # some views might be open to all
                 len(set(self.user.get('groups',[])) & set(needed_groups)) > 0): # one of the groups is whitelisted
                 self.pages.append( (name,pfunc,kwargs) )
@@ -445,20 +454,29 @@ class SalkDashboardBuilder:
 
     def build(self):
 
+        # This is to avoid a bug of the option menu not showing up on reload
+        # I don't get how this row fixes the issue, but it does
+        #https://github.com/victoryhb/streamlit-option-menu/issues/68
+        # This is a quirk of the old login and should be removed with it
+        if (isinstance(self.uam,StreamlitAuthenticationManager) and 
+            st.session_state.get("authentication_status") and st.session_state["logout"] is None):
+            st.session_state["logout"] = True 
+            st.rerun()
+
         # If login failed and is required, don't go any further
-        if not self.public and not self.uam.authenticated: return
+        if not self.public and not self.authenticated: return
 
         # Add user settings page if logged in
-        if self.uam.authenticated: self.pages.append( ('Settings',user_settings_page,{'icon': 'sliders'}) )
+        if self.authenticated: self.pages.append( ('Settings',user_settings_page,{'icon': 'sliders'}) )
     
         # Add admin page for admins
-        if self.uam.admin:  self.pages.append( ('Administration', admin_page,{'icon': 'terminal'}) )
+        if self.admin:  self.pages.append( ('Administration', admin_page,{'icon': 'terminal'}) )
         
         # Draw the menu listing pages
         pnames = [t[0] for t in self.pages]
         with st.sidebar:
 
-            if self.uam.authenticated:
+            if self.authenticated:
                 self.sb_info.info(self.tf('Logged in as **%s**',context='ui') % self.user["name"])
                 self.uam.logout_button(self.tf('Log out',context='ui'), 'sidebar')
             
@@ -503,12 +521,23 @@ class SalkDashboardBuilder:
         if pres: shared.update(pres)
         if self.footer_fn: call_kwsafe(self.footer_fn, sdb=self, shared=shared)
 
-        if self.uam.admin:
-            st.sidebar.write("Mem: %.1fMb" % (psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2))
-            if self.plot_caching:
-                pcache = plot_cache()
-                st.sidebar.write("Plot cache: %d items (%.1fMb)" % (len(pcache), get_size(pcache) / 1024 ** 2))
-        
+        if self.admin:
+            with self.sidebar:
+                st.write("Mem: %.1fMb" % (psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2))
+                if self.plot_caching:
+                    pcache = plot_cache()
+                    st.write("Plot cache: %d items (%.1fMb)" % (len(pcache), get_size(pcache) / 1024 ** 2))
+                
+                with st.expander("Impersonate (Admin)"):
+                    org = st.selectbox("Organization",self.uam.org_whitelist,index=self.uam.org_whitelist.index(self.user['organization']))
+                    group = st.selectbox("Group",self.uam.groups,index=self.uam.groups.index('user'))
+                    language = st.selectbox("Language",self.cc_translations.keys(),index=list(self.cc_translations.keys()).index(self.user['lang']))
+                    if st.button("Impersonate"):
+                        st.success("Starting impersonation")
+                        if language != self.user['lang']: self.set_translate(language,remember=True)
+                        self.uam.impersonate({'organization':org,'group':group,'lang':language})
+                    st.text("Browser refresh clears the impersonation")
+                    
     # Add enter and exit so it can be used as a context
     def __enter__(self):
         return self
@@ -520,9 +549,10 @@ class SalkDashboardBuilder:
 # %% ../nbs/05_dashboard.ipynb 16
 class UserAuthenticationManager:
 
-    def __init__(self, groups, info, org_whitelist, logger, translate_func):
+    def __init__(self, groups, info, org_whitelist, logger, languages, translate_func):
         self.groups, self.info  = groups,  info
         self.org_whitelist = org_whitelist
+        self.languages = languages
         self.log_event = logger
         self.tf = translate_func
         self.passwordless = False
@@ -536,18 +566,23 @@ class UserAuthenticationManager:
         pass
 
     @property
-    @abstractmethod
     def admin(self):
-        pass
+        return self.authenticated and (self.user.get('group') == 'admin')
 
     def require_admin(self):
         if not self.admin: raise Exception("This action requires administrator privileges")
 
-    @property
     @abstractmethod
-    def user(self):
+    def uam_user(self):
         pass
 
+    @property
+    def user(self):
+        base = self.uam_user().copy()
+        if st.session_state.get('impersonate_user'): base.update(st.session_state['impersonate_user'])
+        return base
+
+        
     @abstractmethod
     def login_screen(self):
         pass
@@ -580,6 +615,13 @@ class UserAuthenticationManager:
     def update_user(self, uid):
         pass
 
+    def impersonate(self,user_data):
+        self.require_admin()
+        st.session_state['impersonate_user'] = user_data
+        st.rerun()
+
+
+
 # %% ../nbs/05_dashboard.ipynb 17
 # TODO
 # - centralize the db connection, getting url and token from env
@@ -593,8 +635,8 @@ def sqlite_client(url, token):
 
 class StreamlitAuthenticationManager(UserAuthenticationManager):
     
-    def __init__(self,auth_conf_file,groups,org_whitelist,s3_fs,info,logger,translate_func):
-        super().__init__(groups, info, org_whitelist, logger, translate_func)
+    def __init__(self,auth_conf_file,groups,org_whitelist,s3_fs,info,logger,languages,translate_func):
+        super().__init__(groups, info, org_whitelist, logger, languages, translate_func)
         self.s3fs = s3_fs
         self.stuser = {}
         self.client = None
@@ -610,19 +652,13 @@ class StreamlitAuthenticationManager(UserAuthenticationManager):
             [] # config['preauthorized'] - not using preauthorization
         )
 
-        # This is to avoid a bug of the option menu not showing up on reload
-        # I don't get how this row fixes the issue, but it does
-        #https://github.com/victoryhb/streamlit-option-menu/issues/68
-        if st.session_state["authentication_status"] and st.session_state["logout"] is None:
-            st.session_state["logout"] = True 
-            st.rerun()
 
     @property
     def authenticated(self):
         return (st.session_state.get("authentication_status") and self.stuser)
 
-    @property
-    def user(self):
+    # This is abstracted into .user property with impersonation built-in
+    def uam_user(self):
         if self.stuser and self.stuser.get('username'):
             return {
                 'uid': self.stuser['username'],
@@ -633,12 +669,7 @@ class StreamlitAuthenticationManager(UserAuthenticationManager):
                 'lang': self.stuser['lang']
             }
         else:
-            return { }            
-
-    @property
-    def admin(self):
-        return self.authenticated and (self.stuser.get('group') == 'admin')
-
+            return {}
 
     def logout_button(self, text, location='sidebar'):
         self.auth.logout(text, location)
@@ -778,8 +809,8 @@ def frontegg_client():
 
 class FronteggAuthenticationManager(UserAuthenticationManager):
 
-    def __init__(self, groups, info, org_whitelist, logger, translate_func):
-        super().__init__(groups, info, org_whitelist, logger, translate_func)
+    def __init__(self, groups, info, org_whitelist, logger, languages, translate_func):
+        super().__init__(groups, info, org_whitelist, logger, languages, translate_func)
         self.client = frontegg_client()
         self.passwordless = True
 
@@ -800,12 +831,8 @@ class FronteggAuthenticationManager(UserAuthenticationManager):
             'lang': meta.get('lang'),
         }
 
-    @property
-    def admin(self):
-        return self.authenticated and self.reform_user(st.user)['group'] == 'admin'
-
-    @property
-    def user(self):
+    # This is abstracted into .user property with impersonation built-in
+    def uam_user(self):
         # As st.user is not updated unless you log out, and is not writable
         # We need the hacky workaround to allow changing user info (like lang) during session
         # Normally, one would just do an oauth refresh on user change, but streamlit does not support that (yet?)
