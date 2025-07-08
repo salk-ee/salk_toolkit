@@ -529,9 +529,13 @@ class SalkDashboardBuilder:
                     st.write("Plot cache: %d items (%.1fMb)" % (len(pcache), get_size(pcache) / 1024 ** 2))
                 
                 with st.expander("Impersonate (Admin)"):
-                    org = st.selectbox("Organization",self.uam.org_whitelist,index=self.uam.org_whitelist.index(self.user['organization']))
+                    whitelist = (self.uam.org_whitelist or []) + ([self.user.get('organization')] if self.user.get('organization') else [])
+                    org = st.selectbox("Organization",whitelist,index=whitelist.index(self.user.get('organization')))
+                    
                     group = st.selectbox("Group",self.uam.groups,index=self.uam.groups.index('user'))
-                    language = st.selectbox("Language",self.cc_translations.keys(),index=list(self.cc_translations.keys()).index(self.user['lang']))
+                    
+                    langs = list(self.cc_translations.keys()) + ([self.user.get('lang')] if self.user.get('lang') not in self.cc_translations else [])
+                    language = st.selectbox("Language",langs,index=langs.index(self.user['lang']))
                     if st.button("Impersonate"):
                         st.success("Starting impersonation")
                         if language != self.user['lang']: self.set_translate(language,remember=True)
