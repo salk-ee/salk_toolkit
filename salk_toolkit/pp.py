@@ -171,6 +171,9 @@ def update_data_meta_with_pp_desc(data_meta, pp_desc):
     # Allow creating a new meta group for res_col
     if pp_desc.get('res_meta'):
         data_meta, rmeta = deepcopy(data_meta), deepcopy(pp_desc['res_meta'])
+        sdict = { d['name']:d for d in data_meta['structure']}
+        # Overwrite existing group if it exists
+        if rmeta['name'] in sdict: data_meta['structure'].remove(sdict[rmeta['name']])
         data_meta['structure'].append(rmeta)
 
     # Do the constants replacement after the res_meta is added
@@ -694,10 +697,20 @@ def wrangle_data(raw_df, col_meta, factor_cols, weight_col, pp_desc, n_questions
 
 # %% ../nbs/02_pp.ipynb 28
 # Create a color scale
-def meta_color_scale(scale: Optional[Dict], column=None, translate=None):
+def meta_color_scale(cmeta: Dict, column=None, translate=None):
+    scale, nonresp = cmeta.get('colors',None), cmeta.get('nonresponses',[])
     cats = column.dtype.categories if column.dtype.name=='category' else None
     if scale is None and column is not None and column.dtype.name=='category' and column.dtype.ordered:
-        scale = dict(zip(cats,gradient_to_discrete_color_scale(default_bidirectional_gradient, len(cats))))
+        # Split the values into negative, neutral, positive
+        neg,neut,pos = split_to_neg_neutral_pos(cats,nonresp)
+
+        # Create a color scale for each category and combine them
+        bidir_mid = len(default_bidirectional_gradient)//2
+        reds = gradient_to_discrete_color_scale(default_bidirectional_gradient[:bidir_mid+1],len(neg)+1)
+        greys = gradient_to_discrete_color_scale(greyscale_gradient,len(neut)+2)
+        blues = gradient_to_discrete_color_scale(default_bidirectional_gradient[bidir_mid:],len(pos)+1)
+        scale = { **dict(zip(neg,reds[:-1])), **dict(zip(neut,greys[1:-1])), **dict(zip(pos,blues[1:])) }
+
     if translate and cats is not None:
         remap = dict(zip(cats,[ translate(c) for c in cats ]))
         scale = { (remap[k] if k in remap else k) : v for k,v in scale.items() } if scale else scale
@@ -825,7 +838,8 @@ def create_plot(pparams, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=F
                 'col': tfunc(cn),
                 'ocol': cn,
                 'order': [ tfunc(c) for c in data[cn].dtype.categories ],
-                'colors': meta_color_scale(col_meta[cn].get('colors',None), data[cn], translate=tfunc), 
+                'colors': meta_color_scale(col_meta[cn], data[cn], translate=tfunc), 
+                'nonresponses': [tfunc(c) for c in col_meta[cn].get('nonresponses',[])]
             }
             pparams['facets'].append(fd)
 
