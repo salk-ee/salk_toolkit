@@ -696,13 +696,19 @@ def wrangle_data(raw_df, col_meta, factor_cols, weight_col, pp_desc, n_questions
     return pparams
 
 # %% ../nbs/02_pp.ipynb 28
+def get_neutral_cats(cmeta):
+    neutrals = cmeta.get('nonordered',[])
+    if cmeta.get('neutral_middle'):
+        neutrals.append(cmeta['neutral_middle'])
+    return neutrals
+
 # Create a color scale
 def meta_color_scale(cmeta: Dict, column=None, translate=None):
-    scale, nonresp = cmeta.get('colors',None), cmeta.get('nonresponses',[])
+    scale, neutrals = cmeta.get('colors',None), get_neutral_cats(cmeta)
     cats = column.dtype.categories if column.dtype.name=='category' else None
     if scale is None and column is not None and column.dtype.name=='category' and column.dtype.ordered:
         # Split the values into negative, neutral, positive
-        neg,neut,pos = split_to_neg_neutral_pos(cats,nonresp)
+        neg,neut,pos = split_to_neg_neutral_pos(cats,neutrals)
 
         # Create a color scale for each category and combine them
         bidir_mid = len(default_bidirectional_gradient)//2
@@ -839,7 +845,7 @@ def create_plot(pparams, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=F
                 'ocol': cn,
                 'order': [ tfunc(c) for c in data[cn].dtype.categories ],
                 'colors': meta_color_scale(col_meta[cn], data[cn], translate=tfunc), 
-                'nonresponses': [tfunc(c) for c in col_meta[cn].get('nonresponses',[])]
+                'neutrals': [tfunc(c) for c in get_neutral_cats(col_meta[cn])]
             }
             pparams['facets'].append(fd)
 

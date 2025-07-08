@@ -34,7 +34,7 @@ class ColumnMeta(PBase):
 
     # Model extras
     modifiers: Optional[List[str]] = None # List of columns that are meant to modify the responses on this col -> private_inputs
-    nonresponses: Optional[List] = None # List of categories that are non-responses (Like "Don't know") -> unordered_categories 
+    nonordered: Optional[List] = None # List of categories that are outside the order (Like "Don't know") -> nonordered in ordered_outputs
 
     # Plot pipeline extras
     label: Optional[str] = None # Longer description of the column for tooltips
@@ -44,7 +44,10 @@ class ColumnMeta(PBase):
     num_values: Optional[List[Union[float,None]]] = None # For categoricals - how to convert the categories to numbers
     val_format: Optional[str] = None # Format string for the column values - only used with continuous display
     val_range: Optional[Tuple[float,float]] = None # Range of possible values for continuous variables - used for filter bounds etc
+
     likert: bool = False # For ordered categoricals - if they are likert-type (i.e. symmetric around center)
+    neutral_middle: Optional[str] = None # For ordered categoricals - if there is a neutral category, which one should be in the middle?
+
     topo_feature: Optional[Tuple[str,str,str]] = None # Link to a geojson/topojson [url,type,col_name inside geodata]
     electoral_system: Optional[Dict] = None # Information about electoral system (TODO: spec it out)
     mandates: Optional[Dict] = None # Mandate count mapping for the electoral system

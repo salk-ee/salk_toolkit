@@ -259,8 +259,8 @@ def split_to_neg_neutral_pos(cats,neutrals):
     cats,mid = list(cats),len(cats)//2
     if not neutrals:
         if len(cats)%2==1:
-            return cats[:mid],[cats[mid]],cats[mid+1:]
-        else: return cats[:mid],[],cats[mid:]
+            return cats[:mid], [cats[mid]], cats[mid+1:]
+        else: return cats[:mid], [], cats[mid:]
     
     # Find a neutral that is not at start or end
     bi,ei = 0,0
@@ -272,12 +272,14 @@ def split_to_neg_neutral_pos(cats,neutrals):
     if not cn:
         posneg = [ c for c in cats if c not in neutrals ]
         pnmid = len(posneg)//2
-        return posneg[:pnmid],neutrals,posneg[pnmid:]
+        if len(posneg)%2==1:
+            return posneg[:pnmid], neutrals+[posneg[pnmid]], posneg[pnmid+1:]
+        else: return posneg[:pnmid], neutrals, posneg[pnmid:]
     else: # Split around the first central neutral found
         ci = cats.index(cn[0])
         neg = [ c for c in cats[:ci] if c not in neutrals ]
         pos = [ c for c in cats[ci:] if c not in neutrals ]
-        return neg,neutrals,pos
+        return neg, neutrals, pos
 
 # %% ../nbs/10_utils.ipynb 28
 def is_datetime(col):

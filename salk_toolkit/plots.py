@@ -334,7 +334,7 @@ def likert_bars(data, value_col='value', facets=[],  tooltip=[], outer_factors=[
     elif len(facets)==2: f0, f1, f2 = facets[0], facets[1], None
 
     # Split the categories into negative, neutral, positive same way that colors were allocated
-    neg,neutral,pos = split_to_neg_neutral_pos(f0['order'],f0.get('nonresponses',[]))
+    neg,neutral,pos = split_to_neg_neutral_pos(f0['order'],f0.get('neutrals',[]))
     ninds = [ f0['order'].index(c) for c in neutral ]
 
     gb_cols = outer_factors+[f["col"] for f in facets[1:]] # There can be other extra cols (like labels) that should be ignored
