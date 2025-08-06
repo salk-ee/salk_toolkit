@@ -492,7 +492,7 @@ def matrix(data, value_col='value', facets=[], val_format='%', reorder=False, lo
 
     # Find max absolute value to keep color scale symmetric
     mi, ma = data[scale_v].min(),data[scale_v].max() 
-    dmax = max(-mi,ma)
+    dmax = float(max(-mi,ma))
 
     if mi<0: scale, smid, swidth = { 'scheme':'redyellowgreen', 'domainMid':0, 'domainMin':-dmax, 'domainMax':dmax }, 0, 2*dmax
     else: scale, smid, swidth = { 'scheme': 'yellowgreen', 'domainMin': 0, 'domainMax':dmax }, 0, 2*dmax, #dmax/2, dmax 
