@@ -121,6 +121,12 @@ def alias_file(fname, file_map):
 # %% ../nbs/05_dashboard.ipynb 8
 def log_event(event, uid, path, s3_fs=None):
     timestamp = dt.datetime.now(dt.timezone.utc).strftime('%d-%m-%Y, %H:%M:%S')
+
+    if not exists_fn(path, s3_fs=s3_fs): # If file not present, create it
+        print(f"Log file {path} not found, creating it")
+        open_fn(path,'w',s3_fs=s3_fs).close()
+
+    # Just append the row to the file    
     with open_fn(path,'a',s3_fs=s3_fs) as f:
         writer = csv.writer(f)
         writer.writerow([timestamp, event, uid])
