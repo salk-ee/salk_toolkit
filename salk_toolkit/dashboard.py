@@ -612,10 +612,6 @@ class UserAuthenticationManager:
         pass
 
     @abstractmethod
-    def log_event(self, event):
-        pass
-
-    @abstractmethod
     def update_user(self, uid):
         pass
 
@@ -870,6 +866,11 @@ class FronteggAuthenticationManager(UserAuthenticationManager):
             print('Refreshing user info')
             self.refresh_user()
         else: st.session_state['OA_fresh'] = True
+
+        # Record the login event to the log file    
+        if self.authenticated and 'login_recorded' not in st.session_state:
+            self.log_event('login-success')
+            st.session_state['login_recorded'] = True # Only log once per session, even if user logs in multiple times  
 
     def logout_button(self,text,location='sidebar'):
         where = st.sidebar if location == 'sidebar' else st
