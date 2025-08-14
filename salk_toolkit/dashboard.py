@@ -1178,9 +1178,9 @@ def facet_ui(dims, two=False, uid='base',raw=False, translate=None, force_choice
 
 # %% ../nbs/05_dashboard.ipynb 28
 # Function that creates reset functions for multiselects in filter
-def ms_reset(cn, all_vals):
+def ms_reset(cn, all_vals,uid):
     def reset_ms():
-        st.session_state[f"{cn}_multiselect"] = all_vals
+        st.session_state[f"filter_{uid}_{cn}_multiselect"] = all_vals
     return reset_ms
 
 # %% ../nbs/05_dashboard.ipynb 29
@@ -1273,7 +1273,7 @@ def filter_ui(data, dmeta=None, dims=None, flt={}, uid='base', detailed=False, r
             filters[cn] = stc.multiselect(tf(cn), all_vals, all_vals, key=key)
             if set(filters[cn]) == set(all_vals): del filters[cn]
             else: 
-                stc.button(tf("Reset"),key=f"filter_{uid}_{cn}_ms_reset",on_click=ms_reset(cn,all_vals))
+                stc.button(tf("Reset"),key=f"filter_{uid}_{cn}_ms_reset",on_click=ms_reset(cn,all_vals,uid))
                 filters[cn] = [ r_map[c] for c in filters[cn] ]
 
         # Unordered categorical - selectbox
