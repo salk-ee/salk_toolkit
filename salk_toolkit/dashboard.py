@@ -450,6 +450,12 @@ class SalkDashboardBuilder:
 
     def page(self, name, **kwargs):
         def decorator(pfunc):
+
+            # If we have a whitelist of organizations, and the user is not in it, don't show any pages
+            # This is the second line of defense as whitelist is also checked in build()
+            if self.uam.org_whitelist and self.user.get('organization') not in self.uam.org_whitelist:
+                return
+
             needed_groups = kwargs.get('groups')
             if (needed_groups is None or # Page is available to all
                 self.admin or # Admin sees all
@@ -472,6 +478,18 @@ class SalkDashboardBuilder:
         # If login failed and is required, don't go any further
         if not self.public and not self.authenticated: return
 
+        # Logged in: add info about thtat + log out option
+        if self.authenticated:
+            with st.sidebar:
+                self.sb_info.info(self.tf('Logged in as **%s**',context='ui') % self.user["name"])
+                self.uam.logout_button(self.tf('Log out',context='ui'), 'sidebar')
+
+
+        # If we have a whitelist of organizations, and the user is not in it, don't show the page
+        if self.uam.org_whitelist and self.user.get('organization') not in self.uam.org_whitelist:
+            st.header("You are not authorized to access this dashboard!")
+            return
+
         # Add user settings page if logged in
         if self.authenticated: self.pages.append( ('Settings',user_settings_page,{'icon': 'sliders'}) )
     
@@ -481,11 +499,6 @@ class SalkDashboardBuilder:
         # Draw the menu listing pages
         pnames = [t[0] for t in self.pages]
         with st.sidebar:
-
-            if self.authenticated:
-                self.sb_info.info(self.tf('Logged in as **%s**',context='ui') % self.user["name"])
-                self.uam.logout_button(self.tf('Log out',context='ui'), 'sidebar')
-            
             t_pnames = [ self.tf(pn,context='ui') for pn in pnames]
             if len(t_pnames) == 1: menu_choice = t_pnames[0]
             else:
@@ -535,8 +548,8 @@ class SalkDashboardBuilder:
                     st.write("Plot cache: %d items (%.1fMb)" % (len(pcache), get_size(pcache) / 1024 ** 2))
                 
                 with st.expander("Impersonate (Admin)"):
-                    whitelist = (self.uam.org_whitelist or []) + ([self.user.get('organization')] if self.user.get('organization') else [])
-                    org = st.selectbox("Organization",whitelist,index=whitelist.index(self.user.get('organization')))
+                    org_list = (self.uam.org_whitelist or []) + ([self.user.get('organization')] if self.user.get('organization') else [])
+                    org = st.selectbox("Organization",org_list,index=org_list.index(self.user.get('organization')))
                     
                     group = st.selectbox("Group",self.uam.groups,index=self.uam.groups.index('user'))
                     
