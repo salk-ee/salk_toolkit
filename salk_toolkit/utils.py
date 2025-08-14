@@ -398,10 +398,18 @@ def merge_series(*lst):
 
 # %% ../nbs/10_utils.ipynb 42
 # Turn a list of selected/not seleced into a list of selected values in the same dataframe
-def aggregate_multiselect(df, prefix, out_prefix, na_vals=[], inplace=True):
+def aggregate_multiselect(df, prefix, out_prefix, na_vals=[], colnames_as_values=False, inplace=True):
      cols = [ c for c in df.columns if c.startswith(prefix) ]
-     lst = list(map(lambda l: [ v for v in l if v is not None ],
-          df[cols].astype('object').replace(dict(zip(na_vals,[None]*len(na_vals)))).values.tolist()))
+     dfc = df[cols].astype('object').replace(dict(zip(na_vals,[None]*len(na_vals))))
+
+     # Turn column names into the values - this is sometimes necessary 
+     # as values in col might be "mentioned"/"not mentioned"
+     if colnames_as_values:
+          dfc = dfc.copy()
+          for c in dfc.columns: 
+               dfc.loc[~dfc[c].isna(),c] = c.removeprefix(prefix)
+          
+     lst = list(map(lambda l: [ v for v in l if v is not None ],dfc.values.tolist()))
      n_res = max(map(len,lst))
      columns = [f'{out_prefix}{i+1}' for i in range(n_res)]
      if inplace: df[columns] = pd.DataFrame(lst)
