@@ -726,6 +726,10 @@ def geoplot(data, topo_feature, value_col='value', facets=[], val_format='.2f', 
     else:
         source = alt.topo_feature(json_url, json_meta)
 
+    # Unescape Vega labels for the column on which we merge with the geojson
+    # This is a bit of a hack, but should be the only place where we need to do this due to external data
+    data.loc[:,f0["col"]] = data[f0["col"]].apply(lambda x: unescape_vega_label(x))
+
     lmi,lma = data[value_col].min(),data[value_col].max() 
     mi, ma = value_range if value_range and not separate_axes else (lmi,lma)
     

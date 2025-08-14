@@ -11,7 +11,7 @@ __all__ = ['warn', 'default_color', 'default_bidirectional_gradient', 'redblue_g
            'rel_wave_times', 'stable_draws', 'deterministic_draws', 'clean_kwargs', 'call_kwsafe', 'censor_dict',
            'cut_nice_labels', 'cut_nice', 'rename_cats', 'str_replace', 'merge_series', 'aggregate_multiselect',
            'deaggregate_multiselect', 'gb_in', 'gb_in_apply', 'stk_defaultdict', 'cached_fn',
-           'scores_to_ordinal_rankings', 'dict_cache', 'get_size', 'escape_vega_label']
+           'scores_to_ordinal_rankings', 'dict_cache', 'get_size', 'escape_vega_label', 'unescape_vega_label']
 
 # %% ../nbs/10_utils.ipynb 3
 import json, os, warnings, math, inspect, sys
@@ -531,3 +531,6 @@ def get_size(obj, seen=None):
 # To do that, we use unicode symbols that are visually similar to the problematic characters
 def escape_vega_label(label):
     return label.replace('.','․').replace('[','［').replace(']','］')
+
+def unescape_vega_label(label):
+    return label.replace('․','.').replace('［','[').replace('］',']')
