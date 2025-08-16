@@ -104,23 +104,24 @@ def read_concatenate_files_list(meta,data_file=None,path=None,**kwargs):
         if path: data_file = os.path.join(os.path.dirname(path),data_file)
         mapped_file = stk_file_map.get(data_file,data_file)
 
-        if data_file[-4:] == 'json' or data_file[-7:] == 'parquet': # Allow loading metafiles or annotated data
-            if data_file[-4:] == 'json': warn(f"Processing {data_file}") # Print this to separate warnings for input jsons from main 
+        extension = os.path.splitext(data_file)[1][1:].lower()
+        if extension in ['json', 'parquet']: # Allow loading metafiles or annotated data
+            if extension == 'json': warn(f"Processing {data_file}") # Print this to separate warnings for input jsons from main 
             # Pass in orig_data_file here as it might loop back to this function here and we need to preserve paths
             raw_data, meta = read_annotated_data(data_file, infer=False, **kwargs)
             if meta is not None: metas.append(meta)
-        elif data_file[-3:] in ['csv', '.gz']:
+        elif extension in ['csv', '.gz']:
             raw_data = pd.read_csv(mapped_file, low_memory=False, **opts)
-        elif data_file[-3:] in ['sav','dta']:
+        elif extension in ['sav','dta']:
             read_fn = getattr(pyreadstat,'read_'+mapped_file[-3:])
             with warnings.catch_warnings(): # While pyreadstat has not been updated to pandas 2.2 standards
                 warnings.simplefilter("ignore")
                 raw_data, fmeta = read_fn(mapped_file, **{ 'apply_value_formats':True, 'dates_as_pandas_datetime':True },**opts)
                 einfo.update(fmeta.__dict__) # Allow the fields in meta to be used just like self-defined constants
-        elif data_file[-4:] in ['.xls', 'xlsx', 'xlsm', 'xlsb', '.odf', '.ods', '.odt']:
+        elif extension in ['xls', 'xlsx', 'xlsm', 'xlsb', 'odf', 'ods', 'odt']:
             raw_data = pd.read_excel(mapped_file, **opts)
         else:
-            raise Exception(f"Not a known file format for {data_file}")
+            raise Exception(f"Not a known file format for {data_file}: {extension}")
 
         stk_loaded_files_set.add(mapped_file)
         
