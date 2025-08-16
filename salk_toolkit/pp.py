@@ -697,7 +697,7 @@ def wrangle_data(raw_df, col_meta, factor_cols, weight_col, pp_desc, n_questions
 
 # %% ../nbs/02_pp.ipynb 28
 def get_neutral_cats(cmeta):
-    neutrals = cmeta.get('nonordered',[])
+    neutrals = cmeta.get('nonordered',[]).copy()
     if cmeta.get('neutral_middle'):
         neutrals.append(cmeta['neutral_middle'])
     return neutrals
@@ -1011,7 +1011,7 @@ def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, h
     if plot_cache is not None:
         key = json.dumps(pp_desc, sort_keys=True)
         if key in plot_cache:
-            pparams = plot_cache[key]
+            pparams = deepcopy(plot_cache[key])
         else:
             pparams = pp_transform_data(full_df, data_meta, pp_desc)
             plot_cache[key] = pparams

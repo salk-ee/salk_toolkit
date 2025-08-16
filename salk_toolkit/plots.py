@@ -299,7 +299,6 @@ def make_start_end(x,value_col,cat_col,cat_order,neutral,n_negative):
         mdf = pd.DataFrame({cat_col:pd.Categorical(cat_order,cat_order,ordered=True)})
         x = pd.merge(mdf,x,on=cat_col,how='left').fillna({**shared,value_col:0})
     x = x.sort_values(by=cat_col)
-    #print(x)
 
     if len(neutral)==0: # No neutrals
         x_other = x.copy()

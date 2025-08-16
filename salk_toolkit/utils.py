@@ -257,6 +257,7 @@ def gradient_from_color_alt(color, l_value=0.6, n_points=7, range=[0,1]):
 # This function is used to choose colors and positioning for likert bars with (potentially multiple) neutral categories
 def split_to_neg_neutral_pos(cats,neutrals):
     cats,mid = list(cats),len(cats)//2
+    neutrals = neutrals.copy() # Make a copy to avoid modifying input down the line
     if not neutrals:
         if len(cats)%2==1:
             return cats[:mid], [cats[mid]], cats[mid+1:]
