@@ -782,6 +782,9 @@ def geoplot(data, topo_feature, value_col='value', facets=[], val_format='.2f', 
 def geobest(data, topo_feature, value_col='value', facets=[], val_format='.2f', tooltip=[], width=800):
     f0, f1 = facets[0], facets[1]
 
+    # Same hack as geoplot - required for periods (.) in county names
+    data.loc[:,f1["col"]] = data[f1["col"]].apply(lambda x: unescape_vega_label(x))
+
     json_url, json_meta, json_col = topo_feature
     if json_meta == 'geojson':
         source = alt.Data(url=json_url, format=alt.DataFormat(property='features',type='json'))
