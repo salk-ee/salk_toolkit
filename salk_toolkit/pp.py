@@ -513,6 +513,7 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
         value_vars = [ c for c in gc_dict[pp_desc['res_col']] if c in cols ]
         n_questions = len(value_vars) # Only cols that exist in the data
         id_vars = ['id'] + [ c for c in cols if (c not in value_vars or c in factor_cols) ]
+        c_meta['question'] = c_meta[pp_desc['res_col']]
 
         if 'draw' in cols and draws_data:
             draw_dfs, ddf_cache = [], {}
@@ -725,7 +726,7 @@ def meta_color_scale(cmeta: Dict, column=None, translate=None):
 
 # %% ../nbs/02_pp.ipynb 29
 def translate_df(df, translate):
-    df.columns = [ (translate(c) if c not in special_columns else c) for c in df.columns ]
+    df.columns = [ (translate(c) if c not in special_columns and not c.endswith('_label') else c) for c in df.columns ]
     for c in df.columns:
         if df[c].dtype.name == 'category':
             cats = df[c].dtype.categories
@@ -734,9 +735,9 @@ def translate_df(df, translate):
     return df
 
 # %% ../nbs/02_pp.ipynb 30
-def create_tooltip(pparams,tc_meta):
+def create_tooltip(pparams,c_meta,tfn):
     
-    data, tfn = pparams['data'], pparams['translate']
+    data = pparams['data']
     
     label_dict = {}
     
@@ -745,21 +746,25 @@ def create_tooltip(pparams,tc_meta):
             
     # Find labels mappings for regular columns
     for cn in tcols:
-        if cn in tc_meta and tc_meta[cn].get('labels'): label_dict[cn] = tc_meta[cn]['labels']
+        if cn in c_meta and c_meta[cn].get('labels'): label_dict[cn] = c_meta[cn]['labels']
     
     # Find a mapping for multi-column questions
-    question_tn = tfn('question')
-    if question_tn in data.columns and any([ tc_meta[c].get('label') for c in data[question_tn].unique() if c in tc_meta ]):
-        label_dict[question_tn] = { c: tc_meta[c].get('label') or '' for c in data[question_tn].unique() if c in tc_meta and tc_meta[c].get('label') }
     
+    if 'question' in data.columns:
+        prefix = c_meta['question'].get('col_prefix','')
+        qvals = [ prefix+c for c in data['question'].unique()]
+        if any([ c_meta[c].get('label') for c in qvals if c in c_meta ]):
+            label_dict['question'] = { c.removeprefix(prefix): c_meta[c].get('label') or '' 
+                                        for c in qvals if c in c_meta and c_meta[c].get('label') }
+        
     # Create the tooltips
-    tooltips = [ alt.Tooltip(field=pparams['value_col'], type='quantitative', format=pparams['val_format']) ]
+    tooltips = [ alt.Tooltip(field=tfn(pparams['value_col']), type='quantitative', format=pparams['val_format']) ]
     for cn in tcols:
         if label_dict.get(cn):
-            data[cn+'_label'] = data[cn].astype('object').replace({ k:tfn(v) for k,v in label_dict[cn].items() })
+            data[cn+'_label'] = data[cn].astype('object').replace({ k:v for k,v in label_dict[cn].items() })
             t = alt.Tooltip(field=f"{cn}_label", type='nominal', title=cn)
         else:
-            t = alt.Tooltip(field=cn, type='nominal')
+            t = alt.Tooltip(field=tfn(cn), type='nominal')
         tooltips.append(t)
             
     return tooltips
@@ -827,13 +832,6 @@ def create_plot(pparams, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=F
                 ordervals = data.groupby(cn,observed=True)[pparams['value_col']].mean()
             order = ordervals.sort_values(ascending=ascending).index
             data[cn] = pd.Categorical(data[cn],list(order))
-    
-    # Handle translation funcion
-    if translate is None: translate = (lambda s: s)
-    # Add escaping as Vega Lite goes crazy for symbols like ".[]"
-    # It would be enough to do it just for column names, but it's easier to do it for all
-    tfunc = lambda s: escape_vega_label(translate(s)) 
-    pparams['translate'] = tfunc
 
     # Handle internal facets (and translate as needed)
     pparams['facets'] = []
@@ -841,12 +839,13 @@ def create_plot(pparams, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=F
     if n_inner>0:
         for cn in factor_cols[:n_inner]:
             fd = {
-                'col': tfunc(cn),
-                'ocol': cn,
-                'order': [ tfunc(c) for c in data[cn].dtype.categories ],
-                'colors': meta_color_scale(col_meta[cn], data[cn], translate=tfunc), 
-                'neutrals': [tfunc(c) for c in get_neutral_cats(col_meta[cn])]
+                'col': cn, 'ocol': cn,
+                'order': list(data[cn].dtype.categories),
+                'colors': meta_color_scale(col_meta[cn], data[cn]), 
+                'neutrals': get_neutral_cats(col_meta[cn]),
+                'meta': col_meta[cn]
             }
+            
             pparams['facets'].append(fd)
 
         # Pass on data from facet column meta if specified by plot
@@ -873,14 +872,28 @@ def create_plot(pparams, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=F
         data = data.rename(columns={pparams['value_col']: label})
         pparams['value_col'] = label
 
-    # Translate the data itself
+    # Handle translation funcion
+    if translate is None: translate = (lambda s: s)
+    # Add escaping as Vega Lite goes crazy for symbols like ".[]"
+    # It would be enough to do it just for column names, but it's easier to do it for all
+    tfunc = lambda s: escape_vega_label(translate(s)) 
+    pparams['translate'] = tfunc    
+
+    # Handle tooltips (handles translation inside)
+    pparams['tooltip'] = create_tooltip(pparams, col_meta, tfunc)
+
+    # Translate everything
+    for f in pparams['facets']:
+        f['col'] = tfunc(f['col'])
+        f['order'] = [ tfunc(c) for c in f['order'] ]
+        f['colors'] = meta_color_scale(f['meta'], data[f['ocol']], translate=tfunc)
+        f['neutrals'] = [ tfunc(c) for c in f['neutrals'] ]
+
     pparams['data'] = data = translate_df(data,tfunc)
     pparams['value_col'] = tfunc(pparams['value_col'])  
     factor_cols = [ tfunc(c) for c in factor_cols ]
     t_col_meta = { tfunc(c): v for c,v in col_meta.items() }
 
-    # Handle tooltip
-    pparams['tooltip'] = create_tooltip(pparams,t_col_meta)
     
     # If we still have more than 1 factor left, merge the rest into one so we have a 2d facet
     if len(factor_cols)>1:

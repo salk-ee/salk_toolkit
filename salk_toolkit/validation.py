@@ -121,6 +121,23 @@ class FileDesc(PBase):
 
 class DataMeta(PBase):
 
+    #########################################################
+    # Metadata
+    #########################################################
+
+    description: Optional[str] = None # Description of the data
+    source: Optional[str] = None # Source of the data
+    restrictions: Optional[str] = None # Restrictions on the data use
+
+    collection_start: Optional[str] = None # Date in a way pd.to_datetime can parse it
+    collection_end: Optional[str] = None # Date in a way pd.to_datetime can parse it
+
+    author: Optional[str] = None # AUthor of the metafile
+
+    ########################################################
+    # Data source(s)
+    ########################################################
+
     # Single input file
     file: Optional[str] = None # Name of the file, with relative path from this json file
     read_opts: Optional[Dict] = None # Additional options to pass to reading function
@@ -128,7 +145,11 @@ class DataMeta(PBase):
     # Multiple files
     files: Optional[List[FileDesc]] = None
 
-     # Main meat of data annotations
+    ########################################################
+    # Data processing
+    ########################################################
+
+    # Main meat of data annotations
     structure: BlockSpec
 
     # A set of values that can be referenced in the file below
