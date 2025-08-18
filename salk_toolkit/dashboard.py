@@ -293,7 +293,7 @@ def load_po_translations():
 # Main dashboard wrapper - WIP
 class SalkDashboardBuilder:
 
-    def __init__(self, data_source, auth_conf, logfile, groups=['guest','user','admin'], org_whitelist=None, 
+    def __init__(self, data_source, auth_conf=None, logfile=None, groups=['guest','user','admin'], org_whitelist=None, 
                 public=False, default_lang='en', plot_caching=True, header_fn=None, footer_fn=None):
         
         # Allow deployment.json to redirect files from local to s3 if local missing (i.e. in deployment scenario)
@@ -301,10 +301,10 @@ class SalkDashboardBuilder:
             dep_meta = load_json_cached('./deployment.json')
             self.filemap = dep_meta.get('files',{})
             #data_source = alias_file(data_source,self.filemap)
-            auth_conf = alias_file(auth_conf,self.filemap)
+            auth_conf = alias_file(auth_conf,self.filemap) if auth_conf else None # Only needed for old login
         else: self.filemap = {}
         
-        self.log_path = alias_file(logfile, self.filemap)
+        self.log_path = alias_file(logfile, self.filemap) if logfile else 'log.csv'
         self.s3fs = s3fs.S3FileSystem(anon=False) # Initialize s3 access. Key in secrets.toml
         self.data_source = data_source
         self.public = public
