@@ -727,7 +727,8 @@ def geoplot(data, topo_feature, value_col='value', facets=[], val_format='.2f', 
 
     # Unescape Vega labels for the column on which we merge with the geojson
     # This is a bit of a hack, but should be the only place where we need to do this due to external data
-    data.loc[:,f0["col"]] = data[f0["col"]].apply(lambda x: unescape_vega_label(x))
+    data = data.copy()
+    data[f0["col"]] = data[f0["col"]].apply(lambda x: unescape_vega_label(x))
 
     lmi,lma = data[value_col].min(),data[value_col].max() 
     mi, ma = value_range if value_range and not separate_axes else (lmi,lma)
@@ -783,7 +784,8 @@ def geobest(data, topo_feature, value_col='value', facets=[], val_format='.2f', 
     f0, f1 = facets[0], facets[1]
 
     # Same hack as geoplot - required for periods (.) in county names
-    data.loc[:,f1["col"]] = data[f1["col"]].apply(lambda x: unescape_vega_label(x))
+    data = data.copy()
+    data[f1["col"]] = data[f1["col"]].apply(lambda x: unescape_vega_label(x))
 
     json_url, json_meta, json_col = topo_feature
     if json_meta == 'geojson':
