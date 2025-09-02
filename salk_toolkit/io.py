@@ -113,7 +113,7 @@ def read_concatenate_files_list(meta,data_file=None,path=None,**kwargs):
         elif extension in ['csv', '.gz']:
             raw_data = pd.read_csv(mapped_file, low_memory=False, **opts)
         elif extension in ['sav','dta']:
-            read_fn = getattr(pyreadstat,'read_'+lower(mapped_file[-3:]))
+            read_fn = getattr(pyreadstat,'read_'+(mapped_file[-3:]).lower())
             with warnings.catch_warnings(): # While pyreadstat has not been updated to pandas 2.2 standards
                 warnings.simplefilter("ignore")
                 raw_data, fmeta = read_fn(mapped_file, **{ 'apply_value_formats':True, 'dates_as_pandas_datetime':True },**opts)
