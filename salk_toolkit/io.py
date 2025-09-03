@@ -597,17 +597,18 @@ def infer_meta(data_file=None, meta_file=True, read_opts={}, df=None, translate_
     col_labels = {}
     if data_file is not None:
         path, fname = os.path.split(data_file)
+        ext = os.path.splitext(fname)[1].lower()[1:]
         meta['file'] = fname
-        if data_file[-3:] in ['csv', '.gz']:
+        if ext in ['csv', '.gz']:
             df = pd.read_csv(data_file, low_memory=False, **read_opts)
-        elif data_file[-3:] in ['sav','dta']:
-            read_fn = getattr(pyreadstat,'read_'+data_file[-3:])
+        elif ext in ['sav','dta']:
+            read_fn = getattr(pyreadstat,'read_'+ext)
             df, sav_meta = read_fn(data_file, **{ 'apply_value_formats':True, 'dates_as_pandas_datetime':True },**read_opts)
             col_labels = dict(zip(sav_meta.column_names, sav_meta.column_labels)) # Make this data easy to access by putting it in meta as constant
             if translate_fn: col_labels = { k: translate_fn(v) for k,v in col_labels.items() }
-        elif data_file[-7:] == 'parquet':
+        elif ext == 'parquet':
             df = pd.read_parquet(data_file, **read_opts)
-        elif data_file[-4:] in ['.xls', 'xlsx', 'xlsm', 'xlsb', '.odf', '.ods', '.odt']:
+        elif ext in ['xls', 'xlsx', 'xlsm', 'xlsb', 'odf', 'ods', 'odt']:
             df = pd.read_excel(data_file, **read_opts)
         else:
             raise Exception(f"Not a known file format {data_file}")
@@ -631,9 +632,11 @@ def infer_meta(data_file=None, meta_file=True, read_opts={}, df=None, translate_
         for cs in grps:
             #if cn.startswith('Q2_'): print(len(set(cats[cn]) & cs)/len(cs),set(cats[cn]),cs)
             if len(set(cats[cn]) & cs)/len(cs) > 0.75: # match to group if most of the values match
+                key = frozenset(cs | set(cats[cn]))
+                if key in grps: cs = key # Check if we already have this exact key (can happen)
                 lst = grps[cs]
                 del grps[cs]
-                grps[frozenset(cs | set(cats[cn]))] = lst + [cn]
+                grps[key] = lst + [cn]
                 break
         else:
             grps[frozenset(cats[cn])].append(cn)
