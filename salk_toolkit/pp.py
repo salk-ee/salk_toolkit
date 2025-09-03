@@ -999,7 +999,7 @@ def impute_factor_cols(pp_desc, col_meta, plot_meta=None):
 
 # %% ../nbs/02_pp.ipynb 35
 # A convenience function to draw a plot straight from a dataset
-def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, height=None, check_match=True, impute=True, plot_cache=None, **kwargs):
+def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, height=None, check_match=True, impute=True, plot_cache=None, return_data=False, **kwargs):
     if data_file is None and full_df is None:
         raise Exception('Data must be provided either as data_file or full_df')
     if data_file is None and data_meta is None:
@@ -1030,6 +1030,8 @@ def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, h
             plot_cache[key] = pparams
     else: # No caching
         pparams = pp_transform_data(full_df, data_meta, pp_desc)
+
+    if return_data: return pparams['data']
     return create_plot(pparams, pp_desc, width=width,height=height,**kwargs)
 
 # Another convenience function to simplify testing new plots
