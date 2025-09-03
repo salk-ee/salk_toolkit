@@ -84,13 +84,15 @@ if len(cl_args)>0 and cl_args[0].endswith('.json'):
 else: global_data_meta = None
 
 translate = default_translate
-path = './samples/' 
+path = '.'
 paths = defaultdict( lambda: path )
 
 # Add command line inputs as default input files
 default_inputs = []
 for fname in cl_args:
     path, fname = os.path.split(fname)
+    if fname == '.' or fname == '..': path, fname = fname, ''
+    if not fname: continue
     if fname in paths: # Duplicate file name: include path
         p1, p2 = os.path.split(path)
         path, fname = p1, os.path.join(p2,fname)
