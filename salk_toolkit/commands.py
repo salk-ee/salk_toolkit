@@ -20,7 +20,7 @@ def streamlit_fn_factory(relpath, curpath):
     return run_streamlit_fn_fn
 
 # Run explorer app
-run_explorer = streamlit_fn_factory('../explorer.py',os.path.dirname(__file__))
+run_explorer = streamlit_fn_factory('./explorer.py',os.path.dirname(__file__))
 
 # %% ../nbs/11_commands.ipynb 7
 # Translate a pot file using generic tfunc
