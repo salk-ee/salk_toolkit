@@ -805,7 +805,8 @@ def create_plot(pparams, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=F
     data, col_meta = pparams['data'], pparams['col_meta']
     plot_meta = get_plot_meta(pp_desc['plot'])
     
-    if 'question' in data.columns: # TODO: this should be in io.py already, probably
+    if 'question' in data.columns and \
+        pp_desc['res_col'] not in pp_desc['factor_cols']: # Dont override the colors if displaying a categorical
         col_meta['question']['colors'] = col_meta[pp_desc['res_col']].get('question_colors',None)
 
     plot_args = pp_desc.get('plot_args',{})
@@ -817,6 +818,9 @@ def create_plot(pparams, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=F
     # Reorder categories if required
     if pp_desc.get('sort'):
         for cn in pp_desc['sort']:
+            # Do not sort ordered categories. Only creates confusion if left on by accident
+            if cn in col_meta and col_meta[cn].get('ordered'): continue
+            
             ascending = pp_desc['sort'][cn] if isinstance(pp_desc['sort'],dict) else False
             if cn not in data.columns or cn==pparams['value_col']: 
                 raise Exception(f"Sort column {cn} not found")
