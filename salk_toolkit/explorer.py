@@ -278,8 +278,8 @@ with st.sidebar: #.expander("Select dimensions"):
 
         override = st.text_area('Override keys','{}',key='override')
         if override: args.update(eval(override))
-    
-    args['filter'] = filter_ui(first_data,first_data_meta,
+
+    args['filter'] = filter_ui(first_data,first_data_meta, grouped=True,
                                 dims=all_dims,detailed=detailed)
 
     # Export options

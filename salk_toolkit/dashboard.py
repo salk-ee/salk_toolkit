@@ -1233,7 +1233,7 @@ def get_filter_limits(_ldf,dims,dmeta,uid):
 
 # %% ../nbs/05_dashboard.ipynb 30
 # User interface that outputs a filter for the pp_desc
-def filter_ui(data, dmeta=None, dims=None, flt={}, uid='base', detailed=False, raw=False, translate=None, force_choice=False):
+def filter_ui(data, dmeta=None, dims=None, flt={}, uid='base', detailed=False, raw=False, translate=None, force_choice=False, grouped=False):
     
     tfc = translate if translate else (lambda s,**kwargs: s)
     tf = lambda s: tfc(s,context='data')
@@ -1242,84 +1242,93 @@ def filter_ui(data, dmeta=None, dims=None, flt={}, uid='base', detailed=False, r
     dims = list(limits.keys())
     
     if dmeta is not None:
-        dims = list_aliases(dims, group_columns_dict(dmeta)) # Replace aliases like 'demographics'
+        gcols = group_columns_dict(dmeta)
+        dims = list_aliases(dims, gcols) # Replace aliases like 'demographics'
         c_meta = extract_column_meta(dmeta) # mainly for groups defined in meta
     else: c_meta = defaultdict(lambda: {})
     
     if not force_choice: f_info = st.sidebar.container()
     
-    stc = st.sidebar.expander(tfc('Filters',context='ui')) if not raw else st
+    gstc = st.sidebar.expander(tfc('Filters',context='ui')) if not raw else st
     stss = st.session_state
     
+
+    if grouped: 
+        gdims = { gn: [d for d in gdims if d in dims] for gn,gdims in gcols.items() }
+        gdims = [ (gstc.expander(gn,expanded=(gn=='main')), gd) for gn, gd in gdims.items() if len(gd)>0 ]
+    else:
+        gdims = [ (gstc, dims) ]
+
     # Different selector for different category types
     # Also - make sure filter is clean and only applies when it is changed from the default 'all' value
     # This has considerable speed and efficiency implications
     filters = deepcopy(flt)
-    for cn in dims:
-        
-        # Shared prep for all cateogoricals
-        if limits[cn].get('categories'):
-            cats = limits[cn]['categories']
-
-            if cn in flt: # Already a filter set
-                cflt = flt[cn]
-                if not isinstance(cflt,list): cflt = [cflt] # Single value
-                if cflt[0] is None:
-                    miv, mav = cflt[1:]
-                    if not {miv,mav} <= set(cats):
-                        raise ValueError(f"Invalid filter for {cn}: {cflt}")
-                    cflt = cats[cats.index(miv):cats.index(mav)+1]
-                cats = cflt # Set the list of options to the current filter
-
-            if len(cats)==1: continue
+    for stc, dims in gdims:
+        for cn in dims:
             
-            # Do some prep for translations
-            r_map = dict(zip([tf(c) for c in cats],cats))
-            all_vals = list(r_map.keys()) # translated categories
-            grp_names = c_meta[cn].get('groups',{}).keys()
-            r_map.update(dict(zip([tf(c) for c in grp_names],grp_names)))
-        
-        # Multiselect
-        if detailed and limits[cn].get('categories'):
-            key = f"filter_{uid}_{cn}_multiselect"
-            if key in stss and not set(stss[key]) <= set(all_vals): del stss[key]  
-            filters[cn] = stc.multiselect(tf(cn), all_vals, all_vals, key=key)
-            if set(filters[cn]) == set(all_vals): del filters[cn]
-            else: 
-                stc.button(tf("Reset"),key=f"filter_{uid}_{cn}_ms_reset",on_click=ms_reset(cn,all_vals,uid))
-                filters[cn] = [ r_map[c] for c in filters[cn] ]
+            # Shared prep for all cateogoricals
+            if limits[cn].get('categories'):
+                cats = limits[cn]['categories']
 
-        # Unordered categorical - selectbox
-        elif limits[cn].get('categories') and not limits[cn].get('ordered'): 
-            choices = [gt for gt,g in r_map.items() if g in grp_names] + all_vals
-            if not force_choice: choices = [tf('All')] + choices
-            stss_safety(f'filter_{cn}_sel',choices)
-            key = f'filter_{uid}_{cn}_sel'
-            if key in stss and stss[key] not in all_vals: del stss[key]
-            filters[cn] = stc.selectbox(tf(cn),choices,key=key)
-            if filters[cn] == tf('All'): del filters[cn]
-            else: filters[cn] = r_map[filters[cn]]
+                if cn in flt: # Already a filter set
+                    cflt = flt[cn]
+                    if not isinstance(cflt,list): cflt = [cflt] # Single value
+                    if cflt[0] is None:
+                        miv, mav = cflt[1:]
+                        if not {miv,mav} <= set(cats):
+                            raise ValueError(f"Invalid filter for {cn}: {cflt}")
+                        cflt = cats[cats.index(miv):cats.index(mav)+1]
+                    cats = cflt # Set the list of options to the current filter
 
-        # Ordered categorical - slider
-        # Use [None,<start>,<end>] for ranges, both categorical and continuous to distinguish them from list of values
-        elif limits[cn].get('categories') and limits[cn].get('ordered'): # Ordered categorical - slider
-            key = f'filter_{uid}_{cn}_ocat'
-            if key in stss and not set(stss[key]) <= set(all_vals): del stss[key] 
-            f_res = stc.select_slider(tf(cn),all_vals,value=(all_vals[0],all_vals[-1]),key=key)
-            if f_res != (all_vals[0],all_vals[-1]):
-                miv, mav = r_map[f_res[0]], r_map[f_res[1]]
-                if cn in flt: filters[cn] = cats[cats.index(miv):cats.index(mav)+1] # As cats itself might already be a subset
-                else: filters[cn] = [None]+[miv,mav] # Just use the range syntax for better legibility
+                if len(cats)==1: continue
+                
+                # Do some prep for translations
+                r_map = dict(zip([tf(c) for c in cats],cats))
+                all_vals = list(r_map.keys()) # translated categories
+                grp_names = c_meta[cn].get('groups',{}).keys()
+                r_map.update(dict(zip([tf(c) for c in grp_names],grp_names)))
+            
+            # Multiselect
+            if detailed and limits[cn].get('categories'):
+                key = f"filter_{uid}_{cn}_multiselect"
+                if key in stss and not set(stss[key]) <= set(all_vals): del stss[key]  
+                filters[cn] = stc.multiselect(tf(cn), all_vals, all_vals, key=key)
+                if set(filters[cn]) == set(all_vals): del filters[cn]
+                else: 
+                    stc.button(tf("Reset"),key=f"filter_{uid}_{cn}_ms_reset",on_click=ms_reset(cn,all_vals,uid))
+                    filters[cn] = [ r_map[c] for c in filters[cn] ]
 
-        # Numeric values - slider
-        elif limits[cn].get('continuous'): # Continuous
-            mima = limits[cn]['min'], limits[cn]['max']
-            if mima[0]==mima[1]: continue
-            f_res = stc.slider(tf(cn),*mima,value=mima,key=f'filter_{uid}_{cn}_cont')
-            if f_res[0]>mima[0] or f_res[1]<mima[1]: 
-                filters[cn] = ( [None] + 
-                                [ f_res[0] if f_res[0]>mima[0] else None] + 
-                                [ f_res[1] if f_res[1]<mima[1] else None ] )
+            # Unordered categorical - selectbox
+            elif limits[cn].get('categories') and not limits[cn].get('ordered'): 
+                choices = [gt for gt,g in r_map.items() if g in grp_names] + all_vals
+                if not force_choice: choices = [tf('All')] + choices
+                stss_safety(f'filter_{cn}_sel',choices)
+                key = f'filter_{uid}_{cn}_sel'
+                if key in stss and stss[key] not in all_vals: del stss[key]
+                filters[cn] = stc.selectbox(tf(cn),choices,key=key)
+                if filters[cn] == tf('All'): del filters[cn]
+                else: filters[cn] = r_map[filters[cn]]
+
+            # Ordered categorical - slider
+            # Use [None,<start>,<end>] for ranges, both categorical and continuous to distinguish them from list of values
+            elif limits[cn].get('categories') and limits[cn].get('ordered'): # Ordered categorical - slider
+                key = f'filter_{uid}_{cn}_ocat'
+                if key in stss and not set(stss[key]) <= set(all_vals): del stss[key] 
+                f_res = stc.select_slider(tf(cn),all_vals,value=(all_vals[0],all_vals[-1]),key=key)
+                if f_res != (all_vals[0],all_vals[-1]):
+                    miv, mav = r_map[f_res[0]], r_map[f_res[1]]
+                    if cn in flt: filters[cn] = cats[cats.index(miv):cats.index(mav)+1] # As cats itself might already be a subset
+                    else: filters[cn] = [None]+[miv,mav] # Just use the range syntax for better legibility
+
+            # Numeric values - slider
+            elif limits[cn].get('continuous'): # Continuous
+                mima = limits[cn]['min'], limits[cn]['max']
+                if mima[0]==mima[1]: continue
+                f_res = stc.slider(tf(cn),*mima,value=mima,key=f'filter_{uid}_{cn}_cont')
+                if f_res[0]>mima[0] or f_res[1]<mima[1]: 
+                    filters[cn] = ( [None] + 
+                                    [ f_res[0] if f_res[0]>mima[0] else None] + 
+                                    [ f_res[1] if f_res[1]<mima[1] else None ] )
             
     if filters and not force_choice: f_info.warning('⚠️ ' + tfc('Filters active',context='ui') + ' ⚠️')
             

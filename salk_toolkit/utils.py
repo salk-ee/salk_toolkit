@@ -403,6 +403,9 @@ def aggregate_multiselect(df, prefix, out_prefix, na_vals=[], colnames_as_values
      cols = [ c for c in df.columns if c.startswith(prefix) ]
      dfc = df[cols].astype('object').replace(dict(zip(na_vals,[None]*len(na_vals))))
 
+     if dfc.isna().sum().sum() == 0:
+          raise ValueError(f"No na_vals found by aggregate_multiselect in {prefix}")
+
      # Turn column names into the values - this is sometimes necessary 
      # as values in col might be "mentioned"/"not mentioned"
      if colnames_as_values:
