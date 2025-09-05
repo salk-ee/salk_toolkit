@@ -761,8 +761,9 @@ def create_tooltip(pparams,c_meta,tfn):
     tooltips = [ alt.Tooltip(field=tfn(pparams['value_col']), type='quantitative', format=pparams['val_format']) ]
     for cn in tcols:
         if label_dict.get(cn):
-            data[cn+'_label'] = data[cn].astype('object').replace({ k:v for k,v in label_dict[cn].items() })
-            t = alt.Tooltip(field=f"{cn}_label", type='nominal', title=cn)
+            label_col = f'{cn}_label'
+            data[label_col] = data[cn].astype('object').replace({ k:v for k,v in label_dict[cn].items() })
+            t = alt.Tooltip(field=label_col, type='nominal', title=tfn(cn))
         else:
             t = alt.Tooltip(field=tfn(cn), type='nominal')
         tooltips.append(t)
@@ -818,13 +819,13 @@ def create_plot(pparams, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=F
     # Reorder categories if required
     if pp_desc.get('sort'):
         for cn in pp_desc['sort']:
-            # Do not sort ordered categories. Only creates confusion if left on by accident
-            if cn in col_meta and col_meta[cn].get('ordered'): continue
-            
             ascending = pp_desc['sort'][cn] if isinstance(pp_desc['sort'],dict) else False
             if cn not in data.columns or cn==pparams['value_col']: 
                 raise Exception(f"Sort column {cn} not found")
-            if plot_meta.get('sort_numeric_first_facet'): # Some plots (like likert_bars) need a more complex sort
+                
+            # Some plots (like likert_bars) need a more complex sort
+            # This converts the categorical into numeric values and then sorts by the mean of the value
+            if plot_meta.get('sort_numeric_first_facet'):
                 f0 = factor_cols[0]
                 nvals = get_cat_num_vals(col_meta[f0],pp_desc)
                 cats = col_meta[f0]['categories']
@@ -832,6 +833,13 @@ def create_plot(pparams, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=F
                 sdf = data[ [cn,f0,pparams['value_col']] ]
                 sdf['sort_val'] = sdf[pparams['value_col']]*sdf[f0].astype('object').replace(cmap)
                 ordervals = sdf.groupby(cn,observed=True)['sort_val'].mean()
+            
+            # Otherwise, do not sort ordered categories as categories.
+            # Only creates confusion if left on by accident
+            elif cn in col_meta and col_meta[cn].get('ordered'): 
+                continue
+
+            # Otherwise, we are good to sort, simply by value_col
             else:
                 ordervals = data.groupby(cn,observed=True)[pparams['value_col']].mean()
             order = ordervals.sort_values(ascending=ascending).index
@@ -893,7 +901,7 @@ def create_plot(pparams, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=F
         f['colors'] = meta_color_scale(f['meta'], data[f['ocol']], translate=tfunc)
         f['neutrals'] = [ tfunc(c) for c in f['neutrals'] ]
 
-    pparams['data'] = data = translate_df(data,tfunc)
+    pparams['data'] = data = translate_df(pparams['data'],tfunc)
     pparams['value_col'] = tfunc(pparams['value_col'])  
     factor_cols = [ tfunc(c) for c in factor_cols ]
     t_col_meta = { tfunc(c): v for c,v in col_meta.items() }
