@@ -160,7 +160,12 @@ def simulate_election_pp(data, mandates, electoral_system, cat_col, value_col, f
     pdf = data.pivot(index=['draw',factor_col], columns=cat_col, values=value_col).reset_index()
     ded = pd.DataFrame(list(it.product(draws,factor_order)),columns=['draw',factor_col])
     sdata = ded.merge(pdf,on=['draw',factor_col]).loc[:,cat_order].fillna(0).to_numpy().reshape( (len(draws),len(factor_order),len(cat_order)) )
-    
+
+    if isinstance(electoral_system.get('threshold'),dict):
+        td = electoral_system['threshold']
+        electoral_system['threshold'] = np.array([td[d] if d in td else td['default'] for d in cat_order])
+        print(td, electoral_system['threshold'])
+
     # Run the actual electoral simulation
     nmandates = np.array([ mandates[d] for d in factor_order ])
     edt = simulate_election(sdata,nmandates,**electoral_system)
