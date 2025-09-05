@@ -27,6 +27,26 @@ st.set_page_config(
 
 info = st.empty()
 
+# Allow explorer to be deployed online with access restrictions similar to other dashboards
+if st.secrets.get('sip',{}).get('input_files'): #st.secrets.get('auth',{}).get('use_oauth'):
+    from salk_toolkit.dashboard import FronteggAuthenticationManager
+    groups = ['user','admin']
+    org_whitelist = st.secrets['sip']['org_whitelist']
+    # TODO: logging
+    uam = FronteggAuthenticationManager(groups, org_whitelist=org_whitelist,
+                                    info=info, logger=lambda *args: None,
+                                    languages={}, translate_func=lambda t: t)
+    
+    uam.login_screen()
+    if not uam.authenticated: st.stop() # Wait for login redirect to happen
+    elif uam.user.get('organization') not in org_whitelist: # Logged in but not authorized
+        st.header("You are not authorized to access this dashboard!")
+        st.stop()
+    # else: 
+    #     with st.sidebar:
+    #         uam.logout_button('Logout','sidebar')
+else: uam = None
+
 with st.spinner("Loading libraries.."):
     import pandas as pd
     import polars as pl
@@ -76,35 +96,44 @@ if 'ls_loaded' not in st.session_state:
 warnings.filterwarnings(action='ignore', category=UserWarning)
 warnings.filterwarnings(action='ignore', category=pd.errors.PerformanceWarning)
 
-
-cl_args = sys.argv[1:] if len(sys.argv)>1 else []
-if len(cl_args)>0 and cl_args[0].endswith('.json'):
-    global_data_meta = read_json(cl_args[0],replace_const=True)
-    cl_args = cl_args[1:]
-else: global_data_meta = None
-
 translate = default_translate
-path = '.'
+path = './'
 paths = defaultdict( lambda: path )
 
-# Add command line inputs as default input files
-default_inputs = []
-for fname in cl_args:
-    path, fname = os.path.split(fname)
-    if fname == '.' or fname == '..': path, fname = fname, ''
-    if not fname: continue
-    if fname in paths: # Duplicate file name: include path
-        p1, p2 = os.path.split(path)
-        path, fname = p1, os.path.join(p2,fname)
-    paths[fname] = (path or '.')+'/' 
-    default_inputs.append(fname)
+if st.secrets.get('sip',{}).get('input_files'):
+    global_data_meta = None
+    input_files = st.secrets['sip']['input_files']
+else:
 
-if not path: path = './'
-else: path += '/'
+    cl_args = sys.argv[1:] if len(sys.argv)>1 else []
+    if len(cl_args)>0 and cl_args[0].endswith('.json'):
+        global_data_meta = read_json(cl_args[0],replace_const=True)
+        cl_args = cl_args[1:]
+    else: global_data_meta = None
 
-input_file_choices = default_inputs + sorted([ f for f in os.listdir(path) if f[-8:]=='.parquet' ])
 
-input_files = st.sidebar.multiselect('Select files:',input_file_choices,default_inputs)
+    # Add command line inputs as default input files
+    default_inputs = []
+    for fname in cl_args:
+        path, fname = os.path.split(fname)
+        if fname == '.' or fname == '..': path, fname = fname, ''
+        if not fname: continue
+        if fname in paths: # Duplicate file name: include path
+            p1, p2 = os.path.split(path)
+            path, fname = p1, os.path.join(p2,fname)
+        paths[fname] = (path or '.')+'/' 
+        default_inputs.append(fname)
+
+    if not path: path = './'
+    else: path += '/'
+
+    input_file_choices = default_inputs + sorted([ f for f in os.listdir(path) if f[-8:]=='.parquet' ])
+
+    input_files = st.sidebar.multiselect('Select files:',input_file_choices,default_inputs)
+
+    if global_data_meta: st.sidebar.info('⚠️ External meta loaded.')
+    
+    st.sidebar.markdown("""___""")
 
 ########################################################################
 #                                                                      #
@@ -143,7 +172,7 @@ else:
 
 from pandas.api.types import is_datetime64_any_dtype as is_datetime
 
-if global_data_meta: st.sidebar.info('⚠️ External meta loaded.')
+
 
 def get_dimensions(data_meta, present_cols, observations=True):
     c_meta = extract_column_meta(data_meta)
@@ -174,7 +203,6 @@ if st.session_state.get('override'):
 with st.sidebar: #.expander("Select dimensions"):
 
     f_info = st.empty()
-    st.markdown("""___""")
 
     # Reset button - has to be high up in case something fails to load
     if st.sidebar.button('Reset choices'): 
