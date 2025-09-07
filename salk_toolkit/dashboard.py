@@ -4,9 +4,9 @@
 
 # %% auto 0
 __all__ = ['get_plot_width', 'open_fn', 'exists_fn', 'read_annotated_data_lazy_cached', 'load_json', 'load_json_cached',
-           'save_json', 'alias_file', 'default_translate', 'SalkDashboardBuilder', 'sqlite_client',
-           'StreamlitAuthenticationManager', 'frontegg_client', 'FronteggAuthenticationManager', 'draw_plot_matrix',
-           'st_plot', 'plot_cache', 'stss_safety', 'facet_ui', 'filter_ui', 'translate_with_dict',
+           'save_json', 'alias_file', 'log_event', 'default_translate', 'SalkDashboardBuilder', 'sqlite_client',
+           'StreamlitAuthenticationManager', 'frontegg_client', 'FronteggAuthenticationManager', 'admin_page',
+           'draw_plot_matrix', 'st_plot', 'plot_cache', 'stss_safety', 'facet_ui', 'filter_ui', 'translate_with_dict',
            'log_missing_translations', 'clean_missing_translations', 'add_missing_to_dict', 'translate_pot',
            'plot_matrix_html']
 

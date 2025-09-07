@@ -29,13 +29,24 @@ info = st.empty()
 
 # Allow explorer to be deployed online with access restrictions similar to other dashboards
 if st.secrets.get('sip',{}).get('input_files'): #st.secrets.get('auth',{}).get('use_oauth'):
-    from salk_toolkit.dashboard import FronteggAuthenticationManager
+    from salk_toolkit.dashboard import FronteggAuthenticationManager, log_event
+    import s3fs
     groups = ['user','admin']
     org_whitelist = st.secrets['sip']['org_whitelist']
-    # TODO: logging
+    
+    # Set up logging    
+    s3fs = s3fs.S3FileSystem(anon=False)
+    uam = None
+    log_path = st.secrets['sip']['log_path']
+
+    def logger(event, uid=None):
+        log_event(event, uid or uam.user.get('uid','anonymous'), log_path, s3_fs=s3fs)
+
     uam = FronteggAuthenticationManager(groups, org_whitelist=org_whitelist,
-                                    info=info, logger=lambda *args: None,
+                                    info=info, logger=logger,
                                     languages={}, translate_func=lambda t: t)
+
+
     
     uam.login_screen()
     if not uam.authenticated: st.stop() # Wait for login redirect to happen
@@ -45,7 +56,12 @@ if st.secrets.get('sip',{}).get('input_files'): #st.secrets.get('auth',{}).get('
     # else: 
     #     with st.sidebar:
     #         uam.logout_button('Logout','sidebar')
-else: uam = None
+
+    # Dummy SDB for admin panel
+    sdb = type('SDB-lite', (), {'uam': uam, 'log_path': log_path, 's3fs': s3fs,
+            'filemap': {}, 'cc_translations': {}, 'tf': lambda t: t})()
+
+else: sdb = None
 
 with st.spinner("Loading libraries.."):
     import pandas as pd
@@ -102,7 +118,8 @@ paths = defaultdict( lambda: path )
 
 if st.secrets.get('sip',{}).get('input_files'):
     global_data_meta = None
-    input_files = st.secrets['sip']['input_files']
+    input_file_choices = st.secrets['sip']['input_files']
+    default_inputs = input_file_choices.copy()
 else:
 
     cl_args = sys.argv[1:] if len(sys.argv)>1 else []
@@ -129,11 +146,12 @@ else:
 
     input_file_choices = default_inputs + sorted([ f for f in os.listdir(path) if f[-8:]=='.parquet' ])
 
+if len(input_file_choices)>1:
     input_files = st.sidebar.multiselect('Select files:',input_file_choices,default_inputs)
-
-    if global_data_meta: st.sidebar.info('⚠️ External meta loaded.')
-    
     st.sidebar.markdown("""___""")
+else: input_files = input_file_choices # Just show that one file
+
+if global_data_meta: st.sidebar.info('⚠️ External meta loaded.')
 
 ########################################################################
 #                                                                      #
@@ -335,9 +353,17 @@ with st.sidebar: #.expander("Select dimensions"):
         st.code(pprint.pformat(args,indent=0,width=30))
 
 
+if sdb and sdb.uam.admin:
+    with st.sidebar:
+        apanel = st.checkbox("Admin panel",value=False,key='admin_panel')
+    if apanel:
+        from salk_toolkit.dashboard import admin_page
+        admin_page(sdb)
+        st.stop()    
+
 #left, middle, right = st.columns([2, 5, 2])
 #tab = middle.radio('Tabs',['Main'],horizontal=True,label_visibility='hidden')
-st.markdown("""___""")
+#st.markdown("""___""")
 
 ########################################################################
 #                                                                      #
