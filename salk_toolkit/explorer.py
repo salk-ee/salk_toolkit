@@ -27,8 +27,14 @@ st.set_page_config(
 
 info = st.empty()
 
+try:
+    s = st.secrets
+except FileNotFoundError:
+    has_secrets = False
+else: has_secrets = True
+
 # Allow explorer to be deployed online with access restrictions similar to other dashboards
-if st.secrets.get('sip',{}).get('input_files'): #st.secrets.get('auth',{}).get('use_oauth'):
+if has_secrets and st.secrets.get('sip',{}).get('input_files'): #st.secrets.get('auth',{}).get('use_oauth'):
     from salk_toolkit.dashboard import FronteggAuthenticationManager, log_event
     import s3fs
     groups = ['user','admin']
@@ -116,7 +122,7 @@ translate = default_translate
 path = './'
 paths = defaultdict( lambda: path )
 
-if st.secrets.get('sip',{}).get('input_files'):
+if has_secrets and st.secrets.get('sip',{}).get('input_files'):
     global_data_meta = None
     input_file_choices = st.secrets['sip']['input_files']
     default_inputs = input_file_choices.copy()
