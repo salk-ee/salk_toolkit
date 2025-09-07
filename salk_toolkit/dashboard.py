@@ -1204,16 +1204,20 @@ def get_filter_limits(_ldf,dims,dmeta,uid):
 
     if not isinstance(ldf,pl.LazyFrame): ldf = pl.DataFrame(ldf).lazy()
 
+    c_meta = extract_column_meta(dmeta)
+    gcols = group_columns_dict(dmeta)
     schema = ldf.collect_schema()
 
     if dims is None: dims = schema.names()
-    else: dims = [ c for c in dims if c in schema.names() ]
+    else: dims = [ c for c in dims if c in schema.names() or c in gcols ]
 
-    c_meta = extract_column_meta(dmeta)
 
     limits = {}
     for d in dims:
-        if c_meta[d].get('continuous') and schema[d].is_numeric():
+        if d in gcols:
+            prefix = c_meta[d]['col_prefix'] if 'col_prefix' in c_meta[d] else ''
+            limits[d] = { 'categories': [ c.removeprefix(prefix) for c in gcols[d] ], 'group': True }
+        elif c_meta[d].get('continuous') and schema[d].is_numeric():
             if c_meta[d].get('val_range'): limits[d] = { 'min': c_meta[d]['val_range'][0], 'max': c_meta[d]['val_range'][1] }
             else: limits[d] = ldf.select([pl.min(d).alias('min'),pl.max(d).alias('max')]).collect().to_dicts()[0]
             limits[d]['continuous'] = True
@@ -1234,8 +1238,8 @@ def get_filter_limits(_ldf,dims,dmeta,uid):
 
 # %% ../nbs/05_dashboard.ipynb 30
 # User interface that outputs a filter for the pp_desc
-def filter_ui(data, dmeta=None, dims=None, flt={}, uid='base', detailed=False, raw=False, translate=None, force_choice=False, grouped=False):
-    
+def filter_ui(data, dmeta=None, dims=None, flt={}, uid='base', detailed=False, raw=False, translate=None, force_choice=False, grouped=False, obs_dim=None):
+
     tfc = translate if translate else (lambda s,**kwargs: s)
     tf = lambda s: tfc(s,context='data')
 
@@ -1244,7 +1248,7 @@ def filter_ui(data, dmeta=None, dims=None, flt={}, uid='base', detailed=False, r
     
     if dmeta is not None:
         gcols = group_columns_dict(dmeta)
-        dims = list_aliases(dims, gcols) # Replace aliases like 'demographics'
+        if not grouped: dims = list_aliases(dims, gcols) # Replace aliases like 'demographics'
         c_meta = extract_column_meta(dmeta) # mainly for groups defined in meta
     else: c_meta = defaultdict(lambda: {})
     
@@ -1255,7 +1259,7 @@ def filter_ui(data, dmeta=None, dims=None, flt={}, uid='base', detailed=False, r
     
 
     if grouped: 
-        gdims = { gn: [d for d in gdims if d in dims] for gn,gdims in gcols.items() }
+        gdims = { gn: [d for d in [gn]+gdims if d in dims] for gn,gdims in gcols.items() }
         gdims = [ (gstc.expander(gn,expanded=(gn=='main')), gd) for gn, gd in gdims.items() if len(gd)>0 ]
     else:
         gdims = [ (gstc, dims) ]
@@ -1266,6 +1270,9 @@ def filter_ui(data, dmeta=None, dims=None, flt={}, uid='base', detailed=False, r
     filters = deepcopy(flt)
     for stc, dims in gdims:
         for cn in dims:
+
+            # If filter on this dimension already set, skip
+            if cn in filters: continue
             
             # Shared prep for all cateogoricals
             if limits[cn].get('categories'):
@@ -1290,7 +1297,7 @@ def filter_ui(data, dmeta=None, dims=None, flt={}, uid='base', detailed=False, r
                 r_map.update(dict(zip([tf(c) for c in grp_names],grp_names)))
             
             # Multiselect
-            if detailed and limits[cn].get('categories'):
+            if (detailed or cn in gcols) and limits[cn].get('categories'):
                 key = f"filter_{uid}_{cn}_multiselect"
                 if key in stss and not set(stss[key]) <= set(all_vals): del stss[key]  
                 filters[cn] = stc.multiselect(tf(cn), all_vals, all_vals, key=key)
@@ -1330,8 +1337,11 @@ def filter_ui(data, dmeta=None, dims=None, flt={}, uid='base', detailed=False, r
                     filters[cn] = ( [None] + 
                                     [ f_res[0] if f_res[0]>mima[0] else None] + 
                                     [ f_res[1] if f_res[1]<mima[1] else None ] )
-            
-    if filters and not force_choice: f_info.warning('⚠️ ' + tfc('Filters active',context='ui') + ' ⚠️')
+    
+    # Only leave the question group filter on if that is the current observation
+    if obs_dim:  filters = { k:v for k,v in filters.items() if not limits[k].get('group') or k == obs_dim }
+                
+    if filters != flt and not force_choice: f_info.warning('⚠️ ' + tfc('Filters active',context='ui') + ' ⚠️')
             
     return filters
 

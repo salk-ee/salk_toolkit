@@ -246,6 +246,7 @@ with st.sidebar: #.expander("Select dimensions"):
     obs_dims = get_dimensions(first_data_meta, all_cols, show_grouped)
     obs_dims = [c for c in obs_dims if c not in first_data or not schema[c].is_temporal()]
     all_dims = get_dimensions(first_data_meta, all_cols, False)
+    q_groups = list(set(obs_dims) - set(all_dims))
 
     # Deduplicate them - this bypasses some issues sometimes
     obs_dims = list(dict.fromkeys(obs_dims))
@@ -331,8 +332,10 @@ with st.sidebar: #.expander("Select dimensions"):
         override = st.text_area('Override keys','{}',key='override')
         if override: args.update(eval(override))
 
-    args['filter'] = filter_ui(first_data,first_data_meta, grouped=True,
-                                dims=all_dims,detailed=detailed)
+    args['filter'] = filter_ui(first_data, first_data_meta, grouped=True,
+                                dims=q_groups + all_dims, obs_dim = obs_name,
+                                detailed=detailed, flt=args.get('filter',{}))
+
 
     # Export options
     with st.expander('Export'):
@@ -397,7 +400,7 @@ elif input_files_facet:
     dfs = []
     for ifile in input_files:
         df, fargs = loaded[ifile]['data'], args.copy()
-        fargs['filter'] = { k:v for k,v in fargs['filter'].items() if k in loaded[ifile]['columns'] }
+        fargs['filter'] = { k:v for k,v in fargs['filter'].items() if k in loaded[ifile]['columns'] or k in q_groups}
         fargs['factor_cols'] = [ f for f in fargs['factor_cols'] if f!='input_file' ]
         pparams = pp_transform_data(df, raw_first_data_meta, fargs)
         dfs.append(pparams['data'])
@@ -439,7 +442,7 @@ else:
 
             #with st.spinner('Filtering data...'):
             fargs = args.copy()
-            fargs['filter'] = { k:v for k,v in args['filter'].items() if k in loaded[ifile]['columns'] }
+            fargs['filter'] = { k:v for k,v in args['filter'].items() if k in loaded[ifile]['columns'] or k in q_groups}
             pparams = pp_transform_data(loaded[ifile]['data'], data_meta, fargs)
             cur_width = width or get_plot_width(f'{i}_{ifile}',len(input_files))
             plot = create_plot(pparams,fargs,

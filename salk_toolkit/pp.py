@@ -317,13 +317,28 @@ def ensure_ldf_categories(col_meta, col, ldf):
 
 
 # %% ../nbs/02_pp.ipynb 22
-def pp_filter_data_lz(df, filter_dict, c_meta):
+def pp_filter_data_lz(df, filter_dict, c_meta, gc_dict={}):
 
     colnames = df.collect_schema().names()
 
     inds = True
 
     for k, v in filter_dict.items():
+
+        # Filter on question i.e. filter a subset of res_cols
+        if k in gc_dict:
+            # Map short names to full column names w prefix
+            cnmap = { (c.removeprefix(c_meta[c]['col_prefix']) 
+                            if c in c_meta and 'col_prefix' in c_meta[c] 
+                            else c): c for c in colnames }
+            # Find columns to remove
+            remove_cols = set(gc_dict[k]) - { cnmap[c] for c in v }
+
+            # Remove from both the list and the selection in df
+            colnames = [ c for c in colnames if c not in remove_cols ]
+            df = df.select(colnames)
+            
+            continue
         
         # Range filters have form [None,start,end]
         is_range = isinstance(v,list) and v[0] is None and len(v)==3
@@ -352,11 +367,11 @@ def pp_filter_data_lz(df, filter_dict, c_meta):
             
     filtered_df = df.filter(inds)
     
-    return filtered_df
+    return filtered_df, colnames
 
 # This is a wrapper that allows the filter to work on pandas DataFrames
-def pp_filter_data(df, filter_dict, c_meta):
-    return pp_filter_data_lz(pl.DataFrame(df).lazy(), filter_dict, c_meta).collect().to_pandas()
+def pp_filter_data(df, filter_dict, c_meta, gc_dict={}):
+    return pp_filter_data_lz(pl.DataFrame(df).lazy(), filter_dict, c_meta, gc_dict)[0].collect().to_pandas()
 
 
 # %% ../nbs/02_pp.ipynb 23
@@ -448,12 +463,13 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     # Has to be done before downselecting to only needed columns
     if pp_desc.get('pl_filter'):
         full_df = full_df.filter(eval(pp_desc['pl_filter'],{'pl':pl}))
-    
-    df = full_df.select(cols + ['id']) # Select only the columns we need
+
+    cols += ['id']
+    df = full_df.select(cols) # Select only the columns we need
     
     # Filter the data with given filters
     if pp_desc.get('filter'):
-        filtered_df = pp_filter_data_lz(df, pp_desc.get('filter',{}), c_meta)
+        filtered_df, cols = pp_filter_data_lz(df, pp_desc.get('filter',{}), c_meta, gc_dict)
     else: filtered_df = df
 
     # If we want to approximate original data without poststrat, filter to training subsample
@@ -512,7 +528,7 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     if pp_desc['res_col'] in gc_dict:
         value_vars = [ c for c in gc_dict[pp_desc['res_col']] if c in cols ]
         n_questions = len(value_vars) # Only cols that exist in the data
-        id_vars = ['id'] + [ c for c in cols if (c not in value_vars or c in factor_cols) ]
+        id_vars = [ c for c in cols if (c not in value_vars or c in factor_cols) ]
         c_meta['question'] = c_meta[pp_desc['res_col']]
 
         if 'draw' in cols and draws_data:
