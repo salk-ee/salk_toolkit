@@ -473,7 +473,7 @@ def cluster_based_reorder(X):
     pd = sp.spatial.distance.pdist(X)#,metric='cosine')
     return hierarchy.leaves_list(hierarchy.optimal_leaf_ordering(hierarchy.ward(pd), pd))
 
-@stk_plot('matrix', data_format='longform', aspect_ratio=(1/0.8), n_facets=(2,2), args={'reorder':'bool', 'log_colors':'bool'})
+@stk_plot('matrix', data_format='longform', aspect_ratio=(1/0.8), n_facets=(2,2), args={'reorder':'bool', 'log_colors':'bool'}, priority=55)
 def matrix(data, value_col='value', facets=[], val_format='%', reorder=False, log_colors=False, tooltip=[]):
     f0, f1 = facets[0], facets[1]
     
@@ -992,7 +992,7 @@ def ordered_population(data, value_col='value', facets=[], tooltip=[], outer_fac
     return plot
 
 # %% ../nbs/03_plots.ipynb 62
-@stk_plot('marimekko', data_format='longform', draws=False, group_sizes=True, args={'separate':'bool'}, n_facets=(2,2), priority=55)
+@stk_plot('marimekko', data_format='longform', draws=False, group_sizes=True, nonnegative=True,args={'separate':'bool'}, n_facets=(2,2), priority=60)
 def marimekko(data, value_col='value', facets=[], val_format='%', width=800, tooltip=[], outer_factors=[], separate=False, translate=None):
     f0, f1 = facets[0], facets[1]
     tf = translate if translate else (lambda s: s)
