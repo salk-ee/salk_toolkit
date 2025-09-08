@@ -110,7 +110,7 @@ def read_concatenate_files_list(meta,data_file=None,path=None,**kwargs):
             # Pass in orig_data_file here as it might loop back to this function here and we need to preserve paths
             raw_data, meta = read_annotated_data(data_file, infer=False, **kwargs)
             if meta is not None: metas.append(meta)
-        elif extension in ['csv', '.gz']:
+        elif extension in ['csv', 'gz']:
             raw_data = pd.read_csv(mapped_file, low_memory=False, **opts)
         elif extension in ['sav','dta']:
             read_fn = getattr(pyreadstat,'read_'+(mapped_file[-3:]).lower())
@@ -599,7 +599,7 @@ def infer_meta(data_file=None, meta_file=True, read_opts={}, df=None, translate_
         path, fname = os.path.split(data_file)
         ext = os.path.splitext(fname)[1].lower()[1:]
         meta['file'] = fname
-        if ext in ['csv', '.gz']:
+        if ext in ['csv', 'gz']:
             df = pd.read_csv(data_file, low_memory=False, **read_opts)
         elif ext in ['sav','dta']:
             read_fn = getattr(pyreadstat,'read_'+ext)

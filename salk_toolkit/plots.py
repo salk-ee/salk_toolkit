@@ -536,26 +536,47 @@ def corr_matrix(data, value_col='value', facets=[], val_format='%', reorder=Fals
                   tooltip=[alt.Tooltip(field=value_col, type='quantitative'),alt.Tooltip('index:N'),alt.Tooltip(field=facets[0]['col'], type='nominal')])
 
 # %% ../nbs/03_plots.ipynb 39
+# Convert a categorical fx facet into a continous value and axis if the categories are numeric. 
+def cat_to_cont_axis(data, fx):
+    x_cont = pd.to_numeric(data[fx["col"]].apply(unescape_vega_label),errors='coerce') # Unescape required as . gets escaped
+    if x_cont.notna().all():
+        data[fx["col"]] = x_cont.astype('float')
+        x_axis = alt.X(field=fx["col"], type='quantitative', title=None, axis=alt.Axis(labelAngle=0, values=list(data[fx["col"]].unique())))
+    else:
+        x_axis = alt.X(field=fx["col"], type='nominal', title=None, sort=fx["order"],axis=alt.Axis(labelAngle=0))
+    return x_axis, data
+
+# %% ../nbs/03_plots.ipynb 40
 @stk_plot('lines',data_format='longform', draws=False, requires=[{},{'ordered':True}], n_facets=(2,2), args={'smooth':'bool'}, priority=10)
+@stk_plot('line',data_format='longform', draws=False, requires=[{'ordered':True}], n_facets=(1,1), args={'smooth':'bool'}, priority=10)
 def lines(data, value_col='value', facets=[], smooth=False, width=800, tooltip=[], val_format='.2f',):
-    f0, f1 = facets[0], facets[1]
+    if len(facets)==1: fx = facets[0]
+    else: fy, fx = facets[0], facets[1]
     if smooth:
         smoothing = 'basis'
         points = 'transparent'
     else:
         smoothing = 'natural'
         points = True
+
+    # See if we should use a continous axis (if categoricals are actually numbers)
+    x_axis, data = cat_to_cont_axis(data, fx)
+
     plot = alt.Chart(data).mark_line(point=points, interpolate=smoothing).encode(
-        x=alt.X(field=f1["col"], type='nominal', title=None, sort=f1["order"],axis=alt.Axis(labelAngle=0)),
-        y=alt.Y(field=value_col, type='quantitative', axis=alt.Axis(format=val_format)),
+        x=x_axis,
+        y=alt.Y(field=value_col, type='quantitative', title=(value_col if len(value_col)<20 else None),
+                        axis=alt.Axis(format=val_format)),
         tooltip=tooltip,
-        color=alt.Color(field=f0["col"], type='nominal', scale=f0["colors"], sort=f0["order"],
+        **({'color':alt.Color(field=fy["col"], type='nominal', scale=fy["colors"], sort=fy["order"],
                         legend=alt.Legend(orient='top',
-                                    columns=estimate_legend_columns_horiz(f0["order"],width)))
+                                    columns=estimate_legend_columns_horiz(fy["order"],width)))} if len(facets)==2 else {})
     )
     return plot
 
-# %% ../nbs/03_plots.ipynb 41
+
+
+
+# %% ../nbs/03_plots.ipynb 42
 def draws_to_hdis(data,vc,hdi_vals):
     gbc = [ c for c in data.columns if c not in [vc,'draw'] ]
     ldfs = []
@@ -568,63 +589,73 @@ def draws_to_hdis(data,vc,hdi_vals):
     return df
 
 @stk_plot('lines_hdi',data_format='longform', draws=True, requires=[{},{'ordered':True}], n_facets=(2,2), args={'hdi1':'float','hdi2':'float'})
+@stk_plot('line_hdi',data_format='longform', draws=True, requires=[{'ordered':True}], n_facets=(1,1), args={'hdi1':'float','hdi2':'float'})
 def lines_hdi(data, value_col='value', facets=[], width=800, tooltip=[], val_format='.2f', hdi1=0.94, hdi2=0.5):
-    f0, f1 = facets[0], facets[1]
+    if len(facets)==1: fx = facets[0]
+    else: fy, fx = facets[0], facets[1]
     
     hdf = draws_to_hdis(data,value_col,[hdi1,hdi2])
-    # Draw them in reverse order so the things that are first (i.e. most important) are drawn last (i.e. on top of others)
-    # Also draw wider hdi before the narrower
-    hdf.sort_values([f0["col"],'hdi'],ascending=[False,False],inplace=True)
 
-    selection = alt.selection_point(fields=[f0["col"]], bind='legend')
+    if len(facets)>1:
+        # Draw them in reverse order so the things that are first (i.e. most important) are drawn last (i.e. on top of others)
+        # Also draw wider hdi before the narrower
+        hdf.sort_values([fy["col"],'hdi'],ascending=[False,False],inplace=True)
+        selection = alt.selection_point(fields=[fy["col"]], bind='legend')
+
+    # See if we should use a continous axis (if categoricals are actually numbers)
+    x_axis, hdf = cat_to_cont_axis(hdf, fx)
 
     plot = alt.Chart(hdf).mark_area(interpolate='basis').encode(
-        x=alt.X(field=f1["col"], type='ordinal', title=None, sort=f1["order"], axis=alt.Axis(labelAngle=0)),
+        x=x_axis,
         y=alt.Y('lo:Q',
-            axis=alt.Axis(format=val_format),
+            axis=alt.Axis(format=val_format, title=(value_col if len(value_col)<20 else None),),
             title=value_col
             ),
         y2=alt.Y2('hi:Q'),
-        fill=alt.Fill(
-            field=f0["col"],
-            type='nominal',
-            sort=f0["order"],
-            scale=f0["colors"],
-            legend=alt.Legend(symbolOpacity=1)
-            ),
-        opacity=alt.condition(selection, 
-            alt.Opacity('hdi:N', legend=None, scale=to_alt_scale({0.5:0.75, 0.94:0.25})),
-            alt.value(0.1)
-        ),
         tooltip=[
             alt.Tooltip('hdi:N', title='HDI', format='.0%'),
             alt.Tooltip('lo:Q', title='HDI lower', format=val_format),
-            alt.Tooltip('hi:Q', title='HDI upper', format=val_format),] + tooltip[1:]
-        ).add_params(selection)
+            alt.Tooltip('hi:Q', title='HDI upper', format=val_format),] + tooltip[1:],
+        **({'fill':alt.Fill(
+                field=fy["col"],
+                type='nominal',
+                sort=fy["order"],
+                scale=fy["colors"],
+                legend=alt.Legend(symbolOpacity=1)
+                ),
+            'opacity':alt.condition(selection, 
+                alt.Opacity('hdi:N', legend=None, scale=to_alt_scale({0.5:0.75, 0.94:0.25})),
+                alt.value(0.1)) } if len(facets)>1 else {})
+        )
+        
+    if len(facets)>1: plot = plot.add_params(selection)
     return plot
 
-# %% ../nbs/03_plots.ipynb 43
-@stk_plot('area_smooth',data_format='longform', draws=False, nonnegative=True, requires=[{},{'ordered':True}], n_facets=(2,2))
+# %% ../nbs/03_plots.ipynb 44
+@stk_plot('area_smooth',data_format='longform', requires=[{},{'ordered':True}], draws=False, nonnegative=True, n_facets=(2,2))
 def area_smooth(data, value_col='value', facets=[], width=800, tooltip=[]):
-    f0, f1 = facets[0], facets[1]
-    ldict = dict(zip(f0["order"], range(len(f0["order"]))))
-    data.loc[:,'order'] = data[f0["col"]].astype('object').replace(ldict).astype('int')
+    fy, fx = facets[0], facets[1]
+    ldict = dict(zip(fy["order"], range(len(fy["order"]))))
+    data.loc[:,'order'] = data[fy["col"]].astype('object').replace(ldict).astype('int')
+
+    x_axis, data = cat_to_cont_axis(data, fx)
+
     plot=alt.Chart(data
         ).mark_area(interpolate='natural').encode(
-            x=alt.X(field=f1["col"], type='ordinal', title=None, sort=f1["order"], axis=alt.Axis(labelAngle=0)),
+            x=x_axis,
             y=alt.Y(field=value_col, type='quantitative', title=None, stack='normalize',
                  scale=alt.Scale(domain=[0, 1]), axis=alt.Axis(format='%')
                  ),
             order=alt.Order('order:O'),
-            color=alt.Color(field=f0["col"], type='nominal',
-                legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f0["order"],width)),
-                sort=f0["order"], scale=f0["colors"]
+            color=alt.Color(field=fy["col"], type='nominal',
+                legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(fy["order"],width)),
+                sort=fy["order"], scale=fy["colors"]
                 ),
             tooltip=tooltip
         )
     return plot
 
-# %% ../nbs/03_plots.ipynb 45
+# %% ../nbs/03_plots.ipynb 46
 def likert_aggregate(x, cat_col, cat_order, value_col):
     
     cc, vc = x[cat_col], x[value_col]
@@ -677,7 +708,7 @@ def likert_rad_pol(data, value_col='value', facets=[], normalized=True, width=80
     
     return plot
 
-# %% ../nbs/03_plots.ipynb 47
+# %% ../nbs/03_plots.ipynb 48
 @stk_plot('barbell', data_format='longform', draws=False, n_facets=(2,2))
 def barbell(data, value_col='value', facets=[], filtered_size=1, val_format='%', width=800, tooltip=[]):
     f0, f1 = facets[0], facets[1]
@@ -711,7 +742,7 @@ def barbell(data, value_col='value', facets=[], filtered_size=1, val_format='%',
     
     return chart
 
-# %% ../nbs/03_plots.ipynb 50
+# %% ../nbs/03_plots.ipynb 51
 @stk_plot('geoplot', data_format='longform', factor_columns=2, n_facets=(1,1), requires=[{'topo_feature':'pass'}], no_faceting=True, aspect_ratio=(4.0/3.0), no_question_facet=True, args={'separate_axes':'bool'})
 def geoplot(data, topo_feature, value_col='value', facets=[], val_format='.2f', tooltip=[],
                 separate_axes=False, outer_factors=[], outer_colors={}, value_range=None):
@@ -776,7 +807,7 @@ def geoplot(data, topo_feature, value_col='value', facets=[], val_format='.2f', 
     ).project('mercator')
     return plot
 
-# %% ../nbs/03_plots.ipynb 51
+# %% ../nbs/03_plots.ipynb 52
 @stk_plot('geobest', data_format='longform', factor_columns=2, n_facets=(2,2), requires=[{},{'topo_feature':'pass'}], no_faceting=True,aspect_ratio=(4.0/3.0))
 def geobest(data, topo_feature, value_col='value', facets=[], val_format='.2f', tooltip=[], width=800):
     f0, f1 = facets[0], facets[1]
@@ -812,7 +843,7 @@ def geobest(data, topo_feature, value_col='value', facets=[], val_format='.2f', 
     ).project('mercator')
     return plot
 
-# %% ../nbs/03_plots.ipynb 55
+# %% ../nbs/03_plots.ipynb 56
 # Assuming ns is ordered by unique row values, find the split points
 def split_ordered(cvs):
     if len(cvs.shape)==1: cvs = cvs[:,None]
@@ -828,7 +859,7 @@ def split_even_weight(ws, n):
     cws = (cws/(cws[-1]/n)).astype('int')
     return (split_ordered(cws)+1)[:-1]
 
-# %% ../nbs/03_plots.ipynb 57
+# %% ../nbs/03_plots.ipynb 58
 def fd_mangle(vc, value_col, factor_col, n_points=10): 
     
     vc = vc.sort_values(value_col)
@@ -860,7 +891,7 @@ def facet_dist(data, value_col='value',facets=[], tooltip=[], outer_factors=[]):
 
     return plot
 
-# %% ../nbs/03_plots.ipynb 59
+# %% ../nbs/03_plots.ipynb 60
 # Vectorized multinomial sampling. Should be slightly faster
 def vectorized_mn(prob_matrix):
     s = prob_matrix.cumsum(axis=1)
@@ -906,7 +937,7 @@ def linevals(vals, value_col, n_points, dim, cats, ccodes=None, ocols=None, boos
 
     return pdf
 
-# %% ../nbs/03_plots.ipynb 60
+# %% ../nbs/03_plots.ipynb 61
 @stk_plot('ordered_population', data_format='raw', factor_columns=3, aspect_ratio=(1.0/1.0), plot_args={'group_categories':'bool'}, n_facets=(0,1), no_question_facet=True)
 def ordered_population(data, value_col='value', facets=[], tooltip=[], outer_factors=[], group_categories=False):
     f0 = facets[0] if len(facets)>0 else None
@@ -989,7 +1020,7 @@ def ordered_population(data, value_col='value', facets=[], tooltip=[], outer_fac
     )
     return plot
 
-# %% ../nbs/03_plots.ipynb 62
+# %% ../nbs/03_plots.ipynb 63
 @stk_plot('marimekko', data_format='longform', draws=False, group_sizes=True, nonnegative=True,args={'separate':'bool'}, n_facets=(2,2), priority=60)
 def marimekko(data, value_col='value', facets=[], val_format='%', width=800, tooltip=[], outer_factors=[], separate=False, translate=None):
     f0, f1 = facets[0], facets[1]
