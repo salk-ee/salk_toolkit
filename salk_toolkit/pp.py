@@ -751,9 +751,7 @@ def translate_df(df, translate):
     return df
 
 # %% ../nbs/02_pp.ipynb 30
-def create_tooltip(pparams,c_meta,tfn):
-    
-    data = pparams['data']
+def create_tooltip(pparams,data,c_meta,tfn):
     
     label_dict = {}
     
@@ -784,7 +782,7 @@ def create_tooltip(pparams,c_meta,tfn):
             t = alt.Tooltip(field=tfn(cn), type='nominal')
         tooltips.append(t)
             
-    return tooltips
+    return tooltips, data
     
 
 # %% ../nbs/02_pp.ipynb 31
@@ -816,10 +814,9 @@ def inner_outer_factors(factor_cols, pp_desc, plot_meta):
 def create_plot(pparams, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=False, width=200, height=None, return_matrix_of_plots=False, translate=None):
     # Make a shallow copy so we don't mess with the original object. Important for caching
     pparams = {**pparams}
-    pparams['data'] = pparams['data'].copy() # Also copy data as we mutate it w translate
 
     # Get most commonly needed things in usable forms
-    data, col_meta = pparams['data'], pparams['col_meta']
+    data, col_meta = pparams['data'].copy(), pparams['col_meta']
     plot_meta = get_plot_meta(pp_desc['plot'])
     
     if 'question' in data.columns and \
@@ -908,7 +905,7 @@ def create_plot(pparams, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=F
     pparams['translate'] = tfunc    
 
     # Handle tooltips (handles translation inside)
-    pparams['tooltip'] = create_tooltip(pparams, col_meta, tfunc)
+    pparams['tooltip'], data = create_tooltip(pparams, data, col_meta, tfunc)
 
     # Translate everything
     for f in pparams['facets']:
@@ -917,11 +914,9 @@ def create_plot(pparams, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=F
         f['colors'] = meta_color_scale(f['meta'], data[f['ocol']], translate=tfunc)
         f['neutrals'] = [ tfunc(c) for c in f['neutrals'] ]
 
-    pparams['data'] = data = translate_df(pparams['data'],tfunc)
+    data = translate_df(data,tfunc)
     pparams['value_col'] = tfunc(pparams['value_col'])  
     factor_cols = [ tfunc(c) for c in factor_cols ]
-    t_col_meta = { tfunc(c): v for c,v in col_meta.items() }
-
     
     # If we still have more than 1 factor left, merge the rest into one so we have a 2d facet
     if len(factor_cols)>1:
@@ -933,7 +928,6 @@ def create_plot(pparams, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=F
             factor_col = ', '.join(factor_cols[1:])
             jfs = data[factor_cols[1:]].agg(', '.join, axis=1)
             data.loc[:,factor_col] = pd.Categorical(jfs,nf_order)
-            pparams['data'] = data
             factor_cols = [factor_cols[0], factor_col]
 
         if len(factor_cols)>=2:
@@ -944,8 +938,11 @@ def create_plot(pparams, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=F
         
     # Allow value col name to be changed. This can be useful in distinguishing different aggregation options for a column
     if 'value_name' in pp_desc: 
-        pparams['data'] = pparams['data'].rename(columns={pparams['value_col']:pp_desc['value_name']})
+        data = data.rename(columns={pparams['value_col']:pp_desc['value_name']})
         pparams['value_col'] = pp_desc['value_name']
+
+    # We consistenly used (and mutated) data and now put it back into pparams
+    pparams['data'] = data
     
     # Do width/height calculations
     if factor_cols: n_facet_cols = pp_desc.get('n_facet_cols',n_facet_cols) # Allow pp_desc to override col nr

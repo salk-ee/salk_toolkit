@@ -106,8 +106,6 @@ def boxplot_manual(data, value_col='value', facets=[], val_format='%', width=800
     if val_format[-1] == '%': # Boxplots being a compound plot, this workaround is needed for axis & tooltips to be proper
         data[value_col]*=100
         val_format = val_format[:-1]+'f'
-    else: fit_beta_dist = False # Only use beta binomial for categoricals 
-
 
     minv,maxv = data[value_col].min(), data[value_col].max()
     if val_format[-1] == '%': minv = 0.0
