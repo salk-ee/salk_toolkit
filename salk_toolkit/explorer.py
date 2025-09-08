@@ -28,7 +28,7 @@ st.set_page_config(
 info = st.empty()
 
 try:
-    s = st.secrets
+    s = st.secrets.get('sip',{})
 except FileNotFoundError:
     has_secrets = False
 else: has_secrets = True
