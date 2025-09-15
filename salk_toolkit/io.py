@@ -726,7 +726,7 @@ def read_and_process_data(desc, return_meta=False, constants={}, skip_postproces
     if isinstance(desc,str): desc = { 'file':desc } # Allow easy shorthand for simple cases
 
     # Validate the data desc format 
-    desc = DataDescription.validate(desc).dict()
+    desc = DataDescription.model_validate(desc).model_dump(mode='json')
 
     if desc.get('data') is not None:
         df, meta, einfo = pd.DataFrame(data=desc['data']), None, {}

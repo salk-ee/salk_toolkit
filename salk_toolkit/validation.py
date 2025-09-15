@@ -182,11 +182,11 @@ class DataMeta(PBase):
 
 # %% ../nbs/06_validation.ipynb 11
 def hard_validate(m):
-    DataMeta.validate(m)
+    DataMeta.model_validate(m)
 
 def soft_validate(m):
     try:
-        DataMeta.validate(m)
+        DataMeta.model_validate(m)
     except ValueError as e:
         print(e)
 
@@ -224,6 +224,6 @@ class DataDescription(BaseModel):
 # %% ../nbs/06_validation.ipynb 16
 def soft_validate(m, pptype):
     try:
-        pptype.validate(m)
+        pptype.model_validate(m)
     except ValueError as e:
         print(e)
