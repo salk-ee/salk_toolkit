@@ -40,7 +40,7 @@ pd.set_option('future.no_silent_downcasting', True)
 warn = lambda msg,*args: warnings.warn(msg,*args,stacklevel=3)
 
 # %% ../nbs/10_utils.ipynb 6
-# I'm surprised pandas does not have this function but I could not find it. 
+# I'm surprised pandas does not have this function but I could not find it.
 def factorize_w_codes(s, codes):
     res = s.astype('object').replace(dict(zip(codes,range(len(codes)))))
     if not s.dropna().isin(codes).all(): # Throw an exception if all values were not replaced
@@ -79,6 +79,8 @@ def min_diff(arr):
     else: return b[b>0].min()
 
 # Turn a discretized variable into a more smooth continuous one w a gaussian kernel
+
+
 def continify(ar, bounded=False, delta=0.0):
     mi,ma = ar.min()+delta, ar.max()-delta
     noise = np.random.normal(0,0.5 * min_diff(ar),size=len(ar))
@@ -98,6 +100,8 @@ def replace_cat_with_dummies(df,c,cs):
     return pd.concat([df.drop(columns=[c]),pd.get_dummies(df[c])[cs[1:]].astype(float)],axis=1)
 
 # Match data1 with data2 on columns cols as closely as possible
+
+
 def match_data(data1,data2,cols=None):
     d1 = data1[cols].copy().dropna()
     d2 = data2[cols].copy().dropna()
@@ -110,7 +114,7 @@ def match_data(data1,data2,cols=None):
             s1, s2 = set(d1[c].dtype.categories), set(d2[c].dtype.categories)
             if s1-s2 and s2-s1: # one-way imbalance is fine
                 raise Exception(f"Ordered categorical columns differ in their categories on: {s1-s2} vs {s2-s1}")
-            
+
             md = d1 if len(s2-s1)==0 else d2
             mdict = dict(zip(md[c].dtype.categories, np.linspace(0,2,len(md[c].dtype.categories))))
             d1[c] = d1[c].astype('object').replace(mdict)
@@ -121,7 +125,6 @@ def match_data(data1,data2,cols=None):
             # Use all but the first category as otherwise mahalanobis fails because of full colinearity
             d1 = replace_cat_with_dummies(d1,c,cs)
             d2 = replace_cat_with_dummies(d2,c,cs)
-
 
     # Use pseudoinverse in case we have collinear columns
     cov = np.cov(np.vstack([d1.values, d2.values]).T.astype('float'))
@@ -147,15 +150,15 @@ def replace_constants(d, constants = {}, inplace=False):
             d[k] = constants[v]
         elif type(v)==dict or type(v)==list:
             d[k] = replace_constants(v,constants, inplace=True)
-            
+
     return d
 
 # %% ../nbs/10_utils.ipynb 17
-# Little function to do approximate string matching between two lists. Useful if things have multiple spellings. 
+# Little function to do approximate string matching between two lists. Useful if things have multiple spellings.
 def approx_str_match(frm,to,dist_fn=None):
     if not isinstance(frm,list): frm = list(frm)
     if not isinstance(frm,list): to = list(to)
-    if dist_fn is None: dist_fn = Levenshtein.distance 
+    if dist_fn is None: dist_fn = Levenshtein.distance
     dmat = scipy.spatial.distance.cdist(np.array(frm)[:,None],np.array(to)[:,None],lambda x,y: dist_fn(x[0],y[0]))
     t1,t2 = scipy.optimize.linear_sum_assignment(dmat)
     return dict(zip([frm[i] for i in t1],[to[i] for i in t2]))
@@ -174,6 +177,8 @@ default_color = 'lightgrey' # Something that stands out so it is easy to notice 
 
 # Helper function to turn a dictionary into an Altair scale (or None into alt.Undefined)
 # Also: preserving order matters because scale order overrides sort argument
+
+
 def to_alt_scale(scale, order=None):
     if scale is None: scale = alt.Undefined
     if isinstance(scale,dict):
@@ -188,14 +193,14 @@ def to_alt_scale(scale, order=None):
 def multicol_to_vals_cats(df, cols=None, col_prefix=None, reverse_cols=[], reverse_suffixes=None, cat_order=None, vals_name='vals', cats_name='cats', inplace=False):
     if not inplace: df = df.copy()
     if cols is None: cols = [ c for c in df.columns if c.startswith(col_prefix)]
-    
+
     if not reverse_cols and reverse_suffixes is not None:
         reverse_cols = list({ c for c in cols for rs in reverse_suffixes if c.endswith(rs)})
-    
+
     if len(reverse_cols)>0:
         remap = dict(zip(cat_order,reversed(cat_order)))
         df.loc[:,reverse_cols] = df.loc[:,reverse_cols].astype('object').replace(remap)
-    
+
     tdf = df[cols]
     cinds = np.argmax(tdf.notna(),axis=1)
     df.loc[:,vals_name] = np.array(tdf)[range(len(tdf)),cinds]
@@ -208,24 +213,26 @@ redblue_gradient = ["#8D0E26", "#EA9379", "#F2EFEE", "#8FC1DC", "#134C85"]
 greyscale_gradient = ["#444444", "#ffffff"]
 
 # Grad is a list of colors
+
+
 def gradient_to_discrete_color_scale( grad, num_colors):
     cmap = mpc.LinearSegmentedColormap.from_list('grad',grad)
     return [mpc.to_hex(cmap(i)) for i in np.linspace(0, 1, num_colors)]
+
 
 def gradient_subrange(grad, num_colors, range=[-1,1], bidirectional=True):
     base = [-1,1] if bidirectional else [0,1]
     wr = (range[1]-range[0])/(base[1]-base[0])
     nt = round(num_colors/wr)
     grad = gradient_to_discrete_color_scale(grad, nt)
-    
+
     mi, ma = round(nt*(range[0]-base[0])/(base[1]-base[0])), round(nt*(range[1]-base[0])/(base[1]-base[0]))
     return grad[mi:ma]
-
 
 # %% ../nbs/10_utils.ipynb 26
 # Create a color gradient from a given single color
 def gradient_from_color(color, l_value=0.3, n_points=7, range=[0,1]):
-    # Get hue and saturation for color (ignoring luminosity to make scales uniform on that)    
+    # Get hue and saturation for color (ignoring luminosity to make scales uniform on that)
     ch,cs,_ = hsluv.hex_to_hsluv(mpc.to_hex(color))
 
     max_l = 94 # Set max luminosity to be slightly below pure white
@@ -238,8 +245,10 @@ def gradient_from_color(color, l_value=0.3, n_points=7, range=[0,1]):
     return [ hsluv.hsluv_to_hex((ch,min(cs,w*end_s+(1-w)*beg_s),(w*end_l+(1-w)*beg_l))) for w in ls ]
 
 # Alternative version - preserves colors slightly better, but at the cost of more washing out
+
+
 def gradient_from_color_alt(color, l_value=0.6, n_points=7, range=[0,1]):
-    # Get hue and saturation for color (ignoring luminosity to make scales uniform on that)    
+    # Get hue and saturation for color (ignoring luminosity to make scales uniform on that)
     ch,cs,cl = hsluv.hex_to_hsluv(mpc.to_hex(color))
 
     max_l = 94 # Set max luminosity to be slightly below pure white
@@ -252,7 +261,6 @@ def gradient_from_color_alt(color, l_value=0.6, n_points=7, range=[0,1]):
     ls = np.linspace(0,1,n_points) # Create n_points steps in hsluv space
     return [ hsluv.hsluv_to_hex((ch,min(cs,w*end_s+(1-w)*beg_s),(w*end_l+(1-w)*beg_l))) for w in ls ]
 
-
 # %% ../nbs/10_utils.ipynb 27
 # This function is used to choose colors and positioning for likert bars with (potentially multiple) neutral categories
 def split_to_neg_neutral_pos(cats,neutrals):
@@ -262,7 +270,7 @@ def split_to_neg_neutral_pos(cats,neutrals):
         if len(cats)%2==1:
             return cats[:mid], [cats[mid]], cats[mid+1:]
         else: return cats[:mid], [], cats[mid:]
-    
+
     # Find a neutral that is not at start or end
     bi,ei = 0,0
     while cats[bi] in neutrals: bi += 1
@@ -294,9 +302,9 @@ def rel_wave_times(ws, dts, dt0=None):
     df = pd.DataFrame({'wave':ws, 'dt': pd.to_datetime(dts)})
     adf = df.groupby('wave')['dt'].median()
     if dt0 is None: dt0 = adf.max() # use last wave date as the reference
-    
+
     w_to_time = dict(((adf - dt0).dt.days/30).items())
-    
+
     return pd.Series(df['wave'].replace(w_to_time),name='t')
 
 # %% ../nbs/10_utils.ipynb 31
@@ -305,12 +313,14 @@ def stable_draws(n, n_draws, uid):
     # Initialize a random generator with a hash of uid
     bgen = np.random.SFC64(np.frombuffer(sha256(str(uid).encode("utf-8")).digest(), dtype='uint32'))
     gen = np.random.Generator(bgen)
-    
+
     n_samples = int(math.ceil(n/n_draws))
     draws = np.tile(np.arange(n_draws),n_samples)[:n]
     return gen.permuted(draws)
 
-# Use the stable_draws function to deterministicall assign shuffled draws to a df 
+# Use the stable_draws function to deterministicall assign shuffled draws to a df
+
+
 def deterministic_draws(df, n_draws, uid, n_total=None):
     if n_total is None: n_total = len(df)
     df.loc[:,'draw'] = pd.Series(stable_draws(n_total, n_draws, uid), index = np.arange(n_total))
@@ -321,6 +331,7 @@ def deterministic_draws(df, n_draws, uid, n_total=None):
 def clean_kwargs(fn, kwargs):
     aspec = inspect.getfullargspec(fn)
     return { k:v for k,v in kwargs.items() if k in aspec.args } if aspec.varkw is None else kwargs
+
 
 def call_kwsafe(fn,*args,**kwargs):
     return fn(*args,**clean_kwargs(fn,kwargs))
@@ -345,21 +356,23 @@ def cut_nice_labels(breaks, mi=-np.inf, ma=np.inf, isint=False, format='', separ
         lopen = True
 
     obreaks = breaks.copy()
-    
+
     if isint:
         breaks = list(map(int, breaks))
         format = ''  # No need for decimal places if all integers
-        breaks[-1] += 1 # to counter the -1 applied below 
-    
+        breaks[-1] += 1 # to counter the -1 applied below
+
     tuples = [(breaks[i], breaks[i + 1] - (1 if isint else 0)) for i in range(len(breaks) - 1)]
     labels = [f"{t[0]:{format}}{separator}{t[1]:{format}}" if t[0] != t[1] else f"{t[0]:{format}}" for t in tuples]
-    
+
     if lopen: labels[0] = f"<{breaks[1]:{format}}"
     if ropen: labels[-1] = f"{breaks[-2]:{format}}+"
 
     return obreaks, labels
 
 # A nicer behaving wrapper around pd.cut
+
+
 def cut_nice(s, breaks, format='', separator=' - '):
     s = np.array(s)
     mi, ma = s.min(), s.max()
@@ -370,7 +383,7 @@ def cut_nice(s, breaks, format='', separator=' - '):
 # %% ../nbs/10_utils.ipynb 37
 # Utility function to rename categories in pre/post processing steps as pandas made .replace unusable with categories
 def rename_cats(df, col, cat_map):
-    if df[col].dtype.name == 'category': 
+    if df[col].dtype.name == 'category':
         df[col] = df[col].cat.rename_categories(cat_map)
     else: df[col] = df[col].replace(cat_map)
 
@@ -392,7 +405,7 @@ def merge_series(*lst):
             ns, whitelist = t
             inds = ~ns.isna() & ns.isin(whitelist)
             s.loc[inds] = ns[inds]
-        else: 
+        else:
             ns = t
             s.loc[~ns.isna()] = ns[~ns.isna()]
     return s
@@ -406,13 +419,13 @@ def aggregate_multiselect(df, prefix, out_prefix, na_vals=[], colnames_as_values
      if dfc.isna().sum().sum() == 0:
           raise ValueError(f"No na_vals found by aggregate_multiselect in {prefix}")
 
-     # Turn column names into the values - this is sometimes necessary 
+     # Turn column names into the values - this is sometimes necessary
      # as values in col might be "mentioned"/"not mentioned"
      if colnames_as_values:
           dfc = dfc.copy()
-          for c in dfc.columns: 
+          for c in dfc.columns:
                dfc.loc[~dfc[c].isna(),c] = c.removeprefix(prefix)
-          
+
      lst = list(map(lambda l: [ v for v in l if v is not None ],dfc.values.tolist()))
      n_res = max(map(len,lst))
      columns = [f'{out_prefix}{i+1}' for i in range(n_res)]
@@ -437,9 +450,11 @@ def gb_in(df, gb_cols):
     return df.groupby(gb_cols,observed=False) if len(gb_cols)>0 else df
 
 # Groupby apply if needed - similar to gb_in but for apply
+
+
 def gb_in_apply(df, gb_cols, fn, cols=None, **kwargs):
     if cols is None: cols = list(df.columns)
-    if len(gb_cols)==0: 
+    if len(gb_cols)==0:
         res = fn(df[cols],**kwargs)
         if type(res)==pd.Series: res = pd.DataFrame(res).T
     else: res = df.groupby(gb_cols,observed=False)[cols].apply(fn,**kwargs)
@@ -453,6 +468,7 @@ def stk_defaultdict(dv):
 # %% ../nbs/10_utils.ipynb 46
 def cached_fn(fn):
     cache = {}
+
     def cf(x):
         if x not in cache:
             cache[x] = fn(x)
@@ -468,7 +484,7 @@ def scores_to_ordinal_rankings(df, cols, name, prefix=''):
         cols = [ c for c in df.columns if c.startswith(cols) ]
 
     sinds = np.argsort(-df[cols].values,axis=1)
-    
+
     rmat = df[cols].rank(method='max', ascending=False, axis=1).values
     #rmat = np.concatenate([rmat,np.full((len(rmat),1),0)],axis=1)
     rvals = rmat[np.tile(np.arange(len(rmat)),(len(rmat[0]),1)).T,sinds]
@@ -484,7 +500,6 @@ def scores_to_ordinal_rankings(df, cols, name, prefix=''):
     df[f'{name}_orank'] = names_a
     df[f'{name}_ties'] = ties_a
     return df
-
 
 # %% ../nbs/10_utils.ipynb 49
 # Basic limited length cache
@@ -513,7 +528,7 @@ class dict_cache(OrderedDict):
 # Borrowed from https://goshippo.com/blog/measure-real-size-any-python-object
 # Get the size of an object recursively
 def get_size(obj, seen=None):
-    
+
     size = sys.getsizeof(obj)
     if seen is None:
         seen = set()
@@ -535,6 +550,7 @@ def get_size(obj, seen=None):
 # To do that, we use unicode symbols that are visually similar to the problematic characters
 def escape_vega_label(label):
     return label.replace('.','․').replace('[','［').replace(']','］')
+
 
 def unescape_vega_label(label):
     return label.replace('․','.').replace('［','[').replace('］',']')

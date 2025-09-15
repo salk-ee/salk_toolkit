@@ -28,7 +28,7 @@ import streamlit as st
 
 # %% ../nbs/04_election_models.ipynb 5
 def dhondt(pvotes, n_mandates, dh_power=1.0, pmand=None):
-    
+
     # Calculate d'Hondt values and get party indices out
     n_mandates = np.array(n_mandates)
     max_mandates = int(n_mandates.max())
@@ -44,14 +44,16 @@ def dhondt(pvotes, n_mandates, dh_power=1.0, pmand=None):
 
 # Vectorized basic election simulation: quotas, dHondt
 # Input 'support' should be of shape (draws,districts,parties)
+
+
 def simulate_election(support, nmandates, threshold=0.0, ed_threshold=0.0, quotas=True, first_quota_coef=1.0, dh_power=1.0, body_size=None, special=None, **kwargs):
-    if special=='cz': 
+    if special=='cz':
         return cz_system(support, nmandates, threshold=threshold, body_size=body_size, **kwargs)
 
     # Remove parties below a national threshold
     zero_mask = (support.sum(axis=1)/(support.sum(axis=(1,2))+1e-3)[:,None])>threshold
     uzsim_t = zero_mask[:,None,:]*support
-    
+
     # Remove parties below an electoral_district specific threshold
     zero_mask = (support/(support.sum(axis=(2))+1e-3)[:,:,None])>ed_threshold
     uzsim_t = zero_mask[:,:,:]*uzsim_t
@@ -61,7 +63,7 @@ def simulate_election(support, nmandates, threshold=0.0, ed_threshold=0.0, quota
         quotas = (support.sum(axis=-1)+1e-3)/(nmandates[None,:])
         v, r = np.divmod(uzsim_t/quotas[:,:,None],1.0)
         dmandates = v+(r>=first_quota_coef)
-    
+
         # Calculate votes and mandates for each party
         pvotes = uzsim_t.sum(axis=1)
         pmand = dmandates.sum(axis=1)
@@ -70,13 +72,13 @@ def simulate_election(support, nmandates, threshold=0.0, ed_threshold=0.0, quota
         if body_size is None: body_size = sum(nmandates)
         remaining_mand = body_size - pmand.sum(axis=1)
         comp_mandates = dhondt(pvotes, remaining_mand, dh_power, pmand)
-        
+
         # Return the districts + compensation results
         return np.concatenate( [dmandates,comp_mandates[:,None,:]],axis=1 )
-    
+
     else: # Separate election in each district (Croatian system)
-        
-        return np.stack([ 
+
+        return np.stack([
             dhondt(uzsim_t[:,i,:],nmandates[i],dh_power)
             for i in range(support.shape[1]) ],axis=1)
 
@@ -86,15 +88,14 @@ def simulate_election(support, nmandates, threshold=0.0, ed_threshold=0.0, quota
 def vec_smallest_k(t, kv):
 
     # Create a vector with k ones followed by zeros
-    rmand = np.ones(t.shape[:-1]) * kv 
-    ri = ((np.arange(t.shape[-1])[None,:]-rmand[...,None])<0) 
+    rmand = np.ones(t.shape[:-1]) * kv
+    ri = ((np.arange(t.shape[-1])[None,:]-rmand[...,None])<0)
 
     # Function that maps 0 to 0, and i+1 to the i-th unit vector
     comp_ident = np.concatenate([np.zeros( (1,t.shape[-1]) ),np.identity(t.shape[-1])])
 
     # Marginalize that function over the newly created dimension
     return comp_ident[(np.argsort(t,axis=-1)+1)*ri].sum(axis=-2)
-
 
 # %% ../nbs/04_election_models.ipynb 8
 # Czech electoral system based on https://pspen.psp.cz/chamber-members/plenary/elections/#electoralsystem
@@ -103,7 +104,7 @@ def cz_system(support, nmandates, threshold=0.0, body_size=None, **kwargs):
     # Remove parties below a national threshold
     zero_mask = (support.sum(axis=1)/(support.sum(axis=(1,2))+1e-3)[:,None])>threshold
     uzsim_t = zero_mask[:,None,:]*support
-    
+
     # Districts with quotas, then country-level compensation
     # Imperialis quotas i.e. with divisor (n_mandates + 2)
     quotas = (support.sum(axis=-1)+1e-3)/(nmandates[None,:] + 2)
@@ -112,7 +113,7 @@ def cz_system(support, nmandates, threshold=0.0, body_size=None, **kwargs):
     # Deal with excess allocations
     excess = np.maximum(0,(dmandates.sum(axis=-1)-nmandates[None,:]))
     rp = r+(dmandates==0) # Increase residuals to remove mandates only from those that got any
-    excess_dist = vec_smallest_k(rp,excess) 
+    excess_dist = vec_smallest_k(rp,excess)
     dmandates -= excess_dist
 
     # Second level votes
@@ -129,25 +130,25 @@ def cz_system(support, nmandates, threshold=0.0, body_size=None, **kwargs):
 
     # Checksums to make sure all mandates get allocated
     #print(list(dmandates.sum(axis=(1,2)) + slmandates.sum(axis=1)))
-    
+
     # Return the districts + compensation results
     return np.concatenate( [dmandates,slmandates[:,None,:]],axis=1 )
 
 # %% ../nbs/04_election_models.ipynb 9
 # Basic wrapper around simulate elections that goes from dataframe to dataframe
 def simulate_election_e2e(sdf, parties, mandates_dict, ed_col='electoral_district', **kwargs):
-    
+
     # Convert data frame to a numpy tensor for fast vectorized processing
     parties = [ p for p in parties if p in sdf.columns ]
     ed_df = sdf.groupby(['draw',ed_col])[parties].sum()
     districts = list(sdf.electoral_district.unique())
-    support = ed_df.reset_index(drop=True).to_numpy().reshape( (-1,len(districts),len(parties)) )    
+    support = ed_df.reset_index(drop=True).to_numpy().reshape( (-1,len(districts),len(parties)) )
     nmandates = np.array([ mandates_dict[d] for d in districts ])
-    
+
     edt = simulate_election(support, nmandates, **kwargs)
-    
+
     if edt.shape[1]>support.shape[1]: districts = districts + ['Compensation']
-    
+
     # Shape it back into a data frame
     eddf = pd.DataFrame( edt.reshape( (-1,) ), columns=['mandates'], dtype='int')
     eddf.loc[:, ['draw', ed_col, 'party']] = np.array(tuple(it.product( range(edt.shape[0]), districts, parties )))
@@ -170,11 +171,11 @@ def simulate_election_pp(data, mandates, electoral_system, cat_col, value_col, f
     nmandates = np.array([ mandates[d] for d in factor_order ])
     edt = simulate_election(sdata,nmandates,**electoral_system)
     if edt.shape[1]>sdata.shape[1]: factor_order = factor_order+['Compensation']
-    
+
     # Shape it back into a data frame
     df = pd.DataFrame( edt.reshape( (-1,) ), columns=['mandates'])
     df.loc[:, ['draw',factor_col, cat_col]] = np.array(tuple(it.product( draws, factor_order, cat_order )))
-    
+
     return df
 
 # %% ../nbs/04_election_models.ipynb 14
@@ -183,9 +184,9 @@ def simulate_election_pp(data, mandates, electoral_system, cat_col, value_col, f
 def mandate_plot(data, mandates, electoral_system, value_col='value', facets=[], width=None, alt_properties={}, outer_factors=[], translate=None, sim_done=False):
     f0, f1 = facets[0], facets[1]
     tf = translate if translate else (lambda s: s)
-    
+
     if outer_factors: raise Exception("This plot does not work with extra factors")
-    
+
     if not sim_done:
         mandates = { tf(k):v for k,v in mandates.items() }
         df = simulate_election_pp(data, mandates, electoral_system, f0['col'], value_col, f1['col'], f0['order'], f1['order'])
@@ -193,7 +194,7 @@ def mandate_plot(data, mandates, electoral_system, value_col='value', facets=[],
         df = data
 
     df[f1['col']] = df[f1['col']].replace({'Compensation':tf('Compensation')})
-    
+
     # Shape it into % values for each vote count
     maxv = df['mandates'].max()
     tv = np.arange(1,maxv+1,dtype='int')[None,:]
@@ -202,13 +203,13 @@ def mandate_plot(data, mandates, electoral_system, value_col='value', facets=[],
     dfm['draw'],dfm[f0['col']], dfm[f1['col']] = df['draw'], df[f0['col']], df[f1['col']]
     res = dfm.groupby([f0['col'],f1['col']],observed=True)[tv[0]].mean().reset_index().melt(id_vars=[f0['col'],f1['col']],
                                                                                 var_name='mandates',value_name='percent')
-    
+
     # Remove parties who have no chance of even one elector
     eliminate = (res.groupby(f0['col'],observed=True)['percent'].sum() < 0.2)
     el_cols = [i for i,v in eliminate.items() if v]
     res = res[~res[f0['col']].isin(el_cols)]
     cat_order = list(eliminate[~eliminate].index)
-    
+
     f_width = max(50,width/len(cat_order))
 
     plot = alt.Chart(data=res).mark_bar().encode(
@@ -247,16 +248,16 @@ def mandate_plot(data, mandates, electoral_system, value_col='value', facets=[],
 # This fits into the pp framework as: f0['col']=party_pref, factor=electoral_district, hence the as_is and hidden flags
 @stk_plot('coalition_applet', data_format='longform', draws=True, requires_factor=True, agg_fn='sum', args={'initial_coalition':'list'},
                 requires=[{},{'mandates':'pass','electoral_system':'pass'}], as_is=True, n_facets=(2,2), priority=-1000)#, hidden=True)
-def coalition_applet(data, mandates, electoral_system, value_col='value', facets=[], width=None, alt_properties={}, 
+def coalition_applet(data, mandates, electoral_system, value_col='value', facets=[], width=None, alt_properties={},
                         outer_factors=[], translate=None, initial_coalition=[], sim_done=False):
-    
+
     f0, f1 = facets[0], facets[1]
     tf = translate if translate else (lambda s: s)
-    
+
     if outer_factors: raise Exception("This plot does not work with extra factors")
 
     mandates = { tf(k):v for k,v in mandates.items() }
-    
+
     if not sim_done:
         sdf = simulate_election_pp(data, mandates, electoral_system, f0['col'], value_col, f1['col'], f0['order'], f1['order'])
     else:
@@ -264,7 +265,7 @@ def coalition_applet(data, mandates, electoral_system, value_col='value', facets
 
     # Aggregate to total mandate counts
     odf = sdf.groupby(['draw',f0['col']])['mandates'].sum().reset_index()
-    odf['over_t'] = (odf['mandates']>0) 
+    odf['over_t'] = (odf['mandates']>0)
     adf = odf[odf['mandates']>0]
 
     parties = list(adf[f0['col']].unique()) # Leave only parties that have mandates
@@ -329,5 +330,5 @@ def coalition_applet(data, mandates, electoral_system, value_col='value', facets
         #col3.write('Distributsiooni mediaan: **{:d}**'.format(int((d_dist[koalitsioon].sum(1)).median())))
         #m, l, h = hdi(sim_data['riigikogu'][koalitsioon], 0.9)
         #col2.write('Distributsiooni mediaan on **{:.0f}** mandaati. 90% tõenäosusega jääb mandaatide arv **{:.0f}** ning **{:.0f}** vahele.'.format(m, l, h))
-        
+
     return None

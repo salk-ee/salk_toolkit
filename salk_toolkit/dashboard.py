@@ -50,10 +50,10 @@ def get_plot_width(key):
 def update_manifest(fname):
     # Create manifests directory if it doesn't exist
     os.makedirs('manifests', exist_ok=True)
-    
+
     # Get name of main python file without extension
     main_name = os.path.splitext(os.path.basename(__main__.__file__))[0]
-    
+
     # Create manifest json file
     manifest_path = os.path.join('manifests', f'{main_name}.json')
     if os.path.exists(manifest_path):
@@ -67,7 +67,7 @@ def update_manifest(fname):
             'requirements': 'requirements.txt',
             'files': ['deployment.json'] # TODO: This system should be rethought
         }
-    
+
     if fname not in manifest['files']:
         manifest['files'].append(fname)
         with open(manifest_path,'w') as f:
@@ -82,7 +82,8 @@ def open_fn(fname, *args, s3_fs=None, **kwargs):
         return s3_fs.open(fname,*args,**kwargs)
     else:
         return open(fname,*args,**kwargs)
-    
+
+
 def exists_fn(fname, *args, s3_fs=None, **kwargs):
     if fname[:3] == 's3:':
         if s3_fs is None: s3_fs = s3fs.S3FileSystem(anon=False)
@@ -98,21 +99,28 @@ def read_annotated_data_lazy_cached(data_source,**kwargs):
     return read_annotated_data_lazy(data_source,**kwargs)
 
 # Load json uncached - useful for admin pages
+
+
 def load_json(fname, _s3_fs=None, **kwargs):
     with open_fn(fname,'r',s3_fs=_s3_fs,encoding='utf8') as jf:
         return json.load(jf)
 
 # This is cached very short term (1 minute) to avoid downloading it on every page change
 # while still allowing users to be added / changed relatively responsively
+
+
 @st.cache_data(show_spinner=False,ttl=60)
 def load_json_cached(fname, _s3_fs=None, **kwargs):
     return load_json(fname,_s3_fs,**kwargs)
 
-# For saving json back 
+# For saving json back
+
+
 def save_json(d, fname, _s3_fs=None, **kwargs):
     with open_fn(fname,'w',s3_fs=_s3_fs,encoding='utf8') as jf:
         json.dump(d,jf,indent=2,ensure_ascii=False)
-        
+
+
 def alias_file(fname, file_map):
     if fname[:3]!='s3:' and fname in file_map and not os.path.exists(fname):
         #print(f"Redirecting {fname} to {file_map[fname]}")
@@ -127,7 +135,7 @@ def log_event(event, uid, path, s3_fs=None):
         print(f"Log file {path} not found, creating it")
         open_fn(path,'w',s3_fs=s3_fs).close()
 
-    # Just append the row to the file    
+    # Just append the row to the file
     with open_fn(path,'a',s3_fs=s3_fs) as f:
         writer = csv.writer(f)
         writer.writerow([timestamp, event, uid])
@@ -144,9 +152,11 @@ st_wrap_list = ['write','markdown','title','header','subheader','caption','text'
 #     return f(*args,**kwargs)
 
 # Some keyword arguments can be translated
+
+
 def transform_kws(kws,tfo):
     if 'context' in kws: del kws['context']
-    if 'format_func' in kws: 
+    if 'format_func' in kws:
         ff = kws['format_func']
         kws['format_func'] = lambda s: tfo.tf(ff(s))
     if 'placeholder' in kws: kws['placeholder'] = tfo.tf(kws['placeholder'])
@@ -154,51 +164,58 @@ def transform_kws(kws,tfo):
 
 # wrap the first parameter of streamlit function with self.translate
 # has to be a separate function instead of in a for loop for scoping reasons
+
+
 def wrap_st_with_translate(base, fd, tfo):
 
     if isinstance(fd, str): fd = { 'name': fd, 'args': ['str'] }
     func = getattr(base,fd['name'])
 
     # If format_func is a parameter, overwrite it with the translate function
-    kw_defaults = ({ 'format_func': tfo.tf } 
-            if 'format_func' in inspect.signature(func).parameters 
+    kw_defaults = ({ 'format_func': tfo.tf }
+            if 'format_func' in inspect.signature(func).parameters
             else {})
 
-    tfs = { 'str': lambda c: (lambda s: tfo.tf(s,context=c)), 
+    tfs = { 'str': lambda c: (lambda s: tfo.tf(s,context=c)),
             'list': lambda c: (lambda l: [tfo.tf(s,context=c) for s in l]) }
     return lambda *args, **kwargs: func( # debugf(func,
         *[tfs[tt](kwargs.get('context'))(args[i]) for i,tt in enumerate(fd['args'])],
         *args[len(fd['args']):],**{**kw_defaults,**transform_kws(kwargs,tfo)})
 
 # A class that wraps another context manager
+
+
 class ContextManagerWrapper(AbstractContextManager):
     def __init__(self, obj):
         self.obj = obj
+
     def __enter__(self):
         return self.obj.__enter__()
+
     def __exit__(self, *args):
         self.obj.__exit__(*args)
+
 
 def wrap_all_st_functions(base, tfo, to=None):
     if to is None:
         to = ContextManagerWrapper(base)
-    
+
     for fd in st_wrap_list:
         fn = fd['name'] if isinstance(fd, dict) else fd
         if not hasattr(st,fn): continue
         setattr(to, fn, wrap_st_with_translate(base,fd,tfo))
-    
+
     # Container creators need to be wrapped recursively
-    setattr(to,'tabs',lambda *args,**kwargs: 
-            tuple( wrap_all_st_functions(c,tfo) 
+    setattr(to,'tabs',lambda *args,**kwargs:
+            tuple( wrap_all_st_functions(c,tfo)
                 for c in wrap_st_with_translate(base,{'name':'tabs', 'args':['list']},tfo)(*args,**kwargs)))
-    setattr(to,'columns',lambda *args,**kwargs: 
-            tuple( wrap_all_st_functions(c,tfo) 
+    setattr(to,'columns',lambda *args,**kwargs:
+            tuple( wrap_all_st_functions(c,tfo)
                     for c in base.columns(*args,**kwargs)))
 
-    setattr(to,'expander',lambda *args,**kwargs: 
+    setattr(to,'expander',lambda *args,**kwargs:
             wrap_all_st_functions(wrap_st_with_translate(base,'expander',tfo)(*args,**kwargs),tfo))
-    setattr(to,'container',lambda *args,**kwargs: 
+    setattr(to,'container',lambda *args,**kwargs:
             wrap_all_st_functions(base.container(*args,**kwargs),tfo))
 
     return to
@@ -235,14 +252,13 @@ def po_template_updater(pot_file = None):
     def translate(s,**kwargs):
         ctx = kwargs.get('context') or ''
         if isinstance(s,str) and s not in tdc[ctx]:
-            po.append(polib.POEntry(msgid=s,msgstr=default_translate(s), 
+            po.append(polib.POEntry(msgid=s,msgstr=default_translate(s),
                                     **{'msgctxt': kwargs.get('context'), 'comment': kwargs.get('comment')}))
             po.save(pot_file)
             tdc[ctx].add(s)
         return s
-    
-    return translate
 
+    return translate
 
 # %% ../nbs/05_dashboard.ipynb 12
 def translate_fn_from_po(po_file):
@@ -250,13 +266,14 @@ def translate_fn_from_po(po_file):
     td = { entry.msgid: entry.msgstr for entry in po }
     return lambda s, **kwargs: td.get(s,s)
 
+
 def load_translate(translate, cc_translations={}):
 
     if translate is None: return default_translate
     elif callable(translate): return translate
     elif isinstance(translate,dict): return lambda s, **kwargs: translate.get(s,s)
     elif isinstance(translate,str):
-        if (translate not in cc_translations or 
+        if (translate not in cc_translations or
             (translate in cc_translations and cc_translations[translate] is None)):
             return default_translate
         if os.path.exists(translate):
@@ -273,11 +290,12 @@ def load_translate(translate, cc_translations={}):
         else:
             raise ValueError(f"Translation file not found: {translate}")
 
+
 @st.cache_resource(show_spinner=False,ttl=3600)
 def load_po_translations():
-    # Get base filename from __main__ 
+    # Get base filename from __main__
     bname = os.path.splitext(os.path.basename(__main__.__file__))[0]
-    
+
     # Find all locale subdirectories
     translations = { 'en': None } # English is the default
     if os.path.exists('locale'):
@@ -286,17 +304,16 @@ def load_po_translations():
             if os.path.exists(po_path):
                 update_manifest(po_path)
                 translations[country_code] = translate_fn_from_po(po_path)
-                
-    return translations
 
+    return translations
 
 # %% ../nbs/05_dashboard.ipynb 13
 # Main dashboard wrapper - WIP
 class SalkDashboardBuilder:
 
-    def __init__(self, data_source, auth_conf=None, logfile=None, groups=['guest','user','admin'], org_whitelist=None, 
+    def __init__(self, data_source, auth_conf=None, logfile=None, groups=['guest','user','admin'], org_whitelist=None,
                 public=False, default_lang='en', plot_caching=True, header_fn=None, footer_fn=None):
-        
+
         # Allow deployment.json to redirect files from local to s3 if local missing (i.e. in deployment scenario)
         if os.path.exists('./deployment.json'):
             dep_meta = load_json_cached('./deployment.json')
@@ -304,7 +321,7 @@ class SalkDashboardBuilder:
             #data_source = alias_file(data_source,self.filemap)
             auth_conf = alias_file(auth_conf,self.filemap) if auth_conf else None # Only needed for old login
         else: self.filemap = {}
-        
+
         self.log_path = alias_file(logfile, self.filemap) if logfile else 'log.csv'
         self.s3fs = s3fs.S3FileSystem(anon=False) # Initialize s3 access. Key in secrets.toml
         self.data_source = data_source
@@ -317,7 +334,7 @@ class SalkDashboardBuilder:
 
         # Current page name
         self.page_name = None
-        
+
         # Set up translation
         self.pot_updater = po_template_updater()
         self.cc_translations = load_po_translations()
@@ -327,14 +344,14 @@ class SalkDashboardBuilder:
         #print("LANG",st.session_state.get('lang'),st.session_state.get('chosen_lang'),st.session_state.get('login_lang'))
 
         # If only one language is available, set it as the one in use
-        if len(self.cc_translations) == 1: 
+        if len(self.cc_translations) == 1:
             st.session_state['lang'] = next(iter(self.cc_translations.keys()))
 
         # Don't ask for language in public dashboards
-        if not public and not st.secrets.get('auth',{}).get('use_oauth'):  
+        if not public and not st.secrets.get('auth',{}).get('use_oauth'):
             # This for language select during login page, which is unnecessar
-            # Set language from session state if present 
-            if st.session_state.get('lang'): 
+            # Set language from session state if present
+            if st.session_state.get('lang'):
                 self.set_translate(st.session_state.get('lang'))
             else: # Alternatively (if on login page) - show the choice at the top of the sidebar
                 # This is messy because streamlit is ... not great at this kind of thing
@@ -343,23 +360,24 @@ class SalkDashboardBuilder:
                 # chosen_lang is a temporary variable to store the chosen language on the login page
                 clang = st.session_state.get('chosen_lang') or self.default_lang
                 self.set_translate(clang)
+
                 def set_login_lang():
                     st.session_state['chosen_lang'] = st.session_state['login_lang']
 
                 ind = opts.index(st.session_state.get('login_lang',self.default_lang)) # FIXES lang not updating
-                lang = login_lang_choice.selectbox(self.tf("Language:",context='ui'), opts, 
+                lang = login_lang_choice.selectbox(self.tf("Language:",context='ui'), opts,
                                                     index=ind, on_change=set_login_lang, key='login_lang')
                 if lang != clang: self.set_translate(lang)
         else:
-            self.set_translate(self.default_lang)            
-            
+            self.set_translate(self.default_lang)
+
         self.p_widths = {}
-        
+
         # Set up authentication
         with st.spinner(self.tf("Setting up authentication...",context='ui')):
             if st.secrets.get('auth',{}).get('use_oauth'):
                 self.uam = FronteggAuthenticationManager(groups, org_whitelist=org_whitelist,
-                                                info=self.info, logger=self.log_event, languages=self.cc_translations, 
+                                                info=self.info, logger=self.log_event, languages=self.cc_translations,
                                                 translate_func=lambda t: self.tf(t,context='ui'))
             else:
                 self.uam = StreamlitAuthenticationManager(auth_conf, groups, org_whitelist=org_whitelist,
@@ -368,13 +386,13 @@ class SalkDashboardBuilder:
 
         if not public:
             self.uam.login_screen()
-        
+
         # TODO: language handling is overengineered. Remove the complexity
         if self.authenticated and isinstance(self.uam,StreamlitAuthenticationManager):
             login_lang_choice.empty()
 
             # If user has chosen a language on the login page
-            if st.session_state.get('chosen_lang'): 
+            if st.session_state.get('chosen_lang'):
                 self.set_translate(st.session_state['chosen_lang'],remember=True) # Make it persistent
                 st.session_state['chosen_lang'] = None # Only do this once, at login
 
@@ -383,29 +401,28 @@ class SalkDashboardBuilder:
                     self.uam.users[st.session_state['username']]['lang'] = st.session_state['lang']
                     self.uam.update_user(st.session_state['username'])
             # Load language from user's profile if present
-            elif (not st.session_state.get('lang') and self.user.get('lang') 
+            elif (not st.session_state.get('lang') and self.user.get('lang')
                 and self.user['lang'] in self.cc_translations):
                 self.set_translate(self.user['lang'],remember=True)
         else:
             self.set_translate(self.user.get('lang'),remember=True)
-            
 
         wrap_all_st_functions(st, self, to=self)
-        self.sidebar = wrap_all_st_functions(st.sidebar, self)    
-        
+        self.sidebar = wrap_all_st_functions(st.sidebar, self)
+
     def set_translate(self,lang,remember=False):
         if lang is None or lang not in self.cc_translations: lang = self.default_lang
         translate = load_translate(lang, self.cc_translations)
         self.tf = lambda s,**kwargs: translate(self.pot_updater(s,**kwargs))
         if remember: st.session_state['lang'] = lang
 
-
     # Get the pandas dataframe with given columns
+
     def get_df(self,columns=None):
         if columns is None: q = self.ldf
         else: q = self.ldf.select(columns)
         return fix_df_with_meta(q.collect().to_pandas(),self.meta)
-    
+
     # For backwards compatibility - this is very inefficient
     @property
     def df(self):
@@ -416,7 +433,7 @@ class SalkDashboardBuilder:
     @property
     def authenticated(self):
         return self.uam.authenticated
-    
+
     @property
     def admin(self):
         return self.uam.admin
@@ -424,7 +441,7 @@ class SalkDashboardBuilder:
     @property
     def user(self):
         return self.uam.user
-    
+
     def log_event(self, event, uid=None):
         log_event(event, uid or self.user['uid'], self.log_path, s3_fs=self.s3fs)
 
@@ -436,16 +453,16 @@ class SalkDashboardBuilder:
 
         # If multiple data sources are used, make sure we key it in for caching purposes
         pp_desc['data'] = self.data_source
-        
+
         # Draw plot
         st_plot(pp_desc,
                 width=width, translate=lambda s: self.tf(s,context='data'),
                 plot_cache=plot_cache() if self.plot_caching else None,
                 full_df=self.ldf,data_meta=self.meta,**kwargs)
-        
+
     def filter_ui(self, dims, flt={}, detailed=False, raw=False, force_choice=False, key=''):
         return filter_ui(self.ldf, self.meta, uid=f'{key}_{self.page_name}', dims=dims, flt=flt, detailed=detailed, raw=raw, translate=self.tf, force_choice=force_choice)
-    
+
     def facet_ui(self, dims, two=False, raw=False, force_choice=False, label='Facet', key=''):
         return facet_ui(dims, two=two, raw=raw, uid=f'{key}_{self.page_name}', translate=self.tf,force_choice=force_choice,label=label)
 
@@ -471,9 +488,9 @@ class SalkDashboardBuilder:
         # I don't get how this row fixes the issue, but it does
         #https://github.com/victoryhb/streamlit-option-menu/issues/68
         # This is a quirk of the old login and should be removed with it
-        if (isinstance(self.uam,StreamlitAuthenticationManager) and 
+        if (isinstance(self.uam,StreamlitAuthenticationManager) and
             st.session_state.get("authentication_status") and st.session_state["logout"] is None):
-            st.session_state["logout"] = True 
+            st.session_state["logout"] = True
             st.rerun()
 
         # If login failed and is required, don't go any further
@@ -485,7 +502,6 @@ class SalkDashboardBuilder:
                 self.sb_info.info(self.tf('Logged in as **%s**',context='ui') % self.user["name"])
                 self.uam.logout_button(self.tf('Log out',context='ui'), 'sidebar')
 
-
         # If we have a whitelist of organizations, and the user is not in it, don't show the page
         if self.uam.org_whitelist and self.user.get('organization') not in self.uam.org_whitelist:
             st.header("You are not authorized to access this dashboard!")
@@ -493,10 +509,10 @@ class SalkDashboardBuilder:
 
         # Add user settings page if logged in
         if self.authenticated: self.pages.append( ('Settings',user_settings_page,{'icon': 'sliders'}) )
-    
+
         # Add admin page for admins
         if self.admin:  self.pages.append( ('Administration', admin_page,{'icon': 'terminal'}) )
-        
+
         # Draw the menu listing pages
         pnames = [t[0] for t in self.pages]
         with st.sidebar:
@@ -513,11 +529,11 @@ class SalkDashboardBuilder:
                         "nav-link-selected": {"background-color": "#red"},
                         "menu-title": {"display":"none"}
                     })
-            
+
         # Find the page
         pname, pfunc, meta = self.pages[t_pnames.index(menu_choice)]
         self.page_name = pname
-        
+
         # Load data
         self.data_source = meta.get('data_source',self.data_source)
         with st.spinner(self.tf("Loading data...",context='ui')):
@@ -547,13 +563,13 @@ class SalkDashboardBuilder:
                 if self.plot_caching:
                     pcache = plot_cache()
                     st.write("Plot cache: %d items (%.1fMb)" % (len(pcache), get_size(pcache) / 1024 ** 2))
-                
+
                 with st.expander("Impersonate (Admin)"):
                     org_list = (self.uam.org_whitelist or []) + ([self.user.get('organization')] if self.user.get('organization') else [])
                     org = st.selectbox("Organization",org_list,index=org_list.index(self.user.get('organization')))
-                    
+
                     group = st.selectbox("Group",self.uam.groups,index=self.uam.groups.index('user'))
-                    
+
                     langs = list(self.cc_translations.keys()) + ([self.user.get('lang')] if self.user.get('lang') not in self.cc_translations else [])
                     language = st.selectbox("Language",langs,index=langs.index(self.user['lang']))
                     if st.button("Impersonate"):
@@ -561,11 +577,11 @@ class SalkDashboardBuilder:
                         if language != self.user['lang']: self.set_translate(language,remember=True)
                         self.uam.impersonate({'organization':org,'group':group,'lang':language})
                     st.text("Browser refresh clears the impersonation")
-                    
+
     # Add enter and exit so it can be used as a context
     def __enter__(self):
         return self
-    
+
     # Render everything once we exit the with block
     def __exit__(self, exc_type, exc_value, exc_tb):
         self.build()
@@ -606,7 +622,6 @@ class UserAuthenticationManager:
         if st.session_state.get('impersonate_user'): base.update(st.session_state['impersonate_user'])
         return base
 
-        
     @abstractmethod
     def login_screen(self):
         pass
@@ -640,8 +655,6 @@ class UserAuthenticationManager:
         st.session_state['impersonate_user'] = user_data
         st.rerun()
 
-
-
 # %% ../nbs/05_dashboard.ipynb 17
 # TODO
 # - centralize the db connection, getting url and token from env
@@ -653,8 +666,9 @@ def sqlite_client(url, token):
     print(f"User database from {url}")
     return libsql_client.create_client_sync(url=url, auth_token=token)
 
+
 class StreamlitAuthenticationManager(UserAuthenticationManager):
-    
+
     def __init__(self,auth_conf_file,groups,org_whitelist,s3_fs,info,logger,languages,translate_func):
         super().__init__(groups, info, org_whitelist, logger, languages, translate_func)
         self.s3fs = s3_fs
@@ -671,7 +685,6 @@ class StreamlitAuthenticationManager(UserAuthenticationManager):
             config['cookie']['expiry_days'],
             [] # config['preauthorized'] - not using preauthorization
         )
-
 
     @property
     def authenticated(self):
@@ -693,7 +706,7 @@ class StreamlitAuthenticationManager(UserAuthenticationManager):
 
     def logout_button(self, text, location='sidebar'):
         self.auth.logout(text, location)
-    
+
     def load_conf(self,cached=True):
         if cached: self.conf = load_json_cached(self.conf_file, _s3_fs = self.s3fs)
         else: self.conf = load_json(self.conf_file, _s3_fs = self.s3fs)
@@ -703,7 +716,7 @@ class StreamlitAuthenticationManager(UserAuthenticationManager):
             self.client = sqlite_client(url=url, token=token)
             ures = self.client.execute("SELECT * FROM users")
             self.conf['credentials']['usernames'] = { u['username']:dict(zip(ures.columns,u)) for u in ures.rows }
-        
+
         if self.org_whitelist is not None:
             for ud in self.conf['credentials']['usernames'].values():
                 ud['whitelisted'] = ud.get('organization') in self.org_whitelist or ud.get('group') == 'admin'
@@ -715,28 +728,28 @@ class StreamlitAuthenticationManager(UserAuthenticationManager):
                 }
 
         self.users = self.conf['credentials']['usernames']
-    
+
     def login_screen(self):
 
         tf = self.tf
         _, _, username = self.auth.login('sidebar', fields={'Form name':tf('Login page'), 'Username':tf('Username'), 'Password':tf('Password'), 'Log in':tf('Log in')})
-            
+
         if st.session_state["authentication_status"] is False:
             st.error(tf('Username/password is incorrect'))
             self.log_event('login-fail', username=username)
         if st.session_state["authentication_status"] is None:
             st.warning(tf('Please enter your username and password'))
-            st.session_state['log_event'] = True 
+            st.session_state['log_event'] = True
         elif st.session_state["authentication_status"]:
-            self.stuser = {'name': st.session_state['name'], 
+            self.stuser = {'name': st.session_state['name'],
                         'username': username,
                         **self.users[username] }
-            
+
             #check if signing in has been logged - if not, log it and flip the flag
             if st.session_state['log_event']:
                 self.log_event('login-success')
                 st.session_state['log_event'] = False
-        
+
     def update_conf(self, username):
 
         # Read full conf file (can have more users, as load_conf filters them)
@@ -759,10 +772,10 @@ class StreamlitAuthenticationManager(UserAuthenticationManager):
         if 'libsql' in self.conf:
             user_data = self.users[username]
             self.client.execute('UPDATE users SET name = ?, email = ?, organization = ?, "group" = ?, password = ?, lang = ? WHERE username = ?',
-                         [user_data['name'], user_data['email'], user_data['organization'], 
+                         [user_data['name'], user_data['email'], user_data['organization'],
                           user_data['group'], user_data['password'], user_data['lang'], username])
         else: self.update_conf(username)
-            
+
     def add_user(self, user_data):
         self.require_admin()
         username = user_data['username']
@@ -772,17 +785,17 @@ class StreamlitAuthenticationManager(UserAuthenticationManager):
             self.users[username] = user_data
             self.info.success(f'User {username} successfully added.')
             self.log_event(f'add-user: {username}')
-            
+
             if 'libsql' in self.conf:
                 self.client.execute('INSERT INTO users (username, name, email, organization, "group", password) VALUES (?, ?, ?, ?, ?, ?)',
-                               [username, user_data['name'], user_data['email'], user_data['organization'], 
+                               [username, user_data['name'], user_data['email'], user_data['organization'],
                                 user_data['group'], user_data['password']])
             else: self.update_conf(username)
             return True
         else:
             self.info.error(f'User **{username}** already exists.')
             return False
-        
+
     def change_user(self, username, user_data):
         # Change username
         if 'username' in user_data and username != user_data['username']:
@@ -790,19 +803,19 @@ class StreamlitAuthenticationManager(UserAuthenticationManager):
             del self.users[username]
             username = user_data['username']
             del user_data['username']
-        
+
         # Handle password change
         if user_data.get('password'):
             user_data['password'] = stauth.Hasher([user_data['password']]).generate()[0]
         else: user_data['password'] = self.users[username]['password']
-        
+
         # Update everything else
         self.users[username].update(user_data)
         self.log_event(f'change-user: {username}')
         self.info.success(f'User **{username}** changed.')
         self.update_user(username)
-        
-    def delete_user(self, username): 
+
+    def delete_user(self, username):
         self.require_admin()
         del self.users[username]
         self.info.warning(f'User **{username}** deleted.')
@@ -818,7 +831,6 @@ class StreamlitAuthenticationManager(UserAuthenticationManager):
         self.load_conf(cached=False) # so all admin updates would immediately be visible
         return { k: censor_dict({'uid': k, **v},['password']) for k,v in self.users.items() }
 
-
 # %% ../nbs/05_dashboard.ipynb 18
 @st.cache_resource
 def frontegg_client():
@@ -826,6 +838,7 @@ def frontegg_client():
     base_url = "https://api.frontegg.com/audits"
     auth = st.secrets['auth']
     return HttpClient(client_id=auth['client_id'], api_key=auth['client_secret'], base_url=base_url)
+
 
 class FronteggAuthenticationManager(UserAuthenticationManager):
 
@@ -862,8 +875,8 @@ class FronteggAuthenticationManager(UserAuthenticationManager):
             st.session_state['OAUser'] = self.reform_user(st.user)
         return st.session_state.get('OAUser')
 
-
     # Use the silent login profile to just refresh the user info if prompt config is present
+
     def refresh_user(self):
         # If prompr config present, assume default conf is silent login
         # In that case, logout + silent login can be used to refresh the user info
@@ -875,9 +888,9 @@ class FronteggAuthenticationManager(UserAuthenticationManager):
         if not self.authenticated:
             st.login()
             st.session_state['OA_fresh'] = True # just logged in, so no need to refresh
-            if st.user['is_logged_in'] and not st.session_state.get('OAUser'): 
+            if st.user['is_logged_in'] and not st.session_state.get('OAUser'):
                 st.session_state['OAUser'] = self.reform_user(st.user)
-            elif not st.user['is_logged_in'] and 'OAUser' in st.session_state: 
+            elif not st.user['is_logged_in'] and 'OAUser' in st.session_state:
                 del st.session_state['OAUser']
         elif not st.session_state.get('OA_fresh') and time.time()-st.user['iat']>60:
             # IF authenticated, but token not refreshed this session and is at least 60 sec old
@@ -887,10 +900,10 @@ class FronteggAuthenticationManager(UserAuthenticationManager):
             self.refresh_user()
         else: st.session_state['OA_fresh'] = True
 
-        # Record the login event to the log file    
+        # Record the login event to the log file
         if self.authenticated and 'login_recorded' not in st.session_state:
             self.log_event('login-success')
-            st.session_state['login_recorded'] = True # Only log once per session, even if user logs in multiple times  
+            st.session_state['login_recorded'] = True # Only log once per session, even if user logs in multiple times
 
     def logout_button(self,text,location='sidebar'):
         where = st.sidebar if location == 'sidebar' else st
@@ -911,7 +924,7 @@ class FronteggAuthenticationManager(UserAuthenticationManager):
             }),
             'roleIds': []
         },headers={'frontegg-tenant-id':st.user['tenantId']}).json() # Add to same tenant as admin
-        
+
         if res.get('errors'): raise Exception(str(res['errors']))
         self.info.info(f'User **{res['email']}** added.')
         self.log_event(f'add-user: {res['email']}')
@@ -940,7 +953,7 @@ class FronteggAuthenticationManager(UserAuthenticationManager):
         if uid == self.user['uid']:
             self.refresh_user()
             #st.session_state['OAUser'] = self.reform_user(res)
-        
+
     def delete_user(self, uid):
         self.require_admin()
         uinfo = self.client.get(f'identity/resources/users/v1/email?email={uid}').json()
@@ -950,13 +963,11 @@ class FronteggAuthenticationManager(UserAuthenticationManager):
         self.info.info(f'User **{uid}** deleted.')
         self.log_event(f'delete-user: {uid}')
 
-
     def list_users(self):
         self.require_admin()
         # TODO: this endpoint is paginated, so we may need to cycle over all pages here
         res = self.client.get('identity/resources/users/v1/?_limit=200',headers={'frontegg-tenant-id':'7779b9fb-f279-4cd3-8f61-e751a0d06145'})
         return { i['email']: censor_dict(self.reform_user(i),[]) for i in res.json()['items'] }
-        
 
 # %% ../nbs/05_dashboard.ipynb 20
 # Password reset
@@ -980,9 +991,9 @@ def user_settings_page(sdb):
     if isinstance(sdb.uam,StreamlitAuthenticationManager):
         try:
             tf = lambda s: sdb.tf(s,context='ui')
-            if sdb.uam.auth.reset_password(st.session_state["username"], 
-                                        fields={'Form name':tf('Reset password'), 'Current password':tf('Current password'), 
-                                                'New password':tf('New password'), 'Repeat password': tf('Repeat password'), 
+            if sdb.uam.auth.reset_password(st.session_state["username"],
+                                        fields={'Form name':tf('Reset password'), 'Current password':tf('Current password'),
+                                                'New password':tf('New password'), 'Repeat password': tf('Repeat password'),
                                                 'Reset':tf('Reset')}):
                 sdb.uam.update_user(st.session_state["username"])
                 st.success(tf('Password modified successfully'))
@@ -1008,8 +1019,8 @@ def highlight_cells(val):
 
 def admin_page(sdb):
     sdb.uam.require_admin()
-    
-    menu_choice = option_menu(None,[ 'Log management', 'List users', 'Add user', 'Change user', 'Delete user' ], 
+
+    menu_choice = option_menu(None,[ 'Log management', 'List users', 'Add user', 'Change user', 'Delete user' ],
                               icons=['card-list','people-fill','person-fill-add','person-lines-fill','person-fill-dash'], orientation='horizontal')
     st.write(" ")
 
@@ -1019,13 +1030,13 @@ def admin_page(sdb):
         log_data=pd.read_csv(alias_file(sdb.log_path,sdb.filemap),names=['timestamp','event','uid'])
         st.dataframe(log_data.sort_index(ascending=False
             ).style.map(highlight_cells, subset=['event']), width=1200) #use_container_width=True
-        
+
     elif menu_choice=='List users':
         # Read log to get last login:
         log_data = pd.read_csv(alias_file(sdb.log_path,sdb.filemap),names=['timestamp','event','uid'])
         log_data = log_data[log_data['event']=='login-success']
         log_data['timestamp'] = pd.to_datetime(log_data['timestamp'], utc=True, format='%d-%m-%Y, %H:%M:%S')
-        
+
         # Add last login to users
         users = list(all_users.values())
         for u in users:
@@ -1036,11 +1047,10 @@ def admin_page(sdb):
             for ud in users:
                 ud['whitelisted'] = ud.get('organization') in sdb.uam.org_whitelist or ud.get('group') == 'admin'
 
-
         users = pd.DataFrame(users)
         users['last_login'] = pd.to_datetime(users['last_login'])
         users = users.sort_values(by=['whitelisted','last_login'], ascending=False)
-            
+
         # Display the data
         st.dataframe(users, use_container_width=True, column_config={
             "last_login": st.column_config.DatetimeColumn(
@@ -1087,7 +1097,7 @@ def admin_page(sdb):
 
     elif menu_choice=='Change user':
         uid = st.selectbox('Edit user', list(all_users.keys()))
-        
+
         user_data = all_users[uid].copy()
         #st.write(user_data)
         group_index = sdb.uam.groups.index(user_data.get('group','guest'))
@@ -1111,14 +1121,14 @@ def admin_page(sdb):
                 cur_lang = user_data.get('lang',None)
                 l_opts = [cur_lang] + [l for l in list(sdb.cc_translations.keys())+[None] if l != cur_lang]
                 user_data['lang'] = st.selectbox("Language:", l_opts)
-                # NB! it is known changing language here for current user does not lead to a change. 
-                # It's not worth the extra code overhead to make it work. 
-                
+                # NB! it is known changing language here for current user does not lead to a change.
+                # It's not worth the extra code overhead to make it work.
+
             st.markdown("""---""")
             submitted = st.form_submit_button("Submit")
             if submitted:
                 sdb.uam.change_user(uid,user_data)
-                
+
     elif menu_choice=='Delete user':
         with st.form("delete_user_form"):
             st.subheader('Delete user:')
@@ -1133,7 +1143,6 @@ def admin_page(sdb):
                     sdb.error('Cannot delete the current user.')
                 else:
                     sdb.uam.delete_user(uid)
-
 
 # %% ../nbs/05_dashboard.ipynb 25
 # This is a horrible workaround to get faceting to work with altair geoplots that do not play well with streamlit
@@ -1151,17 +1160,19 @@ def draw_plot_matrix(pmat):
             #print(pmat[i][j].to_json()) # to debug json
             c.altair_chart(pmat[i][j],use_container_width=ucw)#,theme=None)
 
-# Draw the plot described by pp_desc 
+# Draw the plot described by pp_desc
+
+
 def st_plot(pp_desc,**kwargs):
     plots = e2e_plot(pp_desc, **kwargs)
     draw_plot_matrix(plots)
 
 # Create a global plot cache
+
+
 @st.cache_resource(show_spinner=False,ttl=None)
 def plot_cache():
     return dict_cache(size=100)
-
-
 
 # %% ../nbs/05_dashboard.ipynb 26
 # Streamlit session state safety - check and clear session state if it has an unfit value
@@ -1173,10 +1184,10 @@ def facet_ui(dims, two=False, uid='base',raw=False, translate=None, force_choice
     # Set up translation
     tfc = translate if translate else (lambda s,**kwargs: s)
     tf = lambda s: tfc(s,context='data')
-    
+
     tdims = [ tf(d) for d in dims ]
     r_map = dict(zip(tdims,dims))
-    
+
     none = tf('None')
     stc = st.sidebar if not raw else st
 
@@ -1187,7 +1198,7 @@ def facet_ui(dims, two=False, uid='base',raw=False, translate=None, force_choice
         stss_safety(f'facet2_{uid}',tdims)
         second_dim = stc.selectbox(tfc(label+' 2:',context='ui'), tdims if force_choice else [none] + tdims, key=f'facet2_{uid}')
         if second_dim not in [none,facet_dim]:  fcols = [facet_dim, second_dim]
-        
+
     return [ r_map[d] for d in fcols ]
 
 # %% ../nbs/05_dashboard.ipynb 28
@@ -1211,7 +1222,6 @@ def get_filter_limits(_ldf,dims,dmeta,uid):
     if dims is None: dims = schema.names()
     else: dims = [ c for c in dims if c in schema.names() or c in gcols ]
 
-
     limits = {}
     for d in dims:
         if d in gcols:
@@ -1229,8 +1239,8 @@ def get_filter_limits(_ldf,dims,dmeta,uid):
                 else:
                     limits[d] = { 'categories': ldf.select(pl.all()).unique(d).collect().to_series().sort().to_list() }
             else:
-                limits[d] = { 'categories': c_meta[d]['categories'] } 
-                
+                limits[d] = { 'categories': c_meta[d]['categories'] }
+
             limits[d]['ordered'] = c_meta[d].get('ordered',False)
         else:
             warn(f"Skipping {d}: {c_meta[d]} in filter")
@@ -1245,20 +1255,19 @@ def filter_ui(data, dmeta=None, dims=None, flt={}, uid='base', detailed=False, r
 
     limits = get_filter_limits(data,dims,dmeta,uid)
     dims = list(limits.keys())
-    
+
     if dmeta is not None:
         gcols = group_columns_dict(dmeta)
         if not grouped: dims = list_aliases(dims, gcols) # Replace aliases like 'demographics'
         c_meta = extract_column_meta(dmeta) # mainly for groups defined in meta
     else: c_meta = defaultdict(lambda: {})
-    
+
     if not force_choice: f_info = st.sidebar.container()
-    
+
     gstc = st.sidebar.expander(tfc('Filters',context='ui')) if not raw else st
     stss = st.session_state
-    
 
-    if grouped: 
+    if grouped:
         gdims = { gn: [d for d in [gn]+gdims if d in dims] for gn,gdims in gcols.items() }
         gdims = [ (gstc.expander(gn,expanded=(gn=='main')), gd) for gn, gd in gdims.items() if len(gd)>0 ]
     else:
@@ -1273,7 +1282,7 @@ def filter_ui(data, dmeta=None, dims=None, flt={}, uid='base', detailed=False, r
 
             # If filter on this dimension already set, skip
             if cn in filters: continue
-            
+
             # Shared prep for all cateogoricals
             if limits[cn].get('categories'):
                 cats = limits[cn]['categories']
@@ -1289,25 +1298,25 @@ def filter_ui(data, dmeta=None, dims=None, flt={}, uid='base', detailed=False, r
                     cats = cflt # Set the list of options to the current filter
 
                 if len(cats)==1: continue
-                
+
                 # Do some prep for translations
                 r_map = dict(zip([tf(c) for c in cats],cats))
                 all_vals = list(r_map.keys()) # translated categories
                 grp_names = c_meta[cn].get('groups',{}).keys()
                 r_map.update(dict(zip([tf(c) for c in grp_names],grp_names)))
-            
+
             # Multiselect
             if (detailed or cn in gcols) and limits[cn].get('categories'):
                 key = f"filter_{uid}_{cn}_multiselect"
-                if key in stss and not set(stss[key]) <= set(all_vals): del stss[key]  
+                if key in stss and not set(stss[key]) <= set(all_vals): del stss[key]
                 filters[cn] = stc.multiselect(tf(cn), all_vals, all_vals, key=key)
                 if set(filters[cn]) == set(all_vals): del filters[cn]
-                else: 
+                else:
                     stc.button(tf("Reset"),key=f"filter_{uid}_{cn}_ms_reset",on_click=ms_reset(cn,all_vals,uid))
                     filters[cn] = [ r_map[c] for c in filters[cn] ]
 
             # Unordered categorical - selectbox
-            elif limits[cn].get('categories') and not limits[cn].get('ordered'): 
+            elif limits[cn].get('categories') and not limits[cn].get('ordered'):
                 choices = [gt for gt,g in r_map.items() if g in grp_names] + all_vals
                 if not force_choice: choices = [tf('All')] + choices
                 stss_safety(f'filter_{cn}_sel',choices)
@@ -1321,7 +1330,7 @@ def filter_ui(data, dmeta=None, dims=None, flt={}, uid='base', detailed=False, r
             # Use [None,<start>,<end>] for ranges, both categorical and continuous to distinguish them from list of values
             elif limits[cn].get('categories') and limits[cn].get('ordered'): # Ordered categorical - slider
                 key = f'filter_{uid}_{cn}_ocat'
-                if key in stss and not set(stss[key]) <= set(all_vals): del stss[key] 
+                if key in stss and not set(stss[key]) <= set(all_vals): del stss[key]
                 f_res = stc.select_slider(tf(cn),all_vals,value=(all_vals[0],all_vals[-1]),key=key)
                 if f_res != (all_vals[0],all_vals[-1]):
                     miv, mav = r_map[f_res[0]], r_map[f_res[1]]
@@ -1333,24 +1342,24 @@ def filter_ui(data, dmeta=None, dims=None, flt={}, uid='base', detailed=False, r
                 mima = limits[cn]['min'], limits[cn]['max']
                 if mima[0]==mima[1]: continue
                 f_res = stc.slider(tf(cn),*mima,value=mima,key=f'filter_{uid}_{cn}_cont')
-                if f_res[0]>mima[0] or f_res[1]<mima[1]: 
-                    filters[cn] = ( [None] + 
-                                    [ f_res[0] if f_res[0]>mima[0] else None] + 
+                if f_res[0]>mima[0] or f_res[1]<mima[1]:
+                    filters[cn] = ( [None] +
+                                    [ f_res[0] if f_res[0]>mima[0] else None] +
                                     [ f_res[1] if f_res[1]<mima[1] else None ] )
-    
+
     # Only leave the question group filter on if that is the current observation
     if obs_dim:  filters = { k:v for k,v in filters.items() if not limits[k].get('group') or k == obs_dim }
-                
-    if filters != flt and not force_choice: f_info.warning('⚠️ ' + tfc('Filters active',context='ui') + ' ⚠️')
-            
-    return filters
 
+    if filters != flt and not force_choice: f_info.warning('⚠️ ' + tfc('Filters active',context='ui') + ' ⚠️')
+
+    return filters
 
 # %% ../nbs/05_dashboard.ipynb 32
 # Use dict here as dicts are ordered as of Python 3.7 and preserving order groups things together better
 
 def translate_with_dict(d):
     return (lambda s: d[s] if isinstance(s,str) and s in d and d[s] is not None else s)
+
 
 def log_missing_translations(tf, nonchanged_dict):
     def ntf(s):
@@ -1359,9 +1368,11 @@ def log_missing_translations(tf, nonchanged_dict):
         return ns
     return ntf
 
+
 def clean_missing_translations(nonchanged_dict, tdict={}):
     # Filter out numbers that come in from data sometimes
     return { s:v for s,v in nonchanged_dict.items() if s not in tdict and isinstance(s,str) and not re.fullmatch(r'[.\d]+',s) }
+
 
 def add_missing_to_dict(missing_dict, tdict):
     return {**tdict, **{ s:s for s in missing_dict}}
@@ -1389,7 +1400,7 @@ def translate_pot(template, dest, tfunc, sources=[]):
             for entry in spo:
                 if (entry.msgctx,entry.msgid) not in todo: continue
                 if (entry.msgctx,entry.msgid) in existing: continue
-                
+
                 if entry.msgstr: entry.msgstr = tfunc(entry.msgstr)
                 po.append(entry)
                 existing.add((entry.msgctx,entry.msgid))
@@ -1412,8 +1423,6 @@ def translate_pot(template, dest, tfunc, sources=[]):
     progress.close()
 
     po.save(dest)
-
-
 
 # %% ../nbs/05_dashboard.ipynb 36
 # This is the default theme for Streamlit (v1.42.1)
@@ -1594,17 +1603,17 @@ def plot_matrix_html(pmat, uid='viz', width=None, responsive=True):
             pdict = json.loads(pp.to_json())
             pdict['autosize'] = {'type': 'fit', 'contains': 'padding'}
             pdict['config'] = altair_default_config
-            
+
             if responsive:
                 cwidth = pdict['spec']['width'] if 'spec' in pdict else pdict['width']
-                repl = f'(width-{uid}_delta/{ncols})/{width/cwidth}' 
+                repl = f'(width-{uid}_delta/{ncols})/{width/cwidth}'
                 if 'spec' in pdict: pdict['spec']['width'] = rstring
                 else: pdict['width'] = rstring
                 pjson = json.dumps(pdict).replace(f'"{rstring}"', repl)
             else: pjson = json.dumps(pdict)
             specs.append(pjson)
 
-    if responsive: 
+    if responsive:
         goal_width = f'document.getElementById("{uid}").parentElement.clientWidth'
         resp_code = 'window.addEventListener("resize", draw_plot);'
     else: goal_width, resp_code = str(width), '';
@@ -1617,5 +1626,3 @@ def plot_matrix_html(pmat, uid='viz', width=None, responsive=True):
 
     if responsive: html = html.replace(f'"{rstring}"', repl)
     return html
-
-

@@ -75,7 +75,6 @@ class BlockScaleMeta(ColumnMeta):
     col_prefix: Optional[str] = None # If column name should have the prefix added. Usually used in scale block
     question_colors: Optional[Dict[str,Color]] = None # Dict mapping columns to different colors
 
-
 # %% ../nbs/06_validation.ipynb 7
 # Transform the column tuple to (new name, old name, meta) format
 def cspec(tpl):
@@ -89,8 +88,11 @@ def cspec(tpl):
     return [cn,sn,o_cd]
 
 # Transform list to dict for better error readability
+
+
 def cs_lst_to_dict(lst):
     return { cn: [ocn,meta] for cn,ocn,meta in map(cspec,lst) }
+
 
 ColSpec = Annotated[Dict[str,Tuple[str,ColumnMeta]],BeforeValidator(cs_lst_to_dict)]
 
@@ -98,26 +100,29 @@ ColSpec = Annotated[Dict[str,Tuple[str,ColumnMeta]],BeforeValidator(cs_lst_to_di
 class ColumnBlockMeta(PBase):
     name: str # Name of the block
     scale: Optional[BlockScaleMeta] = None # Shared column meta for all columns inside the block
-    
+
     # List of columns, potentially with their ColummnMetas
     columns: ColSpec
 
     subgroup_transform: Optional[str] = None # A block-level transform performed after column level transformations
 
     # Block level flags
-    generated: bool = False # This block is for data that is generated, i.e. not initially in the file. 
+    generated: bool = False # This block is for data that is generated, i.e. not initially in the file.
     hidden: bool = False # Use this to hide the block in explorer.py
     virtual: bool = False # This block is virtual (i.e. just used in display. NB! Ignores all transformations on values)
 
 # %% ../nbs/06_validation.ipynb 9
 # Again, convert list to dict for easier debugging in case errors get thrown
 def cb_lst_to_dict(lst): return { c['name']:c for c in lst }
+
+
 BlockSpec = Annotated[Dict[str,ColumnBlockMeta],BeforeValidator(cb_lst_to_dict)]
 
 # %% ../nbs/06_validation.ipynb 10
 class FileDesc(PBase):
     file: str
     opts: Optional[Dict] = None
+
 
 class DataMeta(PBase):
 
@@ -158,7 +163,7 @@ class DataMeta(PBase):
     # Different global processing steps
     preprocessing: Optional[Union[str,List[str]]] = None # Performed on raw data
     postprocessing: Optional[Union[str,List[str]]] = None # Performed after columns and blocks have been processed
-    
+
     # Deprecated as this does not work well for lazy loading
     #virtual_preprocessing: Optional[Union[str,List[str]]] = None # Same as preprocessing, but only in virtual step
     #virtual_postprocessing: Optional[Union[str,List[str]]] = None # Same as postprocessing, but only in virtual step
@@ -179,10 +184,10 @@ class DataMeta(PBase):
             raise ValueError("One of 'file' or 'files' has to be provided")
         return self
 
-
 # %% ../nbs/06_validation.ipynb 11
 def hard_validate(m):
     DataMeta.model_validate(m)
+
 
 def soft_validate(m):
     try:
@@ -194,16 +199,22 @@ def soft_validate(m):
 DataDescription = ForwardRef('DataDescription')
 DataSpec = Union[str,DataDescription]
 
+
 class SingleMergeSpec(PBase):
     file: DataSpec # Filename to merge with
     on: Union[str,List[str]] # Column(s) on which to merge
     add: Optional[List[str]] = None # Column names to add with merge. If None, add all.
     how: Literal['inner','outer','left','right','cross'] = 'inner' # Type of merge. See pd.merge
 
+
 MergeSpec = Union[SingleMergeSpec,List[SingleMergeSpec]]
 
 # Make sure MergeSpec results in a list, even if input is a singular SingleMergeSpec
+
+
 def smc_ensure_list(v): return v if isinstance(v,list) else [v]
+
+
 MergeSpec = Annotated[List[SingleMergeSpec],BeforeValidator(smc_ensure_list)]
 
 # %% ../nbs/06_validation.ipynb 14
@@ -218,8 +229,6 @@ class DataDescription(BaseModel):
     filter: Optional[str] = None # String of python code that can reference df and is evaluated as df[filter code]
     merge: MergeSpec = [] # Optionally merge another data source into this one
     postprocessing: Optional[Union[str,List[str]]] = None # String of python code that can reference df
-
-
 
 # %% ../nbs/06_validation.ipynb 16
 def soft_validate(m, pptype):

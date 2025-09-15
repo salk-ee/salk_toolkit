@@ -39,8 +39,8 @@ if has_secrets and st.secrets.get('sip',{}).get('input_files'): #st.secrets.get(
     import s3fs
     groups = ['user','admin']
     org_whitelist = st.secrets['sip']['org_whitelist']
-    
-    # Set up logging    
+
+    # Set up logging
     s3fs = s3fs.S3FileSystem(anon=False)
     uam = None
     log_path = st.secrets['sip']['log_path']
@@ -53,13 +53,13 @@ if has_secrets and st.secrets.get('sip',{}).get('input_files'): #st.secrets.get(
                                     languages={}, translate_func=lambda t: t)
 
 
-    
+
     uam.login_screen()
     if not uam.authenticated: st.stop() # Wait for login redirect to happen
     elif uam.user.get('organization') not in org_whitelist: # Logged in but not authorized
         st.header("You are not authorized to access this dashboard!")
         st.stop()
-    # else: 
+    # else:
     #     with st.sidebar:
     #         uam.logout_button('Logout','sidebar')
 
@@ -110,7 +110,7 @@ if 'ls_loaded' not in st.session_state:
         ls_state = json.loads(st_js_blocking(f'return localStorage.getItem("session_state")') or '{}')
     except json.JSONDecodeError as e:
         ls_state = {}
-    
+
     for k, v in ls_state.items(): st.session_state[k] = v
     st.session_state['ls_loaded'] = True
 
@@ -144,7 +144,7 @@ else:
         if fname in paths: # Duplicate file name: include path
             p1, p2 = os.path.split(path)
             path, fname = p1, os.path.join(p2,fname)
-        paths[fname] = (path or '.')+'/' 
+        paths[fname] = (path or '.')+'/'
         default_inputs.append(fname)
 
     if not path: path = './'
@@ -171,7 +171,7 @@ def load_file(input_file):
     pl.enable_string_cache()
     ifile = paths[input_file]+input_file
     ldf, dmeta, mmeta = read_annotated_data_lazy(ifile, return_model_meta=True)
-    columns = ldf.collect_schema().names()        
+    columns = ldf.collect_schema().names()
     n0 = ldf.select(pl.len()).collect().item()
     n = dmeta.get('total_size', n0) # N0 is count of rows which is a fallback for older versions
     if dmeta is None: dmeta = {}
@@ -229,7 +229,7 @@ with st.sidebar: #.expander("Select dimensions"):
     f_info = st.empty()
 
     # Reset button - has to be high up in case something fails to load
-    if st.sidebar.button('Reset choices'): 
+    if st.sidebar.button('Reset choices'):
         st_js_blocking('localStorage.removeItem("session_state")')
         st.session_state.clear()
 
@@ -242,7 +242,7 @@ with st.sidebar: #.expander("Select dimensions"):
 
     schema = first_data.collect_schema()
     all_cols = list(schema.names())
-    
+
     obs_dims = get_dimensions(first_data_meta, all_cols, show_grouped)
     obs_dims = [c for c in obs_dims if c not in first_data or not schema[c].is_temporal()]
     all_dims = get_dimensions(first_data_meta, all_cols, False)
@@ -308,9 +308,9 @@ with st.sidebar: #.expander("Select dimensions"):
         args['poststrat'] = st.toggle('Post-stratified?', True,key='poststrat')
         if args['poststrat']: del args['poststrat'] # True is default, so clean the dict from it in that case
 
-        detailed = st.toggle('Fine-grained filter', False,key='fine_grained')    
+        detailed = st.toggle('Fine-grained filter', False,key='fine_grained')
 
-        if res_cont: # Extra settings for continuous data 
+        if res_cont: # Extra settings for continuous data
             cont_transform = st.selectbox('Transform', ['None'] + cont_transform_options, key='transform')
             if cont_transform != 'None': args['cont_transform'] = cont_transform
             agg_fn = st.selectbox('Aggregation', ['mean', 'median', 'sum'], key='aggregation')
@@ -348,7 +348,7 @@ with st.sidebar: #.expander("Select dimensions"):
                 width = st.slider('Width',value=800,min_value=100,max_value=1200,step=50)
             st.subheader('Export')
             export_ct = st.container()
-    
+
     #print(list(st.session_state.keys()))
 
     #print(f"localStorage.setItem('args','{json.dumps(args)}');")
@@ -368,7 +368,7 @@ if sdb and sdb.uam.admin:
     if apanel:
         from salk_toolkit.dashboard import admin_page
         admin_page(sdb)
-        st.stop()    
+        st.stop()
 
 #left, middle, right = st.columns([2, 5, 2])
 #tab = middle.radio('Tabs',['Main'],horizontal=True,label_visibility='hidden')
@@ -395,7 +395,7 @@ if not draw:
     st.text("Plot drawing disabled for refresh speed")
 elif input_files_facet:
     #with st.spinner('Filtering data...'):
-    
+
     # This is a bit hacky because of previous use of the lazy data frames
     dfs = []
     for ifile in input_files:
@@ -428,7 +428,7 @@ else:
     # Iterate over input files
     for i, ifile in enumerate(input_files):
         with cols[i]:
-            
+
             # Heading:
             st.header(os.path.splitext(ifile.replace('_',' '))[0])
 

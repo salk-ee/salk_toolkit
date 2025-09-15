@@ -19,6 +19,7 @@ def streamlit_fn_factory(relpath, curpath):
         subprocess.run(['streamlit', 'run', filename] + sys.argv[1:])
     return run_streamlit_fn_fn
 
+
 # Run explorer app
 run_explorer = streamlit_fn_factory('./explorer.py',os.path.dirname(__file__))
 
@@ -42,7 +43,7 @@ def translate_pot(template, dest, t_func, sources=[]):
     todo_msgstr = {}
 
     existing = { (entry.msgctxt,entry.msgid) for entry in po }
-    
+
     for entry in pot:
         if (entry.msgctxt,entry.msgid) in existing: continue
         todo[entry.msgid].append(entry)
@@ -68,7 +69,7 @@ def translate_pot(template, dest, t_func, sources=[]):
     progress = tqdm(pot,desc='Translating',total=len(todo))
 
     try:
-        for msgid in todo:            
+        for msgid in todo:
             msgstr = todo[msgid][0].msgstr
             if not msgstr: continue
             tmsgstr = t_func(msgstr)
@@ -93,7 +94,7 @@ def translate_dashboard_fn(dashboard_file, target_lang, deepl_key, context=None,
     path, app = os.path.split(apppath)
 
     translator = deepl.Translator(deepl_key)
-    t_func = lambda txt: translator.translate_text(txt, 
+    t_func = lambda txt: translator.translate_text(txt,
                             source_lang=source_lang,
                             target_lang=target_lang,
                             context=context).text
@@ -113,7 +114,7 @@ def translate_dashboard_fn(dashboard_file, target_lang, deepl_key, context=None,
     sources = []
     for f in os.listdir(locale_dir):
         if f.endswith('.po') and f != f'{app}.po':
-            sources.append(os.path.join(locale_dir, f))     
+            sources.append(os.path.join(locale_dir, f))
     if len(sources) > 0:
         slist = [ os.path.basename(s) for s in sources ]
         print(f"Using {len(sources)} extra sources: {', '.join(slist)}")
@@ -122,7 +123,7 @@ def translate_dashboard_fn(dashboard_file, target_lang, deepl_key, context=None,
 
 # %% ../nbs/11_commands.ipynb 9
 def translate_dashboard():
-    
+
     if len(sys.argv)<4:
         print("Requires three parameters: <deepl auth key> <dashboard file name> <language>")
         print("Additional parameters are <'context'> <source language>")

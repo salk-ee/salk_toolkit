@@ -53,8 +53,10 @@ def estimate_legend_columns_horiz_naive(cats, width):
 
 # More sophisticated version that looks at lengths of individual strings across multiple rows
 # ToDo: it should max over each column separately not just look at max(sum(row)). This is close enough though.
+
+
 def estimate_legend_columns_horiz(cats, width, extra_text=[]):
-    
+
     max_cols, restart = len(cats), True
     if extra_text: width -= max(map(legend_font.getlength,extra_text))
     lens = list(map(lambda s: 25+legend_font.getlength(s),cats))
@@ -71,7 +73,7 @@ def estimate_legend_columns_horiz(cats, width, extra_text=[]):
             else: # Just append to existing row
                 rl += l
                 cc += 1
-                
+
     # For very long labels just accept we can't do anything
     max_cols = max(max_cols,1)
 
@@ -113,20 +115,20 @@ def boxplot_manual(data, value_col='value', facets=[], val_format='%', width=800
 
     f_cols = outer_factors+[f['col'] for f in facets[:2] if f is not None]
     df = data.groupby(f_cols,observed=True)[value_col].apply(boxplot_vals,delta=(maxv-minv)/400).reset_index()
-    
+
     shared = {
         'y': alt.Y(field=f0["col"], type='nominal', title=None, sort=f0['order']),
         **(
-            {'yOffset': alt.YOffset(field=f1["col"], type='nominal', title=None, sort=f1['order'])} 
+            {'yOffset': alt.YOffset(field=f1["col"], type='nominal', title=None, sort=f1['order'])}
             if f1 else {}
         ),
         'tooltip': [
-            alt.Tooltip(field=vn, type='quantitative', format=val_format, 
-                       title=f'{vn[0].upper()+vn[1:]} of {value_col}') 
+            alt.Tooltip(field=vn, type='quantitative', format=val_format,
+                       title=f'{vn[0].upper()+vn[1:]} of {value_col}')
             for vn in ['min','q1','mean','q2 (median)','q3','max']
         ] + tooltip[1:]
     }
-    
+
     root = alt.Chart(df).encode(**shared)
     size = 12
 
@@ -140,7 +142,7 @@ def boxplot_manual(data, value_col='value', facets=[], val_format='%', width=800
         x=alt.X('q1p:Q'),
         x2=alt.X2('q3p:Q'),
         **({
-            'color': alt.Color(field=f0["col"], type='nominal', scale=f0['colors'], legend=None)    
+            'color': alt.Color(field=f0["col"], type='nominal', scale=f0['colors'], legend=None)
         } if not f1 else {
             'color': alt.Color(field=f1["col"], type='nominal', scale=f1['colors'],
                             legend=alt.Legend(orient='top',
@@ -161,7 +163,9 @@ def boxplot_manual(data, value_col='value', facets=[], val_format='%', width=800
     )
 
     return (lower_plot + middle_plot + upper_plot + middle_tick)
-# Also create a raw version for the same plot 
+
+
+# Also create a raw version for the same plot
 stk_plot('boxplots-raw', data_format="raw", n_facets=(1,2), priority=0)(boxplot_manual)
 
 # %% ../nbs/03_plots.ipynb 16
@@ -178,7 +182,7 @@ def columns(data, value_col='value', facets=[], val_format='%', width=800, toolt
         y=alt.Y(field=f0["col"], type='nominal', title=None, sort=f0["order"]),
         tooltip = tooltip,
         **({
-            'color': alt.Color(field=f0["col"], type='nominal', scale=f0["colors"], legend=None)    
+            'color': alt.Color(field=f0["col"], type='nominal', scale=f0["colors"], legend=None)
         } if not f1 else {
             'yOffset': alt.YOffset(field=f1["col"], type='nominal', title=None, sort=f1["order"]),
             'color': alt.Color(field=f1["col"], type='nominal', scale=f1["colors"],
@@ -192,12 +196,12 @@ def columns(data, value_col='value', facets=[], val_format='%', width=800, toolt
 @stk_plot('stacked_columns', data_format='longform', draws=False, nonnegative=True, n_facets=(2,2), agg_fn='sum', args={'normalized':'bool'})
 def stacked_columns(data, value_col='value', facets=[], filtered_size=1, val_format='%', width=800, normalized=False, tooltip=[]):
     f0, f1 = facets[0], facets[1]
-    
+
     data[value_col] = data[value_col]/filtered_size
-    
+
     ldict = dict(zip(f1["order"], range(len(f1["order"]))))
     data['f_order'] = data[f1["col"]].astype('object').replace(ldict).astype('int')
-    
+
     plot = alt.Chart(round(data, 3), width = 'container' \
     ).mark_bar().encode(
         x=alt.X(
@@ -211,7 +215,7 @@ def stacked_columns(data, value_col='value', facets=[], filtered_size=1, val_for
         y=alt.Y(field=f0["col"], type='nominal', title=None, sort=f0["order"]),
         tooltip = tooltip,
         **({
-            'color': alt.Color(field=f0["col"], type='nominal', scale=f0["colors"], legend=None)    
+            'color': alt.Color(field=f0["col"], type='nominal', scale=f0["colors"], legend=None)
         } if len(facets)<=1 else {
             'order': alt.Order('f_order:O'),
             'color': alt.Color(field=f1["col"], type='nominal', scale=f1["colors"],
@@ -225,15 +229,15 @@ def stacked_columns(data, value_col='value', facets=[], filtered_size=1, val_for
 @stk_plot('diff_columns', data_format='longform', draws=False, n_facets=(2,2), args={'sort_descending':'bool'})
 def diff_columns(data, value_col='value', facets=[], val_format='%', sort_descending=False, tooltip=[]):
     f0, f1 = facets[0], facets[1]
-    
+
     ind_cols = list(set(data.columns)-{value_col,f1["col"]})
     factors = data[f1["col"]].unique() # use unique instead of categories to allow filters to select the two that remain
-    
+
     idf = data.set_index(ind_cols)
     diff = (idf[idf[f1["col"]]==factors[1]][value_col]-idf[idf[f1["col"]]==factors[0]][value_col]).reset_index()
-    
+
     if sort_descending: f0["order"] = list(diff.sort_values(value_col,ascending=False)[f0["col"]])
-    
+
     plot = alt.Chart(round(diff, 3), width = 'container' \
     ).mark_bar().encode(
         y=alt.Y(field=f0["col"], type='nominal', title=None, sort=f0["order"]),
@@ -243,12 +247,12 @@ def diff_columns(data, value_col='value', facets=[], val_format='%', sort_descen
             title=f"{factors[1]} - {factors[0]}",
             axis=alt.Axis(format=val_format, title=f"{factors[0]} <> {factors[1]}"),
             #scale=alt.Scale(domain=[0,30]) #see lõikab mõnedes jaotustes parema ääre ära
-        ), 
+        ),
         tooltip=[
             alt.Tooltip(field=f0["col"], type='nominal'),
             alt.Tooltip(field=value_col, type='quantitative', format=val_format, title=f'{value_col} difference')
         ],
-        color=alt.Color(field=f0["col"], type='nominal', scale=f0["colors"], legend=None)    
+        color=alt.Color(field=f0["col"], type='nominal', scale=f0["colors"], legend=None)
     )
     return plot
 
@@ -275,9 +279,9 @@ def massplot(data, value_col='value', facets=[], filtered_size=1, val_format='%'
         stroke=alt.value('#777'),
         tooltip = tooltip + [ alt.Tooltip('group_size:N',format='.1%',title='Group size') ],
         **({
-            'color': alt.Color(field=f0["col"], type='nominal', scale=f0["colors"], legend=None)    
+            'color': alt.Color(field=f0["col"], type='nominal', scale=f0["colors"], legend=None)
         } if not f1 else {
-            'yOffset': alt.YOffset(field=f1["col"], type='nominal', title=None, sort=f1["order"]), 
+            'yOffset': alt.YOffset(field=f1["col"], type='nominal', title=None, sort=f1["order"]),
             'color': alt.Color(field=f1["col"], type='nominal', scale=f1["colors"],
                             legend=alt.Legend(orient='top',
                                             columns=estimate_legend_columns_horiz(f1["order"],width)))
@@ -301,25 +305,26 @@ def make_start_end(x,value_col,cat_col,cat_order,neutral,n_negative):
     if len(neutral)==0: # No neutrals
         x_other = x.copy()
         x_mids = []
-    else: # Handle neutrals    
+    else: # Handle neutrals
         mids = neutral
         nonmid = [ i for i in range(len(x)) if i not in mids ]
-    
+
         scale_start = -1.0
         x_mid = x.iloc[mids,:].copy()
-        x_other = x.iloc[nonmid,:].copy()        
+        x_other = x.iloc[nonmid,:].copy()
 
         # Compute the positions of the neutrals
         x_mid.loc[:,'end'] = scale_start + x_mid[value_col].cumsum()
         x_mid.loc[:,'start'] = x_mid.loc[:,'end'] - x_mid[value_col]
         x_mids = [x_mid]
-    
+
     o_mid = n_negative
     x_other.loc[:,'end'] = x_other[value_col].cumsum() - x_other[:o_mid][value_col].sum()
     x_other.loc[:,'start'] = (x_other[value_col][::-1].cumsum()[::-1] - x_other[o_mid:][value_col].sum())*-1
     res = pd.concat([x_other] + x_mids).dropna(subset=[value_col]) # drop any na rows added in the filling in step
     #print("RES",res)
     return res
+
 
 @stk_plot('likert_bars', data_format='longform', draws=False, requires=[{'likert':True}], n_facets=(1,3), sort_numeric_first_facet=True, priority=50)
 def likert_bars(data, value_col='value', facets=[],  tooltip=[], outer_factors=[], width=800):
@@ -339,13 +344,13 @@ def likert_bars(data, value_col='value', facets=[],  tooltip=[], outer_factors=[
     bar_data = data.groupby(gb_cols, group_keys=False, observed=False)[data.columns]\
                         .apply(make_start_end, value_col=value_col,cat_col=f0["col"],cat_order=f0["order"],
                             include_groups=False,neutral=ninds,n_negative=len(neg))
-    
+
     plot = alt.Chart(bar_data).mark_bar() \
         .encode(
             x=alt.X('start:Q', axis=alt.Axis(title=None, format = '%')),
             x2=alt.X2('end:Q'),
-            y=alt.Y(field=f1["col"], type='nominal', 
-                    axis=alt.Axis(title=None, offset=5, ticks=False, minExtent=60, domain=False), 
+            y=alt.Y(field=f1["col"], type='nominal',
+                    axis=alt.Axis(title=None, offset=5, ticks=False, minExtent=60, domain=False),
                     sort=f1["order"]),
             tooltip=tooltip,
             color=alt.Color(
@@ -358,7 +363,7 @@ def likert_bars(data, value_col='value', facets=[],  tooltip=[], outer_factors=[
                 ),
                 scale=f0["colors"],
             ),
-            **({ 
+            **({
                 'yOffset': alt.YOffset(field=f2["col"], type='nominal', title=None, sort=f2["order"])
             } if f2 else {})
         )
@@ -371,6 +376,8 @@ def kde_bw(ar):
     return max(silvermans_rule(ar) or 0.0, 0.75*min_diff(ar[:,0]))
 
 # Calculate KDE ourselves using a fast libary. This gets around having to do sampling which is unstable
+
+
 def kde_1d(vc, value_col, ls, scale=False, bw=None):
     ar = vc.to_numpy()
     if bw is None: bw = kde_bw(ar) # This can be problematic in small segments, so best calculated globally
@@ -378,36 +385,37 @@ def kde_1d(vc, value_col, ls, scale=False, bw=None):
     if scale: y*=len(vc)
     return pd.DataFrame({'density': y, value_col: ls})
 
+
 @stk_plot('density', factor_columns=3, draws=True, aspect_ratio=(1.0/1.0), n_facets=(0,1), args={'stacked':'bool', 'bw':'float'}, no_question_facet=True)
 def density(data, value_col='value', facets=[], tooltip=[], outer_factors=[], stacked=False, bw=None, width=800):
     f0 = facets[0] if len(facets)>0 else None
     gb_cols = [ c for c in outer_factors+[f['col'] for f in facets] if c is not None ] # There can be other extra cols (like labels) that should be ignored
 
-    # Filter out extreme outliers (one thousandth on each side). 
+    # Filter out extreme outliers (one thousandth on each side).
     # Because at 100k+, these get very extreme even for normal distributions
     lims = list(data[value_col].quantile([.005,0.995]))
     data = data[(data[value_col]>=lims[0]) & (data[value_col]<=lims[1])]
-    
+
     ls = np.linspace(data[value_col].min()-1e-10,data[value_col].max()+1e-10,100)
     if bw is None: bw = kde_bw(data[[value_col]].sample(10000,replace=True).to_numpy()) # Can get slow for large data otherwise
     ndata = gb_in_apply(data,gb_cols,cols=[value_col],fn=kde_1d,value_col=value_col,ls=ls,scale=stacked,bw=bw).reset_index()
 
     if f0: selection = alt.selection_point(fields=[f0["col"]], bind='legend')
 
-    if stacked: 
+    if stacked:
         if f0:
             ldict = dict(zip(f0["order"], reversed(range(len(f0["order"])))))
             ndata.loc[:,'order'] = ndata[f0["col"]].astype('object').replace(ldict).astype('int')
-        
+
         ndata['density'] /= len(data)
         plot=alt.Chart(ndata).mark_area(interpolate='natural').encode(
             x=alt.X(field=value_col, type='quantitative'),
             y=alt.Y('density:Q', axis=alt.Axis(title=None, format='%'), stack='zero'),
             tooltip=tooltip[1:],
-            **({'fill': alt.Fill(field=f0["col"], type='nominal', scale=f0["colors"], 
+            **({'fill': alt.Fill(field=f0["col"], type='nominal', scale=f0["colors"],
                                 legend=alt.Legend(orient='top',
-                                                columns=estimate_legend_columns_horiz(f0["order"],width))), 
-                'order': alt.Order('order:O'), 
+                                                columns=estimate_legend_columns_horiz(f0["order"],width))),
+                'order': alt.Order('order:O'),
                 'opacity': alt.condition(selection, alt.value(1), alt.value(0.15))
                 } if f0 else {})
         )
@@ -416,10 +424,10 @@ def density(data, value_col='value', facets=[], tooltip=[], outer_factors=[], st
             x=alt.X(field=value_col, type='quantitative'),
             y=alt.Y('density:Q', axis=alt.Axis(title=None, format='%')),
             tooltip=tooltip[1:],
-            **({'color': alt.Color(field=f0["col"], type='nominal', scale=f0["colors"], 
+            **({'color': alt.Color(field=f0["col"], type='nominal', scale=f0["colors"],
                                 legend=alt.Legend(orient='top',
                                         columns=estimate_legend_columns_horiz(f0["order"],width))),
-                'order': alt.Order('order:O'), 
+                'order': alt.Order('order:O'),
                 'opacity': alt.condition(selection, alt.value(1), alt.value(0.15))
                 } if f0 else {})
         )
@@ -428,7 +436,8 @@ def density(data, value_col='value', facets=[], tooltip=[], outer_factors=[], st
 
     return plot
 
-# Also create a raw version for the same plot 
+
+# Also create a raw version for the same plot
 stk_plot('density-raw', data_format="raw", factor_columns=3, aspect_ratio=(1.0/1.0), n_facets=(0,1), args={'stacked':'bool', 'bw':'float'}, no_question_facet=True, priority=0)(density)
 
 # %% ../nbs/03_plots.ipynb 31
@@ -436,11 +445,11 @@ stk_plot('density-raw', data_format="raw", factor_columns=3, aspect_ratio=(1.0/1
 def violin(data, value_col='value', facets=[], tooltip=[], outer_factors=[], bw=None, width=800):
     f0, f1 = facets[0], facets[1] if len(facets)>1 else None
     gb_cols = outer_factors + [ f['col'] for f in facets ] # There can be other extra cols (like labels) that should be ignored
-    
+
     ls = np.linspace(data[value_col].min()-1e-10,data[value_col].max()+1e-10,200)
     if bw is None: bw = kde_bw(data[[value_col]].sample(10000,replace=True).to_numpy())
     ndata = gb_in_apply(data,gb_cols,cols=[value_col],fn=kde_1d,value_col=value_col,ls=ls,scale=True,bw=bw).reset_index()
-    
+
     if f1:
         ldict = dict(zip(f1["order"], reversed(range(len(f1["order"])))))
         ndata.loc[:,'order'] = ndata[f1["col"]].astype('object').replace(ldict).astype('int')
@@ -449,20 +458,21 @@ def violin(data, value_col='value', facets=[], tooltip=[], outer_factors=[], bw=
     plot=alt.Chart(ndata).mark_area(interpolate='natural').encode(
             x=alt.X(field=value_col, type='quantitative'),
             y=alt.Y('density:Q',axis=alt.Axis(title=None, labels=False, values=[0], grid=False),stack='center'),
-            row=alt.Row(field=f0["col"], type='nominal', 
+            row=alt.Row(field=f0["col"], type='nominal',
                 header=alt.Header(orient='top',title=None), spacing=5, sort=f0["order"]),
             tooltip = tooltip[1:],
             #color=alt.Color(f'{question_col}:N'),
-            **({'color': alt.Color(field=f1["col"], type='nominal', scale=f1["colors"], 
+            **({'color': alt.Color(field=f1["col"], type='nominal', scale=f1["colors"],
                     legend=alt.Legend(orient='top',
-                            columns=estimate_legend_columns_horiz(f1["order"],width))), 
-                    'order': alt.Order('order:O')} if f1 else 
+                            columns=estimate_legend_columns_horiz(f1["order"],width))),
+                    'order': alt.Order('order:O')} if f1 else
                 {'color': alt.Color(field=f0["col"], type='nominal', scale=f0["colors"], legend=None)})
         ).properties(width=width,height=70)
 
     return plot
 
-# Also create a raw version for the same plot 
+
+# Also create a raw version for the same plot
 stk_plot('violin-raw', data_format='raw', n_facets=(1,2), as_is=True, args={'bw':'float'})(violin)
 
 # %% ../nbs/03_plots.ipynb 33
@@ -471,39 +481,40 @@ def cluster_based_reorder(X):
     pd = sp.spatial.distance.pdist(X)#,metric='cosine')
     return hierarchy.leaves_list(hierarchy.optimal_leaf_ordering(hierarchy.ward(pd), pd))
 
+
 @stk_plot('matrix', data_format='longform', aspect_ratio=(1/0.8), n_facets=(2,2), args={'reorder':'bool', 'log_colors':'bool'}, priority=55)
 def matrix(data, value_col='value', facets=[], val_format='%', reorder=False, log_colors=False, tooltip=[]):
     f0, f1 = facets[0], facets[1]
-    
+
     fcols = [c for c in data.columns if c not in [value_col,f0["col"]]]
     if len(fcols)==1 and reorder: # Reordering only works if no external facets
         X = data.pivot(columns=f1["col"],index=f0["col"]).to_numpy()
         f0["order"] = np.array(f0["order"])[cluster_based_reorder(X)]
         f1["order"] = np.array(f1["order"])[cluster_based_reorder(X.T)]
-    
+
     if log_colors:
         data['val_log'] = np.log(data[value_col])
-        data['val_log'] -= data['val_log'].min() # Keep it all positive 
+        data['val_log'] -= data['val_log'].min() # Keep it all positive
         scale_v = 'val_log'
     else: scale_v = value_col
 
     # Find max absolute value to keep color scale symmetric
-    mi, ma = data[scale_v].min(),data[scale_v].max() 
+    mi, ma = data[scale_v].min(),data[scale_v].max()
     dmax = float(max(-mi,ma))
 
     if mi<0: scale, smid, swidth = { 'scheme':'redyellowgreen', 'domainMid':0, 'domainMin':-dmax, 'domainMax':dmax }, 0, 2*dmax
-    else: scale, smid, swidth = { 'scheme': 'yellowgreen', 'domainMin': 0, 'domainMax':dmax }, 0, 2*dmax, #dmax/2, dmax 
+    else: scale, smid, swidth = { 'scheme': 'yellowgreen', 'domainMin': 0, 'domainMax':dmax }, 0, 2*dmax, #dmax/2, dmax
 
     # Draw colored boxes
     plot = alt.Chart(data).mark_rect().encode(
         x=alt.X(field=f1["col"], type='nominal', title=None, sort=f1["order"]),
         y=alt.Y(field=f0["col"], type='nominal', title=None, sort=f0["order"]),
-        color=alt.Color(field=scale_v, type='quantitative', 
-                        scale=alt.Scale(**scale), 
+        color=alt.Color(field=scale_v, type='quantitative',
+                        scale=alt.Scale(**scale),
                         legend=(alt.Legend(title=None) if not log_colors else None)),
         tooltip=tooltip,
     )
-    
+
     # Add in numerical values
     if len(f1["order"])<20: # only if we have less than 20 columns
         text = plot.mark_text().encode(
@@ -516,7 +527,7 @@ def matrix(data, value_col='value', facets=[], val_format='%', reorder=False, lo
             tooltip=tooltip
         )
         plot += text
-        
+
     return plot
 
 # %% ../nbs/03_plots.ipynb 37
@@ -528,15 +539,15 @@ def corr_matrix(data, value_col='value', facets=[], val_format='%', reorder=Fals
     cm = data.pivot_table(index='id',columns=facets[0]['col'],values=value_col,observed=False).corr().reset_index(names='index')
     cm_long = cm.melt(id_vars=['index'],value_vars=cm.columns, var_name=facets[0]['col'], value_name=value_col)
 
-    order = facets[0]['order'] 
+    order = facets[0]['order']
     lower_tri = (cm_long['index'].map(lambda x: order.index(x)).astype(int)>cm_long[facets[0]['col']].map(lambda x: order.index(x)).astype(int))
     cm_long = cm_long[lower_tri]
-    
+
     return matrix(cm_long, value_col=value_col, facets=[{'col':'index','order':facets[0]['order']},{'col':facets[0]['col'],'order':facets[0]['order']}], val_format=val_format,
                   tooltip=[alt.Tooltip(field=value_col, type='quantitative'),alt.Tooltip('index:N'),alt.Tooltip(field=facets[0]['col'], type='nominal')])
 
 # %% ../nbs/03_plots.ipynb 39
-# Convert a categorical fx facet into a continous value and axis if the categories are numeric. 
+# Convert a categorical fx facet into a continous value and axis if the categories are numeric.
 def cat_to_cont_axis(data, fx):
     x_cont = pd.to_numeric(data[fx["col"]].apply(unescape_vega_label),errors='coerce') # Unescape required as . gets escaped
     if x_cont.notna().all():
@@ -573,9 +584,6 @@ def lines(data, value_col='value', facets=[], smooth=False, width=800, tooltip=[
     )
     return plot
 
-
-
-
 # %% ../nbs/03_plots.ipynb 42
 def draws_to_hdis(data,vc,hdi_vals):
     gbc = [ c for c in data.columns if c not in [vc,'draw'] ]
@@ -588,12 +596,13 @@ def draws_to_hdis(data,vc,hdi_vals):
     df = ldf.pivot(index=gbc+['hdi'], columns=ldf.columns[-3],values=vc).reset_index()
     return df
 
+
 @stk_plot('lines_hdi',data_format='longform', draws=True, requires=[{},{'ordered':True}], n_facets=(2,2), args={'hdi1':'float','hdi2':'float'})
 @stk_plot('line_hdi',data_format='longform', draws=True, requires=[{'ordered':True}], n_facets=(1,1), args={'hdi1':'float','hdi2':'float'})
 def lines_hdi(data, value_col='value', facets=[], width=800, tooltip=[], val_format='.2f', hdi1=0.94, hdi2=0.5):
     if len(facets)==1: fx = facets[0]
     else: fy, fx = facets[0], facets[1]
-    
+
     hdf = draws_to_hdis(data,value_col,[hdi1,hdi2])
 
     if len(facets)>1:
@@ -623,11 +632,11 @@ def lines_hdi(data, value_col='value', facets=[], width=800, tooltip=[], val_for
                 scale=fy["colors"],
                 legend=alt.Legend(symbolOpacity=1)
                 ),
-            'opacity':alt.condition(selection, 
+            'opacity':alt.condition(selection,
                 alt.Opacity('hdi:N', legend=None, scale=to_alt_scale({0.5:0.75, 0.94:0.25})),
                 alt.value(0.1)) } if len(facets)>1 else {})
         )
-        
+
     if len(facets)>1: plot = plot.add_params(selection)
     return plot
 
@@ -657,14 +666,14 @@ def area_smooth(data, value_col='value', facets=[], width=800, tooltip=[]):
 
 # %% ../nbs/03_plots.ipynb 46
 def likert_aggregate(x, cat_col, cat_order, value_col):
-    
+
     cc, vc = x[cat_col], x[value_col]
     cats = cat_order
-    
+
     mid, odd = len(cats)//2, len(cats)%2
-    
+
     nonmid_sum = vc[cc !=  cats[mid]].sum() if odd else vc.sum()
-    
+
     #print(len(x),x.columns,x.head())
     pol = ( np.minimum(
                 vc[cc.isin(cats[:mid])].sum(),
@@ -675,8 +684,9 @@ def likert_aggregate(x, cat_col, cat_order, value_col):
             nonmid_sum )
 
     rel = 1.0-nonmid_sum/vc.sum()
-    
+
     return pd.Series({ 'polarisation': pol, 'radicalisation':rad, 'relevance':rel})
+
 
 @stk_plot('likert_rad_pol',data_format='longform', requires=[{'likert':True}], args={'normalized':'bool'}, n_facets=(1,2))
 def likert_rad_pol(data, value_col='value', facets=[], normalized=True, width=800, outer_factors=[], tooltip=[]):
@@ -684,11 +694,11 @@ def likert_rad_pol(data, value_col='value', facets=[], normalized=True, width=80
     #gb_cols = list(set(data.columns)-{ f0["col"], value_col }) # Assume all other cols still in data will be used for factoring
     gb_cols = outer_factors + [f['col'] for f in facets[1:]] # There can be other extra cols (like labels) that should be ignored
     likert_indices = gb_in_apply(data,gb_cols,likert_aggregate,cat_col=f0["col"],cat_order=f0["order"],value_col=value_col).reset_index()
-    
+
     if normalized and len(likert_indices)>1: likert_indices.loc[:,['polarisation','radicalisation']] = likert_indices[['polarisation','radicalisation']].apply(sps.zscore)
-    
+
     if f1: selection = alt.selection_point(fields=[f1["col"]], bind='legend')
-        
+
     plot = alt.Chart(likert_indices).mark_point().encode(
         x=alt.X('polarisation:Q'),
         y=alt.Y('radicalisation:Q'),
@@ -699,20 +709,20 @@ def likert_rad_pol(data, value_col='value', facets=[], normalized=True, width=80
             alt.Tooltip('polarisation:Q', format='.2'),
             alt.Tooltip('relevance:Q', format='.2')
         ] + tooltip[2:],
-        **({'color': alt.Color(field=f1["col"], type='nominal', scale=f1["colors"], 
+        **({'color': alt.Color(field=f1["col"], type='nominal', scale=f1["colors"],
                                 legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f1["order"],width))),
             'opacity':alt.condition(selection, alt.value(1), alt.value(0.15)),
             } if f1 else {})
         )
     if f1: plot = plot.add_params(selection)
-    
+
     return plot
 
 # %% ../nbs/03_plots.ipynb 48
 @stk_plot('barbell', data_format='longform', draws=False, n_facets=(2,2))
 def barbell(data, value_col='value', facets=[], filtered_size=1, val_format='%', width=800, tooltip=[]):
     f0, f1 = facets[0], facets[1]
-    
+
     chart_base = alt.Chart(data).encode(
         x=alt.X(field=value_col, type='quantitative', title=None, axis=alt.Axis(format=val_format)),
         y=alt.Y(field=f0["col"], type='nominal', title=None, sort=f0["order"]),
@@ -739,7 +749,7 @@ def barbell(data, value_col='value', facets=[], filtered_size=1, val_format='%',
     ).add_params(
         selection
     )#.interactive()
-    
+
     return chart
 
 # %% ../nbs/03_plots.ipynb 51
@@ -759,19 +769,19 @@ def geoplot(data, topo_feature, value_col='value', facets=[], val_format='.2f', 
     data = data.copy()
     data[f0["col"]] = data[f0["col"]].apply(lambda x: unescape_vega_label(x))
 
-    lmi,lma = data[value_col].min(),data[value_col].max() 
+    lmi,lma = data[value_col].min(),data[value_col].max()
     mi, ma = value_range if value_range and not separate_axes else (lmi,lma)
-    
+
     # Only show maximum on legend if min and max too close together
     legend_vals = [lmi,lma] if (lma-lmi)/(ma-mi) > 0.5 else [lma]
     rel_range = [(lmi-mi)/(ma-mi), (lma-mi)/(ma-mi)]
 
     ofv = data[outer_factors[0]].iloc[0] if outer_factors else None
     # If colors provided, create a gradient based on that
-    if (outer_factors and outer_colors and  
+    if (outer_factors and outer_colors and
         data[outer_factors[0]].nunique() == 1 and
         ofv in outer_colors):
-        
+
         grad = gradient_from_color(outer_colors[ofv],range=rel_range)
         scale = { 'domain': [lmi,lma], 'range': grad}
     else: # Blues for pos, reds for neg, redblue for both
@@ -780,10 +790,10 @@ def geoplot(data, topo_feature, value_col='value', facets=[], val_format='.2f', 
         dmax = max(-mi,ma)
         if mi<0.0 and ma>0.0: rel_range = [lmi/dmax, lma/dmax] # Spans both sides, so scale by dmax
         elif ma<0.0: rel_range = [-rel_range[1], rel_range[0]] # Use negative part i.e. red scale
-        
+
         grad = gradient_subrange(redblue_gradient, 11, range=rel_range)
         scale = { 'domain': [lmi,lma], 'range': grad}
-        
+
         # if mi<0 and ma>0: scale = { 'scheme':'redblue', 'domainMid':0, 'domainMin':-dmax, 'domainMax':dmax, 'rangeMax': 0.1 }
         # elif ma<0: scale = { 'scheme': 'reds', 'reverse': True }#, 'domainMin': 0, 'domainMax':dmax }
         # else: scale = { 'scheme': 'blues' }#, 'domainMin': 0, 'domainMax':dmax }
@@ -801,7 +811,7 @@ def geoplot(data, topo_feature, value_col='value', facets=[], val_format='.2f', 
         color=alt.Color(
             field=value_col, type='quantitative',
             scale=alt.Scale(**scale), # To use color scale, consider switching to opacity for value
-            legend=alt.Legend(format=val_format, title=None, orient='top-left',gradientThickness=6, 
+            legend=alt.Legend(format=val_format, title=None, orient='top-left',gradientThickness=6,
                                 values=[lmi,lma]),
         )
     ).project('mercator')
@@ -854,27 +864,30 @@ def split_ordered(cvs):
 
 # Split a series of weights into groups of roughly equal sum
 # This algorithm is greedy and does not split values but it is fast and should be good enough for most uses
+
+
 def split_even_weight(ws, n):
     cws = np.cumsum(ws)
     cws = (cws/(cws[-1]/n)).astype('int')
     return (split_ordered(cws)+1)[:-1]
 
 # %% ../nbs/03_plots.ipynb 58
-def fd_mangle(vc, value_col, factor_col, n_points=10): 
-    
+def fd_mangle(vc, value_col, factor_col, n_points=10):
+
     vc = vc.sort_values(value_col)
-    
+
     ws = np.ones(len(vc))
     splits = split_even_weight(ws, n_points)
-    
+
     ccodes, cats = vc[factor_col].factorize()
-    
+
     ofreqs = np.stack([ np.bincount(g, weights=gw, minlength=len(cats))/gw.sum()
                         for g,gw in zip(np.split(ccodes,splits),np.split(ws,splits)) ],axis=0)
-    
+
     df = pd.DataFrame(ofreqs, columns=cats)
     df['percentile'] = np.linspace(0,1,n_points)
     return df.melt(id_vars='percentile',value_vars=cats,var_name=factor_col,value_name='density')
+
 
 @stk_plot('facet_dist', data_format='raw', factor_columns=3,aspect_ratio=(1.0/1.0), n_facets=(1,1), no_question_facet=True)
 def facet_dist(data, value_col='value',facets=[], tooltip=[], outer_factors=[]):
@@ -899,19 +912,20 @@ def vectorized_mn(prob_matrix):
     r = np.random.rand(prob_matrix.shape[0])[:,None]
     return (s < r).sum(axis=1)
 
+
 def linevals(vals, value_col, n_points, dim, cats, ccodes=None, ocols=None, boost_signal=True,gc=False, weights=None):
     ws = weights if weights is not None else np.ones(len(vals))
-    
+
     order = np.lexsort((vals,ccodes)) if dim and gc else np.argsort(vals)
     splits = split_even_weight(ws[order], n_points)
     aer = np.array([ g.mean() for g in np.split(vals[order],splits) ])
     pdf = pd.DataFrame(aer, columns=[value_col])
-    
+
     if dim:
         # Find the frequency of each category in ccodes
         osignal = np.stack([ np.bincount(g, weights=gw, minlength=len(cats))/gw.sum()
                             for g,gw in zip(np.split(ccodes[order],splits),np.split(ws[order],splits)) ],axis=0)
-        
+
         ref_p = osignal.mean(axis=0)+1e-10
         np.random.seed(0) # So they don't change every re-render
 
@@ -930,7 +944,7 @@ def linevals(vals, value_col, n_points, dim, cats, ccodes=None, ocols=None, boos
         #pdf['weight'] = np.minimum(pdf[cats].max(axis=1),pdf['matches'])
 
     pdf['pos'] = np.arange(0,1,1.0/len(pdf))
-    
+
     if ocols is not None:
         for iv in ocols.index:
             pdf[iv] = ocols[iv]
@@ -941,14 +955,14 @@ def linevals(vals, value_col, n_points, dim, cats, ccodes=None, ocols=None, boos
 @stk_plot('ordered_population', data_format='raw', factor_columns=3, aspect_ratio=(1.0/1.0), plot_args={'group_categories':'bool'}, n_facets=(0,1), no_question_facet=True)
 def ordered_population(data, value_col='value', facets=[], tooltip=[], outer_factors=[], group_categories=False):
     f0 = facets[0] if len(facets)>0 else None
-    
+
     n_points, maxn = 200, 1000000
-    
-     # TODO: use weight if available. linevals is ready for it, just needs to be fed in. 
-    
+
+     # TODO: use weight if available. linevals is ready for it, just needs to be fed in.
+
     # Sample down to maxn points if exceeding that
     if len(data)>maxn: data = data.sample(maxn,replace=False)
-    
+
     data = data.sort_values(outer_factors)
     vals = data[value_col].to_numpy()
 
@@ -959,27 +973,27 @@ def ordered_population(data, value_col='value', facets=[], tooltip=[], outer_fac
     else:
         fcol = None
         cat_idx, cats = None, []
-        
+
     if outer_factors:
-        
+
         # This is optimized to not use pandas.groupby as it makes it about 2x faster - which is 2+ seconds with big datasets
-        
+
         # Assume data is sorted by outer_factors, split vals into groups by them
         ofids = np.stack([ data[f].cat.codes.values for f in outer_factors ],axis=1)
-        splits = split_ordered(ofids)        
+        splits = split_ordered(ofids)
         groups = np.split(vals,splits)
         cgroups = np.split(cat_idx,splits) if len(facets)>=1 else groups
-        
+
         # Perform the equivalent of groupby
         ocols = data.iloc[[0]+list(splits)][outer_factors]
-        tdf = pd.concat([linevals(g,value_col=value_col,dim=fcol, ccodes=gc, cats=cats, n_points=n_points,ocols=ocols.iloc[i,:],gc=group_categories) 
+        tdf = pd.concat([linevals(g,value_col=value_col,dim=fcol, ccodes=gc, cats=cats, n_points=n_points,ocols=ocols.iloc[i,:],gc=group_categories)
                         for i,(g,gc) in enumerate(zip(groups,cgroups))])
 
         #tdf = data.groupby(outer_factors,observed=True).apply(linevals,value_col=value_col,dim=fcol,cats=cats,n_points=n_points,gc=group_categories,include_groups=False).reset_index()
     else:
         tdf = linevals(vals,value_col=value_col,dim=fcol,ccodes=cat_idx,cats=cats,n_points=n_points, gc=group_categories)
         #tdf = linevals(data,value_col=value_col,cats=cats,dim=fcol,n_points=n_points,gc=group_categories)
-        
+
     #if boost_signal:
     #    tdf['matches'] = np.minimum(tdf['matches'],tdf['kld']/tdf['kld'].quantile(0.75))
 
@@ -1004,7 +1018,6 @@ def ordered_population(data, value_col='value', facets=[], tooltip=[], outer_fac
             ) if len(facets)>=1 else alt.value('red'),
         tooltip=tooltip+([alt.Tooltip('probability:Q',format='.1%',title='category prob.')] if len(facets)>=1 else [])
     )#.add_selection(selection)
-
 
     rule = alt.Chart().mark_rule(color='red', strokeDash=[2, 3]).encode(
         y=alt.Y('mv:Q')
@@ -1045,10 +1058,10 @@ def marimekko(data, value_col='value', facets=[], val_format='%', width=800, too
                                                                                                                         'y2': (df['ym'].cumsum()- df['ym']/2 + df['yv']/2)/df['ym'].sum(), })).reset_index()
     else: # Regular marimekko
         ndata = data.groupby(outer_factors+[xcol],observed=False)[[ycol,value_col,'w']].apply(lambda df: pd.DataFrame({ ycol: df[ycol], 'w': df['w'].sum(),
-                                                                                                                        'yv': df['w']/df['w'].sum(), 
+                                                                                                                        'yv': df['w']/df['w'].sum(),
                                                                                                                         'y2': df['w'].cumsum()/df['w'].sum()})).reset_index()
         ndata['y1'] = ndata['y2']-ndata['yv']
-    
+
     ndata = ndata.groupby(outer_factors+[ycol],observed=False)[[xcol,'yv','y1','y2','w']].apply(lambda df: pd.DataFrame({ xcol: df[xcol], 'xv': df['w']/df['w'].sum(), 'x2': df['w'].cumsum()/df['w'].sum(), 'yv':df['yv'], 'y1':df['y1'], 'y2':df['y2']})).reset_index()
     ndata['x1'] = ndata['x2']-ndata['xv']
 
@@ -1064,7 +1077,7 @@ def marimekko(data, value_col='value', facets=[], val_format='%', width=800, too
     ndata.iloc[0,-1] = xcol
 
     #selection = alt.selection_point(fields=[yvar], bind="legend"
-    
+
     STROKE = 0.25
     base = alt.Chart(ndata)
     plot = base.mark_rect(
@@ -1088,13 +1101,13 @@ def marimekko(data, value_col='value', facets=[], val_format='%', width=800, too
                 "y1:Q",
                 axis=alt.Axis(
                     zindex=1, format="%", title='', grid=False, labels=not separate
-                    ),  
+                    ),
                 scale=alt.Scale(domain=[0, 1])
             ),
             y2=alt.Y2("y2:Q"),
             color=alt.Color(
                 f"{ycol}:N",
-                legend=(alt.Legend(orient='top',titleAlign='center',titleOrient='left',columns=estimate_legend_columns_horiz(f0['order'],width,f0['col'])) 
+                legend=(alt.Legend(orient='top',titleAlign='center',titleOrient='left',columns=estimate_legend_columns_horiz(f0['order'],width,f0['col']))
                         if len(f0['order'])<=5 else alt.Legend(orient='right')), # This plot needs the vertical space to be useful for 5+ cats
                 #legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f0['order'],width)),
                 #legend=alt.Legend(orient='top',titleOrient='left', symbolStrokeWidth=0), #title=f"{yvar}"),
@@ -1129,5 +1142,5 @@ def marimekko(data, value_col='value', facets=[], val_format='%', width=800, too
         #x=alt.datum(0),     # Center the title horizontally
         y=alt.datum(0)      # Anchor to the bottom
     )
-    
+
     return plot + text + custom_title

@@ -35,8 +35,8 @@ from salk_toolkit.validation import DataMeta, DataDescription, soft_validate
 
 # %% ../nbs/01_io.ipynb 5
 # Ignore fragmentation warnings
-warnings.filterwarnings("ignore", 
-                        "DataFrame is highly fragmented.*", 
+warnings.filterwarnings("ignore",
+                        "DataFrame is highly fragmented.*",
                         pd.errors.PerformanceWarning)
 
 # %% ../nbs/01_io.ipynb 6
@@ -63,20 +63,25 @@ def str_from_list(val):
 #  a global list of files that have been loaded
 stk_loaded_files_set = set()
 
+
 def get_loaded_files():
     global stk_loaded_files_set
     return list(stk_loaded_files_set)
+
 
 def reset_file_tracking():
     global stk_loaded_files_set
     stk_loaded_files_set.clear()
 
+
 # a global map that allows remapping file paths/names to different paths
 stk_file_map = {}
+
 
 def get_file_map():
     global stk_file_map
     return stk_file_map.copy()
+
 
 def set_file_map(file_map):
     global stk_file_map
@@ -90,23 +95,23 @@ def read_concatenate_files_list(meta,data_file=None,path=None,**kwargs):
     opts = meta['read_opts'] if 'read_opts' in meta else {}
     if data_file: data_files = [{ 'file': data_file, 'opts': opts}]
     elif meta.get('file'): data_files = [{ 'file': meta['file'], 'opts': opts }]
-    elif meta.get('files'): data_files = meta['files'] 
+    elif meta.get('files'): data_files = meta['files']
     else: raise Exception("No files provided")
-    
+
     data_files = [  {'opts': opts, **f } if isinstance(f,dict) else
                     {'opts': opts, 'file': f } for f in data_files ]
-    
+
     cat_dtypes = {}
     raw_dfs, metas, einfo = [], [], {}
     for fi, fd in enumerate(data_files):
-        
+
         data_file, opts = fd['file'], fd['opts']
         if path: data_file = os.path.join(os.path.dirname(path),data_file)
         mapped_file = stk_file_map.get(data_file,data_file)
 
         extension = os.path.splitext(data_file)[1][1:].lower()
         if extension in ['json', 'parquet']: # Allow loading metafiles or annotated data
-            if extension == 'json': warn(f"Processing {data_file}") # Print this to separate warnings for input jsons from main 
+            if extension == 'json': warn(f"Processing {data_file}") # Print this to separate warnings for input jsons from main
             # Pass in orig_data_file here as it might loop back to this function here and we need to preserve paths
             raw_data, meta = read_annotated_data(data_file, infer=False, **kwargs)
             if meta is not None: metas.append(meta)
@@ -124,10 +129,10 @@ def read_concatenate_files_list(meta,data_file=None,path=None,**kwargs):
             raise Exception(f"Not a known file format for {data_file}: {extension}")
 
         stk_loaded_files_set.add(mapped_file)
-        
+
         # If data is multi-indexed, flatten the index
         if isinstance(raw_data.columns,pd.MultiIndex): raw_data.columns = [" | ".join(tpl) for tpl in raw_data.columns]
-        
+
         # Add extra columns to raw data that contain info about the file. Always includes column 'file' with filename and file_ind with index
         # Can be used to add survey_date or other useful metainfo
         if len(data_files)>1: raw_data['file_ind'] = fi
@@ -145,7 +150,7 @@ def read_concatenate_files_list(meta,data_file=None,path=None,**kwargs):
                 if c not in cat_dtypes or len(cat_dtypes[c].categories)<=len(raw_data[c].dtype.categories):
                     cat_dtypes[c] = raw_data[c].dtype
                 raw_data[c] = raw_data[c].astype('object')
-            
+
         raw_dfs.append(raw_data)
 
     fdf = pd.concat(raw_dfs)
@@ -165,7 +170,7 @@ def read_concatenate_files_list(meta,data_file=None,path=None,**kwargs):
                 warn(f"Categories for {c} are different between files - merging to total {len(dtype.categories)} cats")
             fdf[c] = pd.Categorical(fdf[c],dtype=dtype)
 
-    if metas: # Do we have any metainfo? 
+    if metas: # Do we have any metainfo?
         meta = metas[-1]
         # This will fix categories inside meta too
         fix_meta_categories(meta,fdf,warnings=False)
@@ -179,15 +184,15 @@ def read_concatenate_files_list(meta,data_file=None,path=None,**kwargs):
 def convert_number_series_to_categorical(s):
     return s.astype('float').map('{:.2f}'.format).str.replace('.00','').replace({'nan':None})
 
+
 def is_series_of_lists(s):
     s_rep = s.dropna().iloc[0] # Find a non-na element
     return isinstance(s_rep,list) or isinstance(s_rep,np.ndarray)
-                
 
 # %% ../nbs/01_io.ipynb 11
 # Default usage with mature metafile: process_annotated_data(<metafile name>)
 # When figuring out the metafile, it can also be run as: process_annotated_data(meta=<dict>, data_file=<>)
-def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=None, 
+def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=None,
                         return_meta=False, ignore_exclusions=False, only_fix_categories=False, return_raw=False, add_original_inds=False, virtual_pass=False):
     # Read metafile
     if meta_fname is not None:
@@ -195,32 +200,32 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
 
     # Print any issues with the meta without raising an error - for now
     if not virtual_pass: soft_validate(meta,DataMeta)
-    
+
     # Setup constants with a simple replacement mechanic
     constants = meta['constants'] if 'constants' in meta else {}
     meta = replace_constants(meta)
-    
+
     # Read datafile(s)
     if raw_data is None:
         raw_data, inp_meta, einfo = read_concatenate_files_list(meta,data_file,path=meta_fname)
-        if inp_meta is not None: warn(f"Processing main meta file") # Print this to separate warnings for input jsons from main 
+        if inp_meta is not None: warn(f"Processing main meta file") # Print this to separate warnings for input jsons from main
     else: einfo = {}
 
     if return_raw: return (raw_data, meta) if return_meta else raw_data
-    
+
     globs = {'pd':pd, 'np':np, 'sp':sp, 'stk':stk, 'df':raw_data, **einfo, **constants }
-    
+
     pp_key = 'preprocessing' if not virtual_pass else 'virtual_preprocessing'
     if pp_key in meta and not only_fix_categories:
         exec(str_from_list(meta[pp_key]),globs)
         raw_data = globs['df']
-    
+
     ndf = pd.DataFrame() if not virtual_pass else raw_data # In vitrual pass, start with the raw_data as it is already processed by normal steps
     all_cns = dict()
     for group in meta['structure']:
         if group.get('virtual',False) != virtual_pass: continue
         if group['name'] in all_cns:
-            raise Exception(f"Group name {group['name']} duplicates a column name in group {all_cns[cn]}") 
+            raise Exception(f"Group name {group['name']} duplicates a column name in group {all_cns[cn]}")
         all_cns[group['name']] = group['name']
         g_cols = []
         for tpl in group['columns']:
@@ -236,42 +241,42 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
 
             # Col prefix is used to avoid name clashes when different groups naturally share same column names
             if 'col_prefix' in cd: cn = cd['col_prefix']+cn
-            
+
             # Detect duplicate columns in meta - including among those missing or generated
             # Only flag if they are duplicates even after prefix
-            if cn in all_cns: 
+            if cn in all_cns:
                 raise Exception(f"Duplicate column name found: '{cn}' in {all_cns[cn]} and {group['name']}")
             all_cns[cn] = group['name']
-                
+
             if only_fix_categories: sn = cn
             g_cols.append(cn)
-            
+
             if sn not in raw_data:
                 if not group.get('generated') and not group.get('virtual'): # bypass warning for columns marked as being generated later
                     warn(f"Column {sn} not found")
                 continue
-            
+
             if raw_data[sn].isna().all():
                 warn(f"Column {sn} is empty and thus ignored")
                 continue
-                
+
             s = raw_data[sn]
             if not only_fix_categories and not is_series_of_lists(s):
                 if s.dtype.name=='category': s = s.astype('object') # This makes it easier to use common ops like replace and fillna
-                if 'translate' in cd: 
+                if 'translate' in cd:
                     s = s.astype('str').replace(cd['translate']).replace('nan',None).replace('None',None)
                 if 'transform' in cd: s = eval(cd['transform'],{ 's':s, 'df':raw_data, 'ndf':ndf, 'pd':pd, 'np':np, 'stk':stk , **constants })
-                if 'translate_after' in cd: 
+                if 'translate_after' in cd:
                     s = pd.Series(s).astype('str').replace(cd['translate_after']).replace('nan',None).replace('None',None)
-                
+
                 if cd.get('datetime'): s = pd.to_datetime(s,errors='coerce')
                 elif cd.get('continuous'): s = pd.to_numeric(s,errors='coerce')
 
             s = pd.Series(s,name=cn) # In case transformation removes the name or renames it
 
-            if cd.get('categories') and not is_series_of_lists(s): 
+            if cd.get('categories') and not is_series_of_lists(s):
                 na_sum = s.isna().sum()
-                
+
                 if cd['categories'] == 'infer':
                     if s.dtype.name=='category': cd['categories'] = list(s.dtype.categories) # Categories come from data file
                     elif 'translate' in cd and 'transform' not in cd and set(cd['translate'].values()) >= set(s.dropna().unique()): # Infer order from translation dict
@@ -285,33 +290,32 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
                         cinds = s.drop_duplicates().sort_values().index # NB! Important to do this still with numbers before converting them to strings
                         if pd.api.types.is_numeric_dtype(s): s = convert_number_series_to_categorical(s)
                         cd['categories'] = [ c for c in s[cinds] if pd.notna(c) ] # Also propagates it into meta (unless shared scale)
-                    
+
                     # Replace categories with those inferred in the output meta
                     # Many things in pp and model pipeline assume categories are set so this is a necessity
                     #o_cd['categories'] = cd['categories'] # Done later in fix_meta_categories
                 elif pd.api.types.is_numeric_dtype(s): # Numeric datatype being coerced into categorical - map to nearest category value
                     try:
                         fcats = np.array(cd['categories']).astype(float)
-                        s = pd.Series(np.array(cd['categories'])[np.abs(s.values[:,None] - fcats[None,:]).argmin(axis=1)], 
+                        s = pd.Series(np.array(cd['categories'])[np.abs(s.values[:,None] - fcats[None,:]).argmin(axis=1)],
                                 index=s.index, name=s.name,
                                 dtype=pd.CategoricalDtype(categories=cd['categories'],ordered=cd['ordered']))
                     except:
                         raise ValueError(f"Categories for {cn} are not numeric: {cd['categories']}")
 
-                
                 cats = cd['categories']
-                
+
                 ns = pd.Series(pd.Categorical(s, # NB! conversion to str already done before. Doing it here kills NA values
                                                     categories=cats,ordered=cd['ordered'] if 'ordered' in cd else False), name=cn, index=raw_data.index)
                 # Check if the category list provided was comprehensive
                 new_nas = ns.isna().sum() - na_sum
-                
-                if new_nas > 0: 
+
+                if new_nas > 0:
                     unlisted_cats = set(s.dropna().unique())-set(cats)
                     warn(f"Column {cn} {f'({sn}) ' if cn != sn else ''} had unknown categories {unlisted_cats} for { new_nas/len(ns) :.1%} entries")
-                    
+
                 s = ns
-            
+
             # Update ndf in real-time so it would be usable in transforms for next columns
             if s.name in ndf.columns: ndf = ndf.drop(columns=s.name) # Overwrite existing instead of duplicates. Esp. important for virtual cols
             ndf = pd.concat([ndf,s],axis=1)
@@ -327,7 +331,6 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
         exec(str_from_list(meta[pp_key]),globs)
         ndf = globs['df']
 
-
     # Fix categories after postprocessing
     # Also replaces infer with the actual categories
     fix_meta_categories(meta,ndf,warnings=True)
@@ -337,7 +340,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
         excl_inds = [ i for i,_ in meta['excluded'] ]
         ndf = ndf[~ndf['original_inds'].isin(excl_inds)]
     if not add_original_inds: ndf.drop(columns=['original_inds'],inplace=True)
-    
+
     return (ndf, meta) if return_meta else ndf
 
 # %% ../nbs/01_io.ipynb 12
@@ -350,7 +353,7 @@ def read_annotated_data(fname, infer=True, return_raw=False, return_model_meta=F
         data, meta =  process_annotated_data(fname, return_meta=True, return_raw=return_raw, **kwargs)
     elif ext == '.parquet':
         data, full_meta = load_parquet_with_metadata(fname)
-        if full_meta is not None: 
+        if full_meta is not None:
             meta, model_meta = full_meta.get('data'), full_meta.get('model')
             if meta is not None and not return_raw: # Do the second, virtual pass
                 data, meta = process_annotated_data(meta=meta, raw_data=data, virtual_pass=True, return_meta=True)
@@ -358,15 +361,17 @@ def read_annotated_data(fname, infer=True, return_raw=False, return_model_meta=F
     mm = (model_meta,) if return_model_meta else tuple()
     if meta is not None or not infer:
         return (data, meta) + mm
-    
+
     warn(f"Warning: using inferred meta for {fname}")
     meta = infer_meta(fname,meta_file=False)
     return process_annotated_data(fname, meta=meta, return_meta=True) + mm
 
 # Return a lazy polars dataframe instead of a pandas one
 # NB! Only does actual lazy loading if the file is a parquet file
+
+
 def read_annotated_data_lazy(fname,return_model_meta=False):
-    if fname.endswith('.parquet'): 
+    if fname.endswith('.parquet'):
         ldf, full_meta = load_parquet_with_metadata(fname,lazy=True)
     else:
         full_df, dmeta, mmeta = read_annotated_data(fname, return_model_meta=True)
@@ -376,6 +381,8 @@ def read_annotated_data_lazy(fname,return_model_meta=False):
     else: return (ldf, full_meta['data'])
 
 # Fix df dtypes etc using meta - needed after a lazy load
+
+
 def fix_df_with_meta(df, dmeta):
     cmeta = extract_column_meta(dmeta)
     for c in df.columns:
@@ -388,8 +395,6 @@ def fix_df_with_meta(df, dmeta):
 
 # %% ../nbs/01_io.ipynb 13
 #| export
-
-
 
 # %% ../nbs/01_io.ipynb 14
 # Helper functions designed to be used with the annotations
@@ -408,12 +413,16 @@ def extract_column_meta(data_meta):
 
 # Convert data_meta into a dict of group_name -> [column names]
 # TODO: deprecate - info available in extract_column_meta
+
+
 def group_columns_dict(data_meta):
     return { k: d['columns'] for k,d in extract_column_meta(data_meta).items() if 'columns' in d }
 
     #return { g['name'] : [(t[0] if type(t)!=str else t) for t in g['columns']] for g in data_meta['structure'] }
 
 # Take a list and a dict and replace all dict keys in list with their corresponding lists in-place
+
+
 def list_aliases(lst, da):
     return [ fv for v in lst for fv in (da[v] if isinstance(v,str) and v in da else [v]) ]
 
@@ -429,14 +438,16 @@ def get_original_column_names(dmeta):
     return res
 
 # Map ot backwards and nt forwards to move from one to the other
+
+
 def change_mapping(ot, nt, only_matches=False):
     # Todo: warn about non-bijective mappings
     matches = { v: nt[k] for k, v in ot.items() if k in nt and v!=nt[k] } # change those that are shared
     if only_matches: return matches
-    else: 
+    else:
         return { **{ v:k for k, v in ot.items() if k not in nt }, # undo those in ot not in nt
                  **{ k:v for k, v in nt.items() if k not in ot }, # do those in nt not in ot
-                 **matches } 
+                 **matches }
 
 # %% ../nbs/01_io.ipynb 17
 # Change an existing dataset to correspond better to a new meta_data
@@ -444,60 +455,61 @@ def change_mapping(ot, nt, only_matches=False):
 # It is by no means perfect, but is nevertheless a useful tool to avoid re-running long pymc models for simple column/translation changes
 def change_df_to_meta(df, old_dmeta, new_dmeta):
     warn("This tool handles only simple cases of column name, translation and category order changes.")
-    
+
     # Ready the metafiles for parsing
     old_dmeta = replace_constants(old_dmeta); new_dmeta = replace_constants(new_dmeta)
-    
-    # Rename columns 
+
+    # Rename columns
     ocn, ncn = get_original_column_names(old_dmeta), get_original_column_names(new_dmeta)
     name_changes = change_mapping(ocn,ncn,only_matches=True)
     if name_changes != {}: print(f"Renaming columns: {name_changes}")
     df.rename(columns=name_changes,inplace=True)
-    
+
     rev_name_changes = { v: k for k,v in name_changes.items() }
-    
+
     # Get metadata for each column
     ocm = extract_column_meta(old_dmeta)
     ncm = extract_column_meta(new_dmeta)
-    
+
     for c in ncm.keys():
         if c not in df.columns: continue # probably group
         if c not in ocm.keys(): continue # new column
-        
+
         ncd, ocd = ncm[c], ocm[rev_name_changes[c] if c in rev_name_changes else c]
-        
+
         # Warn about transformations and don't touch columns where those change
         if ocd.get('transform') != ncd.get('transform'):
             warn(f"Column {c} has a different transformation. Leaving it unchanged")
             continue
-        
+
         # Handle translation changes
         ot, nt = ocd.get('translate',{}), ncd.get('translate',{})
         remap = change_mapping(ot,nt)
-        if remap != {}: 
+        if remap != {}:
             print(f"Remapping {c} with {remap}")
             df[c] = df[c].cat.rename_categories(remap)
-        
+
         # Reorder categories and/or change ordered status
-        if ((ncd.get('categories','infer')!='infer' and 
+        if ((ncd.get('categories','infer')!='infer' and
             list(df[c].dtype.categories) != ncd.get('categories'))
             or ocd.get('ordered') != ncd.get('ordered')):
             cats = ncd.get('categories') if ncd.get('categories','infer') != 'infer' else df[c].dtype.categories
             if isinstance(cats,list):
                 print(f"Changing {c} to Cat({cats},ordered={ncd.get('ordered')})")
                 df[c] = pd.Categorical(df[c],categories=cats,ordered=ncd.get('ordered'))
-    
+
     # Column order changes
     gcdict = group_columns_dict(new_dmeta)
-    
+
     cols = ['draw','obs_idx','training_subsample'] + [ c for g in new_dmeta['structure'] for c in gcdict[g['name']]]
     cols.append( new_dmeta['weight_col'] if new_dmeta.get('weight_col') else 'N')
     cols = [ c for c in cols if c in df.columns ]
 
     if len(set(df.columns) - set(cols)) > 0:
         print("Dropping columns:",set(df.columns) - set(cols))
-    
+
     return df[cols]
+
 
 def update_meta_with_model_fields(meta, donor):
     # Add the groups added by the model before to data_meta
@@ -515,26 +527,24 @@ def update_meta_with_model_fields(meta, donor):
 
 def replace_data_meta_in_parquet(parquet_name,metafile_name,advanced=True):
     df, meta = load_parquet_with_metadata(parquet_name)
-    
+
     ometa = meta['data']
     nmeta = read_json(metafile_name, replace_const=True)
-    
+
     nmeta = update_meta_with_model_fields(nmeta,ometa)
-    
+
     # Perform the column name changes and category translations
     # Do this before inferring meta as categories might change in this step
     if advanced: df = change_df_to_meta(df,ometa,nmeta)
 
     nmeta = fix_meta_categories(nmeta,df) # replace infer with values
-    
+
     meta['original_data'] = meta.get('original_data',meta['data'])
     meta['data'] = nmeta
 
-
     save_parquet_with_metadata(df,meta,parquet_name)
-    
-    return df, meta
 
+    return df, meta
 
 # %% ../nbs/01_io.ipynb 18
 # A function to infer categories (and validate the ones already present)
@@ -551,7 +561,7 @@ def fix_meta_categories(data_meta, df, infers_only=False, warnings=True):
                 cats, cm = list(df[prefix+c[0]].dtype.categories), c[-1]
                 if isinstance(cm,dict) and cm.get('categories') == 'infer':
                     cm['categories'] = cats
-                elif ((not infers_only) and isinstance(cm,dict) and cm.get('categories') and 
+                elif ((not infers_only) and isinstance(cm,dict) and cm.get('categories') and
                     not set(cm['categories']) >= set(cats)):
                     diff = set(cats) - set(cm['categories'])
                     if warnings: warn(f"Fixing missing categories for {c[0]}: {diff}")
@@ -562,13 +572,14 @@ def fix_meta_categories(data_meta, df, infers_only=False, warnings=True):
             # IF they all share same categories, keep the category order
             scats = list(cats) if all_cats == set(cats) else sorted(list(all_cats))
             g['scale']['categories'] = scats
-        elif ((not infers_only) and g.get('scale') and g['scale'].get('categories') and 
+        elif ((not infers_only) and g.get('scale') and g['scale'].get('categories') and
                 not set(g['scale']['categories'])>=all_cats):
             diff = all_cats - set(g['scale']['categories'])
             if warnings: warn(f"Fixing missing categories for group {g['name']}: {diff}")
             g['scale']['categories'] = list(all_cats)
 
     return data_meta
+
 
 def fix_parquet_categories(parquet_name):
     df, meta = load_parquet_with_metadata(parquet_name)
@@ -579,20 +590,21 @@ def fix_parquet_categories(parquet_name):
 def is_categorical(col):
     return col.dtype.name in ['object', 'str', 'category'] and not is_datetime(col)
 
-
 # %% ../nbs/01_io.ipynb 20
 max_cats = 50
 
 # Create a very basic metafile for a dataset based on it's contents
 # This is not meant to be directly used, rather to speed up the annotation process
+
+
 def infer_meta(data_file=None, meta_file=True, read_opts={}, df=None, translate_fn=None, translation_blacklist=[]):
     meta = { 'constants': {}, 'read_opts': read_opts }
 
-    if translate_fn is not None: 
+    if translate_fn is not None:
         otfn = translate_fn
         translate_fn = cached_fn(lambda x: otfn(str(x)) if x else '' )
     else: translate_fn = str
-    
+
     # Read datafile
     col_labels = {}
     if data_file is not None:
@@ -612,23 +624,23 @@ def infer_meta(data_file=None, meta_file=True, read_opts={}, df=None, translate_
             df = pd.read_excel(data_file, **read_opts)
         else:
             raise Exception(f"Not a known file format {data_file}")
-            
+
     # If data is multi-indexed, flatten the index
     if isinstance(df.columns,pd.MultiIndex): df.columns = [" | ".join(tpl) for tpl in df.columns]
 
     cats, grps = {}, defaultdict(lambda: list())
-    
+
     main_grp = { 'name': 'main', 'columns':[] }
     meta['structure'] = [main_grp]
-    
+
     # Remove empty columns
     cols = [ c for c in df.columns if df[c].notna().any() ]
-    
+
     # Determine category lists for all categories
     for cn in cols:
         if not is_categorical(df[cn]): continue
         cats[cn] = sorted(list(df[cn].dropna().unique())) if df[cn].dtype.name != 'category' else list(df[cn].dtype.categories)
-        
+
         for cs in grps:
             #if cn.startswith('Q2_'): print(len(set(cats[cn]) & cs)/len(cs),set(cats[cn]),cs)
             if len(set(cats[cn]) & cs)/len(cs) > 0.75: # match to group if most of the values match
@@ -640,7 +652,7 @@ def infer_meta(data_file=None, meta_file=True, read_opts={}, df=None, translate_
                 break
         else:
             grps[frozenset(cats[cn])].append(cn)
-        
+
     # Fn to create the meta for a categorical column
     def cat_meta(cn):
         m = { 'categories': cats[cn] if len(cats[cn])<=max_cats else 'infer' }
@@ -650,13 +662,12 @@ def infer_meta(data_file=None, meta_file=True, read_opts={}, df=None, translate_
             m['categories'] = 'infer' #[ tdict[c] for c in m['categories'] ]
             m['translate'] = tdict
         return m
-        
-    
+
     # Create groups from values that share a category
     handled_cols = set()
     for k,g_cols in grps.items():
         if len(g_cols)<2: continue
-        
+
         # Set up the columns part
         m_cols = []
         for cn in g_cols:
@@ -664,27 +675,27 @@ def infer_meta(data_file=None, meta_file=True, read_opts={}, df=None, translate_
             if translate_fn is not None: ce = [translate_fn(cn)]+ ce
             if len(ce) == 1: ce = ce[0]
             m_cols.append(ce)
-        
+
         kl = [ str(c) for c in k]
         cats[str(kl)] = kl # so cat_meta would use the full list
 
         grp = { 'name': ';'.join(kl), 'scale': cat_meta(str(kl)), 'columns': m_cols }
-        
+
         meta['structure'].append(grp)
         handled_cols.update(g_cols)
-        
+
     # Put the rest of variables into main category
     main_cols = [ c for c in cols if c not in handled_cols ]
     for cn in main_cols:
         if cn in cats: cdesc = cat_meta(cn)
-        else: 
+        else:
             if is_datetime(df[cn]): cdesc = {'datetime':True}
             else: cdesc = {'continuous':True}
         if cn in col_labels: cdesc['label'] = col_labels[cn]
         main_grp['columns'].append([cn,cdesc] if translate_fn is None else [translate_fn(cn),cn,cdesc])
-        
+
     #print(json.dumps(meta,indent=2,ensure_ascii=False))
-    
+
     # Write file to disk
     if data_file is not None and meta_file:
         if meta_file is True: meta_file = os.path.join(path, os.path.splitext(fname)[0]+'_meta.json')
@@ -698,10 +709,11 @@ def infer_meta(data_file=None, meta_file=True, read_opts={}, df=None, translate_
     return meta
 
 # Small convenience function to have a meta available for any dataset
+
+
 def data_with_inferred_meta(data_file, **kwargs):
     meta = infer_meta(data_file,meta_file=False, **kwargs)
     return process_annotated_data(meta=meta, data_file=data_file, return_meta=True)
-
 
 # %% ../nbs/01_io.ipynb 22
 def perform_merges(df,merges,constants={}):
@@ -712,7 +724,7 @@ def perform_merges(df,merges,constants={}):
         if ms.get('add'): ndf = ndf[ms['on']+ms['add']]
         #print(df.columns,ndf.columns,ms['on'])
         mdf = pd.merge(df,ndf,on=on,how=ms.get('how','inner'))
-        
+
         for c in on: mdf[c] = mdf[c].astype(df[c].dtype)
         if len(df) != len(mdf):
             missing = set(list(df[on].drop_duplicates().itertuples(index=False,name=None))) - set(list(ndf[on].drop_duplicates().itertuples(index=False,name=None)))
@@ -725,7 +737,7 @@ def read_and_process_data(desc, return_meta=False, constants={}, skip_postproces
 
     if isinstance(desc,str): desc = { 'file':desc } # Allow easy shorthand for simple cases
 
-    # Validate the data desc format 
+    # Validate the data desc format
     desc = DataDescription.model_validate(desc).model_dump(mode='json')
 
     if desc.get('data') is not None:
@@ -735,7 +747,7 @@ def read_and_process_data(desc, return_meta=False, constants={}, skip_postproces
 
     if meta is None and return_meta:
         raise Exception("No meta found on any of the files")
-    
+
     # Perform transformation and filtering
     globs = {'pd':pd, 'np':np, 'sp':sp, 'stk':stk, 'df':df, **einfo,**constants}
     if desc.get('preprocessing'): exec(str_from_list(desc['preprocessing']), globs)
@@ -743,7 +755,7 @@ def read_and_process_data(desc, return_meta=False, constants={}, skip_postproces
     if desc.get('merge'): globs['df'] = perform_merges(globs['df'],desc.get('merge'),constants)
     if desc.get('postprocessing') and not skip_postprocessing: exec(str_from_list(desc['postprocessing']),globs)
     df = globs['df']
-    
+
     return (df, meta) if return_meta else df
 
 # %% ../nbs/01_io.ipynb 25
@@ -751,7 +763,8 @@ def save_population_h5(fname,pdf):
     hdf = pd.HDFStore(fname,complevel=9, complib='zlib')
     hdf.put('population',pdf,format='table')
     hdf.close()
-    
+
+
 def load_population_h5(fname):
     hdf =  pd.HDFStore(fname, mode='r')
     res = hdf['population'].copy()
@@ -761,7 +774,7 @@ def load_population_h5(fname):
 # %% ../nbs/01_io.ipynb 26
 def save_sample_h5(fname,trace,COORDS = None, filter_df = None):
     odims = [d for d in trace.predictions.dims if d not in ['chain','draw','obs_idx']]
-    
+
     if COORDS is None: # Recover them from trace (requires posterior be saved in same trace)
         inds = trace.posterior.indexes
         coords = { t: list(inds[t]) for t in inds if t not in ['chain','draw'] and '_dim_' not in t}
@@ -791,13 +804,12 @@ def save_sample_h5(fname,trace,COORDS = None, filter_df = None):
             np.array(trace.predictions['y_'+odim]).reshape( ( -1,len(response_cols) ) )
             ), axis=-1), columns = ['chain', 'draw', 'obs_idx'] + response_cols)
         res_dfs[odim] = postprocess_rdf(xdf,odim)
-        
+
     # Save dfs as hdf5
     hdf = pd.HDFStore(fname,complevel=9, complib='zlib')
     for k,vdf in res_dfs.items():
         hdf.put(k,vdf,format='table')
     hdf.close()
-
 
 # %% ../nbs/01_io.ipynb 27
 # Small debug tool to help find where jsons become non-serializable
@@ -817,11 +829,12 @@ def find_type_in_dict(d,dtype,path=''):
 
 custom_meta_key = 'salk-toolkit-meta'
 
+
 def save_parquet_with_metadata(df, meta, file_name):
     table = pa.Table.from_pandas(df)
 
     #find_type_in_dict(meta,np.int64)
-    
+
     custom_meta_json = json.dumps(meta)
     existing_meta = table.schema.metadata
     combined_meta = {
@@ -829,10 +842,12 @@ def save_parquet_with_metadata(df, meta, file_name):
         **existing_meta
     }
     table = table.replace_schema_metadata(combined_meta)
-    
+
     pq.write_table(table, file_name, compression='ZSTD')
-    
+
 # Just load the metadata from the parquet file
+
+
 def load_parquet_metadata(file_name):
     schema = pq.read_schema(file_name)
     if custom_meta_key.encode() in schema.metadata:
@@ -840,14 +855,16 @@ def load_parquet_metadata(file_name):
         restored_meta = json.loads(restored_meta_json)
     else: restored_meta = None
     return restored_meta
-    
+
 # Load parquet with metadata
+
+
 def load_parquet_with_metadata(file_name,lazy=False,**kwargs):
     if lazy: # Load it as a polars lazy dataframe
         meta = load_parquet_metadata(file_name)
         ldf = pl.scan_parquet(file_name,**kwargs)
         return ldf, meta
-    
+
     # Read it as a normal pandas dataframe
     restored_table = pq.read_table(file_name,**kwargs)
     restored_df = restored_table.to_pandas()
@@ -857,5 +874,3 @@ def load_parquet_with_metadata(file_name,lazy=False,**kwargs):
     else: restored_meta = None
 
     return restored_df, restored_meta
-
-

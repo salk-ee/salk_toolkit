@@ -63,7 +63,7 @@
         "name": "demographics",
         "columns": [
             ["age",{"continuous":true}],
-            ["age_group", { 
+            ["age_group", {
                 "categories": ["16-24", "25-34", "35-44", "45-54", "55-64", "65-74", "75+"],    "ordered": true ,
                 "num_values": [20,30,40,50,60,70,80]
             }],
@@ -83,7 +83,7 @@
             }],
             ["electoral_district", "T6", { "categories": "infer", "translate": "districts",
               "topo_feature": ["https://dl.dropboxusercontent.com/scl/fi/ciunedliwyvlafpm5nlos/estonia.topojson?rlkey=0g56uexaos1v59yghmikv09xi&dl=0","data","VNIMI"] }],
-            ["unit", "T6", { "categories": "infer", "translate": { "Harjumaa (välja arvatud Tallinn)": "Harjumaa" }, 
+            ["unit", "T6", { "categories": "infer", "translate": { "Harjumaa (välja arvatud Tallinn)": "Harjumaa" },
              "topo_feature": ["https://dl.dropboxusercontent.com/scl/fi/ciunedliwyvlafpm5nlos/estonia.topojson?rlkey=0g56uexaos1v59yghmikv09xi&dl=0","data","MNIMI"] }],
             ["citizen", "K0", {    "transform": "s=='Jah'" }]
         ]
