@@ -299,7 +299,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
                         fcats = np.array(cd['categories']).astype(float)
                         s = pd.Series(np.array(cd['categories'])[np.abs(s.values[:,None] - fcats[None,:]).argmin(axis=1)],
                                 index=s.index, name=s.name,
-                                dtype=pd.CategoricalDtype(categories=cd['categories'],ordered=cd['ordered']))
+                                dtype=pd.CategoricalDtype(categories=cd['categories'],ordered=cd.get('ordered')))
                     except:
                         raise ValueError(f"Categories for {cn} are not numeric: {cd['categories']}")
 
@@ -364,7 +364,7 @@ def read_annotated_data(fname, infer=True, return_raw=False, return_model_meta=F
 
     warn(f"Warning: using inferred meta for {fname}")
     meta = infer_meta(fname,meta_file=False)
-    return process_annotated_data(fname, meta=meta, return_meta=True) + mm
+    return process_annotated_data(data_file=fname, meta=meta, return_meta=True) + mm
 
 # Return a lazy polars dataframe instead of a pandas one
 # NB! Only does actual lazy loading if the file is a parquet file
@@ -432,9 +432,15 @@ def get_original_column_names(dmeta):
     res = {}
     for g in dmeta['structure']:
         for c in g['columns']:
-            if isinstance(c,str): res[c] = c
-            if len(c)==1: res[c[0]] = c[0]
-            elif len(c)>=2 and isinstance(c[1],str): res[c[1]] = c[0]
+            if isinstance(c,str):
+                res[c] = c
+            elif isinstance(c, list):
+                if len(c)==1:
+                    res[c[0]] = c[0]
+                elif len(c)>=2 and isinstance(c[1],str):
+                    res[c[1]] = c[0]  # This is a rename: [new_name, old_name, ...]
+                elif len(c)>=1:
+                    res[c[0]] = c[0]  # This is a regular column with metadata: [name, {...}]
     return res
 
 # Map ot backwards and nt forwards to move from one to the other
@@ -486,6 +492,10 @@ def change_df_to_meta(df, old_dmeta, new_dmeta):
         ot, nt = ocd.get('translate',{}), ncd.get('translate',{})
         remap = change_mapping(ot,nt)
         if remap != {}:
+            # Validate that mapping keys exist in current categories
+            invalid_keys = set(remap.keys()) - set(df[c].cat.categories)
+            if invalid_keys:
+                raise ValueError(f"Translation mapping keys {invalid_keys} not found in current categories {list(df[c].cat.categories)} for column {c}")
             print(f"Remapping {c} with {remap}")
             df[c] = df[c].cat.rename_categories(remap)
 
