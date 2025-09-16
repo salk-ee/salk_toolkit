@@ -1,0 +1,154 @@
+{
+  "data": {
+    "name": "data-normalized"
+  },
+  "datasets": {
+    "data-normalized": [
+      {
+        "electoral_district": "Haabersti, P\u00f5hja-Tallinn ja Kristiine",
+        "polarisation": 0.4682520800796727,
+        "radicalisation": -0.8105936655649459,
+        "relevance": 0.09049410584399298
+      },
+      {
+        "electoral_district": "Harju- ja Raplamaa",
+        "polarisation": 0.18638901910335995,
+        "radicalisation": -0.2632152542847961,
+        "relevance": 0.05593747325783727
+      },
+      {
+        "electoral_district": "Hiiu-, L\u00e4\u00e4ne- ja Saaremaa",
+        "polarisation": 0.29288874340900967,
+        "radicalisation": -2.5151377082725697,
+        "relevance": 0.04764213844102305
+      },
+      {
+        "electoral_district": "Ida-Virumaa",
+        "polarisation": -2.425872948427255,
+        "radicalisation": 0.5954493188208245,
+        "relevance": 0.05483711398487734
+      },
+      {
+        "electoral_district": "J\u00e4rva- ja Viljandimaa",
+        "polarisation": -0.3116671066120171,
+        "radicalisation": 0.38980103232095153,
+        "relevance": 0.04632820277203464
+      },
+      {
+        "electoral_district": "J\u00f5geva- ja Tartumaa",
+        "polarisation": 1.6136662275829148,
+        "radicalisation": 0.5399977171673783,
+        "relevance": 0.013610367045536864
+      },
+      {
+        "electoral_district": "Kesklinn, Lasnam\u00e4e ja Pirita",
+        "polarisation": -0.005796960240755407,
+        "radicalisation": 0.5836936655154951,
+        "relevance": 0.09208362696734806
+      },
+      {
+        "electoral_district": "L\u00e4\u00e4ne-Virumaa",
+        "polarisation": -1.295206469347466,
+        "radicalisation": 0.6831938123337045,
+        "relevance": 0.035840667815987715
+      },
+      {
+        "electoral_district": "Mustam\u00e4e ja N\u00f5mme",
+        "polarisation": 1.0763813996255627,
+        "radicalisation": -0.2563454176388837,
+        "relevance": 0.011468952734012938
+      },
+      {
+        "electoral_district": "P\u00e4rnumaa",
+        "polarisation": 0.3131733519169499,
+        "radicalisation": 0.16044637456423047,
+        "relevance": 0.04491795975944757
+      },
+      {
+        "electoral_district": "Tartu linn",
+        "polarisation": 0.3048359998819783,
+        "radicalisation": -0.7478521851458633,
+        "relevance": 0.029317657563806887
+      },
+      {
+        "electoral_district": "V\u00f5ru-, Valga- ja P\u00f5lvamaa",
+        "polarisation": -0.21704333697195466,
+        "radicalisation": 1.6405623101844868,
+        "relevance": 0.013332444503699747
+      }
+    ]
+  },
+  "encoding": {
+    "color": {
+      "field": "electoral_district",
+      "legend": {
+        "columns": 4,
+        "orient": "top"
+      },
+      "type": "nominal"
+    },
+    "opacity": {
+      "condition": {
+        "param": "param_3",
+        "value": 1
+      },
+      "value": 0.15
+    },
+    "size": {
+      "field": "relevance",
+      "legend": null,
+      "scale": {
+        "range": [
+          100,
+          500
+        ]
+      },
+      "type": "quantitative"
+    },
+    "tooltip": [
+      {
+        "field": "radicalisation",
+        "format": ".2",
+        "type": "quantitative"
+      },
+      {
+        "field": "polarisation",
+        "format": ".2",
+        "type": "quantitative"
+      },
+      {
+        "field": "relevance",
+        "format": ".2",
+        "type": "quantitative"
+      },
+      {
+        "field": "electoral_district",
+        "type": "nominal"
+      }
+    ],
+    "x": {
+      "field": "polarisation",
+      "type": "quantitative"
+    },
+    "y": {
+      "field": "radicalisation",
+      "type": "quantitative"
+    }
+  },
+  "mark": {
+    "type": "point"
+  },
+  "params": [
+    {
+      "bind": "legend",
+      "name": "param_3",
+      "select": {
+        "fields": [
+          "electoral_district"
+        ],
+        "type": "point"
+      }
+    }
+  ],
+  "width": 600
+}

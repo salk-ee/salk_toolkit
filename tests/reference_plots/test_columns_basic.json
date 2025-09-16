@@ -1,0 +1,127 @@
+{
+  "data": {
+    "name": "data-normalized"
+  },
+  "datasets": {
+    "data-normalized": [
+      {
+        "e-valimised": "Agree",
+        "nationality": "Estonian",
+        "percent": 0.2270787517833002
+      },
+      {
+        "e-valimised": "Disagree",
+        "nationality": "Estonian",
+        "percent": 0.10950242030439143
+      },
+      {
+        "e-valimised": "Neither agree nor disagree",
+        "nationality": "Estonian",
+        "percent": 0.05682887170829258
+      },
+      {
+        "e-valimised": "Strongly agree",
+        "nationality": "Estonian",
+        "percent": 0.47361338674408315
+      },
+      {
+        "e-valimised": "Strongly disagree",
+        "nationality": "Estonian",
+        "percent": 0.13297656945993258
+      },
+      {
+        "e-valimised": "Agree",
+        "nationality": "Other",
+        "percent": 0.20540485778689563
+      },
+      {
+        "e-valimised": "Disagree",
+        "nationality": "Other",
+        "percent": 0.23050426765949902
+      },
+      {
+        "e-valimised": "Neither agree nor disagree",
+        "nationality": "Other",
+        "percent": 0.044728110832510194
+      },
+      {
+        "e-valimised": "Strongly agree",
+        "nationality": "Other",
+        "percent": 0.1896512423068156
+      },
+      {
+        "e-valimised": "Strongly disagree",
+        "nationality": "Other",
+        "percent": 0.32971152141427956
+      }
+    ]
+  },
+  "encoding": {
+    "color": {
+      "field": "nationality",
+      "legend": {
+        "columns": 2,
+        "orient": "top"
+      },
+      "scale": {
+        "domain": [
+          "Estonian",
+          "Other"
+        ],
+        "range": [
+          "blue",
+          "grey"
+        ]
+      },
+      "type": "nominal"
+    },
+    "tooltip": [
+      {
+        "field": "percent",
+        "format": ".1%",
+        "type": "quantitative"
+      },
+      {
+        "field": "e-valimised",
+        "type": "nominal"
+      },
+      {
+        "field": "nationality",
+        "type": "nominal"
+      }
+    ],
+    "x": {
+      "axis": {
+        "format": ".1%"
+      },
+      "field": "percent",
+      "title": "percent",
+      "type": "quantitative"
+    },
+    "y": {
+      "field": "e-valimised",
+      "sort": [
+        "Strongly disagree",
+        "Disagree",
+        "Neither agree nor disagree",
+        "Agree",
+        "Strongly agree"
+      ],
+      "title": null,
+      "type": "nominal"
+    },
+    "yOffset": {
+      "field": "nationality",
+      "sort": [
+        "Estonian",
+        "Other"
+      ],
+      "title": null,
+      "type": "nominal"
+    }
+  },
+  "mark": {
+    "type": "bar"
+  },
+  "width": 400
+}

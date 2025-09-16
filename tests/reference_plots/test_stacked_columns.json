@@ -1,0 +1,340 @@
+{
+  "data": {
+    "name": "data-normalized"
+  },
+  "datasets": {
+    "data-normalized": [
+      {
+        "EKRE": "40% - 60%",
+        "f_order": 1,
+        "party_preference": "EKRE",
+        "percent": 0.001
+      },
+      {
+        "EKRE": "60% - 80%",
+        "f_order": 2,
+        "party_preference": "EKRE",
+        "percent": 0.005
+      },
+      {
+        "EKRE": "Top 20%",
+        "f_order": 3,
+        "party_preference": "EKRE",
+        "percent": 0.132
+      },
+      {
+        "EKRE": "20% - 40%",
+        "f_order": 0,
+        "party_preference": "Eesti 200",
+        "percent": 0.068
+      },
+      {
+        "EKRE": "40% - 60%",
+        "f_order": 1,
+        "party_preference": "Eesti 200",
+        "percent": 0.035
+      },
+      {
+        "EKRE": "60% - 80%",
+        "f_order": 2,
+        "party_preference": "Eesti 200",
+        "percent": 0.019
+      },
+      {
+        "EKRE": "Top 20%",
+        "f_order": 3,
+        "party_preference": "Eesti 200",
+        "percent": 0.008
+      },
+      {
+        "EKRE": "20% - 40%",
+        "f_order": 0,
+        "party_preference": "Isamaa",
+        "percent": 0.009
+      },
+      {
+        "EKRE": "40% - 60%",
+        "f_order": 1,
+        "party_preference": "Isamaa",
+        "percent": 0.025
+      },
+      {
+        "EKRE": "60% - 80%",
+        "f_order": 2,
+        "party_preference": "Isamaa",
+        "percent": 0.014
+      },
+      {
+        "EKRE": "Top 20%",
+        "f_order": 3,
+        "party_preference": "Isamaa",
+        "percent": 0.017
+      },
+      {
+        "EKRE": "20% - 40%",
+        "f_order": 0,
+        "party_preference": "Keskerakond",
+        "percent": 0.021
+      },
+      {
+        "EKRE": "40% - 60%",
+        "f_order": 1,
+        "party_preference": "Keskerakond",
+        "percent": 0.032
+      },
+      {
+        "EKRE": "60% - 80%",
+        "f_order": 2,
+        "party_preference": "Keskerakond",
+        "percent": 0.052
+      },
+      {
+        "EKRE": "Top 20%",
+        "f_order": 3,
+        "party_preference": "Keskerakond",
+        "percent": 0.026
+      },
+      {
+        "EKRE": "20% - 40%",
+        "f_order": 0,
+        "party_preference": "No opinion",
+        "percent": 0.016
+      },
+      {
+        "EKRE": "40% - 60%",
+        "f_order": 1,
+        "party_preference": "No opinion",
+        "percent": 0.013
+      },
+      {
+        "EKRE": "60% - 80%",
+        "f_order": 2,
+        "party_preference": "No opinion",
+        "percent": 0.041
+      },
+      {
+        "EKRE": "Top 20%",
+        "f_order": 3,
+        "party_preference": "No opinion",
+        "percent": 0.012
+      },
+      {
+        "EKRE": "20% - 40%",
+        "f_order": 0,
+        "party_preference": "None of the parties",
+        "percent": 0.024
+      },
+      {
+        "EKRE": "40% - 60%",
+        "f_order": 1,
+        "party_preference": "None of the parties",
+        "percent": 0.012
+      },
+      {
+        "EKRE": "60% - 80%",
+        "f_order": 2,
+        "party_preference": "None of the parties",
+        "percent": 0.035
+      },
+      {
+        "EKRE": "Top 20%",
+        "f_order": 3,
+        "party_preference": "None of the parties",
+        "percent": 0.008
+      },
+      {
+        "EKRE": "20% - 40%",
+        "f_order": 0,
+        "party_preference": "Other",
+        "percent": 0.005
+      },
+      {
+        "EKRE": "40% - 60%",
+        "f_order": 1,
+        "party_preference": "Other",
+        "percent": 0.008
+      },
+      {
+        "EKRE": "60% - 80%",
+        "f_order": 2,
+        "party_preference": "Other",
+        "percent": 0.006
+      },
+      {
+        "EKRE": "Top 20%",
+        "f_order": 3,
+        "party_preference": "Other",
+        "percent": 0.004
+      },
+      {
+        "EKRE": "20% - 40%",
+        "f_order": 0,
+        "party_preference": "Parempoolsed",
+        "percent": 0.006
+      },
+      {
+        "EKRE": "40% - 60%",
+        "f_order": 1,
+        "party_preference": "Parempoolsed",
+        "percent": 0.01
+      },
+      {
+        "EKRE": "60% - 80%",
+        "f_order": 2,
+        "party_preference": "Parempoolsed",
+        "percent": 0.006
+      },
+      {
+        "EKRE": "Top 20%",
+        "f_order": 3,
+        "party_preference": "Parempoolsed",
+        "percent": 0.004
+      },
+      {
+        "EKRE": "20% - 40%",
+        "f_order": 0,
+        "party_preference": "Reformierakond",
+        "percent": 0.151
+      },
+      {
+        "EKRE": "40% - 60%",
+        "f_order": 1,
+        "party_preference": "Reformierakond",
+        "percent": 0.055
+      },
+      {
+        "EKRE": "60% - 80%",
+        "f_order": 2,
+        "party_preference": "Reformierakond",
+        "percent": 0.015
+      },
+      {
+        "EKRE": "Top 20%",
+        "f_order": 3,
+        "party_preference": "Reformierakond",
+        "percent": 0.006
+      },
+      {
+        "EKRE": "20% - 40%",
+        "f_order": 0,
+        "party_preference": "Rohelised",
+        "percent": 0.005
+      },
+      {
+        "EKRE": "40% - 60%",
+        "f_order": 1,
+        "party_preference": "Rohelised",
+        "percent": 0.006
+      },
+      {
+        "EKRE": "60% - 80%",
+        "f_order": 2,
+        "party_preference": "Rohelised",
+        "percent": 0.006
+      },
+      {
+        "EKRE": "Top 20%",
+        "f_order": 3,
+        "party_preference": "Rohelised",
+        "percent": 0.001
+      },
+      {
+        "EKRE": "20% - 40%",
+        "f_order": 0,
+        "party_preference": "SDE",
+        "percent": 0.041
+      },
+      {
+        "EKRE": "40% - 60%",
+        "f_order": 1,
+        "party_preference": "SDE",
+        "percent": 0.026
+      },
+      {
+        "EKRE": "60% - 80%",
+        "f_order": 2,
+        "party_preference": "SDE",
+        "percent": 0.015
+      },
+      {
+        "EKRE": "Top 20%",
+        "f_order": 3,
+        "party_preference": "SDE",
+        "percent": 0.001
+      }
+    ]
+  },
+  "encoding": {
+    "color": {
+      "field": "EKRE",
+      "legend": {
+        "columns": 4,
+        "orient": "top"
+      },
+      "scale": {
+        "domain": [
+          "20% - 40%",
+          "40% - 60%",
+          "60% - 80%",
+          "Top 20%"
+        ],
+        "range": [
+          "#c30d24",
+          "#e67f6c",
+          "#74b0ce",
+          "#1770ab"
+        ]
+      },
+      "type": "nominal"
+    },
+    "order": {
+      "field": "f_order",
+      "type": "ordinal"
+    },
+    "tooltip": [
+      {
+        "field": "percent",
+        "format": ".1%",
+        "type": "quantitative"
+      },
+      {
+        "field": "party_preference",
+        "type": "nominal"
+      },
+      {
+        "field": "EKRE",
+        "type": "nominal"
+      }
+    ],
+    "x": {
+      "axis": {
+        "format": ".1%"
+      },
+      "field": "percent",
+      "title": "percent",
+      "type": "quantitative"
+    },
+    "y": {
+      "field": "party_preference",
+      "sort": [
+        "Keskerakond",
+        "EKRE",
+        "Reformierakond",
+        "Isamaa",
+        "SDE",
+        "Rohelised",
+        "Eesti 200",
+        "Parempoolsed",
+        "Other",
+        "None of the parties",
+        "No opinion"
+      ],
+      "title": null,
+      "type": "nominal"
+    }
+  },
+  "mark": {
+    "type": "bar"
+  },
+  "width": 400
+}

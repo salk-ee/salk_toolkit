@@ -231,7 +231,7 @@ def diff_columns(data, value_col='value', facets=[], val_format='%', sort_descen
     f0, f1 = facets[0], facets[1]
 
     ind_cols = list(set(data.columns)-{value_col,f1["col"]})
-    factors = data[f1["col"]].unique() # use unique instead of categories to allow filters to select the two that remain
+    factors = [ c for c in f1["order"] if c in data[f1["col"]].unique() ] # sort factors for deterministic order
 
     idf = data.set_index(ind_cols)
     diff = (idf[idf[f1["col"]]==factors[1]][value_col]-idf[idf[f1["col"]]==factors[0]][value_col]).reset_index()
@@ -958,10 +958,10 @@ def ordered_population(data, value_col='value', facets=[], tooltip=[], outer_fac
 
     n_points, maxn = 200, 1000000
 
-     # TODO: use weight if available. linevals is ready for it, just needs to be fed in.
+    # TODO: use weight if available. linevals is ready for it, just needs to be fed in.
 
     # Sample down to maxn points if exceeding that
-    if len(data)>maxn: data = data.sample(maxn,replace=False)
+    if len(data)>maxn: data = data.sample(maxn,replace=False,random_state=42)
 
     data = data.sort_values(outer_factors)
     vals = data[value_col].to_numpy()

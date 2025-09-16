@@ -1,0 +1,111 @@
+{
+  "data": {
+    "name": "data-normalized"
+  },
+  "datasets": {
+    "data-normalized": [
+      {
+        "end": -0.18887999999999996,
+        "percent": 0.152815,
+        "question": "valitsus",
+        "start": -0.34169499999999997,
+        "valitsus": "Completely distrust"
+      },
+      {
+        "end": -0.961715,
+        "percent": 0.038285,
+        "question": "valitsus",
+        "start": -1.0,
+        "valitsus": "Neither trust nor distrust"
+      },
+      {
+        "end": 0.0,
+        "percent": 0.18888,
+        "question": "valitsus",
+        "start": -0.18887999999999994,
+        "valitsus": "Distrust"
+      },
+      {
+        "end": 0.47612,
+        "percent": 0.47612,
+        "question": "valitsus",
+        "start": -0.0,
+        "valitsus": "Trust"
+      },
+      {
+        "end": 0.62002,
+        "percent": 0.1439,
+        "question": "valitsus",
+        "start": 0.47612,
+        "valitsus": "Trust completely"
+      }
+    ]
+  },
+  "encoding": {
+    "color": {
+      "field": "valitsus",
+      "legend": {
+        "columns": 3,
+        "orient": "bottom",
+        "title": null
+      },
+      "scale": {
+        "domain": [
+          "Completely distrust",
+          "Distrust",
+          "Neither trust nor distrust",
+          "Trust",
+          "Trust completely"
+        ],
+        "range": [
+          "#c30d24",
+          "#e67f6c",
+          "#a2a2a2",
+          "#74b0ce",
+          "#1770ab"
+        ]
+      },
+      "type": "nominal"
+    },
+    "tooltip": [
+      {
+        "field": "percent",
+        "format": ".1%",
+        "type": "quantitative"
+      },
+      {
+        "field": "valitsus",
+        "type": "nominal"
+      }
+    ],
+    "x": {
+      "axis": {
+        "format": "%",
+        "title": null
+      },
+      "field": "start",
+      "type": "quantitative"
+    },
+    "x2": {
+      "field": "end"
+    },
+    "y": {
+      "axis": {
+        "domain": false,
+        "minExtent": 60,
+        "offset": 5,
+        "ticks": false,
+        "title": null
+      },
+      "field": "question",
+      "sort": [
+        "valitsus"
+      ],
+      "type": "nominal"
+    }
+  },
+  "mark": {
+    "type": "bar"
+  },
+  "width": 400
+}

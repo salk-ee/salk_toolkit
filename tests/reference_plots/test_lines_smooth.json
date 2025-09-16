@@ -1,0 +1,213 @@
+{
+  "data": {
+    "name": "data-normalized"
+  },
+  "datasets": {
+    "data-normalized": [
+      {
+        "education": "Basic education",
+        "question": "EKRE",
+        "thermometer": -1.301211323683234
+      },
+      {
+        "education": "Basic education",
+        "question": "Eesti 200",
+        "thermometer": 0.12993892769173668
+      },
+      {
+        "education": "Basic education",
+        "question": "Isamaa",
+        "thermometer": -0.296082599453386
+      },
+      {
+        "education": "Basic education",
+        "question": "Keskerakond",
+        "thermometer": -0.6206093734183622
+      },
+      {
+        "education": "Basic education",
+        "question": "Parempoolsed",
+        "thermometer": -1.1142490805412153
+      },
+      {
+        "education": "Basic education",
+        "question": "Reformierakond",
+        "thermometer": -0.5141546040422444
+      },
+      {
+        "education": "Basic education",
+        "question": "Rohelised",
+        "thermometer": -0.8261632418935789
+      },
+      {
+        "education": "Basic education",
+        "question": "SDE",
+        "thermometer": -0.2957114417788575
+      },
+      {
+        "education": "Higher education",
+        "question": "EKRE",
+        "thermometer": -2.3677137788662304
+      },
+      {
+        "education": "Higher education",
+        "question": "Eesti 200",
+        "thermometer": 0.4417965745145136
+      },
+      {
+        "education": "Higher education",
+        "question": "Isamaa",
+        "thermometer": -0.5795067426490211
+      },
+      {
+        "education": "Higher education",
+        "question": "Keskerakond",
+        "thermometer": -0.07398860264682335
+      },
+      {
+        "education": "Higher education",
+        "question": "Parempoolsed",
+        "thermometer": -0.7700120881018541
+      },
+      {
+        "education": "Higher education",
+        "question": "Reformierakond",
+        "thermometer": 0.5937612835366333
+      },
+      {
+        "education": "Higher education",
+        "question": "Rohelised",
+        "thermometer": -0.8196361010376929
+      },
+      {
+        "education": "Higher education",
+        "question": "SDE",
+        "thermometer": 0.07397290381324667
+      },
+      {
+        "education": "Secondary education",
+        "question": "EKRE",
+        "thermometer": -1.5399572489312232
+      },
+      {
+        "education": "Secondary education",
+        "question": "Eesti 200",
+        "thermometer": -0.052004425110627764
+      },
+      {
+        "education": "Secondary education",
+        "question": "Isamaa",
+        "thermometer": -0.3751781294532363
+      },
+      {
+        "education": "Secondary education",
+        "question": "Keskerakond",
+        "thermometer": -0.1222436810920273
+      },
+      {
+        "education": "Secondary education",
+        "question": "Parempoolsed",
+        "thermometer": -0.8623715592889822
+      },
+      {
+        "education": "Secondary education",
+        "question": "Reformierakond",
+        "thermometer": -0.27045676141903546
+      },
+      {
+        "education": "Secondary education",
+        "question": "Rohelised",
+        "thermometer": -0.8801001275031876
+      },
+      {
+        "education": "Secondary education",
+        "question": "SDE",
+        "thermometer": -0.4575958148953724
+      }
+    ]
+  },
+  "encoding": {
+    "color": {
+      "field": "question",
+      "legend": {
+        "columns": 4,
+        "orient": "top"
+      },
+      "scale": {
+        "domain": [
+          "Keskerakond",
+          "EKRE",
+          "Reformierakond",
+          "Isamaa",
+          "SDE",
+          "Rohelised",
+          "Eesti 200",
+          "Parempoolsed"
+        ],
+        "range": [
+          "#007557",
+          "#8B4513",
+          "#FFE200",
+          "#009BDF",
+          "#E10600",
+          "#88AF47",
+          "#31758A",
+          "orange"
+        ]
+      },
+      "sort": [
+        "Keskerakond",
+        "EKRE",
+        "Reformierakond",
+        "Isamaa",
+        "SDE",
+        "Rohelised",
+        "Eesti 200",
+        "Parempoolsed"
+      ],
+      "type": "nominal"
+    },
+    "tooltip": [
+      {
+        "field": "thermometer",
+        "format": ".1f",
+        "type": "quantitative"
+      },
+      {
+        "field": "question",
+        "type": "nominal"
+      },
+      {
+        "field": "education",
+        "type": "nominal"
+      }
+    ],
+    "x": {
+      "axis": {
+        "labelAngle": 0
+      },
+      "field": "education",
+      "sort": [
+        "Basic education",
+        "Secondary education",
+        "Higher education"
+      ],
+      "title": null,
+      "type": "nominal"
+    },
+    "y": {
+      "axis": {
+        "format": ".1f"
+      },
+      "field": "thermometer",
+      "title": "thermometer",
+      "type": "quantitative"
+    }
+  },
+  "mark": {
+    "interpolate": "basis",
+    "point": "transparent",
+    "type": "line"
+  },
+  "width": 400
+}

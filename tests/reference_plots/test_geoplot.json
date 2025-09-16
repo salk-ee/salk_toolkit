@@ -1,0 +1,132 @@
+{
+  "data": {
+    "format": {
+      "feature": "data",
+      "type": "topojson"
+    },
+    "url": "https://dl.dropboxusercontent.com/scl/fi/ciunedliwyvlafpm5nlos/estonia.topojson?rlkey=0g56uexaos1v59yghmikv09xi&dl=0"
+  },
+  "datasets": {
+    "data-normalized": [
+      {
+        "EKRE": -0.7208057345068506,
+        "electoral_district": "L\u00e4\u00e4ne-Virumaa"
+      },
+      {
+        "EKRE": -0.9158722751816546,
+        "electoral_district": "V\u00f5ru-, Valga- ja P\u00f5lvamaa"
+      },
+      {
+        "EKRE": -1.2241366107665212,
+        "electoral_district": "J\u00e4rva- ja Viljandimaa"
+      },
+      {
+        "EKRE": -1.3361793748607915,
+        "electoral_district": "P\u00e4rnumaa"
+      },
+      {
+        "EKRE": -1.3666172001978658,
+        "electoral_district": "Ida-Virumaa"
+      },
+      {
+        "EKRE": -1.9489973471774538,
+        "electoral_district": "Harju- ja Raplamaa"
+      },
+      {
+        "EKRE": -1.9682483752251194,
+        "electoral_district": "Kesklinn, Lasnam\u00e4e ja Pirita"
+      },
+      {
+        "EKRE": -1.9883919934518937,
+        "electoral_district": "Tartu linn"
+      },
+      {
+        "EKRE": -2.0133931803373635,
+        "electoral_district": "J\u00f5geva- ja Tartumaa"
+      },
+      {
+        "EKRE": -2.0888592556673538,
+        "electoral_district": "Hiiu-, L\u00e4\u00e4ne- ja Saaremaa"
+      },
+      {
+        "EKRE": -2.2200532900834107,
+        "electoral_district": "Mustam\u00e4e ja N\u00f5mme"
+      },
+      {
+        "EKRE": -2.5055430147980937,
+        "electoral_district": "Haabersti, P\u00f5hja-Tallinn ja Kristiine"
+      }
+    ]
+  },
+  "encoding": {
+    "color": {
+      "field": "EKRE",
+      "legend": {
+        "format": ".1f",
+        "gradientThickness": 6,
+        "orient": "top-left",
+        "title": null,
+        "values": [
+          -2.5055430147980937,
+          -0.7208057345068506
+        ]
+      },
+      "scale": {
+        "domain": [
+          -2.5055430147980937,
+          -0.7208057345068506
+        ],
+        "range": [
+          "#8d0e26",
+          "#9f2736",
+          "#b04045",
+          "#c25955",
+          "#d37264",
+          "#e58b74",
+          "#eba08a",
+          "#edb2a0",
+          "#eec3b6",
+          "#f0d4cc",
+          "#f1e6e2"
+        ]
+      },
+      "type": "quantitative"
+    },
+    "tooltip": [
+      {
+        "field": "EKRE",
+        "format": ".1f",
+        "type": "quantitative"
+      },
+      {
+        "field": "electoral_district",
+        "type": "nominal"
+      }
+    ]
+  },
+  "height": 300,
+  "mark": {
+    "stroke": "white",
+    "strokeWidth": 0.1,
+    "type": "geoshape"
+  },
+  "projection": {
+    "type": "mercator"
+  },
+  "transform": [
+    {
+      "from": {
+        "data": {
+          "name": "data-normalized"
+        },
+        "fields": [
+          "electoral_district",
+          "EKRE"
+        ],
+        "key": "electoral_district"
+      },
+      "lookup": "properties.VNIMI"
+    }
+  ],
+  "width": 400
+}

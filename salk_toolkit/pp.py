@@ -479,7 +479,7 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     if not pp_desc.get('calculated_draws',True): draws_data = {}
 
     # Add row id-s and find count - both need to happen before filtering
-    full_df = full_df.with_row_count('id')
+    full_df = full_df.with_row_index('id')
     total_n = full_df.select(pl.len()).collect().item()
 
     # For more customized filtering in dashboards
@@ -704,9 +704,9 @@ def wrangle_data(raw_df, col_meta, factor_cols, weight_col, pp_desc, n_questions
 
     # For old streaming, the query does not generally seem to stream
     # For new_stream, polars 1.23 considers categoricals to still be broken
-    # TODO: Check back here when 1.24+ is released
+    # TODO: Check back here when they fix unpivot in streaming!
     #print("final\n",data.explain(streaming=True))
-    #data = data.collect(engine='streaming').to_pandas()
+    #data = data.collect(engine='streaming').to_pandas() # New streaming - does not stream unpivot and is slow
     data = data.collect(streaming=True).to_pandas()
 
     # Force immediate garbage collection

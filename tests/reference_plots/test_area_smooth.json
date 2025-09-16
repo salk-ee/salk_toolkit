@@ -1,0 +1,582 @@
+{
+  "data": {
+    "name": "data-normalized"
+  },
+  "datasets": {
+    "data-normalized": [
+      {
+        "education": "Basic education",
+        "gender": "Female",
+        "order": 1,
+        "party_preference": "EKRE",
+        "percent": 0.1750222892805706
+      },
+      {
+        "education": "Basic education",
+        "gender": "Male",
+        "order": 1,
+        "party_preference": "EKRE",
+        "percent": 0.16777364505844847
+      },
+      {
+        "education": "Higher education",
+        "gender": "Female",
+        "order": 1,
+        "party_preference": "EKRE",
+        "percent": 0.04442413701618371
+      },
+      {
+        "education": "Higher education",
+        "gender": "Male",
+        "order": 1,
+        "party_preference": "EKRE",
+        "percent": 0.12543659322944653
+      },
+      {
+        "education": "Secondary education",
+        "gender": "Female",
+        "order": 1,
+        "party_preference": "EKRE",
+        "percent": 0.13233849706201645
+      },
+      {
+        "education": "Secondary education",
+        "gender": "Male",
+        "order": 1,
+        "party_preference": "EKRE",
+        "percent": 0.19847422426024552
+      },
+      {
+        "education": "Basic education",
+        "gender": "Female",
+        "order": 6,
+        "party_preference": "Eesti 200",
+        "percent": 0.18119470543858446
+      },
+      {
+        "education": "Basic education",
+        "gender": "Male",
+        "order": 6,
+        "party_preference": "Eesti 200",
+        "percent": 0.07844048884165782
+      },
+      {
+        "education": "Higher education",
+        "gender": "Female",
+        "order": 6,
+        "party_preference": "Eesti 200",
+        "percent": 0.14385520148571765
+      },
+      {
+        "education": "Higher education",
+        "gender": "Male",
+        "order": 6,
+        "party_preference": "Eesti 200",
+        "percent": 0.14656098871574422
+      },
+      {
+        "education": "Secondary education",
+        "gender": "Female",
+        "order": 6,
+        "party_preference": "Eesti 200",
+        "percent": 0.10562955559767719
+      },
+      {
+        "education": "Secondary education",
+        "gender": "Male",
+        "order": 6,
+        "party_preference": "Eesti 200",
+        "percent": 0.13520182599576402
+      },
+      {
+        "education": "Basic education",
+        "gender": "Female",
+        "order": 3,
+        "party_preference": "Isamaa",
+        "percent": 0.06954255538028942
+      },
+      {
+        "education": "Basic education",
+        "gender": "Male",
+        "order": 3,
+        "party_preference": "Isamaa",
+        "percent": 0.10886025504782147
+      },
+      {
+        "education": "Higher education",
+        "gender": "Female",
+        "order": 3,
+        "party_preference": "Isamaa",
+        "percent": 0.06824278513103205
+      },
+      {
+        "education": "Higher education",
+        "gender": "Male",
+        "order": 3,
+        "party_preference": "Isamaa",
+        "percent": 0.06424637291778613
+      },
+      {
+        "education": "Secondary education",
+        "gender": "Female",
+        "order": 3,
+        "party_preference": "Isamaa",
+        "percent": 0.031619940378750024
+      },
+      {
+        "education": "Secondary education",
+        "gender": "Male",
+        "order": 3,
+        "party_preference": "Isamaa",
+        "percent": 0.08905841952663938
+      },
+      {
+        "education": "Basic education",
+        "gender": "Female",
+        "order": 0,
+        "party_preference": "Keskerakond",
+        "percent": 0.0809958164734929
+      },
+      {
+        "education": "Basic education",
+        "gender": "Male",
+        "order": 0,
+        "party_preference": "Keskerakond",
+        "percent": 0.07711211477151966
+      },
+      {
+        "education": "Higher education",
+        "gender": "Female",
+        "order": 0,
+        "party_preference": "Keskerakond",
+        "percent": 0.16354685611532
+      },
+      {
+        "education": "Higher education",
+        "gender": "Male",
+        "order": 0,
+        "party_preference": "Keskerakond",
+        "percent": 0.13749328318108545
+      },
+      {
+        "education": "Secondary education",
+        "gender": "Female",
+        "order": 0,
+        "party_preference": "Keskerakond",
+        "percent": 0.16092568021642858
+      },
+      {
+        "education": "Secondary education",
+        "gender": "Male",
+        "order": 0,
+        "party_preference": "Keskerakond",
+        "percent": 0.10193086714235776
+      },
+      {
+        "education": "Basic education",
+        "gender": "Female",
+        "order": 10,
+        "party_preference": "No opinion",
+        "percent": 0.12701460805157397
+      },
+      {
+        "education": "Basic education",
+        "gender": "Male",
+        "order": 10,
+        "party_preference": "No opinion",
+        "percent": 0.10487513283740701
+      },
+      {
+        "education": "Higher education",
+        "gender": "Female",
+        "order": 10,
+        "party_preference": "No opinion",
+        "percent": 0.08041741591250774
+      },
+      {
+        "education": "Higher education",
+        "gender": "Male",
+        "order": 10,
+        "party_preference": "No opinion",
+        "percent": 0.033584094572810315
+      },
+      {
+        "education": "Secondary education",
+        "gender": "Female",
+        "order": 10,
+        "party_preference": "No opinion",
+        "percent": 0.10793858666620716
+      },
+      {
+        "education": "Secondary education",
+        "gender": "Male",
+        "order": 10,
+        "party_preference": "No opinion",
+        "percent": 0.061565667989553985
+      },
+      {
+        "education": "Basic education",
+        "gender": "Female",
+        "order": 9,
+        "party_preference": "None of the parties",
+        "percent": 0.1091831835950895
+      },
+      {
+        "education": "Basic education",
+        "gender": "Male",
+        "order": 9,
+        "party_preference": "None of the parties",
+        "percent": 0.09192348565356004
+      },
+      {
+        "education": "Higher education",
+        "gender": "Female",
+        "order": 9,
+        "party_preference": "None of the parties",
+        "percent": 0.05208855348878342
+      },
+      {
+        "education": "Higher education",
+        "gender": "Male",
+        "order": 9,
+        "party_preference": "None of the parties",
+        "percent": 0.06585840945728103
+      },
+      {
+        "education": "Secondary education",
+        "gender": "Female",
+        "order": 9,
+        "party_preference": "None of the parties",
+        "percent": 0.09162028501025278
+      },
+      {
+        "education": "Secondary education",
+        "gender": "Male",
+        "order": 9,
+        "party_preference": "None of the parties",
+        "percent": 0.07528119923505583
+      },
+      {
+        "education": "Basic education",
+        "gender": "Male",
+        "order": 8,
+        "party_preference": "Other",
+        "percent": 0.011822529224229543
+      },
+      {
+        "education": "Higher education",
+        "gender": "Female",
+        "order": 8,
+        "party_preference": "Other",
+        "percent": 0.030362880641452702
+      },
+      {
+        "education": "Higher education",
+        "gender": "Male",
+        "order": 8,
+        "party_preference": "Other",
+        "percent": 0.026699355185384202
+      },
+      {
+        "education": "Secondary education",
+        "gender": "Female",
+        "order": 8,
+        "party_preference": "Other",
+        "percent": 0.024468836696362413
+      },
+      {
+        "education": "Secondary education",
+        "gender": "Male",
+        "order": 8,
+        "party_preference": "Other",
+        "percent": 0.02401760194114865
+      },
+      {
+        "education": "Basic education",
+        "gender": "Female",
+        "order": 7,
+        "party_preference": "Parempoolsed",
+        "percent": 0.013579315547630477
+      },
+      {
+        "education": "Basic education",
+        "gender": "Male",
+        "order": 7,
+        "party_preference": "Parempoolsed",
+        "percent": 0.026434643995749203
+      },
+      {
+        "education": "Higher education",
+        "gender": "Female",
+        "order": 7,
+        "party_preference": "Parempoolsed",
+        "percent": 0.02387760516463756
+      },
+      {
+        "education": "Higher education",
+        "gender": "Male",
+        "order": 7,
+        "party_preference": "Parempoolsed",
+        "percent": 0.04580870499731327
+      },
+      {
+        "education": "Secondary education",
+        "gender": "Female",
+        "order": 7,
+        "party_preference": "Parempoolsed",
+        "percent": 0.027363741319594025
+      },
+      {
+        "education": "Secondary education",
+        "gender": "Male",
+        "order": 7,
+        "party_preference": "Parempoolsed",
+        "percent": 0.016985050687832865
+      },
+      {
+        "education": "Basic education",
+        "gender": "Female",
+        "order": 2,
+        "party_preference": "Reformierakond",
+        "percent": 0.1475893285782868
+      },
+      {
+        "education": "Basic education",
+        "gender": "Male",
+        "order": 2,
+        "party_preference": "Reformierakond",
+        "percent": 0.20197927736450585
+      },
+      {
+        "education": "Higher education",
+        "gender": "Female",
+        "order": 2,
+        "party_preference": "Reformierakond",
+        "percent": 0.270082245084456
+      },
+      {
+        "education": "Higher education",
+        "gender": "Male",
+        "order": 2,
+        "party_preference": "Reformierakond",
+        "percent": 0.2522837184309511
+      },
+      {
+        "education": "Secondary education",
+        "gender": "Female",
+        "order": 2,
+        "party_preference": "Reformierakond",
+        "percent": 0.229783054469009
+      },
+      {
+        "education": "Secondary education",
+        "gender": "Male",
+        "order": 2,
+        "party_preference": "Reformierakond",
+        "percent": 0.20817996751043574
+      },
+      {
+        "education": "Basic education",
+        "gender": "Female",
+        "order": 5,
+        "party_preference": "Rohelised",
+        "percent": 0.01344215074411906
+      },
+      {
+        "education": "Basic education",
+        "gender": "Male",
+        "order": 5,
+        "party_preference": "Rohelised",
+        "percent": 0.02497343251859724
+      },
+      {
+        "education": "Higher education",
+        "gender": "Female",
+        "order": 5,
+        "party_preference": "Rohelised",
+        "percent": 0.024024997789110634
+      },
+      {
+        "education": "Higher education",
+        "gender": "Male",
+        "order": 5,
+        "party_preference": "Rohelised",
+        "percent": 0.019545943041375604
+      },
+      {
+        "education": "Secondary education",
+        "gender": "Female",
+        "order": 5,
+        "party_preference": "Rohelised",
+        "percent": 0.014405596815604915
+      },
+      {
+        "education": "Secondary education",
+        "gender": "Male",
+        "order": 5,
+        "party_preference": "Rohelised",
+        "percent": 0.01603915198124653
+      },
+      {
+        "education": "Basic education",
+        "gender": "Female",
+        "order": 4,
+        "party_preference": "SDE",
+        "percent": 0.0824360469103628
+      },
+      {
+        "education": "Basic education",
+        "gender": "Male",
+        "order": 4,
+        "party_preference": "SDE",
+        "percent": 0.10580499468650371
+      },
+      {
+        "education": "Higher education",
+        "gender": "Female",
+        "order": 4,
+        "party_preference": "SDE",
+        "percent": 0.09907732217079858
+      },
+      {
+        "education": "Higher education",
+        "gender": "Male",
+        "order": 4,
+        "party_preference": "SDE",
+        "percent": 0.08248253627082214
+      },
+      {
+        "education": "Secondary education",
+        "gender": "Female",
+        "order": 4,
+        "party_preference": "SDE",
+        "percent": 0.07390622576809747
+      },
+      {
+        "education": "Secondary education",
+        "gender": "Male",
+        "order": 4,
+        "party_preference": "SDE",
+        "percent": 0.07326602372971973
+      }
+    ]
+  },
+  "facet": {
+    "row": {
+      "field": "gender",
+      "header": {
+        "labelOrient": "top"
+      },
+      "sort": [
+        "Male",
+        "Female"
+      ],
+      "type": "ordinal"
+    }
+  },
+  "spec": {
+    "encoding": {
+      "color": {
+        "field": "party_preference",
+        "legend": {
+          "columns": 4,
+          "orient": "top"
+        },
+        "scale": {
+          "domain": [
+            "Keskerakond",
+            "EKRE",
+            "Reformierakond",
+            "Isamaa",
+            "SDE",
+            "Rohelised",
+            "Eesti 200",
+            "Parempoolsed",
+            "Other",
+            "None of the parties",
+            "No opinion"
+          ],
+          "range": [
+            "#007557",
+            "#8B4513",
+            "#FFE200",
+            "#009BDF",
+            "#E10600",
+            "#88AF47",
+            "#31758A",
+            "orange",
+            "lightgrey",
+            "lightgrey",
+            "lightgrey"
+          ]
+        },
+        "sort": [
+          "Keskerakond",
+          "EKRE",
+          "Reformierakond",
+          "Isamaa",
+          "SDE",
+          "Rohelised",
+          "Eesti 200",
+          "Parempoolsed",
+          "Other",
+          "None of the parties",
+          "No opinion"
+        ],
+        "type": "nominal"
+      },
+      "order": {
+        "field": "order",
+        "type": "ordinal"
+      },
+      "tooltip": [
+        {
+          "field": "percent",
+          "format": ".1%",
+          "type": "quantitative"
+        },
+        {
+          "field": "party_preference",
+          "type": "nominal"
+        },
+        {
+          "field": "education",
+          "type": "nominal"
+        }
+      ],
+      "x": {
+        "axis": {
+          "labelAngle": 0
+        },
+        "field": "education",
+        "sort": [
+          "Basic education",
+          "Secondary education",
+          "Higher education"
+        ],
+        "title": null,
+        "type": "nominal"
+      },
+      "y": {
+        "axis": {
+          "format": "%"
+        },
+        "field": "percent",
+        "scale": {
+          "domain": [
+            0,
+            1
+          ]
+        },
+        "stack": "normalize",
+        "title": null,
+        "type": "quantitative"
+      }
+    },
+    "mark": {
+      "interpolate": "natural",
+      "type": "area"
+    },
+    "width": 400
+  }
+}

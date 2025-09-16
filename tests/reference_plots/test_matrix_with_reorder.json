@@ -1,0 +1,873 @@
+{
+  "data": {
+    "name": "data-normalized"
+  },
+  "datasets": {
+    "data-normalized": [
+      {
+        "issues": -0.09918601085597176,
+        "party_preference": "EKRE",
+        "question": "NATO"
+      },
+      {
+        "issues": -0.76867397921692,
+        "party_preference": "EKRE",
+        "question": "s\u00f5navabadus"
+      },
+      {
+        "issues": -0.8163458308762481,
+        "party_preference": "EKRE",
+        "question": "kliimamuutus"
+      },
+      {
+        "issues": -1.005108408553373,
+        "party_preference": "EKRE",
+        "question": "s\u00fcndimus"
+      },
+      {
+        "issues": -1.2416090906640649,
+        "party_preference": "EKRE",
+        "question": "abielu"
+      },
+      {
+        "issues": -1.5659904754853329,
+        "party_preference": "EKRE",
+        "question": "e-valimised"
+      },
+      {
+        "issues": 0.10901659907298651,
+        "party_preference": "EKRE",
+        "question": "metsad"
+      },
+      {
+        "issues": 0.207698913036475,
+        "party_preference": "EKRE",
+        "question": "eestiharidus"
+      },
+      {
+        "issues": 0.2358930692751363,
+        "party_preference": "EKRE",
+        "question": "maksud"
+      },
+      {
+        "issues": 0.443269213611166,
+        "party_preference": "EKRE",
+        "question": "abort"
+      },
+      {
+        "issues": 0.739333221575432,
+        "party_preference": "EKRE",
+        "question": "referendum"
+      },
+      {
+        "issues": 0.7797763738379747,
+        "party_preference": "EKRE",
+        "question": "euroopa"
+      },
+      {
+        "issues": 1.0239277941677447,
+        "party_preference": "EKRE",
+        "question": "sisser\u00e4nne"
+      },
+      {
+        "issues": -0.04173767357606724,
+        "party_preference": "Eesti 200",
+        "question": "metsad"
+      },
+      {
+        "issues": -0.10652549448506203,
+        "party_preference": "Eesti 200",
+        "question": "maksud"
+      },
+      {
+        "issues": -0.25776520864056557,
+        "party_preference": "Eesti 200",
+        "question": "referendum"
+      },
+      {
+        "issues": -0.4000383480983215,
+        "party_preference": "Eesti 200",
+        "question": "euroopa"
+      },
+      {
+        "issues": -0.4002005523745732,
+        "party_preference": "Eesti 200",
+        "question": "abort"
+      },
+      {
+        "issues": -0.5461027201114188,
+        "party_preference": "Eesti 200",
+        "question": "sisser\u00e4nne"
+      },
+      {
+        "issues": 0.1938728032488825,
+        "party_preference": "Eesti 200",
+        "question": "s\u00f5navabadus"
+      },
+      {
+        "issues": 0.2273014164592619,
+        "party_preference": "Eesti 200",
+        "question": "eestiharidus"
+      },
+      {
+        "issues": 0.40595734520911725,
+        "party_preference": "Eesti 200",
+        "question": "kliimamuutus"
+      },
+      {
+        "issues": 0.4269779053752733,
+        "party_preference": "Eesti 200",
+        "question": "s\u00fcndimus"
+      },
+      {
+        "issues": 0.4767003029783783,
+        "party_preference": "Eesti 200",
+        "question": "NATO"
+      },
+      {
+        "issues": 0.8475131498588717,
+        "party_preference": "Eesti 200",
+        "question": "abielu"
+      },
+      {
+        "issues": 0.9071979070142728,
+        "party_preference": "Eesti 200",
+        "question": "e-valimised"
+      },
+      {
+        "issues": -0.05856916677305833,
+        "party_preference": "Isamaa",
+        "question": "kliimamuutus"
+      },
+      {
+        "issues": -0.06828921870216059,
+        "party_preference": "Isamaa",
+        "question": "referendum"
+      },
+      {
+        "issues": -0.13214576442625237,
+        "party_preference": "Isamaa",
+        "question": "metsad"
+      },
+      {
+        "issues": -0.1348780684793846,
+        "party_preference": "Isamaa",
+        "question": "maksud"
+      },
+      {
+        "issues": -0.23751304253240266,
+        "party_preference": "Isamaa",
+        "question": "s\u00f5navabadus"
+      },
+      {
+        "issues": -0.5948138430336567,
+        "party_preference": "Isamaa",
+        "question": "abielu"
+      },
+      {
+        "issues": 0.1526363199128313,
+        "party_preference": "Isamaa",
+        "question": "s\u00fcndimus"
+      },
+      {
+        "issues": 0.24930360167933086,
+        "party_preference": "Isamaa",
+        "question": "euroopa"
+      },
+      {
+        "issues": 0.2606307463215769,
+        "party_preference": "Isamaa",
+        "question": "sisser\u00e4nne"
+      },
+      {
+        "issues": 0.2844536150242804,
+        "party_preference": "Isamaa",
+        "question": "abort"
+      },
+      {
+        "issues": 0.28574606801592417,
+        "party_preference": "Isamaa",
+        "question": "e-valimised"
+      },
+      {
+        "issues": 0.5393861594981888,
+        "party_preference": "Isamaa",
+        "question": "NATO"
+      },
+      {
+        "issues": 0.5857650970164556,
+        "party_preference": "Isamaa",
+        "question": "eestiharidus"
+      },
+      {
+        "issues": -0.04719252158154817,
+        "party_preference": "Keskerakond",
+        "question": "s\u00fcndimus"
+      },
+      {
+        "issues": -0.14596039686391707,
+        "party_preference": "Keskerakond",
+        "question": "kliimamuutus"
+      },
+      {
+        "issues": -0.7545110284465633,
+        "party_preference": "Keskerakond",
+        "question": "abielu"
+      },
+      {
+        "issues": -0.816049757613439,
+        "party_preference": "Keskerakond",
+        "question": "e-valimised"
+      },
+      {
+        "issues": -0.904481314016078,
+        "party_preference": "Keskerakond",
+        "question": "NATO"
+      },
+      {
+        "issues": -0.9534572018517389,
+        "party_preference": "Keskerakond",
+        "question": "eestiharidus"
+      },
+      {
+        "issues": 0.06049837071783103,
+        "party_preference": "Keskerakond",
+        "question": "s\u00f5navabadus"
+      },
+      {
+        "issues": 0.26306473726188395,
+        "party_preference": "Keskerakond",
+        "question": "metsad"
+      },
+      {
+        "issues": 0.27125824833206574,
+        "party_preference": "Keskerakond",
+        "question": "abort"
+      },
+      {
+        "issues": 0.2998264665472997,
+        "party_preference": "Keskerakond",
+        "question": "maksud"
+      },
+      {
+        "issues": 0.373288163674295,
+        "party_preference": "Keskerakond",
+        "question": "sisser\u00e4nne"
+      },
+      {
+        "issues": 0.40393378222914045,
+        "party_preference": "Keskerakond",
+        "question": "referendum"
+      },
+      {
+        "issues": 0.5867070986255664,
+        "party_preference": "Keskerakond",
+        "question": "euroopa"
+      },
+      {
+        "issues": -0.01953279422393574,
+        "party_preference": "No opinion",
+        "question": "abielu"
+      },
+      {
+        "issues": -0.10025096176355658,
+        "party_preference": "No opinion",
+        "question": "kliimamuutus"
+      },
+      {
+        "issues": -0.1132694219580055,
+        "party_preference": "No opinion",
+        "question": "s\u00f5navabadus"
+      },
+      {
+        "issues": -0.18284611442881002,
+        "party_preference": "No opinion",
+        "question": "eestiharidus"
+      },
+      {
+        "issues": -0.3729975419742454,
+        "party_preference": "No opinion",
+        "question": "s\u00fcndimus"
+      },
+      {
+        "issues": -0.4619687752724565,
+        "party_preference": "No opinion",
+        "question": "NATO"
+      },
+      {
+        "issues": -0.4661917615446574,
+        "party_preference": "No opinion",
+        "question": "e-valimised"
+      },
+      {
+        "issues": 0.13957322713423567,
+        "party_preference": "No opinion",
+        "question": "metsad"
+      },
+      {
+        "issues": 0.21748710086736767,
+        "party_preference": "No opinion",
+        "question": "euroopa"
+      },
+      {
+        "issues": 0.22373150233963326,
+        "party_preference": "No opinion",
+        "question": "maksud"
+      },
+      {
+        "issues": 0.23099501567047523,
+        "party_preference": "No opinion",
+        "question": "referendum"
+      },
+      {
+        "issues": 0.24581707528137497,
+        "party_preference": "No opinion",
+        "question": "abort"
+      },
+      {
+        "issues": 0.3855479569297735,
+        "party_preference": "No opinion",
+        "question": "sisser\u00e4nne"
+      },
+      {
+        "issues": -0.2980638079429795,
+        "party_preference": "None of the parties",
+        "question": "kliimamuutus"
+      },
+      {
+        "issues": -0.34981504159836635,
+        "party_preference": "None of the parties",
+        "question": "abielu"
+      },
+      {
+        "issues": -0.4444499243249882,
+        "party_preference": "None of the parties",
+        "question": "s\u00f5navabadus"
+      },
+      {
+        "issues": -0.5706097172650888,
+        "party_preference": "None of the parties",
+        "question": "s\u00fcndimus"
+      },
+      {
+        "issues": -0.9212164292300846,
+        "party_preference": "None of the parties",
+        "question": "e-valimised"
+      },
+      {
+        "issues": -0.9230855088987424,
+        "party_preference": "None of the parties",
+        "question": "eestiharidus"
+      },
+      {
+        "issues": -1.1144012223851725,
+        "party_preference": "None of the parties",
+        "question": "NATO"
+      },
+      {
+        "issues": 0.0362947234966335,
+        "party_preference": "None of the parties",
+        "question": "maksud"
+      },
+      {
+        "issues": 0.2858410853692546,
+        "party_preference": "None of the parties",
+        "question": "metsad"
+      },
+      {
+        "issues": 0.306976176649161,
+        "party_preference": "None of the parties",
+        "question": "abort"
+      },
+      {
+        "issues": 0.31368667969000064,
+        "party_preference": "None of the parties",
+        "question": "sisser\u00e4nne"
+      },
+      {
+        "issues": 0.32605609737508623,
+        "party_preference": "None of the parties",
+        "question": "referendum"
+      },
+      {
+        "issues": 0.5707542189316032,
+        "party_preference": "None of the parties",
+        "question": "euroopa"
+      },
+      {
+        "issues": -0.031197977128358118,
+        "party_preference": "Other",
+        "question": "metsad"
+      },
+      {
+        "issues": -0.6006082304420879,
+        "party_preference": "Other",
+        "question": "kliimamuutus"
+      },
+      {
+        "issues": -0.6099211135686443,
+        "party_preference": "Other",
+        "question": "s\u00f5navabadus"
+      },
+      {
+        "issues": -1.1708782152837722,
+        "party_preference": "Other",
+        "question": "s\u00fcndimus"
+      },
+      {
+        "issues": -1.3186936310967754,
+        "party_preference": "Other",
+        "question": "abielu"
+      },
+      {
+        "issues": -1.9271182294661535,
+        "party_preference": "Other",
+        "question": "eestiharidus"
+      },
+      {
+        "issues": -2.174660360649556,
+        "party_preference": "Other",
+        "question": "e-valimised"
+      },
+      {
+        "issues": -2.193551593137395,
+        "party_preference": "Other",
+        "question": "NATO"
+      },
+      {
+        "issues": 0.08051162681608671,
+        "party_preference": "Other",
+        "question": "abort"
+      },
+      {
+        "issues": 0.4590579362456717,
+        "party_preference": "Other",
+        "question": "sisser\u00e4nne"
+      },
+      {
+        "issues": 0.625289104883771,
+        "party_preference": "Other",
+        "question": "maksud"
+      },
+      {
+        "issues": 0.731079848963979,
+        "party_preference": "Other",
+        "question": "euroopa"
+      },
+      {
+        "issues": 0.9419024751950287,
+        "party_preference": "Other",
+        "question": "referendum"
+      },
+      {
+        "issues": -0.016879346635606553,
+        "party_preference": "Parempoolsed",
+        "question": "kliimamuutus"
+      },
+      {
+        "issues": -0.06278264081036602,
+        "party_preference": "Parempoolsed",
+        "question": "s\u00fcndimus"
+      },
+      {
+        "issues": -0.06694325694331417,
+        "party_preference": "Parempoolsed",
+        "question": "maksud"
+      },
+      {
+        "issues": -0.4600798318415512,
+        "party_preference": "Parempoolsed",
+        "question": "referendum"
+      },
+      {
+        "issues": 0.04669878512252996,
+        "party_preference": "Parempoolsed",
+        "question": "metsad"
+      },
+      {
+        "issues": 0.05726629274862784,
+        "party_preference": "Parempoolsed",
+        "question": "abort"
+      },
+      {
+        "issues": 0.12766147248538923,
+        "party_preference": "Parempoolsed",
+        "question": "sisser\u00e4nne"
+      },
+      {
+        "issues": 0.1754251291722427,
+        "party_preference": "Parempoolsed",
+        "question": "abielu"
+      },
+      {
+        "issues": 0.20323635619363667,
+        "party_preference": "Parempoolsed",
+        "question": "euroopa"
+      },
+      {
+        "issues": 0.27622219956951377,
+        "party_preference": "Parempoolsed",
+        "question": "s\u00f5navabadus"
+      },
+      {
+        "issues": 0.31116471172850807,
+        "party_preference": "Parempoolsed",
+        "question": "eestiharidus"
+      },
+      {
+        "issues": 0.3302853019149215,
+        "party_preference": "Parempoolsed",
+        "question": "NATO"
+      },
+      {
+        "issues": 0.4532535782566777,
+        "party_preference": "Parempoolsed",
+        "question": "e-valimised"
+      },
+      {
+        "issues": -0.3415527032037407,
+        "party_preference": "Reformierakond",
+        "question": "metsad"
+      },
+      {
+        "issues": -0.380796728203904,
+        "party_preference": "Reformierakond",
+        "question": "abort"
+      },
+      {
+        "issues": -0.46280889227484656,
+        "party_preference": "Reformierakond",
+        "question": "maksud"
+      },
+      {
+        "issues": -0.6177858523950517,
+        "party_preference": "Reformierakond",
+        "question": "sisser\u00e4nne"
+      },
+      {
+        "issues": -0.6731828978059257,
+        "party_preference": "Reformierakond",
+        "question": "referendum"
+      },
+      {
+        "issues": -0.7414043686403915,
+        "party_preference": "Reformierakond",
+        "question": "euroopa"
+      },
+      {
+        "issues": 0.33617853159959815,
+        "party_preference": "Reformierakond",
+        "question": "kliimamuutus"
+      },
+      {
+        "issues": 0.5436696025535477,
+        "party_preference": "Reformierakond",
+        "question": "s\u00f5navabadus"
+      },
+      {
+        "issues": 0.625518318698154,
+        "party_preference": "Reformierakond",
+        "question": "eestiharidus"
+      },
+      {
+        "issues": 0.6411926294947977,
+        "party_preference": "Reformierakond",
+        "question": "s\u00fcndimus"
+      },
+      {
+        "issues": 0.7107004773630993,
+        "party_preference": "Reformierakond",
+        "question": "abielu"
+      },
+      {
+        "issues": 0.7167477361975915,
+        "party_preference": "Reformierakond",
+        "question": "NATO"
+      },
+      {
+        "issues": 1.1417195995166527,
+        "party_preference": "Reformierakond",
+        "question": "e-valimised"
+      },
+      {
+        "issues": -0.00683991353714649,
+        "party_preference": "Rohelised",
+        "question": "maksud"
+      },
+      {
+        "issues": -0.08514504698696163,
+        "party_preference": "Rohelised",
+        "question": "referendum"
+      },
+      {
+        "issues": -0.461000889182257,
+        "party_preference": "Rohelised",
+        "question": "abort"
+      },
+      {
+        "issues": -0.6891502598505805,
+        "party_preference": "Rohelised",
+        "question": "euroopa"
+      },
+      {
+        "issues": -0.9316528322307635,
+        "party_preference": "Rohelised",
+        "question": "sisser\u00e4nne"
+      },
+      {
+        "issues": 0.04024926708333163,
+        "party_preference": "Rohelised",
+        "question": "s\u00f5navabadus"
+      },
+      {
+        "issues": 0.1188347553774569,
+        "party_preference": "Rohelised",
+        "question": "eestiharidus"
+      },
+      {
+        "issues": 0.3257835197980766,
+        "party_preference": "Rohelised",
+        "question": "NATO"
+      },
+      {
+        "issues": 0.47656291552002294,
+        "party_preference": "Rohelised",
+        "question": "s\u00fcndimus"
+      },
+      {
+        "issues": 0.5060227752563179,
+        "party_preference": "Rohelised",
+        "question": "metsad"
+      },
+      {
+        "issues": 0.5920528770324409,
+        "party_preference": "Rohelised",
+        "question": "e-valimised"
+      },
+      {
+        "issues": 0.7245926431365924,
+        "party_preference": "Rohelised",
+        "question": "kliimamuutus"
+      },
+      {
+        "issues": 1.3517546141663024,
+        "party_preference": "Rohelised",
+        "question": "abielu"
+      },
+      {
+        "issues": -0.02027281171726416,
+        "party_preference": "SDE",
+        "question": "metsad"
+      },
+      {
+        "issues": -0.2056996969775857,
+        "party_preference": "SDE",
+        "question": "abort"
+      },
+      {
+        "issues": -0.21574651650483453,
+        "party_preference": "SDE",
+        "question": "referendum"
+      },
+      {
+        "issues": -0.6150594584795893,
+        "party_preference": "SDE",
+        "question": "sisser\u00e4nne"
+      },
+      {
+        "issues": -0.6547275965832413,
+        "party_preference": "SDE",
+        "question": "euroopa"
+      },
+      {
+        "issues": 0.10609495234327251,
+        "party_preference": "SDE",
+        "question": "eestiharidus"
+      },
+      {
+        "issues": 0.19307333155670017,
+        "party_preference": "SDE",
+        "question": "s\u00f5navabadus"
+      },
+      {
+        "issues": 0.26352692716207404,
+        "party_preference": "SDE",
+        "question": "maksud"
+      },
+      {
+        "issues": 0.36683315392022464,
+        "party_preference": "SDE",
+        "question": "s\u00fcndimus"
+      },
+      {
+        "issues": 0.4223110010834778,
+        "party_preference": "SDE",
+        "question": "NATO"
+      },
+      {
+        "issues": 0.4883947868273024,
+        "party_preference": "SDE",
+        "question": "kliimamuutus"
+      },
+      {
+        "issues": 0.8201061724689658,
+        "party_preference": "SDE",
+        "question": "e-valimised"
+      },
+      {
+        "issues": 0.8486335659861217,
+        "party_preference": "SDE",
+        "question": "abielu"
+      }
+    ]
+  },
+  "height": 320,
+  "layer": [
+    {
+      "encoding": {
+        "color": {
+          "field": "issues",
+          "legend": {
+            "title": null
+          },
+          "scale": {
+            "domainMax": 2.193551593137395,
+            "domainMid": 0,
+            "domainMin": -2.193551593137395,
+            "scheme": "redyellowgreen"
+          },
+          "type": "quantitative"
+        },
+        "tooltip": [
+          {
+            "field": "issues",
+            "format": ".1f",
+            "type": "quantitative"
+          },
+          {
+            "field": "question",
+            "type": "nominal"
+          },
+          {
+            "field": "party_preference",
+            "type": "nominal"
+          }
+        ],
+        "x": {
+          "field": "party_preference",
+          "sort": [
+            "Rohelised",
+            "SDE",
+            "Eesti 200",
+            "Reformierakond",
+            "Parempoolsed",
+            "Isamaa",
+            "EKRE",
+            "Keskerakond",
+            "None of the parties",
+            "No opinion",
+            "Other"
+          ],
+          "title": null,
+          "type": "nominal"
+        },
+        "y": {
+          "field": "question",
+          "sort": [
+            "abort",
+            "sisser\u00e4nne",
+            "euroopa",
+            "referendum",
+            "maksud",
+            "metsad",
+            "s\u00f5navabadus",
+            "kliimamuutus",
+            "s\u00fcndimus",
+            "abielu",
+            "e-valimised",
+            "NATO",
+            "eestiharidus"
+          ],
+          "title": null,
+          "type": "nominal"
+        }
+      },
+      "mark": {
+        "type": "rect"
+      }
+    },
+    {
+      "encoding": {
+        "color": {
+          "condition": {
+            "test": "(pow((datum['issues'] - 0),2) > 1.202917147938901)",
+            "value": "white"
+          },
+          "value": "black"
+        },
+        "text": {
+          "field": "issues",
+          "format": ".1f",
+          "type": "quantitative"
+        },
+        "tooltip": [
+          {
+            "field": "issues",
+            "format": ".1f",
+            "type": "quantitative"
+          },
+          {
+            "field": "question",
+            "type": "nominal"
+          },
+          {
+            "field": "party_preference",
+            "type": "nominal"
+          }
+        ],
+        "x": {
+          "field": "party_preference",
+          "sort": [
+            "Rohelised",
+            "SDE",
+            "Eesti 200",
+            "Reformierakond",
+            "Parempoolsed",
+            "Isamaa",
+            "EKRE",
+            "Keskerakond",
+            "None of the parties",
+            "No opinion",
+            "Other"
+          ],
+          "title": null,
+          "type": "nominal"
+        },
+        "y": {
+          "field": "question",
+          "sort": [
+            "abort",
+            "sisser\u00e4nne",
+            "euroopa",
+            "referendum",
+            "maksud",
+            "metsad",
+            "s\u00f5navabadus",
+            "kliimamuutus",
+            "s\u00fcndimus",
+            "abielu",
+            "e-valimised",
+            "NATO",
+            "eestiharidus"
+          ],
+          "title": null,
+          "type": "nominal"
+        }
+      },
+      "mark": {
+        "type": "text"
+      }
+    }
+  ],
+  "width": 400
+}

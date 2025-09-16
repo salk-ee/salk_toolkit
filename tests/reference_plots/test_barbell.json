@@ -1,0 +1,339 @@
+{
+  "data": {
+    "name": "data-normalized"
+  },
+  "datasets": {
+    "data-normalized": [
+      {
+        "party_preference": "EKRE",
+        "question": "meedia",
+        "trust": 1.0510270504845942
+      },
+      {
+        "party_preference": "EKRE",
+        "question": "riigikogu",
+        "trust": 1.6142051207869232
+      },
+      {
+        "party_preference": "EKRE",
+        "question": "valitsus",
+        "trust": 1.0913857948792132
+      },
+      {
+        "party_preference": "Eesti 200",
+        "question": "meedia",
+        "trust": 2.318213565109421
+      },
+      {
+        "party_preference": "Eesti 200",
+        "question": "riigikogu",
+        "trust": 2.6917196957938847
+      },
+      {
+        "party_preference": "Eesti 200",
+        "question": "valitsus",
+        "trust": 2.9792798385845103
+      },
+      {
+        "party_preference": "Isamaa",
+        "question": "meedia",
+        "trust": 1.6734115122250326
+      },
+      {
+        "party_preference": "Isamaa",
+        "question": "riigikogu",
+        "trust": 2.377864643212999
+      },
+      {
+        "party_preference": "Isamaa",
+        "question": "valitsus",
+        "trust": 2.344293707365678
+      },
+      {
+        "party_preference": "Keskerakond",
+        "question": "meedia",
+        "trust": 1.3999238964992389
+      },
+      {
+        "party_preference": "Keskerakond",
+        "question": "riigikogu",
+        "trust": 1.9500380517503806
+      },
+      {
+        "party_preference": "Keskerakond",
+        "question": "valitsus",
+        "trust": 1.7787671232876712
+      },
+      {
+        "party_preference": "No opinion",
+        "question": "meedia",
+        "trust": 1.4456356216117439
+      },
+      {
+        "party_preference": "No opinion",
+        "question": "riigikogu",
+        "trust": 2.0126088810379485
+      },
+      {
+        "party_preference": "No opinion",
+        "question": "valitsus",
+        "trust": 1.950539075348724
+      },
+      {
+        "party_preference": "None of the parties",
+        "question": "meedia",
+        "trust": 0.9727713301874761
+      },
+      {
+        "party_preference": "None of the parties",
+        "question": "riigikogu",
+        "trust": 1.1509373804361689
+      },
+      {
+        "party_preference": "None of the parties",
+        "question": "valitsus",
+        "trust": 1.2205713556944267
+      },
+      {
+        "party_preference": "Other",
+        "question": "meedia",
+        "trust": 0.6242648660422566
+      },
+      {
+        "party_preference": "Other",
+        "question": "riigikogu",
+        "trust": 0.9753866260074058
+      },
+      {
+        "party_preference": "Other",
+        "question": "valitsus",
+        "trust": 0.7536484426050969
+      },
+      {
+        "party_preference": "Parempoolsed",
+        "question": "meedia",
+        "trust": 1.918016975308642
+      },
+      {
+        "party_preference": "Parempoolsed",
+        "question": "riigikogu",
+        "trust": 2.513310185185185
+      },
+      {
+        "party_preference": "Parempoolsed",
+        "question": "valitsus",
+        "trust": 2.593942901234568
+      },
+      {
+        "party_preference": "Reformierakond",
+        "question": "meedia",
+        "trust": 2.42750297842298
+      },
+      {
+        "party_preference": "Reformierakond",
+        "question": "riigikogu",
+        "trust": 2.842628954683846
+      },
+      {
+        "party_preference": "Reformierakond",
+        "question": "valitsus",
+        "trust": 3.220954860345056
+      },
+      {
+        "party_preference": "Rohelised",
+        "question": "meedia",
+        "trust": 2.0518828451882847
+      },
+      {
+        "party_preference": "Rohelised",
+        "question": "riigikogu",
+        "trust": 2.5637377963737795
+      },
+      {
+        "party_preference": "Rohelised",
+        "question": "valitsus",
+        "trust": 3.0
+      },
+      {
+        "party_preference": "SDE",
+        "question": "meedia",
+        "trust": 2.061042274052478
+      },
+      {
+        "party_preference": "SDE",
+        "question": "riigikogu",
+        "trust": 2.5255102040816326
+      },
+      {
+        "party_preference": "SDE",
+        "question": "valitsus",
+        "trust": 2.7193270165208943
+      }
+    ]
+  },
+  "layer": [
+    {
+      "encoding": {
+        "detail": {
+          "field": "question",
+          "type": "nominal"
+        },
+        "tooltip": [
+          {
+            "field": "trust",
+            "format": ".1f",
+            "type": "quantitative"
+          },
+          {
+            "field": "question",
+            "type": "nominal"
+          },
+          {
+            "field": "party_preference",
+            "type": "nominal"
+          }
+        ],
+        "x": {
+          "axis": {
+            "format": ".1f"
+          },
+          "field": "trust",
+          "title": null,
+          "type": "quantitative"
+        },
+        "y": {
+          "field": "question",
+          "sort": [
+            "valitsus",
+            "riigikogu",
+            "meedia"
+          ],
+          "title": null,
+          "type": "nominal"
+        }
+      },
+      "mark": {
+        "color": "lightgrey",
+        "opacity": 1.0,
+        "size": 1,
+        "type": "line"
+      }
+    },
+    {
+      "encoding": {
+        "color": {
+          "field": "party_preference",
+          "legend": {
+            "columns": 4,
+            "orient": "top"
+          },
+          "scale": {
+            "domain": [
+              "Keskerakond",
+              "EKRE",
+              "Reformierakond",
+              "Isamaa",
+              "SDE",
+              "Rohelised",
+              "Eesti 200",
+              "Parempoolsed",
+              "Other",
+              "None of the parties",
+              "No opinion"
+            ],
+            "range": [
+              "#007557",
+              "#8B4513",
+              "#FFE200",
+              "#009BDF",
+              "#E10600",
+              "#88AF47",
+              "#31758A",
+              "orange",
+              "lightgrey",
+              "lightgrey",
+              "lightgrey"
+            ]
+          },
+          "sort": [
+            "Keskerakond",
+            "EKRE",
+            "Reformierakond",
+            "Isamaa",
+            "SDE",
+            "Rohelised",
+            "Eesti 200",
+            "Parempoolsed",
+            "Other",
+            "None of the parties",
+            "No opinion"
+          ],
+          "type": "nominal"
+        },
+        "opacity": {
+          "condition": {
+            "param": "param_4",
+            "value": 1
+          },
+          "value": 0.15
+        },
+        "tooltip": [
+          {
+            "field": "trust",
+            "format": ".1f",
+            "type": "quantitative"
+          },
+          {
+            "field": "question",
+            "type": "nominal"
+          },
+          {
+            "field": "party_preference",
+            "type": "nominal"
+          }
+        ],
+        "x": {
+          "axis": {
+            "format": ".1f"
+          },
+          "field": "trust",
+          "title": null,
+          "type": "quantitative"
+        },
+        "y": {
+          "field": "question",
+          "sort": [
+            "valitsus",
+            "riigikogu",
+            "meedia"
+          ],
+          "title": null,
+          "type": "nominal"
+        }
+      },
+      "mark": {
+        "filled": true,
+        "opacity": 1,
+        "size": 50,
+        "type": "point"
+      },
+      "name": "view_3"
+    }
+  ],
+  "params": [
+    {
+      "bind": "legend",
+      "name": "param_4",
+      "select": {
+        "fields": [
+          "party_preference"
+        ],
+        "type": "point"
+      },
+      "views": [
+        "view_3"
+      ]
+    }
+  ],
+  "width": 400
+}

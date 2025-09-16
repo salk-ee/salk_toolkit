@@ -1,0 +1,160 @@
+{
+  "data": {
+    "name": "data-normalized"
+  },
+  "datasets": {
+    "data-normalized": [
+      {
+        "nationality": "Estonian",
+        "question": "EKRE",
+        "thermometer": -1.899013811621199
+      },
+      {
+        "nationality": "Estonian",
+        "question": "Eesti 200",
+        "thermometer": 0.4020259536373094
+      },
+      {
+        "nationality": "Estonian",
+        "question": "Isamaa",
+        "thermometer": -0.0800849754231639
+      },
+      {
+        "nationality": "Estonian",
+        "question": "Keskerakond",
+        "thermometer": -0.39605150856295596
+      },
+      {
+        "nationality": "Estonian",
+        "question": "Parempoolsed",
+        "thermometer": -0.7364640505367033
+      },
+      {
+        "nationality": "Estonian",
+        "question": "Reformierakond",
+        "thermometer": 0.43415339185257634
+      },
+      {
+        "nationality": "Estonian",
+        "question": "Rohelised",
+        "thermometer": -0.7724166287682924
+      },
+      {
+        "nationality": "Estonian",
+        "question": "SDE",
+        "thermometer": -0.09736663406368173
+      },
+      {
+        "nationality": "Other",
+        "question": "EKRE",
+        "thermometer": -1.2364561963376643
+      },
+      {
+        "nationality": "Other",
+        "question": "Eesti 200",
+        "thermometer": -0.9646176835600132
+      },
+      {
+        "nationality": "Other",
+        "question": "Isamaa",
+        "thermometer": -1.8451485449433933
+      },
+      {
+        "nationality": "Other",
+        "question": "Keskerakond",
+        "thermometer": 0.6946787224881594
+      },
+      {
+        "nationality": "Other",
+        "question": "Parempoolsed",
+        "thermometer": -1.4143048907124585
+      },
+      {
+        "nationality": "Other",
+        "question": "Reformierakond",
+        "thermometer": -1.9236886761390979
+      },
+      {
+        "nationality": "Other",
+        "question": "Rohelised",
+        "thermometer": -1.179849555504901
+      },
+      {
+        "nationality": "Other",
+        "question": "SDE",
+        "thermometer": -0.9429881214699998
+      }
+    ]
+  },
+  "encoding": {
+    "color": {
+      "field": "nationality",
+      "legend": {
+        "columns": 2,
+        "orient": "top"
+      },
+      "scale": {
+        "domain": [
+          "Estonian",
+          "Other"
+        ],
+        "range": [
+          "blue",
+          "grey"
+        ]
+      },
+      "type": "nominal"
+    },
+    "tooltip": [
+      {
+        "field": "thermometer",
+        "format": ".1f",
+        "type": "quantitative"
+      },
+      {
+        "field": "question",
+        "type": "nominal"
+      },
+      {
+        "field": "nationality",
+        "type": "nominal"
+      }
+    ],
+    "x": {
+      "axis": {
+        "format": ".1f"
+      },
+      "field": "thermometer",
+      "title": "thermometer",
+      "type": "quantitative"
+    },
+    "y": {
+      "field": "question",
+      "sort": [
+        "Keskerakond",
+        "EKRE",
+        "Reformierakond",
+        "Isamaa",
+        "SDE",
+        "Rohelised",
+        "Eesti 200",
+        "Parempoolsed"
+      ],
+      "title": null,
+      "type": "nominal"
+    },
+    "yOffset": {
+      "field": "nationality",
+      "sort": [
+        "Estonian",
+        "Other"
+      ],
+      "title": null,
+      "type": "nominal"
+    }
+  },
+  "mark": {
+    "type": "bar"
+  },
+  "width": 400
+}

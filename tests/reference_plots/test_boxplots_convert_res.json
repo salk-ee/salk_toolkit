@@ -1,0 +1,325 @@
+{
+  "data": {
+    "name": "data-normalized"
+  },
+  "datasets": {
+    "data-normalized": [
+      {
+        "gender": "Female",
+        "level_1": "row",
+        "max": 3.232622798887859,
+        "mean": 3.113726662518847,
+        "min": 2.989945155393053,
+        "q1": 3.0738933426280934,
+        "q1p": 3.0738933426280934,
+        "q2 (median)": 3.1111003302295543,
+        "q3": 3.1574057148462056,
+        "q3p": 3.1574057148462056,
+        "tmax": 3.232622798887859,
+        "tmin": 2.989945155393053
+      },
+      {
+        "gender": "Male",
+        "level_1": "row",
+        "max": 2.940552016985138,
+        "mean": 2.8286742365574797,
+        "min": 2.675268817204301,
+        "q1": 2.7910668486804004,
+        "q1p": 2.7910668486804004,
+        "q2 (median)": 2.836124277188043,
+        "q3": 2.8686739402183905,
+        "q3p": 2.8686739402183905,
+        "tmax": 2.940552016985138,
+        "tmin": 2.675268817204301
+      }
+    ]
+  },
+  "layer": [
+    {
+      "encoding": {
+        "tooltip": [
+          {
+            "field": "min",
+            "format": ".1f",
+            "title": "Min of age_group",
+            "type": "quantitative"
+          },
+          {
+            "field": "q1",
+            "format": ".1f",
+            "title": "Q1 of age_group",
+            "type": "quantitative"
+          },
+          {
+            "field": "mean",
+            "format": ".1f",
+            "title": "Mean of age_group",
+            "type": "quantitative"
+          },
+          {
+            "field": "q2 (median)",
+            "format": ".1f",
+            "title": "Q2 (median) of age_group",
+            "type": "quantitative"
+          },
+          {
+            "field": "q3",
+            "format": ".1f",
+            "title": "Q3 of age_group",
+            "type": "quantitative"
+          },
+          {
+            "field": "max",
+            "format": ".1f",
+            "title": "Max of age_group",
+            "type": "quantitative"
+          },
+          {
+            "field": "gender",
+            "type": "nominal"
+          }
+        ],
+        "x": {
+          "axis": {
+            "format": ".1f",
+            "title": "age_group"
+          },
+          "field": "tmin",
+          "scale": {
+            "domain": [
+              2.675268817204301,
+              3.232622798887859
+            ]
+          },
+          "type": "quantitative"
+        },
+        "x2": {
+          "field": "q1"
+        },
+        "y": {
+          "field": "gender",
+          "sort": [
+            "Male",
+            "Female"
+          ],
+          "title": null,
+          "type": "nominal"
+        }
+      },
+      "mark": {
+        "type": "rule"
+      }
+    },
+    {
+      "encoding": {
+        "color": {
+          "field": "gender",
+          "legend": null,
+          "scale": {
+            "domain": [
+              "Male",
+              "Female"
+            ],
+            "range": [
+              "blue",
+              "red"
+            ]
+          },
+          "type": "nominal"
+        },
+        "tooltip": [
+          {
+            "field": "min",
+            "format": ".1f",
+            "title": "Min of age_group",
+            "type": "quantitative"
+          },
+          {
+            "field": "q1",
+            "format": ".1f",
+            "title": "Q1 of age_group",
+            "type": "quantitative"
+          },
+          {
+            "field": "mean",
+            "format": ".1f",
+            "title": "Mean of age_group",
+            "type": "quantitative"
+          },
+          {
+            "field": "q2 (median)",
+            "format": ".1f",
+            "title": "Q2 (median) of age_group",
+            "type": "quantitative"
+          },
+          {
+            "field": "q3",
+            "format": ".1f",
+            "title": "Q3 of age_group",
+            "type": "quantitative"
+          },
+          {
+            "field": "max",
+            "format": ".1f",
+            "title": "Max of age_group",
+            "type": "quantitative"
+          },
+          {
+            "field": "gender",
+            "type": "nominal"
+          }
+        ],
+        "x": {
+          "field": "q1p",
+          "type": "quantitative"
+        },
+        "x2": {
+          "field": "q3p"
+        },
+        "y": {
+          "field": "gender",
+          "sort": [
+            "Male",
+            "Female"
+          ],
+          "title": null,
+          "type": "nominal"
+        }
+      },
+      "mark": {
+        "size": 12,
+        "type": "bar"
+      }
+    },
+    {
+      "encoding": {
+        "tooltip": [
+          {
+            "field": "min",
+            "format": ".1f",
+            "title": "Min of age_group",
+            "type": "quantitative"
+          },
+          {
+            "field": "q1",
+            "format": ".1f",
+            "title": "Q1 of age_group",
+            "type": "quantitative"
+          },
+          {
+            "field": "mean",
+            "format": ".1f",
+            "title": "Mean of age_group",
+            "type": "quantitative"
+          },
+          {
+            "field": "q2 (median)",
+            "format": ".1f",
+            "title": "Q2 (median) of age_group",
+            "type": "quantitative"
+          },
+          {
+            "field": "q3",
+            "format": ".1f",
+            "title": "Q3 of age_group",
+            "type": "quantitative"
+          },
+          {
+            "field": "max",
+            "format": ".1f",
+            "title": "Max of age_group",
+            "type": "quantitative"
+          },
+          {
+            "field": "gender",
+            "type": "nominal"
+          }
+        ],
+        "x": {
+          "field": "q3",
+          "type": "quantitative"
+        },
+        "x2": {
+          "field": "tmax"
+        },
+        "y": {
+          "field": "gender",
+          "sort": [
+            "Male",
+            "Female"
+          ],
+          "title": null,
+          "type": "nominal"
+        }
+      },
+      "mark": {
+        "type": "rule"
+      }
+    },
+    {
+      "encoding": {
+        "tooltip": [
+          {
+            "field": "min",
+            "format": ".1f",
+            "title": "Min of age_group",
+            "type": "quantitative"
+          },
+          {
+            "field": "q1",
+            "format": ".1f",
+            "title": "Q1 of age_group",
+            "type": "quantitative"
+          },
+          {
+            "field": "mean",
+            "format": ".1f",
+            "title": "Mean of age_group",
+            "type": "quantitative"
+          },
+          {
+            "field": "q2 (median)",
+            "format": ".1f",
+            "title": "Q2 (median) of age_group",
+            "type": "quantitative"
+          },
+          {
+            "field": "q3",
+            "format": ".1f",
+            "title": "Q3 of age_group",
+            "type": "quantitative"
+          },
+          {
+            "field": "max",
+            "format": ".1f",
+            "title": "Max of age_group",
+            "type": "quantitative"
+          },
+          {
+            "field": "gender",
+            "type": "nominal"
+          }
+        ],
+        "x": {
+          "field": "mean",
+          "type": "quantitative"
+        },
+        "y": {
+          "field": "gender",
+          "sort": [
+            "Male",
+            "Female"
+          ],
+          "title": null,
+          "type": "nominal"
+        }
+      },
+      "mark": {
+        "color": "white",
+        "size": 12,
+        "type": "tick"
+      }
+    }
+  ],
+  "width": 400
+}

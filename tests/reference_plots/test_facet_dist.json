@@ -1,0 +1,6251 @@
+{
+  "columns": 3,
+  "data": {
+    "name": "data-normalized"
+  },
+  "datasets": {
+    "data-normalized": [
+      {
+        "density": 0.0,
+        "level_1": 100,
+        "party_preference": "EKRE",
+        "percentile": 0.0,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0,
+        "level_1": 101,
+        "party_preference": "EKRE",
+        "percentile": 0.1111111111111111,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0,
+        "level_1": 102,
+        "party_preference": "EKRE",
+        "percentile": 0.2222222222222222,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0,
+        "level_1": 103,
+        "party_preference": "EKRE",
+        "percentile": 0.3333333333333333,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0002,
+        "level_1": 104,
+        "party_preference": "EKRE",
+        "percentile": 0.4444444444444444,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.01015,
+        "level_1": 19,
+        "party_preference": "EKRE",
+        "percentile": 1.0,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.018,
+        "level_1": 18,
+        "party_preference": "EKRE",
+        "percentile": 0.8888888888888888,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0198,
+        "level_1": 17,
+        "party_preference": "EKRE",
+        "percentile": 0.7777777777777777,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.02025,
+        "level_1": 28,
+        "party_preference": "EKRE",
+        "percentile": 0.8888888888888888,
+        "question": "SDE"
+      },
+      {
+        "density": 0.02145,
+        "level_1": 105,
+        "party_preference": "EKRE",
+        "percentile": 0.5555555555555556,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0224,
+        "level_1": 106,
+        "party_preference": "EKRE",
+        "percentile": 0.6666666666666666,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.026,
+        "level_1": 9,
+        "party_preference": "EKRE",
+        "percentile": 1.0,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0277,
+        "level_1": 29,
+        "party_preference": "EKRE",
+        "percentile": 1.0,
+        "question": "SDE"
+      },
+      {
+        "density": 0.03755,
+        "level_1": 16,
+        "party_preference": "EKRE",
+        "percentile": 0.6666666666666666,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.05555,
+        "level_1": 8,
+        "party_preference": "EKRE",
+        "percentile": 0.8888888888888888,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0557,
+        "level_1": 6,
+        "party_preference": "EKRE",
+        "percentile": 0.6666666666666666,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0633,
+        "level_1": 107,
+        "party_preference": "EKRE",
+        "percentile": 0.7777777777777777,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0637,
+        "level_1": 7,
+        "party_preference": "EKRE",
+        "percentile": 0.7777777777777777,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.06595,
+        "level_1": 25,
+        "party_preference": "EKRE",
+        "percentile": 0.5555555555555556,
+        "question": "SDE"
+      },
+      {
+        "density": 0.06745,
+        "level_1": 69,
+        "party_preference": "EKRE",
+        "percentile": 1.0,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.0679,
+        "level_1": 24,
+        "party_preference": "EKRE",
+        "percentile": 0.4444444444444444,
+        "question": "SDE"
+      },
+      {
+        "density": 0.0737,
+        "level_1": 68,
+        "party_preference": "EKRE",
+        "percentile": 0.8888888888888888,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.0739,
+        "level_1": 49,
+        "party_preference": "EKRE",
+        "percentile": 1.0,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.0744,
+        "level_1": 27,
+        "party_preference": "EKRE",
+        "percentile": 0.7777777777777777,
+        "question": "SDE"
+      },
+      {
+        "density": 0.0789,
+        "level_1": 26,
+        "party_preference": "EKRE",
+        "percentile": 0.6666666666666666,
+        "question": "SDE"
+      },
+      {
+        "density": 0.08285,
+        "level_1": 5,
+        "party_preference": "EKRE",
+        "percentile": 0.5555555555555556,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.08555,
+        "level_1": 6,
+        "party_preference": "EKRE",
+        "percentile": 0.6666666666666666,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.08595,
+        "level_1": 9,
+        "party_preference": "EKRE",
+        "percentile": 1.0,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0866,
+        "level_1": 7,
+        "party_preference": "EKRE",
+        "percentile": 0.7777777777777777,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.08885,
+        "level_1": 15,
+        "party_preference": "EKRE",
+        "percentile": 0.5555555555555556,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.09025,
+        "level_1": 5,
+        "party_preference": "EKRE",
+        "percentile": 0.5555555555555556,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0935,
+        "level_1": 14,
+        "party_preference": "EKRE",
+        "percentile": 0.4444444444444444,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.09695,
+        "level_1": 40,
+        "party_preference": "EKRE",
+        "percentile": 0.0,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.10205,
+        "level_1": 3,
+        "party_preference": "EKRE",
+        "percentile": 0.3333333333333333,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.10385,
+        "level_1": 43,
+        "party_preference": "EKRE",
+        "percentile": 0.3333333333333333,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.10435,
+        "level_1": 4,
+        "party_preference": "EKRE",
+        "percentile": 0.4444444444444444,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.10855,
+        "level_1": 8,
+        "party_preference": "EKRE",
+        "percentile": 0.8888888888888888,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.10915,
+        "level_1": 48,
+        "party_preference": "EKRE",
+        "percentile": 0.8888888888888888,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.11305,
+        "level_1": 4,
+        "party_preference": "EKRE",
+        "percentile": 0.4444444444444444,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.1177,
+        "level_1": 65,
+        "party_preference": "EKRE",
+        "percentile": 0.5555555555555556,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.1189,
+        "level_1": 48,
+        "party_preference": "EKRE",
+        "percentile": 0.8888888888888888,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.1224,
+        "level_1": 67,
+        "party_preference": "EKRE",
+        "percentile": 0.7777777777777777,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.123,
+        "level_1": 66,
+        "party_preference": "EKRE",
+        "percentile": 0.6666666666666666,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.12615,
+        "level_1": 45,
+        "party_preference": "EKRE",
+        "percentile": 0.5555555555555556,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.1278,
+        "level_1": 23,
+        "party_preference": "EKRE",
+        "percentile": 0.3333333333333333,
+        "question": "SDE"
+      },
+      {
+        "density": 0.13055,
+        "level_1": 64,
+        "party_preference": "EKRE",
+        "percentile": 0.4444444444444444,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.1351,
+        "level_1": 46,
+        "party_preference": "EKRE",
+        "percentile": 0.6666666666666666,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.1363,
+        "level_1": 49,
+        "party_preference": "EKRE",
+        "percentile": 1.0,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.13785,
+        "level_1": 44,
+        "party_preference": "EKRE",
+        "percentile": 0.4444444444444444,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.1418,
+        "level_1": 42,
+        "party_preference": "EKRE",
+        "percentile": 0.2222222222222222,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.1425,
+        "level_1": 40,
+        "party_preference": "EKRE",
+        "percentile": 0.0,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.14405,
+        "level_1": 42,
+        "party_preference": "EKRE",
+        "percentile": 0.2222222222222222,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.14425,
+        "level_1": 2,
+        "party_preference": "EKRE",
+        "percentile": 0.2222222222222222,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.14685,
+        "level_1": 41,
+        "party_preference": "EKRE",
+        "percentile": 0.1111111111111111,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.15375,
+        "level_1": 41,
+        "party_preference": "EKRE",
+        "percentile": 0.1111111111111111,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.15685,
+        "level_1": 13,
+        "party_preference": "EKRE",
+        "percentile": 0.3333333333333333,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.158,
+        "level_1": 45,
+        "party_preference": "EKRE",
+        "percentile": 0.5555555555555556,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.15825,
+        "level_1": 43,
+        "party_preference": "EKRE",
+        "percentile": 0.3333333333333333,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.1609,
+        "level_1": 47,
+        "party_preference": "EKRE",
+        "percentile": 0.7777777777777777,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.16125,
+        "level_1": 44,
+        "party_preference": "EKRE",
+        "percentile": 0.4444444444444444,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.16355,
+        "level_1": 46,
+        "party_preference": "EKRE",
+        "percentile": 0.6666666666666666,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.1637,
+        "level_1": 3,
+        "party_preference": "EKRE",
+        "percentile": 0.3333333333333333,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.16635,
+        "level_1": 63,
+        "party_preference": "EKRE",
+        "percentile": 0.3333333333333333,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.16695,
+        "level_1": 62,
+        "party_preference": "EKRE",
+        "percentile": 0.2222222222222222,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.19615,
+        "level_1": 47,
+        "party_preference": "EKRE",
+        "percentile": 0.7777777777777777,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.20315,
+        "level_1": 60,
+        "party_preference": "EKRE",
+        "percentile": 0.0,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.2071,
+        "level_1": 12,
+        "party_preference": "EKRE",
+        "percentile": 0.2222222222222222,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.21135,
+        "level_1": 61,
+        "party_preference": "EKRE",
+        "percentile": 0.1111111111111111,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.21335,
+        "level_1": 2,
+        "party_preference": "EKRE",
+        "percentile": 0.2222222222222222,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.2408,
+        "level_1": 22,
+        "party_preference": "EKRE",
+        "percentile": 0.2222222222222222,
+        "question": "SDE"
+      },
+      {
+        "density": 0.25145,
+        "level_1": 0,
+        "party_preference": "EKRE",
+        "percentile": 0.0,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.25325,
+        "level_1": 1,
+        "party_preference": "EKRE",
+        "percentile": 0.1111111111111111,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.2747,
+        "level_1": 1,
+        "party_preference": "EKRE",
+        "percentile": 0.1111111111111111,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.3064,
+        "level_1": 21,
+        "party_preference": "EKRE",
+        "percentile": 0.1111111111111111,
+        "question": "SDE"
+      },
+      {
+        "density": 0.3669,
+        "level_1": 11,
+        "party_preference": "EKRE",
+        "percentile": 0.1111111111111111,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.3725,
+        "level_1": 20,
+        "party_preference": "EKRE",
+        "percentile": 0.0,
+        "question": "SDE"
+      },
+      {
+        "density": 0.3839,
+        "level_1": 10,
+        "party_preference": "EKRE",
+        "percentile": 0.0,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.40435,
+        "level_1": 0,
+        "party_preference": "EKRE",
+        "percentile": 0.0,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.44755,
+        "level_1": 108,
+        "party_preference": "EKRE",
+        "percentile": 0.8888888888888888,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.8277,
+        "level_1": 109,
+        "party_preference": "EKRE",
+        "percentile": 1.0,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0,
+        "level_1": 100,
+        "party_preference": "Eesti 200",
+        "percentile": 0.0,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0002,
+        "level_1": 102,
+        "party_preference": "Eesti 200",
+        "percentile": 0.2222222222222222,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.01005,
+        "level_1": 49,
+        "party_preference": "Eesti 200",
+        "percentile": 1.0,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.01035,
+        "level_1": 101,
+        "party_preference": "Eesti 200",
+        "percentile": 0.1111111111111111,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0187,
+        "level_1": 30,
+        "party_preference": "Eesti 200",
+        "percentile": 0.0,
+        "question": "SDE"
+      },
+      {
+        "density": 0.01945,
+        "level_1": 103,
+        "party_preference": "Eesti 200",
+        "percentile": 0.3333333333333333,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.01975,
+        "level_1": 50,
+        "party_preference": "Eesti 200",
+        "percentile": 0.0,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.02135,
+        "level_1": 51,
+        "party_preference": "Eesti 200",
+        "percentile": 0.1111111111111111,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.02325,
+        "level_1": 104,
+        "party_preference": "Eesti 200",
+        "percentile": 0.4444444444444444,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0268,
+        "level_1": 31,
+        "party_preference": "Eesti 200",
+        "percentile": 0.1111111111111111,
+        "question": "SDE"
+      },
+      {
+        "density": 0.03965,
+        "level_1": 105,
+        "party_preference": "Eesti 200",
+        "percentile": 0.5555555555555556,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0452,
+        "level_1": 0,
+        "party_preference": "Eesti 200",
+        "percentile": 0.0,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0496,
+        "level_1": 29,
+        "party_preference": "Eesti 200",
+        "percentile": 1.0,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.05225,
+        "level_1": 48,
+        "party_preference": "Eesti 200",
+        "percentile": 0.8888888888888888,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.05235,
+        "level_1": 71,
+        "party_preference": "Eesti 200",
+        "percentile": 0.1111111111111111,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.05615,
+        "level_1": 52,
+        "party_preference": "Eesti 200",
+        "percentile": 0.2222222222222222,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.05785,
+        "level_1": 47,
+        "party_preference": "Eesti 200",
+        "percentile": 0.7777777777777777,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.063,
+        "level_1": 71,
+        "party_preference": "Eesti 200",
+        "percentile": 0.1111111111111111,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.06445,
+        "level_1": 70,
+        "party_preference": "Eesti 200",
+        "percentile": 0.0,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.06535,
+        "level_1": 70,
+        "party_preference": "Eesti 200",
+        "percentile": 0.0,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.07625,
+        "level_1": 32,
+        "party_preference": "Eesti 200",
+        "percentile": 0.2222222222222222,
+        "question": "SDE"
+      },
+      {
+        "density": 0.08185,
+        "level_1": 59,
+        "party_preference": "Eesti 200",
+        "percentile": 1.0,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0897,
+        "level_1": 46,
+        "party_preference": "Eesti 200",
+        "percentile": 0.6666666666666666,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.09495,
+        "level_1": 20,
+        "party_preference": "Eesti 200",
+        "percentile": 0.0,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.106,
+        "level_1": 72,
+        "party_preference": "Eesti 200",
+        "percentile": 0.2222222222222222,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.1119,
+        "level_1": 73,
+        "party_preference": "Eesti 200",
+        "percentile": 0.3333333333333333,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.11565,
+        "level_1": 9,
+        "party_preference": "Eesti 200",
+        "percentile": 1.0,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.11595,
+        "level_1": 28,
+        "party_preference": "Eesti 200",
+        "percentile": 0.8888888888888888,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.11925,
+        "level_1": 39,
+        "party_preference": "Eesti 200",
+        "percentile": 1.0,
+        "question": "SDE"
+      },
+      {
+        "density": 0.1243,
+        "level_1": 33,
+        "party_preference": "Eesti 200",
+        "percentile": 0.3333333333333333,
+        "question": "SDE"
+      },
+      {
+        "density": 0.12485,
+        "level_1": 72,
+        "party_preference": "Eesti 200",
+        "percentile": 0.2222222222222222,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.12515,
+        "level_1": 7,
+        "party_preference": "Eesti 200",
+        "percentile": 0.7777777777777777,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.1252,
+        "level_1": 75,
+        "party_preference": "Eesti 200",
+        "percentile": 0.5555555555555556,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.1257,
+        "level_1": 21,
+        "party_preference": "Eesti 200",
+        "percentile": 0.1111111111111111,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.1266,
+        "level_1": 77,
+        "party_preference": "Eesti 200",
+        "percentile": 0.7777777777777777,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.12795,
+        "level_1": 106,
+        "party_preference": "Eesti 200",
+        "percentile": 0.6666666666666666,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.12855,
+        "level_1": 76,
+        "party_preference": "Eesti 200",
+        "percentile": 0.6666666666666666,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.13,
+        "level_1": 22,
+        "party_preference": "Eesti 200",
+        "percentile": 0.2222222222222222,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.13025,
+        "level_1": 74,
+        "party_preference": "Eesti 200",
+        "percentile": 0.4444444444444444,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.1306,
+        "level_1": 53,
+        "party_preference": "Eesti 200",
+        "percentile": 0.3333333333333333,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.1333,
+        "level_1": 27,
+        "party_preference": "Eesti 200",
+        "percentile": 0.7777777777777777,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.13585,
+        "level_1": 1,
+        "party_preference": "Eesti 200",
+        "percentile": 0.1111111111111111,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.1359,
+        "level_1": 3,
+        "party_preference": "Eesti 200",
+        "percentile": 0.3333333333333333,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.1385,
+        "level_1": 4,
+        "party_preference": "Eesti 200",
+        "percentile": 0.4444444444444444,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.13865,
+        "level_1": 6,
+        "party_preference": "Eesti 200",
+        "percentile": 0.6666666666666666,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.13975,
+        "level_1": 73,
+        "party_preference": "Eesti 200",
+        "percentile": 0.3333333333333333,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.1412,
+        "level_1": 5,
+        "party_preference": "Eesti 200",
+        "percentile": 0.5555555555555556,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.1421,
+        "level_1": 54,
+        "party_preference": "Eesti 200",
+        "percentile": 0.4444444444444444,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.1461,
+        "level_1": 75,
+        "party_preference": "Eesti 200",
+        "percentile": 0.5555555555555556,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.15065,
+        "level_1": 77,
+        "party_preference": "Eesti 200",
+        "percentile": 0.7777777777777777,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.15095,
+        "level_1": 45,
+        "party_preference": "Eesti 200",
+        "percentile": 0.5555555555555556,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.15245,
+        "level_1": 23,
+        "party_preference": "Eesti 200",
+        "percentile": 0.3333333333333333,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.1529,
+        "level_1": 76,
+        "party_preference": "Eesti 200",
+        "percentile": 0.6666666666666666,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.15315,
+        "level_1": 78,
+        "party_preference": "Eesti 200",
+        "percentile": 0.8888888888888888,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.1537,
+        "level_1": 2,
+        "party_preference": "Eesti 200",
+        "percentile": 0.2222222222222222,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.1542,
+        "level_1": 74,
+        "party_preference": "Eesti 200",
+        "percentile": 0.4444444444444444,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.1565,
+        "level_1": 55,
+        "party_preference": "Eesti 200",
+        "percentile": 0.5555555555555556,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.1574,
+        "level_1": 35,
+        "party_preference": "Eesti 200",
+        "percentile": 0.5555555555555556,
+        "question": "SDE"
+      },
+      {
+        "density": 0.1588,
+        "level_1": 8,
+        "party_preference": "Eesti 200",
+        "percentile": 0.8888888888888888,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.1589,
+        "level_1": 25,
+        "party_preference": "Eesti 200",
+        "percentile": 0.5555555555555556,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.16005,
+        "level_1": 34,
+        "party_preference": "Eesti 200",
+        "percentile": 0.4444444444444444,
+        "question": "SDE"
+      },
+      {
+        "density": 0.1618,
+        "level_1": 26,
+        "party_preference": "Eesti 200",
+        "percentile": 0.6666666666666666,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.16595,
+        "level_1": 24,
+        "party_preference": "Eesti 200",
+        "percentile": 0.4444444444444444,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.16905,
+        "level_1": 79,
+        "party_preference": "Eesti 200",
+        "percentile": 1.0,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.16915,
+        "level_1": 43,
+        "party_preference": "Eesti 200",
+        "percentile": 0.3333333333333333,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.16935,
+        "level_1": 36,
+        "party_preference": "Eesti 200",
+        "percentile": 0.6666666666666666,
+        "question": "SDE"
+      },
+      {
+        "density": 0.17065,
+        "level_1": 44,
+        "party_preference": "Eesti 200",
+        "percentile": 0.4444444444444444,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.1755,
+        "level_1": 58,
+        "party_preference": "Eesti 200",
+        "percentile": 0.8888888888888888,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.19325,
+        "level_1": 40,
+        "party_preference": "Eesti 200",
+        "percentile": 0.0,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.1955,
+        "level_1": 42,
+        "party_preference": "Eesti 200",
+        "percentile": 0.2222222222222222,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.19925,
+        "level_1": 41,
+        "party_preference": "Eesti 200",
+        "percentile": 0.1111111111111111,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.2006,
+        "level_1": 37,
+        "party_preference": "Eesti 200",
+        "percentile": 0.7777777777777777,
+        "question": "SDE"
+      },
+      {
+        "density": 0.20585,
+        "level_1": 79,
+        "party_preference": "Eesti 200",
+        "percentile": 1.0,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.20705,
+        "level_1": 78,
+        "party_preference": "Eesti 200",
+        "percentile": 0.8888888888888888,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.2359,
+        "level_1": 38,
+        "party_preference": "Eesti 200",
+        "percentile": 0.8888888888888888,
+        "question": "SDE"
+      },
+      {
+        "density": 0.2411,
+        "level_1": 56,
+        "party_preference": "Eesti 200",
+        "percentile": 0.6666666666666666,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.24855,
+        "level_1": 107,
+        "party_preference": "Eesti 200",
+        "percentile": 0.7777777777777777,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.2637,
+        "level_1": 57,
+        "party_preference": "Eesti 200",
+        "percentile": 0.7777777777777777,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.28415,
+        "level_1": 108,
+        "party_preference": "Eesti 200",
+        "percentile": 0.8888888888888888,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.53505,
+        "level_1": 109,
+        "party_preference": "Eesti 200",
+        "percentile": 1.0,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0,
+        "level_1": 100,
+        "party_preference": "Isamaa",
+        "percentile": 0.0,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0,
+        "level_1": 101,
+        "party_preference": "Isamaa",
+        "percentile": 0.1111111111111111,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0,
+        "level_1": 102,
+        "party_preference": "Isamaa",
+        "percentile": 0.2222222222222222,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0014,
+        "level_1": 69,
+        "party_preference": "Isamaa",
+        "percentile": 1.0,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.00275,
+        "level_1": 69,
+        "party_preference": "Isamaa",
+        "percentile": 1.0,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0045,
+        "level_1": 103,
+        "party_preference": "Isamaa",
+        "percentile": 0.3333333333333333,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0081,
+        "level_1": 99,
+        "party_preference": "Isamaa",
+        "percentile": 1.0,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.011,
+        "level_1": 104,
+        "party_preference": "Isamaa",
+        "percentile": 0.4444444444444444,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.01165,
+        "level_1": 106,
+        "party_preference": "Isamaa",
+        "percentile": 0.6666666666666666,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0129,
+        "level_1": 105,
+        "party_preference": "Isamaa",
+        "percentile": 0.5555555555555556,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.01835,
+        "level_1": 69,
+        "party_preference": "Isamaa",
+        "percentile": 1.0,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.0248,
+        "level_1": 91,
+        "party_preference": "Isamaa",
+        "percentile": 0.1111111111111111,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0252,
+        "level_1": 92,
+        "party_preference": "Isamaa",
+        "percentile": 0.2222222222222222,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.02545,
+        "level_1": 60,
+        "party_preference": "Isamaa",
+        "percentile": 0.0,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.02615,
+        "level_1": 68,
+        "party_preference": "Isamaa",
+        "percentile": 0.8888888888888888,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.02745,
+        "level_1": 90,
+        "party_preference": "Isamaa",
+        "percentile": 0.0,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.02785,
+        "level_1": 18,
+        "party_preference": "Isamaa",
+        "percentile": 0.8888888888888888,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.02955,
+        "level_1": 68,
+        "party_preference": "Isamaa",
+        "percentile": 0.8888888888888888,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0309,
+        "level_1": 68,
+        "party_preference": "Isamaa",
+        "percentile": 0.8888888888888888,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.0326,
+        "level_1": 61,
+        "party_preference": "Isamaa",
+        "percentile": 0.1111111111111111,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0346,
+        "level_1": 93,
+        "party_preference": "Isamaa",
+        "percentile": 0.3333333333333333,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.03655,
+        "level_1": 67,
+        "party_preference": "Isamaa",
+        "percentile": 0.7777777777777777,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0411,
+        "level_1": 47,
+        "party_preference": "Isamaa",
+        "percentile": 0.7777777777777777,
+        "question": "SDE"
+      },
+      {
+        "density": 0.0438,
+        "level_1": 12,
+        "party_preference": "Isamaa",
+        "percentile": 0.2222222222222222,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.0459,
+        "level_1": 60,
+        "party_preference": "Isamaa",
+        "percentile": 0.0,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.0481,
+        "level_1": 11,
+        "party_preference": "Isamaa",
+        "percentile": 0.1111111111111111,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.04995,
+        "level_1": 41,
+        "party_preference": "Isamaa",
+        "percentile": 0.1111111111111111,
+        "question": "SDE"
+      },
+      {
+        "density": 0.0518,
+        "level_1": 49,
+        "party_preference": "Isamaa",
+        "percentile": 1.0,
+        "question": "SDE"
+      },
+      {
+        "density": 0.052,
+        "level_1": 19,
+        "party_preference": "Isamaa",
+        "percentile": 1.0,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.0531,
+        "level_1": 48,
+        "party_preference": "Isamaa",
+        "percentile": 0.8888888888888888,
+        "question": "SDE"
+      },
+      {
+        "density": 0.05525,
+        "level_1": 19,
+        "party_preference": "Isamaa",
+        "percentile": 1.0,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0557,
+        "level_1": 67,
+        "party_preference": "Isamaa",
+        "percentile": 0.7777777777777777,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.05585,
+        "level_1": 64,
+        "party_preference": "Isamaa",
+        "percentile": 0.4444444444444444,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0577,
+        "level_1": 46,
+        "party_preference": "Isamaa",
+        "percentile": 0.6666666666666666,
+        "question": "SDE"
+      },
+      {
+        "density": 0.0586,
+        "level_1": 107,
+        "party_preference": "Isamaa",
+        "percentile": 0.7777777777777777,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.05865,
+        "level_1": 11,
+        "party_preference": "Isamaa",
+        "percentile": 0.1111111111111111,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0595,
+        "level_1": 13,
+        "party_preference": "Isamaa",
+        "percentile": 0.3333333333333333,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0601,
+        "level_1": 60,
+        "party_preference": "Isamaa",
+        "percentile": 0.0,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0606,
+        "level_1": 63,
+        "party_preference": "Isamaa",
+        "percentile": 0.3333333333333333,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.0622,
+        "level_1": 10,
+        "party_preference": "Isamaa",
+        "percentile": 0.0,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.06365,
+        "level_1": 40,
+        "party_preference": "Isamaa",
+        "percentile": 0.0,
+        "question": "SDE"
+      },
+      {
+        "density": 0.06695,
+        "level_1": 66,
+        "party_preference": "Isamaa",
+        "percentile": 0.6666666666666666,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.06695,
+        "level_1": 66,
+        "party_preference": "Isamaa",
+        "percentile": 0.6666666666666666,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.067,
+        "level_1": 96,
+        "party_preference": "Isamaa",
+        "percentile": 0.6666666666666666,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0682,
+        "level_1": 65,
+        "party_preference": "Isamaa",
+        "percentile": 0.5555555555555556,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.0683,
+        "level_1": 18,
+        "party_preference": "Isamaa",
+        "percentile": 0.8888888888888888,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.07045,
+        "level_1": 43,
+        "party_preference": "Isamaa",
+        "percentile": 0.3333333333333333,
+        "question": "SDE"
+      },
+      {
+        "density": 0.07145,
+        "level_1": 16,
+        "party_preference": "Isamaa",
+        "percentile": 0.6666666666666666,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.07225,
+        "level_1": 64,
+        "party_preference": "Isamaa",
+        "percentile": 0.4444444444444444,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.0723,
+        "level_1": 10,
+        "party_preference": "Isamaa",
+        "percentile": 0.0,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.07245,
+        "level_1": 14,
+        "party_preference": "Isamaa",
+        "percentile": 0.4444444444444444,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.07365,
+        "level_1": 14,
+        "party_preference": "Isamaa",
+        "percentile": 0.4444444444444444,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.07375,
+        "level_1": 15,
+        "party_preference": "Isamaa",
+        "percentile": 0.5555555555555556,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.07495,
+        "level_1": 17,
+        "party_preference": "Isamaa",
+        "percentile": 0.7777777777777777,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.07525,
+        "level_1": 13,
+        "party_preference": "Isamaa",
+        "percentile": 0.3333333333333333,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.07725,
+        "level_1": 16,
+        "party_preference": "Isamaa",
+        "percentile": 0.6666666666666666,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0778,
+        "level_1": 12,
+        "party_preference": "Isamaa",
+        "percentile": 0.2222222222222222,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0791,
+        "level_1": 44,
+        "party_preference": "Isamaa",
+        "percentile": 0.4444444444444444,
+        "question": "SDE"
+      },
+      {
+        "density": 0.07925,
+        "level_1": 15,
+        "party_preference": "Isamaa",
+        "percentile": 0.5555555555555556,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0796,
+        "level_1": 45,
+        "party_preference": "Isamaa",
+        "percentile": 0.5555555555555556,
+        "question": "SDE"
+      },
+      {
+        "density": 0.08095,
+        "level_1": 17,
+        "party_preference": "Isamaa",
+        "percentile": 0.7777777777777777,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0856,
+        "level_1": 64,
+        "party_preference": "Isamaa",
+        "percentile": 0.4444444444444444,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0861,
+        "level_1": 63,
+        "party_preference": "Isamaa",
+        "percentile": 0.3333333333333333,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0881,
+        "level_1": 65,
+        "party_preference": "Isamaa",
+        "percentile": 0.5555555555555556,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.092,
+        "level_1": 67,
+        "party_preference": "Isamaa",
+        "percentile": 0.7777777777777777,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.092,
+        "level_1": 97,
+        "party_preference": "Isamaa",
+        "percentile": 0.7777777777777777,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0924,
+        "level_1": 62,
+        "party_preference": "Isamaa",
+        "percentile": 0.2222222222222222,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.0958,
+        "level_1": 61,
+        "party_preference": "Isamaa",
+        "percentile": 0.1111111111111111,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0985,
+        "level_1": 66,
+        "party_preference": "Isamaa",
+        "percentile": 0.6666666666666666,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.10425,
+        "level_1": 62,
+        "party_preference": "Isamaa",
+        "percentile": 0.2222222222222222,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.10425,
+        "level_1": 65,
+        "party_preference": "Isamaa",
+        "percentile": 0.5555555555555556,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.1048,
+        "level_1": 61,
+        "party_preference": "Isamaa",
+        "percentile": 0.1111111111111111,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.1059,
+        "level_1": 42,
+        "party_preference": "Isamaa",
+        "percentile": 0.2222222222222222,
+        "question": "SDE"
+      },
+      {
+        "density": 0.11235,
+        "level_1": 98,
+        "party_preference": "Isamaa",
+        "percentile": 0.8888888888888888,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.1144,
+        "level_1": 94,
+        "party_preference": "Isamaa",
+        "percentile": 0.4444444444444444,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.1234,
+        "level_1": 62,
+        "party_preference": "Isamaa",
+        "percentile": 0.2222222222222222,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.12565,
+        "level_1": 63,
+        "party_preference": "Isamaa",
+        "percentile": 0.3333333333333333,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.14645,
+        "level_1": 95,
+        "party_preference": "Isamaa",
+        "percentile": 0.5555555555555556,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.1531,
+        "level_1": 108,
+        "party_preference": "Isamaa",
+        "percentile": 0.8888888888888888,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.4006,
+        "level_1": 109,
+        "party_preference": "Isamaa",
+        "percentile": 1.0,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0102,
+        "level_1": 81,
+        "party_preference": "Keskerakond",
+        "percentile": 0.1111111111111111,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.0104,
+        "level_1": 9,
+        "party_preference": "Keskerakond",
+        "percentile": 1.0,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.01045,
+        "level_1": 80,
+        "party_preference": "Keskerakond",
+        "percentile": 0.0,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.01465,
+        "level_1": 8,
+        "party_preference": "Keskerakond",
+        "percentile": 0.8888888888888888,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.01535,
+        "level_1": 39,
+        "party_preference": "Keskerakond",
+        "percentile": 1.0,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.01615,
+        "level_1": 82,
+        "party_preference": "Keskerakond",
+        "percentile": 0.2222222222222222,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.0233,
+        "level_1": 19,
+        "party_preference": "Keskerakond",
+        "percentile": 1.0,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.02445,
+        "level_1": 83,
+        "party_preference": "Keskerakond",
+        "percentile": 0.3333333333333333,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.02465,
+        "level_1": 18,
+        "party_preference": "Keskerakond",
+        "percentile": 0.8888888888888888,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0316,
+        "level_1": 85,
+        "party_preference": "Keskerakond",
+        "percentile": 0.5555555555555556,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.0326,
+        "level_1": 86,
+        "party_preference": "Keskerakond",
+        "percentile": 0.6666666666666666,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.0334,
+        "level_1": 38,
+        "party_preference": "Keskerakond",
+        "percentile": 0.8888888888888888,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.0339,
+        "level_1": 84,
+        "party_preference": "Keskerakond",
+        "percentile": 0.4444444444444444,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.03695,
+        "level_1": 19,
+        "party_preference": "Keskerakond",
+        "percentile": 1.0,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0407,
+        "level_1": 18,
+        "party_preference": "Keskerakond",
+        "percentile": 0.8888888888888888,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0439,
+        "level_1": 19,
+        "party_preference": "Keskerakond",
+        "percentile": 1.0,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.05215,
+        "level_1": 17,
+        "party_preference": "Keskerakond",
+        "percentile": 0.7777777777777777,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.05245,
+        "level_1": 7,
+        "party_preference": "Keskerakond",
+        "percentile": 0.7777777777777777,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.054,
+        "level_1": 19,
+        "party_preference": "Keskerakond",
+        "percentile": 1.0,
+        "question": "SDE"
+      },
+      {
+        "density": 0.0595,
+        "level_1": 17,
+        "party_preference": "Keskerakond",
+        "percentile": 0.7777777777777777,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.06125,
+        "level_1": 12,
+        "party_preference": "Keskerakond",
+        "percentile": 0.2222222222222222,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0616,
+        "level_1": 10,
+        "party_preference": "Keskerakond",
+        "percentile": 0.0,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0636,
+        "level_1": 11,
+        "party_preference": "Keskerakond",
+        "percentile": 0.1111111111111111,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.06895,
+        "level_1": 16,
+        "party_preference": "Keskerakond",
+        "percentile": 0.6666666666666666,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.07465,
+        "level_1": 48,
+        "party_preference": "Keskerakond",
+        "percentile": 0.8888888888888888,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0767,
+        "level_1": 49,
+        "party_preference": "Keskerakond",
+        "percentile": 1.0,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.07995,
+        "level_1": 18,
+        "party_preference": "Keskerakond",
+        "percentile": 0.8888888888888888,
+        "question": "SDE"
+      },
+      {
+        "density": 0.0884,
+        "level_1": 17,
+        "party_preference": "Keskerakond",
+        "percentile": 0.7777777777777777,
+        "question": "SDE"
+      },
+      {
+        "density": 0.09685,
+        "level_1": 5,
+        "party_preference": "Keskerakond",
+        "percentile": 0.5555555555555556,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0991,
+        "level_1": 6,
+        "party_preference": "Keskerakond",
+        "percentile": 0.6666666666666666,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.11295,
+        "level_1": 16,
+        "party_preference": "Keskerakond",
+        "percentile": 0.6666666666666666,
+        "question": "SDE"
+      },
+      {
+        "density": 0.11425,
+        "level_1": 37,
+        "party_preference": "Keskerakond",
+        "percentile": 0.7777777777777777,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.1145,
+        "level_1": 35,
+        "party_preference": "Keskerakond",
+        "percentile": 0.5555555555555556,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.11745,
+        "level_1": 34,
+        "party_preference": "Keskerakond",
+        "percentile": 0.4444444444444444,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.11945,
+        "level_1": 36,
+        "party_preference": "Keskerakond",
+        "percentile": 0.6666666666666666,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.1246,
+        "level_1": 13,
+        "party_preference": "Keskerakond",
+        "percentile": 0.3333333333333333,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.1251,
+        "level_1": 16,
+        "party_preference": "Keskerakond",
+        "percentile": 0.6666666666666666,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.1278,
+        "level_1": 13,
+        "party_preference": "Keskerakond",
+        "percentile": 0.3333333333333333,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.1279,
+        "level_1": 33,
+        "party_preference": "Keskerakond",
+        "percentile": 0.3333333333333333,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.1315,
+        "level_1": 14,
+        "party_preference": "Keskerakond",
+        "percentile": 0.4444444444444444,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.132,
+        "level_1": 15,
+        "party_preference": "Keskerakond",
+        "percentile": 0.5555555555555556,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.1326,
+        "level_1": 44,
+        "party_preference": "Keskerakond",
+        "percentile": 0.4444444444444444,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.1337,
+        "level_1": 43,
+        "party_preference": "Keskerakond",
+        "percentile": 0.3333333333333333,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.1349,
+        "level_1": 14,
+        "party_preference": "Keskerakond",
+        "percentile": 0.4444444444444444,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.13675,
+        "level_1": 10,
+        "party_preference": "Keskerakond",
+        "percentile": 0.0,
+        "question": "SDE"
+      },
+      {
+        "density": 0.13735,
+        "level_1": 15,
+        "party_preference": "Keskerakond",
+        "percentile": 0.5555555555555556,
+        "question": "SDE"
+      },
+      {
+        "density": 0.13765,
+        "level_1": 47,
+        "party_preference": "Keskerakond",
+        "percentile": 0.7777777777777777,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.13875,
+        "level_1": 45,
+        "party_preference": "Keskerakond",
+        "percentile": 0.5555555555555556,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.14255,
+        "level_1": 14,
+        "party_preference": "Keskerakond",
+        "percentile": 0.4444444444444444,
+        "question": "SDE"
+      },
+      {
+        "density": 0.1434,
+        "level_1": 46,
+        "party_preference": "Keskerakond",
+        "percentile": 0.6666666666666666,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.145,
+        "level_1": 15,
+        "party_preference": "Keskerakond",
+        "percentile": 0.5555555555555556,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.1471,
+        "level_1": 10,
+        "party_preference": "Keskerakond",
+        "percentile": 0.0,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.14865,
+        "level_1": 4,
+        "party_preference": "Keskerakond",
+        "percentile": 0.4444444444444444,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.15065,
+        "level_1": 87,
+        "party_preference": "Keskerakond",
+        "percentile": 0.7777777777777777,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.15205,
+        "level_1": 41,
+        "party_preference": "Keskerakond",
+        "percentile": 0.1111111111111111,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.1572,
+        "level_1": 11,
+        "party_preference": "Keskerakond",
+        "percentile": 0.1111111111111111,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.1619,
+        "level_1": 42,
+        "party_preference": "Keskerakond",
+        "percentile": 0.2222222222222222,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.1626,
+        "level_1": 40,
+        "party_preference": "Keskerakond",
+        "percentile": 0.0,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.17585,
+        "level_1": 13,
+        "party_preference": "Keskerakond",
+        "percentile": 0.3333333333333333,
+        "question": "SDE"
+      },
+      {
+        "density": 0.1802,
+        "level_1": 15,
+        "party_preference": "Keskerakond",
+        "percentile": 0.5555555555555556,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.1866,
+        "level_1": 3,
+        "party_preference": "Keskerakond",
+        "percentile": 0.3333333333333333,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.18675,
+        "level_1": 11,
+        "party_preference": "Keskerakond",
+        "percentile": 0.1111111111111111,
+        "question": "SDE"
+      },
+      {
+        "density": 0.19045,
+        "level_1": 18,
+        "party_preference": "Keskerakond",
+        "percentile": 0.8888888888888888,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.1905,
+        "level_1": 13,
+        "party_preference": "Keskerakond",
+        "percentile": 0.3333333333333333,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.19395,
+        "level_1": 14,
+        "party_preference": "Keskerakond",
+        "percentile": 0.4444444444444444,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.19945,
+        "level_1": 12,
+        "party_preference": "Keskerakond",
+        "percentile": 0.2222222222222222,
+        "question": "SDE"
+      },
+      {
+        "density": 0.2002,
+        "level_1": 12,
+        "party_preference": "Keskerakond",
+        "percentile": 0.2222222222222222,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.2013,
+        "level_1": 32,
+        "party_preference": "Keskerakond",
+        "percentile": 0.2222222222222222,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.20995,
+        "level_1": 30,
+        "party_preference": "Keskerakond",
+        "percentile": 0.0,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.2154,
+        "level_1": 17,
+        "party_preference": "Keskerakond",
+        "percentile": 0.7777777777777777,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.21945,
+        "level_1": 0,
+        "party_preference": "Keskerakond",
+        "percentile": 0.0,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.2205,
+        "level_1": 12,
+        "party_preference": "Keskerakond",
+        "percentile": 0.2222222222222222,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.23485,
+        "level_1": 1,
+        "party_preference": "Keskerakond",
+        "percentile": 0.1111111111111111,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.24525,
+        "level_1": 16,
+        "party_preference": "Keskerakond",
+        "percentile": 0.6666666666666666,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.251,
+        "level_1": 2,
+        "party_preference": "Keskerakond",
+        "percentile": 0.2222222222222222,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.26045,
+        "level_1": 31,
+        "party_preference": "Keskerakond",
+        "percentile": 0.1111111111111111,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.2682,
+        "level_1": 11,
+        "party_preference": "Keskerakond",
+        "percentile": 0.1111111111111111,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.2756,
+        "level_1": 10,
+        "party_preference": "Keskerakond",
+        "percentile": 0.0,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.3736,
+        "level_1": 88,
+        "party_preference": "Keskerakond",
+        "percentile": 0.8888888888888888,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.6304,
+        "level_1": 89,
+        "party_preference": "Keskerakond",
+        "percentile": 1.0,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.00215,
+        "level_1": 29,
+        "party_preference": "No opinion",
+        "percentile": 1.0,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.00225,
+        "level_1": 29,
+        "party_preference": "No opinion",
+        "percentile": 1.0,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0146,
+        "level_1": 98,
+        "party_preference": "No opinion",
+        "percentile": 0.8888888888888888,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0183,
+        "level_1": 28,
+        "party_preference": "No opinion",
+        "percentile": 0.8888888888888888,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0235,
+        "level_1": 59,
+        "party_preference": "No opinion",
+        "percentile": 1.0,
+        "question": "SDE"
+      },
+      {
+        "density": 0.0242,
+        "level_1": 99,
+        "party_preference": "No opinion",
+        "percentile": 1.0,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0255,
+        "level_1": 27,
+        "party_preference": "No opinion",
+        "percentile": 0.7777777777777777,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0272,
+        "level_1": 28,
+        "party_preference": "No opinion",
+        "percentile": 0.8888888888888888,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.03275,
+        "level_1": 64,
+        "party_preference": "No opinion",
+        "percentile": 0.4444444444444444,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0351,
+        "level_1": 48,
+        "party_preference": "No opinion",
+        "percentile": 0.8888888888888888,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.03555,
+        "level_1": 27,
+        "party_preference": "No opinion",
+        "percentile": 0.7777777777777777,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0358,
+        "level_1": 49,
+        "party_preference": "No opinion",
+        "percentile": 1.0,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.04115,
+        "level_1": 1,
+        "party_preference": "No opinion",
+        "percentile": 0.1111111111111111,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.04345,
+        "level_1": 2,
+        "party_preference": "No opinion",
+        "percentile": 0.2222222222222222,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.04465,
+        "level_1": 26,
+        "party_preference": "No opinion",
+        "percentile": 0.6666666666666666,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.04465,
+        "level_1": 61,
+        "party_preference": "No opinion",
+        "percentile": 0.1111111111111111,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.04555,
+        "level_1": 60,
+        "party_preference": "No opinion",
+        "percentile": 0.0,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.04645,
+        "level_1": 57,
+        "party_preference": "No opinion",
+        "percentile": 0.7777777777777777,
+        "question": "SDE"
+      },
+      {
+        "density": 0.04755,
+        "level_1": 62,
+        "party_preference": "No opinion",
+        "percentile": 0.2222222222222222,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.049,
+        "level_1": 26,
+        "party_preference": "No opinion",
+        "percentile": 0.6666666666666666,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0521,
+        "level_1": 68,
+        "party_preference": "No opinion",
+        "percentile": 0.8888888888888888,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0528,
+        "level_1": 81,
+        "party_preference": "No opinion",
+        "percentile": 0.1111111111111111,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0536,
+        "level_1": 7,
+        "party_preference": "No opinion",
+        "percentile": 0.7777777777777777,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.05365,
+        "level_1": 58,
+        "party_preference": "No opinion",
+        "percentile": 0.8888888888888888,
+        "question": "SDE"
+      },
+      {
+        "density": 0.0556,
+        "level_1": 40,
+        "party_preference": "No opinion",
+        "percentile": 0.0,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.0568,
+        "level_1": 43,
+        "party_preference": "No opinion",
+        "percentile": 0.3333333333333333,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.05715,
+        "level_1": 88,
+        "party_preference": "No opinion",
+        "percentile": 0.8888888888888888,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.05775,
+        "level_1": 90,
+        "party_preference": "No opinion",
+        "percentile": 0.0,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.05835,
+        "level_1": 89,
+        "party_preference": "No opinion",
+        "percentile": 1.0,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0608,
+        "level_1": 9,
+        "party_preference": "No opinion",
+        "percentile": 1.0,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.0648,
+        "level_1": 63,
+        "party_preference": "No opinion",
+        "percentile": 0.3333333333333333,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.06585,
+        "level_1": 52,
+        "party_preference": "No opinion",
+        "percentile": 0.2222222222222222,
+        "question": "SDE"
+      },
+      {
+        "density": 0.06715,
+        "level_1": 21,
+        "party_preference": "No opinion",
+        "percentile": 0.1111111111111111,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0673,
+        "level_1": 87,
+        "party_preference": "No opinion",
+        "percentile": 0.7777777777777777,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.07055,
+        "level_1": 8,
+        "party_preference": "No opinion",
+        "percentile": 0.8888888888888888,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.07065,
+        "level_1": 69,
+        "party_preference": "No opinion",
+        "percentile": 1.0,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.07325,
+        "level_1": 82,
+        "party_preference": "No opinion",
+        "percentile": 0.2222222222222222,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.07425,
+        "level_1": 80,
+        "party_preference": "No opinion",
+        "percentile": 0.0,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0752,
+        "level_1": 50,
+        "party_preference": "No opinion",
+        "percentile": 0.0,
+        "question": "SDE"
+      },
+      {
+        "density": 0.0777,
+        "level_1": 42,
+        "party_preference": "No opinion",
+        "percentile": 0.2222222222222222,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.0806,
+        "level_1": 93,
+        "party_preference": "No opinion",
+        "percentile": 0.3333333333333333,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.08245,
+        "level_1": 0,
+        "party_preference": "No opinion",
+        "percentile": 0.0,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.083,
+        "level_1": 92,
+        "party_preference": "No opinion",
+        "percentile": 0.2222222222222222,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.08345,
+        "level_1": 83,
+        "party_preference": "No opinion",
+        "percentile": 0.3333333333333333,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0837,
+        "level_1": 41,
+        "party_preference": "No opinion",
+        "percentile": 0.1111111111111111,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.0844,
+        "level_1": 91,
+        "party_preference": "No opinion",
+        "percentile": 0.1111111111111111,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.087,
+        "level_1": 65,
+        "party_preference": "No opinion",
+        "percentile": 0.5555555555555556,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0874,
+        "level_1": 56,
+        "party_preference": "No opinion",
+        "percentile": 0.6666666666666666,
+        "question": "SDE"
+      },
+      {
+        "density": 0.08865,
+        "level_1": 21,
+        "party_preference": "No opinion",
+        "percentile": 0.1111111111111111,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.09065,
+        "level_1": 22,
+        "party_preference": "No opinion",
+        "percentile": 0.2222222222222222,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0931,
+        "level_1": 3,
+        "party_preference": "No opinion",
+        "percentile": 0.3333333333333333,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.09335,
+        "level_1": 22,
+        "party_preference": "No opinion",
+        "percentile": 0.2222222222222222,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.095,
+        "level_1": 20,
+        "party_preference": "No opinion",
+        "percentile": 0.0,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.09725,
+        "level_1": 51,
+        "party_preference": "No opinion",
+        "percentile": 0.1111111111111111,
+        "question": "SDE"
+      },
+      {
+        "density": 0.0987,
+        "level_1": 20,
+        "party_preference": "No opinion",
+        "percentile": 0.0,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.10815,
+        "level_1": 94,
+        "party_preference": "No opinion",
+        "percentile": 0.4444444444444444,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.11045,
+        "level_1": 53,
+        "party_preference": "No opinion",
+        "percentile": 0.3333333333333333,
+        "question": "SDE"
+      },
+      {
+        "density": 0.1153,
+        "level_1": 46,
+        "party_preference": "No opinion",
+        "percentile": 0.6666666666666666,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.11645,
+        "level_1": 86,
+        "party_preference": "No opinion",
+        "percentile": 0.6666666666666666,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.117,
+        "level_1": 44,
+        "party_preference": "No opinion",
+        "percentile": 0.4444444444444444,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.1171,
+        "level_1": 84,
+        "party_preference": "No opinion",
+        "percentile": 0.4444444444444444,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.11825,
+        "level_1": 96,
+        "party_preference": "No opinion",
+        "percentile": 0.6666666666666666,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.1203,
+        "level_1": 47,
+        "party_preference": "No opinion",
+        "percentile": 0.7777777777777777,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.1206,
+        "level_1": 25,
+        "party_preference": "No opinion",
+        "percentile": 0.5555555555555556,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.12075,
+        "level_1": 85,
+        "party_preference": "No opinion",
+        "percentile": 0.5555555555555556,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.12275,
+        "level_1": 4,
+        "party_preference": "No opinion",
+        "percentile": 0.4444444444444444,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.1229,
+        "level_1": 6,
+        "party_preference": "No opinion",
+        "percentile": 0.6666666666666666,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.12355,
+        "level_1": 45,
+        "party_preference": "No opinion",
+        "percentile": 0.5555555555555556,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.1248,
+        "level_1": 95,
+        "party_preference": "No opinion",
+        "percentile": 0.5555555555555556,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.1251,
+        "level_1": 97,
+        "party_preference": "No opinion",
+        "percentile": 0.7777777777777777,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.1285,
+        "level_1": 54,
+        "party_preference": "No opinion",
+        "percentile": 0.4444444444444444,
+        "question": "SDE"
+      },
+      {
+        "density": 0.1301,
+        "level_1": 5,
+        "party_preference": "No opinion",
+        "percentile": 0.5555555555555556,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.1325,
+        "level_1": 23,
+        "party_preference": "No opinion",
+        "percentile": 0.3333333333333333,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.1326,
+        "level_1": 55,
+        "party_preference": "No opinion",
+        "percentile": 0.5555555555555556,
+        "question": "SDE"
+      },
+      {
+        "density": 0.14085,
+        "level_1": 25,
+        "party_preference": "No opinion",
+        "percentile": 0.5555555555555556,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.163,
+        "level_1": 24,
+        "party_preference": "No opinion",
+        "percentile": 0.4444444444444444,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.1684,
+        "level_1": 23,
+        "party_preference": "No opinion",
+        "percentile": 0.3333333333333333,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.17825,
+        "level_1": 24,
+        "party_preference": "No opinion",
+        "percentile": 0.4444444444444444,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.1827,
+        "level_1": 67,
+        "party_preference": "No opinion",
+        "percentile": 0.7777777777777777,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.1931,
+        "level_1": 66,
+        "party_preference": "No opinion",
+        "percentile": 0.6666666666666666,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.00335,
+        "level_1": 38,
+        "party_preference": "None of the parties",
+        "percentile": 0.8888888888888888,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.00575,
+        "level_1": 7,
+        "party_preference": "None of the parties",
+        "percentile": 0.7777777777777777,
+        "question": "SDE"
+      },
+      {
+        "density": 0.00725,
+        "level_1": 47,
+        "party_preference": "None of the parties",
+        "percentile": 0.7777777777777777,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0075,
+        "level_1": 9,
+        "party_preference": "None of the parties",
+        "percentile": 1.0,
+        "question": "SDE"
+      },
+      {
+        "density": 0.0079,
+        "level_1": 37,
+        "party_preference": "None of the parties",
+        "percentile": 0.7777777777777777,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0079,
+        "level_1": 48,
+        "party_preference": "None of the parties",
+        "percentile": 0.8888888888888888,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0083,
+        "level_1": 46,
+        "party_preference": "None of the parties",
+        "percentile": 0.6666666666666666,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.01045,
+        "level_1": 49,
+        "party_preference": "None of the parties",
+        "percentile": 1.0,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.01085,
+        "level_1": 39,
+        "party_preference": "None of the parties",
+        "percentile": 1.0,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.01325,
+        "level_1": 8,
+        "party_preference": "None of the parties",
+        "percentile": 0.8888888888888888,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.0141,
+        "level_1": 36,
+        "party_preference": "None of the parties",
+        "percentile": 0.6666666666666666,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0202,
+        "level_1": 69,
+        "party_preference": "None of the parties",
+        "percentile": 1.0,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0223,
+        "level_1": 59,
+        "party_preference": "None of the parties",
+        "percentile": 1.0,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.02235,
+        "level_1": 68,
+        "party_preference": "None of the parties",
+        "percentile": 0.8888888888888888,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0229,
+        "level_1": 57,
+        "party_preference": "None of the parties",
+        "percentile": 0.7777777777777777,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.0235,
+        "level_1": 8,
+        "party_preference": "None of the parties",
+        "percentile": 0.8888888888888888,
+        "question": "SDE"
+      },
+      {
+        "density": 0.02425,
+        "level_1": 28,
+        "party_preference": "None of the parties",
+        "percentile": 0.8888888888888888,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0245,
+        "level_1": 67,
+        "party_preference": "None of the parties",
+        "percentile": 0.7777777777777777,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0249,
+        "level_1": 9,
+        "party_preference": "None of the parties",
+        "percentile": 1.0,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.0253,
+        "level_1": 59,
+        "party_preference": "None of the parties",
+        "percentile": 1.0,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.03665,
+        "level_1": 54,
+        "party_preference": "None of the parties",
+        "percentile": 0.4444444444444444,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.03685,
+        "level_1": 23,
+        "party_preference": "None of the parties",
+        "percentile": 0.3333333333333333,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0417,
+        "level_1": 52,
+        "party_preference": "None of the parties",
+        "percentile": 0.2222222222222222,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.04285,
+        "level_1": 58,
+        "party_preference": "None of the parties",
+        "percentile": 0.8888888888888888,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.04345,
+        "level_1": 62,
+        "party_preference": "None of the parties",
+        "percentile": 0.2222222222222222,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.04465,
+        "level_1": 29,
+        "party_preference": "None of the parties",
+        "percentile": 1.0,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.04515,
+        "level_1": 58,
+        "party_preference": "None of the parties",
+        "percentile": 0.8888888888888888,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0474,
+        "level_1": 53,
+        "party_preference": "None of the parties",
+        "percentile": 0.3333333333333333,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0523,
+        "level_1": 2,
+        "party_preference": "None of the parties",
+        "percentile": 0.2222222222222222,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.05425,
+        "level_1": 2,
+        "party_preference": "None of the parties",
+        "percentile": 0.2222222222222222,
+        "question": "SDE"
+      },
+      {
+        "density": 0.05815,
+        "level_1": 3,
+        "party_preference": "None of the parties",
+        "percentile": 0.3333333333333333,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.0585,
+        "level_1": 51,
+        "party_preference": "None of the parties",
+        "percentile": 0.1111111111111111,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.06365,
+        "level_1": 6,
+        "party_preference": "None of the parties",
+        "percentile": 0.6666666666666666,
+        "question": "SDE"
+      },
+      {
+        "density": 0.06635,
+        "level_1": 52,
+        "party_preference": "None of the parties",
+        "percentile": 0.2222222222222222,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0677,
+        "level_1": 50,
+        "party_preference": "None of the parties",
+        "percentile": 0.0,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.06905,
+        "level_1": 24,
+        "party_preference": "None of the parties",
+        "percentile": 0.4444444444444444,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.07015,
+        "level_1": 51,
+        "party_preference": "None of the parties",
+        "percentile": 0.1111111111111111,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0702,
+        "level_1": 63,
+        "party_preference": "None of the parties",
+        "percentile": 0.3333333333333333,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.07925,
+        "level_1": 53,
+        "party_preference": "None of the parties",
+        "percentile": 0.3333333333333333,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.08105,
+        "level_1": 22,
+        "party_preference": "None of the parties",
+        "percentile": 0.2222222222222222,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0858,
+        "level_1": 27,
+        "party_preference": "None of the parties",
+        "percentile": 0.7777777777777777,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0865,
+        "level_1": 3,
+        "party_preference": "None of the parties",
+        "percentile": 0.3333333333333333,
+        "question": "SDE"
+      },
+      {
+        "density": 0.08785,
+        "level_1": 25,
+        "party_preference": "None of the parties",
+        "percentile": 0.5555555555555556,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.08805,
+        "level_1": 45,
+        "party_preference": "None of the parties",
+        "percentile": 0.5555555555555556,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.08875,
+        "level_1": 4,
+        "party_preference": "None of the parties",
+        "percentile": 0.4444444444444444,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.0888,
+        "level_1": 26,
+        "party_preference": "None of the parties",
+        "percentile": 0.6666666666666666,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.08915,
+        "level_1": 55,
+        "party_preference": "None of the parties",
+        "percentile": 0.5555555555555556,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.09165,
+        "level_1": 7,
+        "party_preference": "None of the parties",
+        "percentile": 0.7777777777777777,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.09365,
+        "level_1": 6,
+        "party_preference": "None of the parties",
+        "percentile": 0.6666666666666666,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.0944,
+        "level_1": 5,
+        "party_preference": "None of the parties",
+        "percentile": 0.5555555555555556,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.09595,
+        "level_1": 54,
+        "party_preference": "None of the parties",
+        "percentile": 0.4444444444444444,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.098,
+        "level_1": 64,
+        "party_preference": "None of the parties",
+        "percentile": 0.4444444444444444,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.1003,
+        "level_1": 33,
+        "party_preference": "None of the parties",
+        "percentile": 0.3333333333333333,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.1003,
+        "level_1": 66,
+        "party_preference": "None of the parties",
+        "percentile": 0.6666666666666666,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.10135,
+        "level_1": 55,
+        "party_preference": "None of the parties",
+        "percentile": 0.5555555555555556,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.10155,
+        "level_1": 56,
+        "party_preference": "None of the parties",
+        "percentile": 0.6666666666666666,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.10395,
+        "level_1": 35,
+        "party_preference": "None of the parties",
+        "percentile": 0.5555555555555556,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.10505,
+        "level_1": 65,
+        "party_preference": "None of the parties",
+        "percentile": 0.5555555555555556,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.1059,
+        "level_1": 42,
+        "party_preference": "None of the parties",
+        "percentile": 0.2222222222222222,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.10675,
+        "level_1": 61,
+        "party_preference": "None of the parties",
+        "percentile": 0.1111111111111111,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.10845,
+        "level_1": 21,
+        "party_preference": "None of the parties",
+        "percentile": 0.1111111111111111,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.1112,
+        "level_1": 1,
+        "party_preference": "None of the parties",
+        "percentile": 0.1111111111111111,
+        "question": "SDE"
+      },
+      {
+        "density": 0.1185,
+        "level_1": 4,
+        "party_preference": "None of the parties",
+        "percentile": 0.4444444444444444,
+        "question": "SDE"
+      },
+      {
+        "density": 0.1219,
+        "level_1": 5,
+        "party_preference": "None of the parties",
+        "percentile": 0.5555555555555556,
+        "question": "SDE"
+      },
+      {
+        "density": 0.1254,
+        "level_1": 1,
+        "party_preference": "None of the parties",
+        "percentile": 0.1111111111111111,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.1262,
+        "level_1": 30,
+        "party_preference": "None of the parties",
+        "percentile": 0.0,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.12695,
+        "level_1": 31,
+        "party_preference": "None of the parties",
+        "percentile": 0.1111111111111111,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.12965,
+        "level_1": 41,
+        "party_preference": "None of the parties",
+        "percentile": 0.1111111111111111,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.1303,
+        "level_1": 44,
+        "party_preference": "None of the parties",
+        "percentile": 0.4444444444444444,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.13185,
+        "level_1": 43,
+        "party_preference": "None of the parties",
+        "percentile": 0.3333333333333333,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.1411,
+        "level_1": 32,
+        "party_preference": "None of the parties",
+        "percentile": 0.2222222222222222,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.14165,
+        "level_1": 0,
+        "party_preference": "None of the parties",
+        "percentile": 0.0,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.1494,
+        "level_1": 34,
+        "party_preference": "None of the parties",
+        "percentile": 0.4444444444444444,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.15735,
+        "level_1": 20,
+        "party_preference": "None of the parties",
+        "percentile": 0.0,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.16445,
+        "level_1": 40,
+        "party_preference": "None of the parties",
+        "percentile": 0.0,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.1651,
+        "level_1": 56,
+        "party_preference": "None of the parties",
+        "percentile": 0.6666666666666666,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.17415,
+        "level_1": 57,
+        "party_preference": "None of the parties",
+        "percentile": 0.7777777777777777,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.19135,
+        "level_1": 0,
+        "party_preference": "None of the parties",
+        "percentile": 0.0,
+        "question": "SDE"
+      },
+      {
+        "density": 0.1933,
+        "level_1": 60,
+        "party_preference": "None of the parties",
+        "percentile": 0.0,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.21475,
+        "level_1": 50,
+        "party_preference": "None of the parties",
+        "percentile": 0.0,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.0,
+        "level_1": 29,
+        "party_preference": "Other",
+        "percentile": 1.0,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0,
+        "level_1": 36,
+        "party_preference": "Other",
+        "percentile": 0.6666666666666666,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0,
+        "level_1": 37,
+        "party_preference": "Other",
+        "percentile": 0.7777777777777777,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0,
+        "level_1": 38,
+        "party_preference": "Other",
+        "percentile": 0.8888888888888888,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0,
+        "level_1": 39,
+        "party_preference": "Other",
+        "percentile": 1.0,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0,
+        "level_1": 39,
+        "party_preference": "Other",
+        "percentile": 1.0,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0,
+        "level_1": 48,
+        "party_preference": "Other",
+        "percentile": 0.8888888888888888,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0,
+        "level_1": 49,
+        "party_preference": "Other",
+        "percentile": 1.0,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0,
+        "level_1": 68,
+        "party_preference": "Other",
+        "percentile": 0.8888888888888888,
+        "question": "SDE"
+      },
+      {
+        "density": 0.0,
+        "level_1": 69,
+        "party_preference": "Other",
+        "percentile": 1.0,
+        "question": "SDE"
+      },
+      {
+        "density": 0.0,
+        "level_1": 89,
+        "party_preference": "Other",
+        "percentile": 1.0,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.00265,
+        "level_1": 47,
+        "party_preference": "Other",
+        "percentile": 0.7777777777777777,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0029,
+        "level_1": 22,
+        "party_preference": "Other",
+        "percentile": 0.2222222222222222,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0037,
+        "level_1": 23,
+        "party_preference": "Other",
+        "percentile": 0.3333333333333333,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.0041,
+        "level_1": 28,
+        "party_preference": "Other",
+        "percentile": 0.8888888888888888,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0045,
+        "level_1": 83,
+        "party_preference": "Other",
+        "percentile": 0.3333333333333333,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0054,
+        "level_1": 29,
+        "party_preference": "Other",
+        "percentile": 1.0,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.00545,
+        "level_1": 28,
+        "party_preference": "Other",
+        "percentile": 0.8888888888888888,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.0063,
+        "level_1": 67,
+        "party_preference": "Other",
+        "percentile": 0.7777777777777777,
+        "question": "SDE"
+      },
+      {
+        "density": 0.0065,
+        "level_1": 42,
+        "party_preference": "Other",
+        "percentile": 0.2222222222222222,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0066,
+        "level_1": 79,
+        "party_preference": "Other",
+        "percentile": 1.0,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.00765,
+        "level_1": 32,
+        "party_preference": "Other",
+        "percentile": 0.2222222222222222,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0082,
+        "level_1": 46,
+        "party_preference": "Other",
+        "percentile": 0.6666666666666666,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0093,
+        "level_1": 43,
+        "party_preference": "Other",
+        "percentile": 0.3333333333333333,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0109,
+        "level_1": 25,
+        "party_preference": "Other",
+        "percentile": 0.5555555555555556,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0109,
+        "level_1": 88,
+        "party_preference": "Other",
+        "percentile": 0.8888888888888888,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0113,
+        "level_1": 23,
+        "party_preference": "Other",
+        "percentile": 0.3333333333333333,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.01155,
+        "level_1": 24,
+        "party_preference": "Other",
+        "percentile": 0.4444444444444444,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0118,
+        "level_1": 84,
+        "party_preference": "Other",
+        "percentile": 0.4444444444444444,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0119,
+        "level_1": 26,
+        "party_preference": "Other",
+        "percentile": 0.6666666666666666,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0132,
+        "level_1": 45,
+        "party_preference": "Other",
+        "percentile": 0.5555555555555556,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0132,
+        "level_1": 73,
+        "party_preference": "Other",
+        "percentile": 0.3333333333333333,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.01355,
+        "level_1": 66,
+        "party_preference": "Other",
+        "percentile": 0.6666666666666666,
+        "question": "SDE"
+      },
+      {
+        "density": 0.01415,
+        "level_1": 31,
+        "party_preference": "Other",
+        "percentile": 0.1111111111111111,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0145,
+        "level_1": 78,
+        "party_preference": "Other",
+        "percentile": 0.8888888888888888,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.01515,
+        "level_1": 62,
+        "party_preference": "Other",
+        "percentile": 0.2222222222222222,
+        "question": "SDE"
+      },
+      {
+        "density": 0.01525,
+        "level_1": 30,
+        "party_preference": "Other",
+        "percentile": 0.0,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.01555,
+        "level_1": 87,
+        "party_preference": "Other",
+        "percentile": 0.7777777777777777,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0156,
+        "level_1": 32,
+        "party_preference": "Other",
+        "percentile": 0.2222222222222222,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0158,
+        "level_1": 85,
+        "party_preference": "Other",
+        "percentile": 0.5555555555555556,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0162,
+        "level_1": 86,
+        "party_preference": "Other",
+        "percentile": 0.6666666666666666,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.01725,
+        "level_1": 27,
+        "party_preference": "Other",
+        "percentile": 0.7777777777777777,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.0176,
+        "level_1": 24,
+        "party_preference": "Other",
+        "percentile": 0.4444444444444444,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.01765,
+        "level_1": 25,
+        "party_preference": "Other",
+        "percentile": 0.5555555555555556,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.01785,
+        "level_1": 26,
+        "party_preference": "Other",
+        "percentile": 0.6666666666666666,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.01845,
+        "level_1": 27,
+        "party_preference": "Other",
+        "percentile": 0.7777777777777777,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.01865,
+        "level_1": 35,
+        "party_preference": "Other",
+        "percentile": 0.5555555555555556,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.01925,
+        "level_1": 72,
+        "party_preference": "Other",
+        "percentile": 0.2222222222222222,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.01975,
+        "level_1": 64,
+        "party_preference": "Other",
+        "percentile": 0.4444444444444444,
+        "question": "SDE"
+      },
+      {
+        "density": 0.01985,
+        "level_1": 65,
+        "party_preference": "Other",
+        "percentile": 0.5555555555555556,
+        "question": "SDE"
+      },
+      {
+        "density": 0.0217,
+        "level_1": 75,
+        "party_preference": "Other",
+        "percentile": 0.5555555555555556,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.022,
+        "level_1": 44,
+        "party_preference": "Other",
+        "percentile": 0.4444444444444444,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.02225,
+        "level_1": 33,
+        "party_preference": "Other",
+        "percentile": 0.3333333333333333,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0223,
+        "level_1": 76,
+        "party_preference": "Other",
+        "percentile": 0.6666666666666666,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.02235,
+        "level_1": 74,
+        "party_preference": "Other",
+        "percentile": 0.4444444444444444,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.0239,
+        "level_1": 63,
+        "party_preference": "Other",
+        "percentile": 0.3333333333333333,
+        "question": "SDE"
+      },
+      {
+        "density": 0.0279,
+        "level_1": 82,
+        "party_preference": "Other",
+        "percentile": 0.2222222222222222,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.02795,
+        "level_1": 36,
+        "party_preference": "Other",
+        "percentile": 0.6666666666666666,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.02945,
+        "level_1": 33,
+        "party_preference": "Other",
+        "percentile": 0.3333333333333333,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.03075,
+        "level_1": 22,
+        "party_preference": "Other",
+        "percentile": 0.2222222222222222,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.03115,
+        "level_1": 21,
+        "party_preference": "Other",
+        "percentile": 0.1111111111111111,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0317,
+        "level_1": 77,
+        "party_preference": "Other",
+        "percentile": 0.7777777777777777,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.03175,
+        "level_1": 34,
+        "party_preference": "Other",
+        "percentile": 0.4444444444444444,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0319,
+        "level_1": 38,
+        "party_preference": "Other",
+        "percentile": 0.8888888888888888,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0324,
+        "level_1": 34,
+        "party_preference": "Other",
+        "percentile": 0.4444444444444444,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0343,
+        "level_1": 35,
+        "party_preference": "Other",
+        "percentile": 0.5555555555555556,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0364,
+        "level_1": 37,
+        "party_preference": "Other",
+        "percentile": 0.7777777777777777,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0375,
+        "level_1": 71,
+        "party_preference": "Other",
+        "percentile": 0.1111111111111111,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.0399,
+        "level_1": 21,
+        "party_preference": "Other",
+        "percentile": 0.1111111111111111,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.04045,
+        "level_1": 70,
+        "party_preference": "Other",
+        "percentile": 0.0,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.05275,
+        "level_1": 81,
+        "party_preference": "Other",
+        "percentile": 0.1111111111111111,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0595,
+        "level_1": 61,
+        "party_preference": "Other",
+        "percentile": 0.1111111111111111,
+        "question": "SDE"
+      },
+      {
+        "density": 0.0659,
+        "level_1": 31,
+        "party_preference": "Other",
+        "percentile": 0.1111111111111111,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.07155,
+        "level_1": 60,
+        "party_preference": "Other",
+        "percentile": 0.0,
+        "question": "SDE"
+      },
+      {
+        "density": 0.074,
+        "level_1": 20,
+        "party_preference": "Other",
+        "percentile": 0.0,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.07415,
+        "level_1": 80,
+        "party_preference": "Other",
+        "percentile": 0.0,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0755,
+        "level_1": 30,
+        "party_preference": "Other",
+        "percentile": 0.0,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0811,
+        "level_1": 41,
+        "party_preference": "Other",
+        "percentile": 0.1111111111111111,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0866,
+        "level_1": 40,
+        "party_preference": "Other",
+        "percentile": 0.0,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.1273,
+        "level_1": 20,
+        "party_preference": "Other",
+        "percentile": 0.0,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0,
+        "level_1": 100,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.0,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.0,
+        "level_1": 101,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.1111111111111111,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.0,
+        "level_1": 104,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.4444444444444444,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.0,
+        "level_1": 105,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.5555555555555556,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.0,
+        "level_1": 106,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.6666666666666666,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.0,
+        "level_1": 107,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.7777777777777777,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.0,
+        "level_1": 79,
+        "party_preference": "Parempoolsed",
+        "percentile": 1.0,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0064,
+        "level_1": 102,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.2222222222222222,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.0082,
+        "level_1": 89,
+        "party_preference": "Parempoolsed",
+        "percentile": 1.0,
+        "question": "SDE"
+      },
+      {
+        "density": 0.0094,
+        "level_1": 80,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.0,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.00975,
+        "level_1": 97,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.7777777777777777,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.01055,
+        "level_1": 80,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.0,
+        "question": "SDE"
+      },
+      {
+        "density": 0.0107,
+        "level_1": 70,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.0,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0107,
+        "level_1": 88,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.8888888888888888,
+        "question": "SDE"
+      },
+      {
+        "density": 0.01215,
+        "level_1": 103,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.3333333333333333,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.01285,
+        "level_1": 89,
+        "party_preference": "Parempoolsed",
+        "percentile": 1.0,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.01425,
+        "level_1": 79,
+        "party_preference": "Parempoolsed",
+        "percentile": 1.0,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0143,
+        "level_1": 83,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.3333333333333333,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.01475,
+        "level_1": 30,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.0,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0157,
+        "level_1": 71,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.1111111111111111,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0158,
+        "level_1": 77,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.7777777777777777,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0164,
+        "level_1": 84,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.4444444444444444,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.01735,
+        "level_1": 70,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.0,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.01785,
+        "level_1": 72,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.2222222222222222,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.01885,
+        "level_1": 75,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.5555555555555556,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0195,
+        "level_1": 33,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.3333333333333333,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.01995,
+        "level_1": 71,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.1111111111111111,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.02125,
+        "level_1": 34,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.4444444444444444,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0217,
+        "level_1": 70,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.0,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0217,
+        "level_1": 74,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.4444444444444444,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.02185,
+        "level_1": 76,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.6666666666666666,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.02225,
+        "level_1": 78,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.8888888888888888,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.02225,
+        "level_1": 87,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.7777777777777777,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.02275,
+        "level_1": 71,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.1111111111111111,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.02315,
+        "level_1": 75,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.5555555555555556,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0233,
+        "level_1": 99,
+        "party_preference": "Parempoolsed",
+        "percentile": 1.0,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.02335,
+        "level_1": 81,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.1111111111111111,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.02365,
+        "level_1": 95,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.5555555555555556,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.0238,
+        "level_1": 37,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.7777777777777777,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.02395,
+        "level_1": 32,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.2222222222222222,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.024,
+        "level_1": 93,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.3333333333333333,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.02435,
+        "level_1": 94,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.4444444444444444,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.02455,
+        "level_1": 36,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.6666666666666666,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.02465,
+        "level_1": 35,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.5555555555555556,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.02505,
+        "level_1": 96,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.6666666666666666,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.02605,
+        "level_1": 88,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.8888888888888888,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0264,
+        "level_1": 78,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.8888888888888888,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.02655,
+        "level_1": 74,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.4444444444444444,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.02655,
+        "level_1": 78,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.8888888888888888,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.02735,
+        "level_1": 76,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.6666666666666666,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.02775,
+        "level_1": 76,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.6666666666666666,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.02875,
+        "level_1": 98,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.8888888888888888,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.02905,
+        "level_1": 72,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.2222222222222222,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0295,
+        "level_1": 39,
+        "party_preference": "Parempoolsed",
+        "percentile": 1.0,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.02965,
+        "level_1": 87,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.7777777777777777,
+        "question": "SDE"
+      },
+      {
+        "density": 0.0298,
+        "level_1": 85,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.5555555555555556,
+        "question": "SDE"
+      },
+      {
+        "density": 0.0301,
+        "level_1": 79,
+        "party_preference": "Parempoolsed",
+        "percentile": 1.0,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.03045,
+        "level_1": 92,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.2222222222222222,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.0306,
+        "level_1": 77,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.7777777777777777,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0307,
+        "level_1": 73,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.3333333333333333,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.031,
+        "level_1": 90,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.0,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.03125,
+        "level_1": 84,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.4444444444444444,
+        "question": "SDE"
+      },
+      {
+        "density": 0.0337,
+        "level_1": 83,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.3333333333333333,
+        "question": "SDE"
+      },
+      {
+        "density": 0.03445,
+        "level_1": 81,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.1111111111111111,
+        "question": "SDE"
+      },
+      {
+        "density": 0.03535,
+        "level_1": 86,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.6666666666666666,
+        "question": "SDE"
+      },
+      {
+        "density": 0.03555,
+        "level_1": 82,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.2222222222222222,
+        "question": "SDE"
+      },
+      {
+        "density": 0.03565,
+        "level_1": 82,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.2222222222222222,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0362,
+        "level_1": 31,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.1111111111111111,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0367,
+        "level_1": 72,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.2222222222222222,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0378,
+        "level_1": 73,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.3333333333333333,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0379,
+        "level_1": 74,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.4444444444444444,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0389,
+        "level_1": 91,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.1111111111111111,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.0399,
+        "level_1": 85,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.5555555555555556,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.04095,
+        "level_1": 77,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.7777777777777777,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.04105,
+        "level_1": 38,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.8888888888888888,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.04985,
+        "level_1": 73,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.3333333333333333,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0555,
+        "level_1": 75,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.5555555555555556,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.05905,
+        "level_1": 86,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.6666666666666666,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0605,
+        "level_1": 108,
+        "party_preference": "Parempoolsed",
+        "percentile": 0.8888888888888888,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.18015,
+        "level_1": 109,
+        "party_preference": "Parempoolsed",
+        "percentile": 1.0,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.0,
+        "level_1": 100,
+        "party_preference": "Reformierakond",
+        "percentile": 0.0,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0,
+        "level_1": 101,
+        "party_preference": "Reformierakond",
+        "percentile": 0.1111111111111111,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0,
+        "level_1": 102,
+        "party_preference": "Reformierakond",
+        "percentile": 0.2222222222222222,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.00985,
+        "level_1": 51,
+        "party_preference": "Reformierakond",
+        "percentile": 0.1111111111111111,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.01,
+        "level_1": 9,
+        "party_preference": "Reformierakond",
+        "percentile": 1.0,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.02035,
+        "level_1": 50,
+        "party_preference": "Reformierakond",
+        "percentile": 0.0,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0244,
+        "level_1": 103,
+        "party_preference": "Reformierakond",
+        "percentile": 0.3333333333333333,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.03105,
+        "level_1": 8,
+        "party_preference": "Reformierakond",
+        "percentile": 0.8888888888888888,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.05335,
+        "level_1": 19,
+        "party_preference": "Reformierakond",
+        "percentile": 1.0,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.0551,
+        "level_1": 104,
+        "party_preference": "Reformierakond",
+        "percentile": 0.4444444444444444,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.05975,
+        "level_1": 70,
+        "party_preference": "Reformierakond",
+        "percentile": 0.0,
+        "question": "SDE"
+      },
+      {
+        "density": 0.0677,
+        "level_1": 6,
+        "party_preference": "Reformierakond",
+        "percentile": 0.6666666666666666,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.07395,
+        "level_1": 30,
+        "party_preference": "Reformierakond",
+        "percentile": 0.0,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.07755,
+        "level_1": 7,
+        "party_preference": "Reformierakond",
+        "percentile": 0.7777777777777777,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0809,
+        "level_1": 105,
+        "party_preference": "Reformierakond",
+        "percentile": 0.5555555555555556,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.087,
+        "level_1": 71,
+        "party_preference": "Reformierakond",
+        "percentile": 0.1111111111111111,
+        "question": "SDE"
+      },
+      {
+        "density": 0.09705,
+        "level_1": 81,
+        "party_preference": "Reformierakond",
+        "percentile": 0.1111111111111111,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.1297,
+        "level_1": 80,
+        "party_preference": "Reformierakond",
+        "percentile": 0.0,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.1306,
+        "level_1": 50,
+        "party_preference": "Reformierakond",
+        "percentile": 0.0,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.1414,
+        "level_1": 18,
+        "party_preference": "Reformierakond",
+        "percentile": 0.8888888888888888,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.14585,
+        "level_1": 5,
+        "party_preference": "Reformierakond",
+        "percentile": 0.5555555555555556,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.1465,
+        "level_1": 31,
+        "party_preference": "Reformierakond",
+        "percentile": 0.1111111111111111,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.1517,
+        "level_1": 52,
+        "party_preference": "Reformierakond",
+        "percentile": 0.2222222222222222,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.16355,
+        "level_1": 51,
+        "party_preference": "Reformierakond",
+        "percentile": 0.1111111111111111,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.1713,
+        "level_1": 39,
+        "party_preference": "Reformierakond",
+        "percentile": 1.0,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.1759,
+        "level_1": 82,
+        "party_preference": "Reformierakond",
+        "percentile": 0.2222222222222222,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.17635,
+        "level_1": 54,
+        "party_preference": "Reformierakond",
+        "percentile": 0.4444444444444444,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.1787,
+        "level_1": 53,
+        "party_preference": "Reformierakond",
+        "percentile": 0.3333333333333333,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.2016,
+        "level_1": 79,
+        "party_preference": "Reformierakond",
+        "percentile": 1.0,
+        "question": "SDE"
+      },
+      {
+        "density": 0.20215,
+        "level_1": 59,
+        "party_preference": "Reformierakond",
+        "percentile": 1.0,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.2068,
+        "level_1": 72,
+        "party_preference": "Reformierakond",
+        "percentile": 0.2222222222222222,
+        "question": "SDE"
+      },
+      {
+        "density": 0.20965,
+        "level_1": 84,
+        "party_preference": "Reformierakond",
+        "percentile": 0.4444444444444444,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.2098,
+        "level_1": 14,
+        "party_preference": "Reformierakond",
+        "percentile": 0.4444444444444444,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.21075,
+        "level_1": 86,
+        "party_preference": "Reformierakond",
+        "percentile": 0.6666666666666666,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.21085,
+        "level_1": 16,
+        "party_preference": "Reformierakond",
+        "percentile": 0.6666666666666666,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.21145,
+        "level_1": 87,
+        "party_preference": "Reformierakond",
+        "percentile": 0.7777777777777777,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.21465,
+        "level_1": 85,
+        "party_preference": "Reformierakond",
+        "percentile": 0.5555555555555556,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.21605,
+        "level_1": 15,
+        "party_preference": "Reformierakond",
+        "percentile": 0.5555555555555556,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.21995,
+        "level_1": 57,
+        "party_preference": "Reformierakond",
+        "percentile": 0.7777777777777777,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.221,
+        "level_1": 55,
+        "party_preference": "Reformierakond",
+        "percentile": 0.5555555555555556,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.2216,
+        "level_1": 56,
+        "party_preference": "Reformierakond",
+        "percentile": 0.6666666666666666,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.22185,
+        "level_1": 74,
+        "party_preference": "Reformierakond",
+        "percentile": 0.4444444444444444,
+        "question": "SDE"
+      },
+      {
+        "density": 0.22595,
+        "level_1": 75,
+        "party_preference": "Reformierakond",
+        "percentile": 0.5555555555555556,
+        "question": "SDE"
+      },
+      {
+        "density": 0.22975,
+        "level_1": 106,
+        "party_preference": "Reformierakond",
+        "percentile": 0.6666666666666666,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.2327,
+        "level_1": 73,
+        "party_preference": "Reformierakond",
+        "percentile": 0.3333333333333333,
+        "question": "SDE"
+      },
+      {
+        "density": 0.2346,
+        "level_1": 32,
+        "party_preference": "Reformierakond",
+        "percentile": 0.2222222222222222,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.2348,
+        "level_1": 17,
+        "party_preference": "Reformierakond",
+        "percentile": 0.7777777777777777,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.23845,
+        "level_1": 34,
+        "party_preference": "Reformierakond",
+        "percentile": 0.4444444444444444,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.23915,
+        "level_1": 35,
+        "party_preference": "Reformierakond",
+        "percentile": 0.5555555555555556,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.24235,
+        "level_1": 54,
+        "party_preference": "Reformierakond",
+        "percentile": 0.4444444444444444,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.24505,
+        "level_1": 36,
+        "party_preference": "Reformierakond",
+        "percentile": 0.6666666666666666,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.25485,
+        "level_1": 52,
+        "party_preference": "Reformierakond",
+        "percentile": 0.2222222222222222,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.2551,
+        "level_1": 59,
+        "party_preference": "Reformierakond",
+        "percentile": 1.0,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.25605,
+        "level_1": 83,
+        "party_preference": "Reformierakond",
+        "percentile": 0.3333333333333333,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.26055,
+        "level_1": 4,
+        "party_preference": "Reformierakond",
+        "percentile": 0.4444444444444444,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.26905,
+        "level_1": 10,
+        "party_preference": "Reformierakond",
+        "percentile": 0.0,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.2691,
+        "level_1": 13,
+        "party_preference": "Reformierakond",
+        "percentile": 0.3333333333333333,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.2768,
+        "level_1": 55,
+        "party_preference": "Reformierakond",
+        "percentile": 0.5555555555555556,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.2976,
+        "level_1": 53,
+        "party_preference": "Reformierakond",
+        "percentile": 0.3333333333333333,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.3007,
+        "level_1": 33,
+        "party_preference": "Reformierakond",
+        "percentile": 0.3333333333333333,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.30535,
+        "level_1": 37,
+        "party_preference": "Reformierakond",
+        "percentile": 0.7777777777777777,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.31125,
+        "level_1": 38,
+        "party_preference": "Reformierakond",
+        "percentile": 0.8888888888888888,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.31265,
+        "level_1": 58,
+        "party_preference": "Reformierakond",
+        "percentile": 0.8888888888888888,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.31325,
+        "level_1": 76,
+        "party_preference": "Reformierakond",
+        "percentile": 0.6666666666666666,
+        "question": "SDE"
+      },
+      {
+        "density": 0.3251,
+        "level_1": 78,
+        "party_preference": "Reformierakond",
+        "percentile": 0.8888888888888888,
+        "question": "SDE"
+      },
+      {
+        "density": 0.32735,
+        "level_1": 12,
+        "party_preference": "Reformierakond",
+        "percentile": 0.2222222222222222,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.33455,
+        "level_1": 11,
+        "party_preference": "Reformierakond",
+        "percentile": 0.1111111111111111,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.3591,
+        "level_1": 3,
+        "party_preference": "Reformierakond",
+        "percentile": 0.3333333333333333,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.36115,
+        "level_1": 57,
+        "party_preference": "Reformierakond",
+        "percentile": 0.7777777777777777,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.3695,
+        "level_1": 89,
+        "party_preference": "Reformierakond",
+        "percentile": 1.0,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.3916,
+        "level_1": 88,
+        "party_preference": "Reformierakond",
+        "percentile": 0.8888888888888888,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.3923,
+        "level_1": 77,
+        "party_preference": "Reformierakond",
+        "percentile": 0.7777777777777777,
+        "question": "SDE"
+      },
+      {
+        "density": 0.40115,
+        "level_1": 56,
+        "party_preference": "Reformierakond",
+        "percentile": 0.6666666666666666,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.4196,
+        "level_1": 107,
+        "party_preference": "Reformierakond",
+        "percentile": 0.7777777777777777,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.43515,
+        "level_1": 58,
+        "party_preference": "Reformierakond",
+        "percentile": 0.8888888888888888,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.43675,
+        "level_1": 0,
+        "party_preference": "Reformierakond",
+        "percentile": 0.0,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.43825,
+        "level_1": 2,
+        "party_preference": "Reformierakond",
+        "percentile": 0.2222222222222222,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.4395,
+        "level_1": 1,
+        "party_preference": "Reformierakond",
+        "percentile": 0.1111111111111111,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.61415,
+        "level_1": 108,
+        "party_preference": "Reformierakond",
+        "percentile": 0.8888888888888888,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.8424,
+        "level_1": 109,
+        "party_preference": "Reformierakond",
+        "percentile": 1.0,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0,
+        "level_1": 100,
+        "party_preference": "Rohelised",
+        "percentile": 0.0,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0,
+        "level_1": 101,
+        "party_preference": "Rohelised",
+        "percentile": 0.1111111111111111,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0,
+        "level_1": 102,
+        "party_preference": "Rohelised",
+        "percentile": 0.2222222222222222,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0,
+        "level_1": 103,
+        "party_preference": "Rohelised",
+        "percentile": 0.3333333333333333,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0,
+        "level_1": 78,
+        "party_preference": "Rohelised",
+        "percentile": 0.8888888888888888,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0,
+        "level_1": 85,
+        "party_preference": "Rohelised",
+        "percentile": 0.5555555555555556,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0,
+        "level_1": 89,
+        "party_preference": "Rohelised",
+        "percentile": 1.0,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0,
+        "level_1": 90,
+        "party_preference": "Rohelised",
+        "percentile": 0.0,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0,
+        "level_1": 90,
+        "party_preference": "Rohelised",
+        "percentile": 0.0,
+        "question": "SDE"
+      },
+      {
+        "density": 0.0,
+        "level_1": 92,
+        "party_preference": "Rohelised",
+        "percentile": 0.2222222222222222,
+        "question": "SDE"
+      },
+      {
+        "density": 0.00275,
+        "level_1": 104,
+        "party_preference": "Rohelised",
+        "percentile": 0.4444444444444444,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0029,
+        "level_1": 91,
+        "party_preference": "Rohelised",
+        "percentile": 0.1111111111111111,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0036,
+        "level_1": 108,
+        "party_preference": "Rohelised",
+        "percentile": 0.8888888888888888,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.00375,
+        "level_1": 108,
+        "party_preference": "Rohelised",
+        "percentile": 0.8888888888888888,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.00375,
+        "level_1": 98,
+        "party_preference": "Rohelised",
+        "percentile": 0.8888888888888888,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0052,
+        "level_1": 107,
+        "party_preference": "Rohelised",
+        "percentile": 0.7777777777777777,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.00535,
+        "level_1": 88,
+        "party_preference": "Rohelised",
+        "percentile": 0.8888888888888888,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.00585,
+        "level_1": 106,
+        "party_preference": "Rohelised",
+        "percentile": 0.6666666666666666,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0059,
+        "level_1": 105,
+        "party_preference": "Rohelised",
+        "percentile": 0.5555555555555556,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.00685,
+        "level_1": 92,
+        "party_preference": "Rohelised",
+        "percentile": 0.2222222222222222,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.00815,
+        "level_1": 109,
+        "party_preference": "Rohelised",
+        "percentile": 1.0,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.009,
+        "level_1": 99,
+        "party_preference": "Rohelised",
+        "percentile": 1.0,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.00905,
+        "level_1": 93,
+        "party_preference": "Rohelised",
+        "percentile": 0.3333333333333333,
+        "question": "SDE"
+      },
+      {
+        "density": 0.0093,
+        "level_1": 98,
+        "party_preference": "Rohelised",
+        "percentile": 0.8888888888888888,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.0094,
+        "level_1": 99,
+        "party_preference": "Rohelised",
+        "percentile": 1.0,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.01005,
+        "level_1": 100,
+        "party_preference": "Rohelised",
+        "percentile": 0.0,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.01005,
+        "level_1": 70,
+        "party_preference": "Rohelised",
+        "percentile": 0.0,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0103,
+        "level_1": 99,
+        "party_preference": "Rohelised",
+        "percentile": 1.0,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.01175,
+        "level_1": 91,
+        "party_preference": "Rohelised",
+        "percentile": 0.1111111111111111,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.0118,
+        "level_1": 93,
+        "party_preference": "Rohelised",
+        "percentile": 0.3333333333333333,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.0128,
+        "level_1": 77,
+        "party_preference": "Rohelised",
+        "percentile": 0.7777777777777777,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.01305,
+        "level_1": 94,
+        "party_preference": "Rohelised",
+        "percentile": 0.4444444444444444,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.01375,
+        "level_1": 90,
+        "party_preference": "Rohelised",
+        "percentile": 0.0,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.01425,
+        "level_1": 81,
+        "party_preference": "Rohelised",
+        "percentile": 0.1111111111111111,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.01425,
+        "level_1": 82,
+        "party_preference": "Rohelised",
+        "percentile": 0.2222222222222222,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.01425,
+        "level_1": 97,
+        "party_preference": "Rohelised",
+        "percentile": 0.7777777777777777,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.01545,
+        "level_1": 96,
+        "party_preference": "Rohelised",
+        "percentile": 0.6666666666666666,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0157,
+        "level_1": 80,
+        "party_preference": "Rohelised",
+        "percentile": 0.0,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.016,
+        "level_1": 95,
+        "party_preference": "Rohelised",
+        "percentile": 0.5555555555555556,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.01745,
+        "level_1": 97,
+        "party_preference": "Rohelised",
+        "percentile": 0.7777777777777777,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.01835,
+        "level_1": 74,
+        "party_preference": "Rohelised",
+        "percentile": 0.4444444444444444,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0185,
+        "level_1": 76,
+        "party_preference": "Rohelised",
+        "percentile": 0.6666666666666666,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.01905,
+        "level_1": 93,
+        "party_preference": "Rohelised",
+        "percentile": 0.3333333333333333,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.01905,
+        "level_1": 96,
+        "party_preference": "Rohelised",
+        "percentile": 0.6666666666666666,
+        "question": "SDE"
+      },
+      {
+        "density": 0.01935,
+        "level_1": 75,
+        "party_preference": "Rohelised",
+        "percentile": 0.5555555555555556,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0196,
+        "level_1": 101,
+        "party_preference": "Rohelised",
+        "percentile": 0.1111111111111111,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.01965,
+        "level_1": 94,
+        "party_preference": "Rohelised",
+        "percentile": 0.4444444444444444,
+        "question": "SDE"
+      },
+      {
+        "density": 0.02005,
+        "level_1": 91,
+        "party_preference": "Rohelised",
+        "percentile": 0.1111111111111111,
+        "question": "SDE"
+      },
+      {
+        "density": 0.0202,
+        "level_1": 73,
+        "party_preference": "Rohelised",
+        "percentile": 0.3333333333333333,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0204,
+        "level_1": 72,
+        "party_preference": "Rohelised",
+        "percentile": 0.2222222222222222,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0207,
+        "level_1": 95,
+        "party_preference": "Rohelised",
+        "percentile": 0.5555555555555556,
+        "question": "SDE"
+      },
+      {
+        "density": 0.0209,
+        "level_1": 93,
+        "party_preference": "Rohelised",
+        "percentile": 0.3333333333333333,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.02105,
+        "level_1": 107,
+        "party_preference": "Rohelised",
+        "percentile": 0.7777777777777777,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.02135,
+        "level_1": 94,
+        "party_preference": "Rohelised",
+        "percentile": 0.4444444444444444,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0214,
+        "level_1": 71,
+        "party_preference": "Rohelised",
+        "percentile": 0.1111111111111111,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.02155,
+        "level_1": 104,
+        "party_preference": "Rohelised",
+        "percentile": 0.4444444444444444,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.0218,
+        "level_1": 105,
+        "party_preference": "Rohelised",
+        "percentile": 0.5555555555555556,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.0219,
+        "level_1": 106,
+        "party_preference": "Rohelised",
+        "percentile": 0.6666666666666666,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.02215,
+        "level_1": 90,
+        "party_preference": "Rohelised",
+        "percentile": 0.0,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0224,
+        "level_1": 94,
+        "party_preference": "Rohelised",
+        "percentile": 0.4444444444444444,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.02255,
+        "level_1": 97,
+        "party_preference": "Rohelised",
+        "percentile": 0.7777777777777777,
+        "question": "SDE"
+      },
+      {
+        "density": 0.02295,
+        "level_1": 98,
+        "party_preference": "Rohelised",
+        "percentile": 0.8888888888888888,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.02425,
+        "level_1": 96,
+        "party_preference": "Rohelised",
+        "percentile": 0.6666666666666666,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.02465,
+        "level_1": 92,
+        "party_preference": "Rohelised",
+        "percentile": 0.2222222222222222,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0251,
+        "level_1": 102,
+        "party_preference": "Rohelised",
+        "percentile": 0.2222222222222222,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.0252,
+        "level_1": 92,
+        "party_preference": "Rohelised",
+        "percentile": 0.2222222222222222,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.0252,
+        "level_1": 95,
+        "party_preference": "Rohelised",
+        "percentile": 0.5555555555555556,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.02615,
+        "level_1": 86,
+        "party_preference": "Rohelised",
+        "percentile": 0.6666666666666666,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0262,
+        "level_1": 97,
+        "party_preference": "Rohelised",
+        "percentile": 0.7777777777777777,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.02625,
+        "level_1": 99,
+        "party_preference": "Rohelised",
+        "percentile": 1.0,
+        "question": "SDE"
+      },
+      {
+        "density": 0.02645,
+        "level_1": 103,
+        "party_preference": "Rohelised",
+        "percentile": 0.3333333333333333,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.02975,
+        "level_1": 83,
+        "party_preference": "Rohelised",
+        "percentile": 0.3333333333333333,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.036,
+        "level_1": 91,
+        "party_preference": "Rohelised",
+        "percentile": 0.1111111111111111,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0363,
+        "level_1": 84,
+        "party_preference": "Rohelised",
+        "percentile": 0.4444444444444444,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0375,
+        "level_1": 87,
+        "party_preference": "Rohelised",
+        "percentile": 0.7777777777777777,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0382,
+        "level_1": 79,
+        "party_preference": "Rohelised",
+        "percentile": 1.0,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0382,
+        "level_1": 95,
+        "party_preference": "Rohelised",
+        "percentile": 0.5555555555555556,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.04195,
+        "level_1": 98,
+        "party_preference": "Rohelised",
+        "percentile": 0.8888888888888888,
+        "question": "SDE"
+      },
+      {
+        "density": 0.04425,
+        "level_1": 96,
+        "party_preference": "Rohelised",
+        "percentile": 0.6666666666666666,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.1558,
+        "level_1": 109,
+        "party_preference": "Rohelised",
+        "percentile": 1.0,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0,
+        "level_1": 100,
+        "party_preference": "SDE",
+        "percentile": 0.0,
+        "question": "SDE"
+      },
+      {
+        "density": 0.0,
+        "level_1": 102,
+        "party_preference": "SDE",
+        "percentile": 0.2222222222222222,
+        "question": "SDE"
+      },
+      {
+        "density": 0.0,
+        "level_1": 29,
+        "party_preference": "SDE",
+        "percentile": 1.0,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0053,
+        "level_1": 103,
+        "party_preference": "SDE",
+        "percentile": 0.3333333333333333,
+        "question": "SDE"
+      },
+      {
+        "density": 0.00545,
+        "level_1": 28,
+        "party_preference": "SDE",
+        "percentile": 0.8888888888888888,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.0089,
+        "level_1": 105,
+        "party_preference": "SDE",
+        "percentile": 0.5555555555555556,
+        "question": "SDE"
+      },
+      {
+        "density": 0.01,
+        "level_1": 90,
+        "party_preference": "SDE",
+        "percentile": 0.0,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0109,
+        "level_1": 104,
+        "party_preference": "SDE",
+        "percentile": 0.4444444444444444,
+        "question": "SDE"
+      },
+      {
+        "density": 0.0133,
+        "level_1": 59,
+        "party_preference": "SDE",
+        "percentile": 1.0,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.02065,
+        "level_1": 101,
+        "party_preference": "SDE",
+        "percentile": 0.1111111111111111,
+        "question": "SDE"
+      },
+      {
+        "density": 0.02195,
+        "level_1": 80,
+        "party_preference": "SDE",
+        "percentile": 0.0,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.02195,
+        "level_1": 81,
+        "party_preference": "SDE",
+        "percentile": 0.1111111111111111,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0247,
+        "level_1": 60,
+        "party_preference": "SDE",
+        "percentile": 0.0,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0318,
+        "level_1": 89,
+        "party_preference": "SDE",
+        "percentile": 1.0,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.03365,
+        "level_1": 91,
+        "party_preference": "SDE",
+        "percentile": 0.1111111111111111,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0342,
+        "level_1": 59,
+        "party_preference": "SDE",
+        "percentile": 1.0,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.03455,
+        "level_1": 50,
+        "party_preference": "SDE",
+        "percentile": 0.0,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.03505,
+        "level_1": 50,
+        "party_preference": "SDE",
+        "percentile": 0.0,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.03835,
+        "level_1": 61,
+        "party_preference": "SDE",
+        "percentile": 0.1111111111111111,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0393,
+        "level_1": 62,
+        "party_preference": "SDE",
+        "percentile": 0.2222222222222222,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.04735,
+        "level_1": 27,
+        "party_preference": "SDE",
+        "percentile": 0.7777777777777777,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.04885,
+        "level_1": 106,
+        "party_preference": "SDE",
+        "percentile": 0.6666666666666666,
+        "question": "SDE"
+      },
+      {
+        "density": 0.05025,
+        "level_1": 39,
+        "party_preference": "SDE",
+        "percentile": 1.0,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.05605,
+        "level_1": 94,
+        "party_preference": "SDE",
+        "percentile": 0.4444444444444444,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.059,
+        "level_1": 38,
+        "party_preference": "SDE",
+        "percentile": 0.8888888888888888,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.059,
+        "level_1": 93,
+        "party_preference": "SDE",
+        "percentile": 0.3333333333333333,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0593,
+        "level_1": 51,
+        "party_preference": "SDE",
+        "percentile": 0.1111111111111111,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.06275,
+        "level_1": 82,
+        "party_preference": "SDE",
+        "percentile": 0.2222222222222222,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.0643,
+        "level_1": 63,
+        "party_preference": "SDE",
+        "percentile": 0.3333333333333333,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.06565,
+        "level_1": 65,
+        "party_preference": "SDE",
+        "percentile": 0.5555555555555556,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.06565,
+        "level_1": 66,
+        "party_preference": "SDE",
+        "percentile": 0.6666666666666666,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.06735,
+        "level_1": 92,
+        "party_preference": "SDE",
+        "percentile": 0.2222222222222222,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.0679,
+        "level_1": 26,
+        "party_preference": "SDE",
+        "percentile": 0.6666666666666666,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.06865,
+        "level_1": 35,
+        "party_preference": "SDE",
+        "percentile": 0.5555555555555556,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.06875,
+        "level_1": 67,
+        "party_preference": "SDE",
+        "percentile": 0.7777777777777777,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0699,
+        "level_1": 34,
+        "party_preference": "SDE",
+        "percentile": 0.4444444444444444,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.07055,
+        "level_1": 36,
+        "party_preference": "SDE",
+        "percentile": 0.6666666666666666,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.07115,
+        "level_1": 64,
+        "party_preference": "SDE",
+        "percentile": 0.4444444444444444,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.0751,
+        "level_1": 83,
+        "party_preference": "SDE",
+        "percentile": 0.3333333333333333,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.07705,
+        "level_1": 55,
+        "party_preference": "SDE",
+        "percentile": 0.5555555555555556,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0779,
+        "level_1": 54,
+        "party_preference": "SDE",
+        "percentile": 0.4444444444444444,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0785,
+        "level_1": 56,
+        "party_preference": "SDE",
+        "percentile": 0.6666666666666666,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.08105,
+        "level_1": 95,
+        "party_preference": "SDE",
+        "percentile": 0.5555555555555556,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.08225,
+        "level_1": 31,
+        "party_preference": "SDE",
+        "percentile": 0.1111111111111111,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.08915,
+        "level_1": 25,
+        "party_preference": "SDE",
+        "percentile": 0.5555555555555556,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.08935,
+        "level_1": 37,
+        "party_preference": "SDE",
+        "percentile": 0.7777777777777777,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.0925,
+        "level_1": 107,
+        "party_preference": "SDE",
+        "percentile": 0.7777777777777777,
+        "question": "SDE"
+      },
+      {
+        "density": 0.0934,
+        "level_1": 55,
+        "party_preference": "SDE",
+        "percentile": 0.5555555555555556,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.0939,
+        "level_1": 52,
+        "party_preference": "SDE",
+        "percentile": 0.2222222222222222,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0939,
+        "level_1": 54,
+        "party_preference": "SDE",
+        "percentile": 0.4444444444444444,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.0939,
+        "level_1": 58,
+        "party_preference": "SDE",
+        "percentile": 0.8888888888888888,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.09405,
+        "level_1": 99,
+        "party_preference": "SDE",
+        "percentile": 1.0,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.09485,
+        "level_1": 52,
+        "party_preference": "SDE",
+        "percentile": 0.2222222222222222,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.09495,
+        "level_1": 57,
+        "party_preference": "SDE",
+        "percentile": 0.7777777777777777,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.09575,
+        "level_1": 56,
+        "party_preference": "SDE",
+        "percentile": 0.6666666666666666,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.0966,
+        "level_1": 53,
+        "party_preference": "SDE",
+        "percentile": 0.3333333333333333,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.09695,
+        "level_1": 57,
+        "party_preference": "SDE",
+        "percentile": 0.7777777777777777,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.0975,
+        "level_1": 87,
+        "party_preference": "SDE",
+        "percentile": 0.7777777777777777,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.09915,
+        "level_1": 33,
+        "party_preference": "SDE",
+        "percentile": 0.3333333333333333,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.1005,
+        "level_1": 88,
+        "party_preference": "SDE",
+        "percentile": 0.8888888888888888,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.10235,
+        "level_1": 58,
+        "party_preference": "SDE",
+        "percentile": 0.8888888888888888,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.104,
+        "level_1": 30,
+        "party_preference": "SDE",
+        "percentile": 0.0,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.10725,
+        "level_1": 84,
+        "party_preference": "SDE",
+        "percentile": 0.4444444444444444,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.1132,
+        "level_1": 98,
+        "party_preference": "SDE",
+        "percentile": 0.8888888888888888,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.11395,
+        "level_1": 21,
+        "party_preference": "SDE",
+        "percentile": 0.1111111111111111,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.11445,
+        "level_1": 23,
+        "party_preference": "SDE",
+        "percentile": 0.3333333333333333,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.1182,
+        "level_1": 22,
+        "party_preference": "SDE",
+        "percentile": 0.2222222222222222,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.1194,
+        "level_1": 20,
+        "party_preference": "SDE",
+        "percentile": 0.0,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.11995,
+        "level_1": 53,
+        "party_preference": "SDE",
+        "percentile": 0.3333333333333333,
+        "question": "Parempoolsed"
+      },
+      {
+        "density": 0.1301,
+        "level_1": 32,
+        "party_preference": "SDE",
+        "percentile": 0.2222222222222222,
+        "question": "Keskerakond"
+      },
+      {
+        "density": 0.14735,
+        "level_1": 24,
+        "party_preference": "SDE",
+        "percentile": 0.4444444444444444,
+        "question": "EKRE"
+      },
+      {
+        "density": 0.1488,
+        "level_1": 96,
+        "party_preference": "SDE",
+        "percentile": 0.6666666666666666,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.1511,
+        "level_1": 86,
+        "party_preference": "SDE",
+        "percentile": 0.6666666666666666,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.1533,
+        "level_1": 85,
+        "party_preference": "SDE",
+        "percentile": 0.5555555555555556,
+        "question": "Reformierakond"
+      },
+      {
+        "density": 0.1559,
+        "level_1": 108,
+        "party_preference": "SDE",
+        "percentile": 0.8888888888888888,
+        "question": "SDE"
+      },
+      {
+        "density": 0.15675,
+        "level_1": 69,
+        "party_preference": "SDE",
+        "percentile": 1.0,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.16005,
+        "level_1": 51,
+        "party_preference": "SDE",
+        "percentile": 0.1111111111111111,
+        "question": "Isamaa"
+      },
+      {
+        "density": 0.16005,
+        "level_1": 97,
+        "party_preference": "SDE",
+        "percentile": 0.7777777777777777,
+        "question": "Eesti 200"
+      },
+      {
+        "density": 0.2286,
+        "level_1": 68,
+        "party_preference": "SDE",
+        "percentile": 0.8888888888888888,
+        "question": "Rohelised"
+      },
+      {
+        "density": 0.4802,
+        "level_1": 109,
+        "party_preference": "SDE",
+        "percentile": 1.0,
+        "question": "SDE"
+      }
+    ]
+  },
+  "facet": {
+    "field": "question",
+    "sort": [
+      "Keskerakond",
+      "EKRE",
+      "Reformierakond",
+      "Isamaa",
+      "SDE",
+      "Rohelised",
+      "Eesti 200",
+      "Parempoolsed"
+    ],
+    "type": "ordinal"
+  },
+  "spec": {
+    "encoding": {
+      "color": {
+        "field": "party_preference",
+        "legend": {
+          "orient": "top"
+        },
+        "scale": {
+          "domain": [
+            "Keskerakond",
+            "EKRE",
+            "Reformierakond",
+            "Isamaa",
+            "SDE",
+            "Rohelised",
+            "Eesti 200",
+            "Parempoolsed",
+            "Other",
+            "None of the parties",
+            "No opinion"
+          ],
+          "range": [
+            "#007557",
+            "#8B4513",
+            "#FFE200",
+            "#009BDF",
+            "#E10600",
+            "#88AF47",
+            "#31758A",
+            "orange",
+            "lightgrey",
+            "lightgrey",
+            "lightgrey"
+          ]
+        },
+        "type": "nominal"
+      },
+      "tooltip": [
+        {
+          "field": "party_preference",
+          "type": "nominal"
+        }
+      ],
+      "x": {
+        "axis": {
+          "format": "%"
+        },
+        "field": "percentile",
+        "type": "quantitative"
+      },
+      "y": {
+        "axis": {
+          "format": "%",
+          "title": null
+        },
+        "field": "density",
+        "stack": "normalize",
+        "type": "quantitative"
+      }
+    },
+    "height": 133,
+    "mark": {
+      "interpolate": "natural",
+      "type": "area"
+    },
+    "width": 133
+  }
+}

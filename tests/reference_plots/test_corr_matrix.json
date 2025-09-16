@@ -1,0 +1,280 @@
+{
+  "data": {
+    "name": "data-normalized"
+  },
+  "datasets": {
+    "data-normalized": [
+      {
+        "index": "EKRE",
+        "question": "Keskerakond",
+        "thermometer": 0.22557938731535385
+      },
+      {
+        "index": "Eesti 200",
+        "question": "EKRE",
+        "thermometer": -0.3775430089410574
+      },
+      {
+        "index": "Eesti 200",
+        "question": "Isamaa",
+        "thermometer": 0.3102261792848133
+      },
+      {
+        "index": "Eesti 200",
+        "question": "Keskerakond",
+        "thermometer": 0.026305549072932963
+      },
+      {
+        "index": "Eesti 200",
+        "question": "Reformierakond",
+        "thermometer": 0.6572692597195445
+      },
+      {
+        "index": "Eesti 200",
+        "question": "Rohelised",
+        "thermometer": 0.44538666707112073
+      },
+      {
+        "index": "Eesti 200",
+        "question": "SDE",
+        "thermometer": 0.6198520868295142
+      },
+      {
+        "index": "Isamaa",
+        "question": "EKRE",
+        "thermometer": 0.07506764033167837
+      },
+      {
+        "index": "Isamaa",
+        "question": "Keskerakond",
+        "thermometer": 0.13126975899209703
+      },
+      {
+        "index": "Isamaa",
+        "question": "Reformierakond",
+        "thermometer": 0.3432271190163237
+      },
+      {
+        "index": "Parempoolsed",
+        "question": "EKRE",
+        "thermometer": -0.10957941824917977
+      },
+      {
+        "index": "Parempoolsed",
+        "question": "Eesti 200",
+        "thermometer": 0.5150779868303462
+      },
+      {
+        "index": "Parempoolsed",
+        "question": "Isamaa",
+        "thermometer": 0.3350516998047878
+      },
+      {
+        "index": "Parempoolsed",
+        "question": "Keskerakond",
+        "thermometer": 0.019077760780127073
+      },
+      {
+        "index": "Parempoolsed",
+        "question": "Reformierakond",
+        "thermometer": 0.4087496701638742
+      },
+      {
+        "index": "Parempoolsed",
+        "question": "Rohelised",
+        "thermometer": 0.42779151313090935
+      },
+      {
+        "index": "Parempoolsed",
+        "question": "SDE",
+        "thermometer": 0.3918182650327505
+      },
+      {
+        "index": "Reformierakond",
+        "question": "EKRE",
+        "thermometer": -0.4880572955876322
+      },
+      {
+        "index": "Reformierakond",
+        "question": "Keskerakond",
+        "thermometer": -0.09348223976122853
+      },
+      {
+        "index": "Rohelised",
+        "question": "EKRE",
+        "thermometer": -0.08188057610033621
+      },
+      {
+        "index": "Rohelised",
+        "question": "Isamaa",
+        "thermometer": 0.29208861078114784
+      },
+      {
+        "index": "Rohelised",
+        "question": "Keskerakond",
+        "thermometer": 0.17137367142503676
+      },
+      {
+        "index": "Rohelised",
+        "question": "Reformierakond",
+        "thermometer": 0.31105819144434876
+      },
+      {
+        "index": "Rohelised",
+        "question": "SDE",
+        "thermometer": 0.5377324497536471
+      },
+      {
+        "index": "SDE",
+        "question": "EKRE",
+        "thermometer": -0.32381489065291597
+      },
+      {
+        "index": "SDE",
+        "question": "Isamaa",
+        "thermometer": 0.3079232794419582
+      },
+      {
+        "index": "SDE",
+        "question": "Keskerakond",
+        "thermometer": 0.15309099664824585
+      },
+      {
+        "index": "SDE",
+        "question": "Reformierakond",
+        "thermometer": 0.5285182988626181
+      }
+    ]
+  },
+  "height": 320,
+  "layer": [
+    {
+      "encoding": {
+        "color": {
+          "field": "thermometer",
+          "legend": {
+            "title": null
+          },
+          "scale": {
+            "domainMax": 0.6572692597195445,
+            "domainMid": 0,
+            "domainMin": -0.6572692597195445,
+            "scheme": "redyellowgreen"
+          },
+          "type": "quantitative"
+        },
+        "tooltip": [
+          {
+            "field": "thermometer",
+            "type": "quantitative"
+          },
+          {
+            "field": "index",
+            "type": "nominal"
+          },
+          {
+            "field": "question",
+            "type": "nominal"
+          }
+        ],
+        "x": {
+          "field": "question",
+          "sort": [
+            "Keskerakond",
+            "EKRE",
+            "Reformierakond",
+            "Isamaa",
+            "SDE",
+            "Rohelised",
+            "Eesti 200",
+            "Parempoolsed"
+          ],
+          "title": null,
+          "type": "nominal"
+        },
+        "y": {
+          "field": "index",
+          "sort": [
+            "Keskerakond",
+            "EKRE",
+            "Reformierakond",
+            "Isamaa",
+            "SDE",
+            "Rohelised",
+            "Eesti 200",
+            "Parempoolsed"
+          ],
+          "title": null,
+          "type": "nominal"
+        }
+      },
+      "mark": {
+        "type": "rect"
+      }
+    },
+    {
+      "encoding": {
+        "color": {
+          "condition": {
+            "test": "(pow((datum['thermometer'] - 0),2) > 0.10800071994306952)",
+            "value": "white"
+          },
+          "value": "black"
+        },
+        "text": {
+          "field": "thermometer",
+          "format": ".1f",
+          "type": "quantitative"
+        },
+        "tooltip": [
+          {
+            "field": "thermometer",
+            "type": "quantitative"
+          },
+          {
+            "field": "index",
+            "type": "nominal"
+          },
+          {
+            "field": "question",
+            "type": "nominal"
+          }
+        ],
+        "x": {
+          "field": "question",
+          "sort": [
+            "Keskerakond",
+            "EKRE",
+            "Reformierakond",
+            "Isamaa",
+            "SDE",
+            "Rohelised",
+            "Eesti 200",
+            "Parempoolsed"
+          ],
+          "title": null,
+          "type": "nominal"
+        },
+        "y": {
+          "field": "index",
+          "sort": [
+            "Keskerakond",
+            "EKRE",
+            "Reformierakond",
+            "Isamaa",
+            "SDE",
+            "Rohelised",
+            "Eesti 200",
+            "Parempoolsed"
+          ],
+          "title": null,
+          "type": "nominal"
+        }
+      },
+      "mark": {
+        "type": "text"
+      }
+    }
+  ],
+  "width": 400
+}

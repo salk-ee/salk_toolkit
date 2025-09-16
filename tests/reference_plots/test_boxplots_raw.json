@@ -1,0 +1,425 @@
+{
+  "data": {
+    "name": "data-normalized"
+  },
+  "datasets": {
+    "data-normalized": [
+      {
+        "age_group": "16-24",
+        "level_1": "row",
+        "max": 5.0,
+        "mean": -2.263335475578406,
+        "min": -5.0,
+        "q1": -5.0,
+        "q1p": -5.0,
+        "q2 (median)": -3.0,
+        "q3": 0.0,
+        "q3p": 0.0,
+        "tmax": 5.0,
+        "tmin": -5.0
+      },
+      {
+        "age_group": "25-34",
+        "level_1": "row",
+        "max": 5.0,
+        "mean": -1.919559115492572,
+        "min": -5.0,
+        "q1": -5.0,
+        "q1p": -5.0,
+        "q2 (median)": -2.0,
+        "q3": 0.0,
+        "q3p": 0.0,
+        "tmax": 5.0,
+        "tmin": -5.0
+      },
+      {
+        "age_group": "35-44",
+        "level_1": "row",
+        "max": 5.0,
+        "mean": -2.0407102527571106,
+        "min": -5.0,
+        "q1": -5.0,
+        "q1p": -5.0,
+        "q2 (median)": -3.0,
+        "q3": 0.0,
+        "q3p": 0.0,
+        "tmax": 5.0,
+        "tmin": -5.0
+      },
+      {
+        "age_group": "45-54",
+        "level_1": "row",
+        "max": 5.0,
+        "mean": -1.8300995097895323,
+        "min": -5.0,
+        "q1": -5.0,
+        "q1p": -5.0,
+        "q2 (median)": -3.0,
+        "q3": 0.0,
+        "q3p": 0.0,
+        "tmax": 5.0,
+        "tmin": -5.0
+      },
+      {
+        "age_group": "55-64",
+        "level_1": "row",
+        "max": 5.0,
+        "mean": -1.1695204956811036,
+        "min": -5.0,
+        "q1": -5.0,
+        "q1p": -5.0,
+        "q2 (median)": -2.0,
+        "q3": 1.0,
+        "q3p": 1.0,
+        "tmax": 5.0,
+        "tmin": -5.0
+      },
+      {
+        "age_group": "65-74",
+        "level_1": "row",
+        "max": 5.0,
+        "mean": -1.4231932264892653,
+        "min": -5.0,
+        "q1": -5.0,
+        "q1p": -5.0,
+        "q2 (median)": -2.0,
+        "q3": 0.0,
+        "q3p": 0.0,
+        "tmax": 5.0,
+        "tmin": -5.0
+      },
+      {
+        "age_group": "75+",
+        "level_1": "row",
+        "max": 5.0,
+        "mean": -1.894389754372551,
+        "min": -5.0,
+        "q1": -5.0,
+        "q1p": -5.0,
+        "q2 (median)": -3.0,
+        "q3": 0.0,
+        "q3p": 0.0,
+        "tmax": 5.0,
+        "tmin": -5.0
+      }
+    ]
+  },
+  "layer": [
+    {
+      "encoding": {
+        "tooltip": [
+          {
+            "field": "min",
+            "format": ".1f",
+            "title": "Min of EKRE",
+            "type": "quantitative"
+          },
+          {
+            "field": "q1",
+            "format": ".1f",
+            "title": "Q1 of EKRE",
+            "type": "quantitative"
+          },
+          {
+            "field": "mean",
+            "format": ".1f",
+            "title": "Mean of EKRE",
+            "type": "quantitative"
+          },
+          {
+            "field": "q2 (median)",
+            "format": ".1f",
+            "title": "Q2 (median) of EKRE",
+            "type": "quantitative"
+          },
+          {
+            "field": "q3",
+            "format": ".1f",
+            "title": "Q3 of EKRE",
+            "type": "quantitative"
+          },
+          {
+            "field": "max",
+            "format": ".1f",
+            "title": "Max of EKRE",
+            "type": "quantitative"
+          },
+          {
+            "field": "age_group",
+            "type": "nominal"
+          }
+        ],
+        "x": {
+          "axis": {
+            "format": ".1f",
+            "title": "EKRE"
+          },
+          "field": "tmin",
+          "scale": {
+            "domain": [
+              -5.0,
+              5.0
+            ]
+          },
+          "type": "quantitative"
+        },
+        "x2": {
+          "field": "q1"
+        },
+        "y": {
+          "field": "age_group",
+          "sort": [
+            "16-24",
+            "25-34",
+            "35-44",
+            "45-54",
+            "55-64",
+            "65-74",
+            "75+"
+          ],
+          "title": null,
+          "type": "nominal"
+        }
+      },
+      "mark": {
+        "type": "rule"
+      }
+    },
+    {
+      "encoding": {
+        "color": {
+          "field": "age_group",
+          "legend": null,
+          "scale": {
+            "domain": [
+              "16-24",
+              "25-34",
+              "35-44",
+              "45-54",
+              "55-64",
+              "65-74",
+              "75+"
+            ],
+            "range": [
+              "#c30d24",
+              "#da5954",
+              "#da9182",
+              "#a2a2a2",
+              "#8eb2c4",
+              "#559bc2",
+              "#1770ab"
+            ]
+          },
+          "type": "nominal"
+        },
+        "tooltip": [
+          {
+            "field": "min",
+            "format": ".1f",
+            "title": "Min of EKRE",
+            "type": "quantitative"
+          },
+          {
+            "field": "q1",
+            "format": ".1f",
+            "title": "Q1 of EKRE",
+            "type": "quantitative"
+          },
+          {
+            "field": "mean",
+            "format": ".1f",
+            "title": "Mean of EKRE",
+            "type": "quantitative"
+          },
+          {
+            "field": "q2 (median)",
+            "format": ".1f",
+            "title": "Q2 (median) of EKRE",
+            "type": "quantitative"
+          },
+          {
+            "field": "q3",
+            "format": ".1f",
+            "title": "Q3 of EKRE",
+            "type": "quantitative"
+          },
+          {
+            "field": "max",
+            "format": ".1f",
+            "title": "Max of EKRE",
+            "type": "quantitative"
+          },
+          {
+            "field": "age_group",
+            "type": "nominal"
+          }
+        ],
+        "x": {
+          "field": "q1p",
+          "type": "quantitative"
+        },
+        "x2": {
+          "field": "q3p"
+        },
+        "y": {
+          "field": "age_group",
+          "sort": [
+            "16-24",
+            "25-34",
+            "35-44",
+            "45-54",
+            "55-64",
+            "65-74",
+            "75+"
+          ],
+          "title": null,
+          "type": "nominal"
+        }
+      },
+      "mark": {
+        "size": 12,
+        "type": "bar"
+      }
+    },
+    {
+      "encoding": {
+        "tooltip": [
+          {
+            "field": "min",
+            "format": ".1f",
+            "title": "Min of EKRE",
+            "type": "quantitative"
+          },
+          {
+            "field": "q1",
+            "format": ".1f",
+            "title": "Q1 of EKRE",
+            "type": "quantitative"
+          },
+          {
+            "field": "mean",
+            "format": ".1f",
+            "title": "Mean of EKRE",
+            "type": "quantitative"
+          },
+          {
+            "field": "q2 (median)",
+            "format": ".1f",
+            "title": "Q2 (median) of EKRE",
+            "type": "quantitative"
+          },
+          {
+            "field": "q3",
+            "format": ".1f",
+            "title": "Q3 of EKRE",
+            "type": "quantitative"
+          },
+          {
+            "field": "max",
+            "format": ".1f",
+            "title": "Max of EKRE",
+            "type": "quantitative"
+          },
+          {
+            "field": "age_group",
+            "type": "nominal"
+          }
+        ],
+        "x": {
+          "field": "q3",
+          "type": "quantitative"
+        },
+        "x2": {
+          "field": "tmax"
+        },
+        "y": {
+          "field": "age_group",
+          "sort": [
+            "16-24",
+            "25-34",
+            "35-44",
+            "45-54",
+            "55-64",
+            "65-74",
+            "75+"
+          ],
+          "title": null,
+          "type": "nominal"
+        }
+      },
+      "mark": {
+        "type": "rule"
+      }
+    },
+    {
+      "encoding": {
+        "tooltip": [
+          {
+            "field": "min",
+            "format": ".1f",
+            "title": "Min of EKRE",
+            "type": "quantitative"
+          },
+          {
+            "field": "q1",
+            "format": ".1f",
+            "title": "Q1 of EKRE",
+            "type": "quantitative"
+          },
+          {
+            "field": "mean",
+            "format": ".1f",
+            "title": "Mean of EKRE",
+            "type": "quantitative"
+          },
+          {
+            "field": "q2 (median)",
+            "format": ".1f",
+            "title": "Q2 (median) of EKRE",
+            "type": "quantitative"
+          },
+          {
+            "field": "q3",
+            "format": ".1f",
+            "title": "Q3 of EKRE",
+            "type": "quantitative"
+          },
+          {
+            "field": "max",
+            "format": ".1f",
+            "title": "Max of EKRE",
+            "type": "quantitative"
+          },
+          {
+            "field": "age_group",
+            "type": "nominal"
+          }
+        ],
+        "x": {
+          "field": "mean",
+          "type": "quantitative"
+        },
+        "y": {
+          "field": "age_group",
+          "sort": [
+            "16-24",
+            "25-34",
+            "35-44",
+            "45-54",
+            "55-64",
+            "65-74",
+            "75+"
+          ],
+          "title": null,
+          "type": "nominal"
+        }
+      },
+      "mark": {
+        "color": "white",
+        "size": 12,
+        "type": "tick"
+      }
+    }
+  ],
+  "width": 400
+}

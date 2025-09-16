@@ -1,0 +1,110 @@
+{
+  "data": {
+    "name": "data-normalized"
+  },
+  "datasets": {
+    "data-normalized": [
+      {
+        "question": "EKRE",
+        "thermometer": -0.121
+      },
+      {
+        "question": "Eesti 200",
+        "thermometer": -0.798
+      },
+      {
+        "question": "Isamaa",
+        "thermometer": 0.237
+      },
+      {
+        "question": "Keskerakond",
+        "thermometer": 0.015
+      },
+      {
+        "question": "Parempoolsed",
+        "thermometer": -0.253
+      },
+      {
+        "question": "Reformierakond",
+        "thermometer": -0.157
+      },
+      {
+        "question": "Rohelised",
+        "thermometer": -0.988
+      },
+      {
+        "question": "SDE",
+        "thermometer": -1.098
+      }
+    ]
+  },
+  "encoding": {
+    "color": {
+      "field": "question",
+      "legend": null,
+      "scale": {
+        "domain": [
+          "Keskerakond",
+          "EKRE",
+          "Reformierakond",
+          "Isamaa",
+          "SDE",
+          "Rohelised",
+          "Eesti 200",
+          "Parempoolsed"
+        ],
+        "range": [
+          "#007557",
+          "#8B4513",
+          "#FFE200",
+          "#009BDF",
+          "#E10600",
+          "#88AF47",
+          "#31758A",
+          "orange"
+        ]
+      },
+      "type": "nominal"
+    },
+    "tooltip": [
+      {
+        "field": "question",
+        "type": "nominal"
+      },
+      {
+        "field": "thermometer",
+        "format": ".1f",
+        "title": "thermometer difference",
+        "type": "quantitative"
+      }
+    ],
+    "x": {
+      "axis": {
+        "format": ".1f",
+        "title": "25-34 <> 35-44"
+      },
+      "field": "thermometer",
+      "title": "35-44 - 25-34",
+      "type": "quantitative"
+    },
+    "y": {
+      "field": "question",
+      "sort": [
+        "Isamaa",
+        "Keskerakond",
+        "EKRE",
+        "Reformierakond",
+        "Parempoolsed",
+        "Eesti 200",
+        "Rohelised",
+        "SDE"
+      ],
+      "title": null,
+      "type": "nominal"
+    }
+  },
+  "mark": {
+    "type": "bar"
+  },
+  "width": 400
+}

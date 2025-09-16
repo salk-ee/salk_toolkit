@@ -1,0 +1,468 @@
+{
+  "data": {
+    "name": "data-normalized"
+  },
+  "datasets": {
+    "data-normalized": [
+      {
+        "age_group": "16-24",
+        "party_preference": "EKRE",
+        "percent": 0.09752570694087404
+      },
+      {
+        "age_group": "25-34",
+        "party_preference": "EKRE",
+        "percent": 0.08704730608612309
+      },
+      {
+        "age_group": "35-44",
+        "party_preference": "EKRE",
+        "percent": 0.13360772518600603
+      },
+      {
+        "age_group": "45-54",
+        "party_preference": "EKRE",
+        "percent": 0.15992015733701237
+      },
+      {
+        "age_group": "55-64",
+        "party_preference": "EKRE",
+        "percent": 0.1781277660775875
+      },
+      {
+        "age_group": "65-74",
+        "party_preference": "EKRE",
+        "percent": 0.15629724826126398
+      },
+      {
+        "age_group": "75+",
+        "party_preference": "EKRE",
+        "percent": 0.1340437732963777
+      },
+      {
+        "age_group": "16-24",
+        "party_preference": "Eesti 200",
+        "percent": 0.20212082262210798
+      },
+      {
+        "age_group": "25-34",
+        "party_preference": "Eesti 200",
+        "percent": 0.17741493804340386
+      },
+      {
+        "age_group": "35-44",
+        "party_preference": "Eesti 200",
+        "percent": 0.14935887288269747
+      },
+      {
+        "age_group": "45-54",
+        "party_preference": "Eesti 200",
+        "percent": 0.13103589984442424
+      },
+      {
+        "age_group": "55-64",
+        "party_preference": "Eesti 200",
+        "percent": 0.0898574611604554
+      },
+      {
+        "age_group": "65-74",
+        "party_preference": "Eesti 200",
+        "percent": 0.1188388267311763
+      },
+      {
+        "age_group": "75+",
+        "party_preference": "Eesti 200",
+        "percent": 0.028768039759151296
+      },
+      {
+        "age_group": "16-24",
+        "party_preference": "Isamaa",
+        "percent": 0.08435089974293059
+      },
+      {
+        "age_group": "25-34",
+        "party_preference": "Isamaa",
+        "percent": 0.05969740535359759
+      },
+      {
+        "age_group": "35-44",
+        "party_preference": "Isamaa",
+        "percent": 0.06318927761068018
+      },
+      {
+        "age_group": "45-54",
+        "party_preference": "Isamaa",
+        "percent": 0.0727683682155752
+      },
+      {
+        "age_group": "55-64",
+        "party_preference": "Isamaa",
+        "percent": 0.07618349967951653
+      },
+      {
+        "age_group": "65-74",
+        "party_preference": "Isamaa",
+        "percent": 0.036513456304807984
+      },
+      {
+        "age_group": "75+",
+        "party_preference": "Isamaa",
+        "percent": 0.06652011851285482
+      },
+      {
+        "age_group": "16-24",
+        "party_preference": "Keskerakond",
+        "percent": 0.0966152527849186
+      },
+      {
+        "age_group": "25-34",
+        "party_preference": "Keskerakond",
+        "percent": 0.10758540425823235
+      },
+      {
+        "age_group": "35-44",
+        "party_preference": "Keskerakond",
+        "percent": 0.10513957047121524
+      },
+      {
+        "age_group": "45-54",
+        "party_preference": "Keskerakond",
+        "percent": 0.11847242199195702
+      },
+      {
+        "age_group": "55-64",
+        "party_preference": "Keskerakond",
+        "percent": 0.11723590635778164
+      },
+      {
+        "age_group": "65-74",
+        "party_preference": "Keskerakond",
+        "percent": 0.14624281826428787
+      },
+      {
+        "age_group": "75+",
+        "party_preference": "Keskerakond",
+        "percent": 0.26770524706107235
+      },
+      {
+        "age_group": "16-24",
+        "party_preference": "No opinion",
+        "percent": 0.04268423307626393
+      },
+      {
+        "age_group": "25-34",
+        "party_preference": "No opinion",
+        "percent": 0.08317929759704251
+      },
+      {
+        "age_group": "35-44",
+        "party_preference": "No opinion",
+        "percent": 0.07719909239617963
+      },
+      {
+        "age_group": "45-54",
+        "party_preference": "No opinion",
+        "percent": 0.08747468224381366
+      },
+      {
+        "age_group": "55-64",
+        "party_preference": "No opinion",
+        "percent": 0.11509934987638494
+      },
+      {
+        "age_group": "65-74",
+        "party_preference": "No opinion",
+        "percent": 0.09615966132446326
+      },
+      {
+        "age_group": "75+",
+        "party_preference": "No opinion",
+        "percent": 0.0463060307751123
+      },
+      {
+        "age_group": "16-24",
+        "party_preference": "None of the parties",
+        "percent": 0.08772493573264782
+      },
+      {
+        "age_group": "25-34",
+        "party_preference": "None of the parties",
+        "percent": 0.10542890395016088
+      },
+      {
+        "age_group": "35-44",
+        "party_preference": "None of the parties",
+        "percent": 0.10593108543084798
+      },
+      {
+        "age_group": "45-54",
+        "party_preference": "None of the parties",
+        "percent": 0.07438283382745765
+      },
+      {
+        "age_group": "55-64",
+        "party_preference": "None of the parties",
+        "percent": 0.0626926716112688
+      },
+      {
+        "age_group": "65-74",
+        "party_preference": "None of the parties",
+        "percent": 0.07408527366192924
+      },
+      {
+        "age_group": "75+",
+        "party_preference": "None of the parties",
+        "percent": 0.01916276402561407
+      },
+      {
+        "age_group": "25-34",
+        "party_preference": "Other",
+        "percent": 0.007291024851098788
+      },
+      {
+        "age_group": "35-44",
+        "party_preference": "Other",
+        "percent": 0.03068439660176244
+      },
+      {
+        "age_group": "45-54",
+        "party_preference": "Other",
+        "percent": 0.03443214841342061
+      },
+      {
+        "age_group": "55-64",
+        "party_preference": "Other",
+        "percent": 0.04382993010408082
+      },
+      {
+        "age_group": "65-74",
+        "party_preference": "Other",
+        "percent": 0.015421832476564862
+      },
+      {
+        "age_group": "75+",
+        "party_preference": "Other",
+        "percent": 0.009461913409156074
+      },
+      {
+        "age_group": "25-34",
+        "party_preference": "Parempoolsed",
+        "percent": 0.02844526596837133
+      },
+      {
+        "age_group": "35-44",
+        "party_preference": "Parempoolsed",
+        "percent": 0.03559178935148541
+      },
+      {
+        "age_group": "45-54",
+        "party_preference": "Parempoolsed",
+        "percent": 0.023982152816508645
+      },
+      {
+        "age_group": "55-64",
+        "party_preference": "Parempoolsed",
+        "percent": 0.018221774562768977
+      },
+      {
+        "age_group": "65-74",
+        "party_preference": "Parempoolsed",
+        "percent": 0.03141064408829755
+      },
+      {
+        "age_group": "75+",
+        "party_preference": "Parempoolsed",
+        "percent": 0.036270668068431614
+      },
+      {
+        "age_group": "16-24",
+        "party_preference": "Reformierakond",
+        "percent": 0.19296272493573266
+      },
+      {
+        "age_group": "25-34",
+        "party_preference": "Reformierakond",
+        "percent": 0.1331211063188882
+      },
+      {
+        "age_group": "35-44",
+        "party_preference": "Reformierakond",
+        "percent": 0.25310010025856156
+      },
+      {
+        "age_group": "45-54",
+        "party_preference": "Reformierakond",
+        "percent": 0.2207414800246573
+      },
+      {
+        "age_group": "55-64",
+        "party_preference": "Reformierakond",
+        "percent": 0.2561425998840155
+      },
+      {
+        "age_group": "65-74",
+        "party_preference": "Reformierakond",
+        "percent": 0.23752645902630784
+      },
+      {
+        "age_group": "75+",
+        "party_preference": "Reformierakond",
+        "percent": 0.28887508362802256
+      },
+      {
+        "age_group": "16-24",
+        "party_preference": "Rohelised",
+        "percent": 0.0315981148243359
+      },
+      {
+        "age_group": "25-34",
+        "party_preference": "Rohelised",
+        "percent": 0.05435749982884918
+      },
+      {
+        "age_group": "35-44",
+        "party_preference": "Rohelised",
+        "percent": 0.010289694475225581
+      },
+      {
+        "age_group": "45-54",
+        "party_preference": "Rohelised",
+        "percent": 0.011506736724689583
+      },
+      {
+        "age_group": "55-64",
+        "party_preference": "Rohelised",
+        "percent": 0.01327717242010805
+      },
+      {
+        "age_group": "65-74",
+        "party_preference": "Rohelised",
+        "percent": 0.007181735712125794
+      },
+      {
+        "age_group": "16-24",
+        "party_preference": "SDE",
+        "percent": 0.16441730934018853
+      },
+      {
+        "age_group": "25-34",
+        "party_preference": "SDE",
+        "percent": 0.15643184774423222
+      },
+      {
+        "age_group": "35-44",
+        "party_preference": "SDE",
+        "percent": 0.0359083953353385
+      },
+      {
+        "age_group": "45-54",
+        "party_preference": "SDE",
+        "percent": 0.06528311856048376
+      },
+      {
+        "age_group": "55-64",
+        "party_preference": "SDE",
+        "percent": 0.029331868266031805
+      },
+      {
+        "age_group": "65-74",
+        "party_preference": "SDE",
+        "percent": 0.08032204414877532
+      },
+      {
+        "age_group": "75+",
+        "party_preference": "SDE",
+        "percent": 0.10288636146420721
+      }
+    ]
+  },
+  "encoding": {
+    "color": {
+      "field": "age_group",
+      "legend": {
+        "columns": 7,
+        "orient": "top"
+      },
+      "scale": {
+        "domain": [
+          "16-24",
+          "25-34",
+          "35-44",
+          "45-54",
+          "55-64",
+          "65-74",
+          "75+"
+        ],
+        "range": [
+          "#c30d24",
+          "#da5954",
+          "#da9182",
+          "#a2a2a2",
+          "#8eb2c4",
+          "#559bc2",
+          "#1770ab"
+        ]
+      },
+      "type": "nominal"
+    },
+    "tooltip": [
+      {
+        "field": "percent",
+        "format": ".1%",
+        "type": "quantitative"
+      },
+      {
+        "field": "party_preference",
+        "type": "nominal"
+      },
+      {
+        "field": "age_group",
+        "type": "nominal"
+      }
+    ],
+    "x": {
+      "axis": {
+        "format": ".1%"
+      },
+      "field": "percent",
+      "title": "percent",
+      "type": "quantitative"
+    },
+    "y": {
+      "field": "party_preference",
+      "sort": [
+        "Keskerakond",
+        "EKRE",
+        "Reformierakond",
+        "Isamaa",
+        "SDE",
+        "Rohelised",
+        "Eesti 200",
+        "Parempoolsed",
+        "Other",
+        "None of the parties",
+        "No opinion"
+      ],
+      "title": null,
+      "type": "nominal"
+    },
+    "yOffset": {
+      "field": "age_group",
+      "sort": [
+        "16-24",
+        "25-34",
+        "35-44",
+        "45-54",
+        "55-64",
+        "65-74",
+        "75+"
+      ],
+      "title": null,
+      "type": "nominal"
+    }
+  },
+  "mark": {
+    "type": "bar"
+  },
+  "width": 400
+}
