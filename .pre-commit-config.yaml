@@ -1,0 +1,53 @@
+# Pre-commit hooks configuration for salk_internal_package
+# See https://pre-commit.com for more information
+
+repos:
+
+  # Notebook output cleaning
+  - repo: https://github.com/kynan/nbstripout
+    rev: 0.6.1
+    hooks:
+      - id: nbstripout
+
+  # Handle basic formatting in notebook code cells
+  # Only deal with whitespace issues for now
+  - repo: https://github.com/nbQA-dev/nbQA
+    rev: 1.8.5
+    hooks:
+      - id: nbqa-autopep8
+        args: ["--select=W291,W293"]
+
+  # Make sure the code is exported
+  - repo: local
+    hooks:
+      - id: export-notebooks
+        name: Exporting notebooks
+        entry: nbdev_export
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+        description: "Exporting notebooks"
+
+  # Basic file quality hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=5120]
+      - id: debug-statements
+
+  # Pytest
+  - repo: local
+    hooks:
+      - id: pytest-dry-run
+        name: pytest
+        entry: python -m pytest tests --quiet
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+        description: "Run pytest tests"
