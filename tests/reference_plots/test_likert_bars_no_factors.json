@@ -5,29 +5,29 @@
   "datasets": {
     "data-normalized": [
       {
-        "end": -0.18887999999999996,
+        "end": -0.18888000000000002,
         "percent": 0.152815,
         "question": "valitsus",
-        "start": -0.34169499999999997,
+        "start": -0.3416950000000001,
         "valitsus": "Completely distrust"
       },
       {
         "end": -0.961715,
-        "percent": 0.038285,
+        "percent": 0.038285000000000007,
         "question": "valitsus",
         "start": -1.0,
         "valitsus": "Neither trust nor distrust"
       },
       {
         "end": 0.0,
-        "percent": 0.18888,
+        "percent": 0.18888000000000002,
         "question": "valitsus",
-        "start": -0.18887999999999994,
+        "start": -0.18888000000000005,
         "valitsus": "Distrust"
       },
       {
-        "end": 0.47612,
-        "percent": 0.47612,
+        "end": 0.47612000000000004,
+        "percent": 0.47612000000000004,
         "question": "valitsus",
         "start": -0.0,
         "valitsus": "Trust"

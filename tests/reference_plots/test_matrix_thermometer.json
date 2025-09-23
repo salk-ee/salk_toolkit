@@ -520,7 +520,7 @@
       "encoding": {
         "color": {
           "condition": {
-            "test": "(pow((datum['thermometer'] - 0),2) > 4.126519952985133)",
+            "test": "(pow((datum['thermometer'] - 0),2) > 4.127)",
             "value": "white"
           },
           "value": "black"

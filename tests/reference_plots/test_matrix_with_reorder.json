@@ -800,7 +800,7 @@
       "encoding": {
         "color": {
           "condition": {
-            "test": "(pow((datum['issues'] - 0),2) > 1.202917147938901)",
+            "test": "(pow((datum['issues'] - 0),2) > 1.203)",
             "value": "white"
           },
           "value": "black"

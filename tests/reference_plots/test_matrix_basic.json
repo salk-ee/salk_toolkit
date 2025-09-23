@@ -448,7 +448,7 @@
       "encoding": {
         "color": {
           "condition": {
-            "test": "(pow((datum['percent'] - 0),2) > 0.020862203485274258)",
+            "test": "(pow((datum['percent'] - 0),2) > 0.021)",
             "value": "white"
           },
           "value": "black"
