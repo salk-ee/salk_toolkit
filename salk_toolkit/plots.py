@@ -220,6 +220,7 @@ def maxdiff_manual(data, value_col='value', facets=[], val_format='%', width=800
     }
 
     df = pd.concat([df[f_cols + ['kind','mean']], df_reverse[f_cols + ['kind','mean']]], ignore_index=True, sort=False) if has_reverse_ordinal else df
+    clean_levels(df) # For test consistency
     root = alt.Chart(df).encode(**shared)
     size = 12
     red, blue = redblue_gradient[0], redblue_gradient[-1]

@@ -721,7 +721,7 @@ def wrangle_data(raw_df, col_meta, factor_cols, weight_col, pp_desc, n_questions
                             .group_by(gb_dims)
                             .agg(pl.col([res_col,weight_col]).sum(), pl.col(["reverse_"+res_col,weight_col]).sum().name.prefix("reverse_"))
                             .select(pl.exclude("reverse_N"))
-                            .rename({"reverse_reverse_ordinal_ranking":"reverse_ordinal_ranking"})
+                            .rename({"reverse_reverse_"+res_col:"reverse_"+res_col})
                             .with_columns(pl.col("reverse_"+res_col)/pl.col(weight_col).alias("reverse_"+res_col))
                             .with_columns(pl.col(res_col)/pl.col(weight_col).alias(res_col))
                         )

@@ -71,7 +71,12 @@ class TestPlots:
         normalized_result = normalize_chart_json(result.to_json())
         
         if not reference_file.exists():
-            raise ValueError(f"Reference file for {test_name} not found")
+            if recompute:
+                with open(reference_file, 'w') as f:
+                    json.dump(normalized_result, f, indent=2, sort_keys=True)
+                print(f"Created reference for test {test_name}")
+            else:
+                raise ValueError(f"Reference file for {test_name} not found")
         elif recompute:
             # Save/update the reference
             with open(reference_file, 'w') as f:
@@ -351,6 +356,18 @@ class TestPlots:
             'internal_facet': True
         }
         self._run_plot_test("test_facet_dist", config, recompute=recompute, float_tolerance=3e-2)
+
+    def test_max_diff(self, recompute):
+        """Test max_diff plot."""
+        config = {
+            'factor_cols': ['question'],
+            'filter': {},
+            'internal_facet': True,
+            'plot': 'maxdiff',
+            'plot_args': {},
+            'res_col': 'thermometer'
+        }
+        self._run_plot_test("test_maxdiff", config, recompute=recompute, float_tolerance=3e-2)
 
     @pytest.mark.skip(reason="Very hard to make deterministic (tried but failed)")
     def test_ordered_population(self, recompute):
