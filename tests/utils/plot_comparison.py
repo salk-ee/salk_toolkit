@@ -83,19 +83,33 @@ def sort_dataset_records(records):
     if not records or not isinstance(records[0], dict):
         return records
     
-    # Common categorical fields that should be sorted first
-    categorical_fields = ['party_preference', 'age_group', 'nationality', 'e-valimised']
+    unnamed = [k for k in records[0].keys() if k.startswith('level_')]
+    if unnamed:
+        raise ValueError(f"Unnamed index ({', '.join(unnamed)}) found in dataset records. This can lead to unstable tests and should be fixed.")
+
+    # Numerical fields that should always be last
+    # Important for density plots like facet_dist or density
+    lesser_fields = ['density', 'probability']
     
     def sort_key(record):
         key_parts = []
-        # Add categorical fields first
-        for field in categorical_fields:
+        skeys = sorted(record.keys())
+        
+        # Add categorical fields (str)
+        for field in skeys:
+            if isinstance(record[field],str):
+                key_parts.append(record[field])
+
+        # Add all other fields
+        for field in skeys:
+            if field not in lesser_fields and not isinstance(record[field],str):
+                key_parts.append(str(record[field]))
+
+        # Add lesser fields last
+        for field in lesser_fields:
             if field in record:
                 key_parts.append(str(record[field]))
-        # Add remaining fields
-        for field in sorted(record.keys()):
-            if field not in categorical_fields:
-                key_parts.append(str(record[field]))
+
         return tuple(key_parts)
     
     return sorted(records, key=sort_key)

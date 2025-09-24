@@ -20,7 +20,7 @@
         "electoral_district": "Hiiu-, L\u00e4\u00e4ne- ja Saaremaa",
         "polarisation": 0.29288874340900967,
         "radicalisation": -2.5151377082725697,
-        "relevance": 0.04764213844102305
+        "relevance": 0.04764213844102316
       },
       {
         "electoral_district": "Ida-Virumaa",
@@ -55,8 +55,8 @@
       {
         "electoral_district": "Mustam\u00e4e ja N\u00f5mme",
         "polarisation": 1.0763813996255627,
-        "radicalisation": -0.2563454176388837,
-        "relevance": 0.01146895273401305
+        "radicalisation": -0.25634541763888447,
+        "relevance": 0.011468952734012938
       },
       {
         "electoral_district": "P\u00e4rnumaa",
@@ -67,8 +67,8 @@
       {
         "electoral_district": "Tartu linn",
         "polarisation": 0.3048359998819783,
-        "radicalisation": -0.747852185145864,
-        "relevance": 0.029317657563806776
+        "radicalisation": -0.7478521851458633,
+        "relevance": 0.029317657563806887
       },
       {
         "electoral_district": "V\u00f5ru-, Valga- ja P\u00f5lvamaa",

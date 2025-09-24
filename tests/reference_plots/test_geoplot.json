@@ -9,52 +9,52 @@
   "datasets": {
     "data-normalized": [
       {
-        "EKRE": -0.7208057345068506,
-        "electoral_district": "L\u00e4\u00e4ne-Virumaa"
-      },
-      {
-        "EKRE": -0.9158722751816546,
-        "electoral_district": "V\u00f5ru-, Valga- ja P\u00f5lvamaa"
-      },
-      {
-        "EKRE": -1.2241366107665212,
-        "electoral_district": "J\u00e4rva- ja Viljandimaa"
-      },
-      {
-        "EKRE": -1.3361793748607915,
-        "electoral_district": "P\u00e4rnumaa"
-      },
-      {
-        "EKRE": -1.3666172001978658,
-        "electoral_district": "Ida-Virumaa"
+        "EKRE": -2.5055430147980937,
+        "electoral_district": "Haabersti, P\u00f5hja-Tallinn ja Kristiine"
       },
       {
         "EKRE": -1.9489973471774538,
         "electoral_district": "Harju- ja Raplamaa"
       },
       {
-        "EKRE": -1.9682483752251194,
-        "electoral_district": "Kesklinn, Lasnam\u00e4e ja Pirita"
+        "EKRE": -2.0888592556673538,
+        "electoral_district": "Hiiu-, L\u00e4\u00e4ne- ja Saaremaa"
       },
       {
-        "EKRE": -1.9883919934518937,
-        "electoral_district": "Tartu linn"
+        "EKRE": -1.3666172001978658,
+        "electoral_district": "Ida-Virumaa"
+      },
+      {
+        "EKRE": -1.2241366107665212,
+        "electoral_district": "J\u00e4rva- ja Viljandimaa"
       },
       {
         "EKRE": -2.0133931803373635,
         "electoral_district": "J\u00f5geva- ja Tartumaa"
       },
       {
-        "EKRE": -2.0888592556673538,
-        "electoral_district": "Hiiu-, L\u00e4\u00e4ne- ja Saaremaa"
+        "EKRE": -1.9682483752251194,
+        "electoral_district": "Kesklinn, Lasnam\u00e4e ja Pirita"
+      },
+      {
+        "EKRE": -0.7208057345068506,
+        "electoral_district": "L\u00e4\u00e4ne-Virumaa"
       },
       {
         "EKRE": -2.2200532900834107,
         "electoral_district": "Mustam\u00e4e ja N\u00f5mme"
       },
       {
-        "EKRE": -2.5055430147980937,
-        "electoral_district": "Haabersti, P\u00f5hja-Tallinn ja Kristiine"
+        "EKRE": -1.3361793748607915,
+        "electoral_district": "P\u00e4rnumaa"
+      },
+      {
+        "EKRE": -1.9883919934518937,
+        "electoral_district": "Tartu linn"
+      },
+      {
+        "EKRE": -0.9158722751816546,
+        "electoral_district": "V\u00f5ru-, Valga- ja P\u00f5lvamaa"
       }
     ]
   },

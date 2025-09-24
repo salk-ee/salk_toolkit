@@ -12,18 +12,18 @@
         "valitsus": "Completely distrust"
       },
       {
-        "end": -0.961715,
-        "percent": 0.038285000000000007,
-        "question": "valitsus",
-        "start": -1.0,
-        "valitsus": "Neither trust nor distrust"
-      },
-      {
         "end": 0.0,
         "percent": 0.18888000000000002,
         "question": "valitsus",
         "start": -0.18888000000000005,
         "valitsus": "Distrust"
+      },
+      {
+        "end": -0.961715,
+        "percent": 0.038285000000000007,
+        "question": "valitsus",
+        "start": -1.0,
+        "valitsus": "Neither trust nor distrust"
       },
       {
         "end": 0.47612000000000004,

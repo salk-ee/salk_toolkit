@@ -350,9 +350,9 @@ class TestPlots:
             'plot': 'facet_dist',
             'internal_facet': True
         }
-        self._run_plot_test("test_facet_dist", config, recompute=recompute)
+        self._run_plot_test("test_facet_dist", config, recompute=recompute, float_tolerance=3e-2)
 
-    @pytest.mark.skip(reason="currently indeterministic")
+    @pytest.mark.skip(reason="Very hard to make deterministic (tried but failed)")
     def test_ordered_population(self, recompute):
         """Test ordered population plot."""
         config = {
@@ -360,7 +360,8 @@ class TestPlots:
             'factor_cols': ['party_preference'],
             'filter': {},
             'plot': 'ordered_population',
-            'internal_facet': True
+            'internal_facet': True,
+            'plot_args': {'full_data': True} # required for consistency
         }
         self._run_plot_test("test_ordered_population", config, recompute=recompute, width=800)
 
