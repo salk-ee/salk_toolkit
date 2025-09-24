@@ -169,7 +169,7 @@ def boxplot_manual(data, value_col='value', facets=[], val_format='%', width=800
 stk_plot('boxplots-raw', data_format="raw", n_facets=(1,2), priority=0)(boxplot_manual)
 
 # %% ../nbs/03_plots.ipynb 16
-@stk_plot('maxdiff', data_format='longform', agg_fn='posneg_mean', draws=True, n_facets=(1,2), priority=1, group_sizes=True)
+@stk_plot('maxdiff', data_format='longform', transform_fn='ordered-topbot1', agg_fn='posneg_mean', draws=True, n_facets=(1,2), group_sizes=True)
 def maxdiff_manual(data, value_col='value', facets=[], val_format='%', width=800, tooltip=[], outer_factors=[]):
     r"""
     Only meant to be used with highest_lowest_ranked custom_row_transform.
@@ -194,11 +194,11 @@ def maxdiff_manual(data, value_col='value', facets=[], val_format='%', width=800
     df = data.groupby(f_cols,observed=True)[value_col].apply(boxplot_vals,delta=(maxv-minv)/400).reset_index()
     if has_reverse_ordinal:
         df_reverse = data.groupby(f_cols,observed=True)[reverse_val_col].apply(boxplot_vals,delta=(maxv-minv)/400).reset_index()
-        df_reverse['mean'] = -df_reverse['mean']   
+        df_reverse['mean'] = -df_reverse['mean']
         df_reverse['kind'] = 'Least important'
 
     df['kind'] = 'Most important'
-    
+
     shared = {
         'y': alt.Y(field=f0["col"], type='nominal', title=None, sort=f0['order']),
         **(
@@ -215,10 +215,28 @@ def maxdiff_manual(data, value_col='value', facets=[], val_format='%', width=800
     df = pd.concat([df[f_cols + ['kind','mean']], df_reverse[f_cols + ['kind','mean']]], ignore_index=True, sort=False) if has_reverse_ordinal else df
     root = alt.Chart(df).encode(**shared)
     size = 12
-
+    red, blue = redblue_gradient[0], redblue_gradient[-1]
+    
     return root.mark_bar(size=size).encode(
-        x='mean',
-        color="kind" if f1 == None or f1['colors'] == None else alt.Color(field=f1["col"], type='nominal', scale=f1['colors'], legend=None),#alt.X2('q3p:Q'),
+        x=alt.X('mean'),
+        # color = 'kind'
+        color=alt.Color(field='kind', type='nominal', legend=None, 
+            scale=alt.Scale(
+                    domain=['Most important', 'Least important'],
+                    range=[blue, red]
+                )
+            ) if f1 == None or f1['colors'] == None else 
+            alt.Color(
+                field=f1["col"], type='nominal', 
+                scale=f1['colors'], legend=None
+            ),
+        opacity=alt.Opacity(
+            field='kind', type='nominal', legend=None,
+            scale=alt.Scale(
+                    domain=['Most important', 'Least important'], 
+                    range=[1.0,0.8] 
+                )
+            ) if f1 != None else alt.Opacity(value=1.0)
     )
 
 # %% ../nbs/03_plots.ipynb 17

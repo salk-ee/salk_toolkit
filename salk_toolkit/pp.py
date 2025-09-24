@@ -316,6 +316,17 @@ def highest_lowest_ranked(ovs):
     """
     return highest_ranked(ovs) - lowest_ranked(ovs)
 
+def lowest_ranked(ovs):
+    return (ovs == np.min(ovs,axis=1)[:,None]).astype('int')
+
+
+def highest_lowest_ranked(ovs):
+    r"""
+    Let ovs == 1 denote the highest ranked option and -1 denote the lowest ranked option.
+    """
+    return highest_ranked(ovs) - lowest_ranked(ovs)
+
+
 def topk_ranked(ovs,k=3): # Todo: make this k changeable with pp_desc
     return (np.argsort(np.argsort(ovs,axis=1),axis=1)>=ovs.shape[1]-k)
 
@@ -541,6 +552,9 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     # Apply continuous transformation - needs to happen when data still in table form
     if c_meta[rcl[0]].get('continuous'):
         val_format, val_range = c_meta[rcl[0]].get('val_format') or '.1f', None
+        transform_fn = plot_meta.get('transform_fn',None)
+        if transform_fn and 'cont_transform' not in pp_desc:
+            pp_desc['cont_transform'] = transform_fn
         if 'cont_transform' in pp_desc:
             filtered_df, val_format, val_range = transform_cont(filtered_df, rcl, transform=pp_desc['cont_transform'],
                                                                 val_format=val_format, val_range=c_meta[rcl[0]].get('val_range'))
@@ -664,12 +678,9 @@ def wrangle_data(raw_df, col_meta, factor_cols, weight_col, pp_desc, n_questions
 
         agg_fn = pp_desc.get('agg_fn','mean')
         agg_fn = plot_meta.get('agg_fn',agg_fn)
-
         # Check if categorical by looking at schema
         is_categorical = isinstance(schema[res_col], (pl.Categorical, pl.Enum, pl.String))
         # Check if highest_lowest_ranked is called before wrangle_data
-        # TODO: Warns that lazyframe may be slow when calling .columns. Is it?
-        has_reverse_ordinal = set(raw_df.collect().to_pandas().ordinal_ranking.value_counts().keys()) == {-1,0,1} if "ordinal_ranking" in raw_df.collect_schema().names() else False
 
         if is_categorical:
             pparams['cat_col'] = res_col
@@ -702,6 +713,7 @@ def wrangle_data(raw_df, col_meta, factor_cols, weight_col, pp_desc, n_questions
                         .agg([getattr(pl.col(res_col), agg_fn)().alias(res_col), pl.col(weight_col).sum()])
                         )
             elif agg_fn == 'posneg_mean':
+                # Needs prefix to avoid name conflict while aggregating
                 data = (
                             raw_df
                             .with_columns(((pl.col(res_col)==-1)*pl.col(weight_col)).alias("reverse_"+res_col))
@@ -710,10 +722,9 @@ def wrangle_data(raw_df, col_meta, factor_cols, weight_col, pp_desc, n_questions
                             .agg(pl.col([res_col,weight_col]).sum(), pl.col(["reverse_"+res_col,weight_col]).sum().name.prefix("reverse_"))
                             .select(pl.exclude("reverse_N"))
                             .rename({"reverse_reverse_ordinal_ranking":"reverse_ordinal_ranking"})
-                            .group_by(gb_dims)
                             .with_columns(pl.col("reverse_"+res_col)/pl.col(weight_col).alias("reverse_"+res_col))
                             .with_columns(pl.col(res_col)/pl.col(weight_col).alias(res_col))
-                        ) 
+                        )
             else:  # median, min, max, etc. - ignore weight_col
                 data = (raw_df
                         .group_by(gb_dims)
