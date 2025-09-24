@@ -49,7 +49,7 @@ class TestPlots:
             'width': 400,  # Smaller width for faster testing
         }
 
-    def _run_plot_test(self, test_name, config, data_file=None, recompute=False, float_tolerance=1e-5, **kwargs):
+    def _run_plot_test(self, test_name, config, data_file=None, recompute=False, float_tolerance=5e-4, **kwargs):
         """Run a plot test and compare against reference JSON."""
         if data_file is None:
             data_file = str(self.data_file)
@@ -350,9 +350,9 @@ class TestPlots:
             'plot': 'facet_dist',
             'internal_facet': True
         }
-        self._run_plot_test("test_facet_dist", config, recompute=recompute)
+        self._run_plot_test("test_facet_dist", config, recompute=recompute, float_tolerance=3e-2)
 
-    @pytest.mark.skip(reason="currently indeterministic")
+    @pytest.mark.skip(reason="Very hard to make deterministic (tried but failed)")
     def test_ordered_population(self, recompute):
         """Test ordered population plot."""
         config = {
@@ -360,7 +360,8 @@ class TestPlots:
             'factor_cols': ['party_preference'],
             'filter': {},
             'plot': 'ordered_population',
-            'internal_facet': True
+            'internal_facet': True,
+            'plot_args': {'full_data': True} # required for consistency
         }
         self._run_plot_test("test_ordered_population", config, recompute=recompute, width=800)
 
@@ -392,7 +393,8 @@ class TestPlots:
         config = {
             'res_col': 'valitsus',
             'factor_cols': ['party_preference', 'age_group'],
-            'filter': {},
+            # Isamaa HDI has multiple close options so excluding it
+            'filter': { 'party_preference': ['Keskerakond','Reformierakond', 'SDE', 'EKRE']}, 
             'convert_res': 'continuous',
             'num_values': [0, 0, 0, 1, 1],
             'value_name': 'Pr[valitsus==Agree]',

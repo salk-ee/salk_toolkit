@@ -6,129 +6,12 @@
     "data-normalized": [
       {
         "age_group": "16-24",
-        "end": -0.1510999371464488,
-        "gender": "Male",
-        "percent": 0.0798240100565682,
-        "question": "valitsus",
-        "start": -0.2309239472030169,
-        "trust": "Completely distrust"
-      },
-      {
-        "age_group": "16-24",
-        "end": -0.181269641734758,
-        "gender": "Male",
-        "percent": 0.0961659333752357,
-        "question": "riigikogu",
-        "start": -0.2774355751099937,
-        "trust": "Completely distrust"
-      },
-      {
-        "age_group": "16-24",
-        "end": -0.20948026499953343,
-        "gender": "Female",
-        "percent": 0.13352617336941308,
-        "question": "riigikogu",
-        "start": -0.3430064383689465,
-        "trust": "Completely distrust"
-      },
-      {
-        "age_group": "16-24",
-        "end": -0.2312214239059438,
-        "gender": "Female",
-        "percent": 0.11439768591956705,
-        "question": "valitsus",
-        "start": -0.3456191098255108,
-        "trust": "Completely distrust"
-      },
-      {
-        "age_group": "16-24",
         "end": -0.2805822524960344,
         "gender": "Female",
         "percent": 0.23131473360082114,
         "question": "meedia",
         "start": -0.5118969860968554,
         "trust": "Completely distrust"
-      },
-      {
-        "age_group": "16-24",
-        "end": -0.3767441860465116,
-        "gender": "Male",
-        "percent": 0.17988686360779385,
-        "question": "meedia",
-        "start": -0.5566310496543054,
-        "trust": "Completely distrust"
-      },
-      {
-        "age_group": "16-24",
-        "end": -0.9232994308108613,
-        "gender": "Female",
-        "percent": 0.07670056918913876,
-        "question": "meedia",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "16-24",
-        "end": -0.9267518895213213,
-        "gender": "Female",
-        "percent": 0.07324811047867874,
-        "question": "riigikogu",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "16-24",
-        "end": -0.9293645609778856,
-        "gender": "Female",
-        "percent": 0.0706354390221144,
-        "question": "valitsus",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "16-24",
-        "end": -0.9526084223758642,
-        "gender": "Male",
-        "percent": 0.04739157762413576,
-        "question": "meedia",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "16-24",
-        "end": -0.9759899434318039,
-        "gender": "Male",
-        "percent": 0.024010056568196103,
-        "question": "riigikogu",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "16-24",
-        "end": -0.9759899434318039,
-        "gender": "Male",
-        "percent": 0.024010056568196103,
-        "question": "valitsus",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "16-24",
-        "end": 0.0,
-        "gender": "Female",
-        "percent": 0.20948026499953346,
-        "question": "riigikogu",
-        "start": -0.20948026499953343,
-        "trust": "Distrust"
-      },
-      {
-        "age_group": "16-24",
-        "end": 0.0,
-        "gender": "Female",
-        "percent": 0.23122142390594383,
-        "question": "valitsus",
-        "start": -0.2312214239059438,
-        "trust": "Distrust"
       },
       {
         "age_group": "16-24",
@@ -141,39 +24,12 @@
       },
       {
         "age_group": "16-24",
-        "end": 0.0,
-        "gender": "Male",
-        "percent": 0.1510999371464488,
-        "question": "valitsus",
-        "start": -0.15109993714644876,
-        "trust": "Distrust"
-      },
-      {
-        "age_group": "16-24",
-        "end": 0.0,
-        "gender": "Male",
-        "percent": 0.181269641734758,
-        "question": "riigikogu",
-        "start": -0.181269641734758,
-        "trust": "Distrust"
-      },
-      {
-        "age_group": "16-24",
-        "end": 0.0,
-        "gender": "Male",
-        "percent": 0.3767441860465116,
+        "end": -0.9232994308108613,
+        "gender": "Female",
+        "percent": 0.07670056918913876,
         "question": "meedia",
-        "start": -0.3767441860465116,
-        "trust": "Distrust"
-      },
-      {
-        "age_group": "16-24",
-        "end": 0.29842866121935896,
-        "gender": "Male",
-        "percent": 0.2984286612193589,
-        "question": "meedia",
-        "start": -0.0,
-        "trust": "Trust"
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
       },
       {
         "age_group": "16-24",
@@ -186,15 +42,6 @@
       },
       {
         "age_group": "16-24",
-        "end": 0.39597737272155886,
-        "gender": "Male",
-        "percent": 0.09754871150219988,
-        "question": "meedia",
-        "start": 0.29842866121935885,
-        "trust": "Trust completely"
-      },
-      {
-        "age_group": "16-24",
         "end": 0.4114024447140058,
         "gender": "Female",
         "percent": 0.057852010823924604,
@@ -204,12 +51,30 @@
       },
       {
         "age_group": "16-24",
-        "end": 0.4288513576560605,
+        "end": -0.20948026499953343,
         "gender": "Female",
-        "percent": 0.4288513576560605,
-        "question": "valitsus",
-        "start": -0.0,
-        "trust": "Trust"
+        "percent": 0.13352617336941308,
+        "question": "riigikogu",
+        "start": -0.3430064383689465,
+        "trust": "Completely distrust"
+      },
+      {
+        "age_group": "16-24",
+        "end": 0.0,
+        "gender": "Female",
+        "percent": 0.20948026499953346,
+        "question": "riigikogu",
+        "start": -0.20948026499953343,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "16-24",
+        "end": -0.9267518895213213,
+        "gender": "Female",
+        "percent": 0.07324811047867874,
+        "question": "riigikogu",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
       },
       {
         "age_group": "16-24",
@@ -222,18 +87,45 @@
       },
       {
         "age_group": "16-24",
-        "end": 0.5469516027655562,
-        "gender": "Male",
-        "percent": 0.5469516027655562,
+        "end": 0.5837454511523749,
+        "gender": "Female",
+        "percent": 0.11430437622468975,
         "question": "riigikogu",
-        "start": -0.0,
-        "trust": "Trust"
+        "start": 0.469441074927685,
+        "trust": "Trust completely"
       },
       {
         "age_group": "16-24",
-        "end": 0.5475801382778127,
-        "gender": "Male",
-        "percent": 0.5475801382778127,
+        "end": -0.2312214239059438,
+        "gender": "Female",
+        "percent": 0.11439768591956705,
+        "question": "valitsus",
+        "start": -0.3456191098255108,
+        "trust": "Completely distrust"
+      },
+      {
+        "age_group": "16-24",
+        "end": 0.0,
+        "gender": "Female",
+        "percent": 0.23122142390594383,
+        "question": "valitsus",
+        "start": -0.2312214239059438,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "16-24",
+        "end": -0.9293645609778856,
+        "gender": "Female",
+        "percent": 0.0706354390221144,
+        "question": "valitsus",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "age_group": "16-24",
+        "end": 0.4288513576560605,
+        "gender": "Female",
+        "percent": 0.4288513576560605,
         "question": "valitsus",
         "start": -0.0,
         "trust": "Trust"
@@ -249,12 +141,84 @@
       },
       {
         "age_group": "16-24",
-        "end": 0.5837454511523749,
-        "gender": "Female",
-        "percent": 0.11430437622468975,
-        "question": "riigikogu",
-        "start": 0.469441074927685,
+        "end": -0.3767441860465116,
+        "gender": "Male",
+        "percent": 0.17988686360779385,
+        "question": "meedia",
+        "start": -0.5566310496543054,
+        "trust": "Completely distrust"
+      },
+      {
+        "age_group": "16-24",
+        "end": 0.0,
+        "gender": "Male",
+        "percent": 0.3767441860465116,
+        "question": "meedia",
+        "start": -0.3767441860465116,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "16-24",
+        "end": -0.9526084223758642,
+        "gender": "Male",
+        "percent": 0.04739157762413576,
+        "question": "meedia",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "age_group": "16-24",
+        "end": 0.29842866121935896,
+        "gender": "Male",
+        "percent": 0.2984286612193589,
+        "question": "meedia",
+        "start": -0.0,
+        "trust": "Trust"
+      },
+      {
+        "age_group": "16-24",
+        "end": 0.39597737272155886,
+        "gender": "Male",
+        "percent": 0.09754871150219988,
+        "question": "meedia",
+        "start": 0.29842866121935885,
         "trust": "Trust completely"
+      },
+      {
+        "age_group": "16-24",
+        "end": -0.181269641734758,
+        "gender": "Male",
+        "percent": 0.0961659333752357,
+        "question": "riigikogu",
+        "start": -0.2774355751099937,
+        "trust": "Completely distrust"
+      },
+      {
+        "age_group": "16-24",
+        "end": 0.0,
+        "gender": "Male",
+        "percent": 0.181269641734758,
+        "question": "riigikogu",
+        "start": -0.181269641734758,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "16-24",
+        "end": -0.9759899434318039,
+        "gender": "Male",
+        "percent": 0.024010056568196103,
+        "question": "riigikogu",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "age_group": "16-24",
+        "end": 0.5469516027655562,
+        "gender": "Male",
+        "percent": 0.5469516027655562,
+        "question": "riigikogu",
+        "start": -0.0,
+        "trust": "Trust"
       },
       {
         "age_group": "16-24",
@@ -267,48 +231,48 @@
       },
       {
         "age_group": "16-24",
+        "end": -0.1510999371464488,
+        "gender": "Male",
+        "percent": 0.0798240100565682,
+        "question": "valitsus",
+        "start": -0.2309239472030169,
+        "trust": "Completely distrust"
+      },
+      {
+        "age_group": "16-24",
+        "end": 0.0,
+        "gender": "Male",
+        "percent": 0.1510999371464488,
+        "question": "valitsus",
+        "start": -0.15109993714644876,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "16-24",
+        "end": -0.9759899434318039,
+        "gender": "Male",
+        "percent": 0.024010056568196103,
+        "question": "valitsus",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "age_group": "16-24",
+        "end": 0.5475801382778127,
+        "gender": "Male",
+        "percent": 0.5475801382778127,
+        "question": "valitsus",
+        "start": -0.0,
+        "trust": "Trust"
+      },
+      {
+        "age_group": "16-24",
         "end": 0.745065996228787,
         "gender": "Male",
         "percent": 0.19748585795097423,
         "question": "valitsus",
         "start": 0.5475801382778127,
         "trust": "Trust completely"
-      },
-      {
-        "age_group": "25-34",
-        "end": -0.20180430256766133,
-        "gender": "Male",
-        "percent": 0.10957668285912561,
-        "question": "valitsus",
-        "start": -0.31138098542678694,
-        "trust": "Completely distrust"
-      },
-      {
-        "age_group": "25-34",
-        "end": -0.2734212352532963,
-        "gender": "Male",
-        "percent": 0.10749479528105482,
-        "question": "riigikogu",
-        "start": -0.3809160305343512,
-        "trust": "Completely distrust"
-      },
-      {
-        "age_group": "25-34",
-        "end": -0.2841799513644961,
-        "gender": "Female",
-        "percent": 0.1500270197243988,
-        "question": "valitsus",
-        "start": -0.4342069710888949,
-        "trust": "Completely distrust"
-      },
-      {
-        "age_group": "25-34",
-        "end": -0.32437179140772765,
-        "gender": "Female",
-        "percent": 0.13611186165901107,
-        "question": "riigikogu",
-        "start": -0.46048365306673866,
-        "trust": "Completely distrust"
       },
       {
         "age_group": "25-34",
@@ -321,87 +285,6 @@
       },
       {
         "age_group": "25-34",
-        "end": -0.43580846634281756,
-        "gender": "Male",
-        "percent": 0.1344205412907703,
-        "question": "meedia",
-        "start": -0.5702290076335879,
-        "trust": "Completely distrust"
-      },
-      {
-        "age_group": "25-34",
-        "end": -0.895771413131586,
-        "gender": "Female",
-        "percent": 0.10422858686841394,
-        "question": "valitsus",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "25-34",
-        "end": -0.9350851121318563,
-        "gender": "Female",
-        "percent": 0.06491488786814374,
-        "question": "riigikogu",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "25-34",
-        "end": -0.9863983344899375,
-        "gender": "Male",
-        "percent": 0.013601665510062456,
-        "question": "riigikogu",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "25-34",
-        "end": -0.987976222642529,
-        "gender": "Female",
-        "percent": 0.012023777357470953,
-        "question": "meedia",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "25-34",
-        "end": -1.0,
-        "gender": "Male",
-        "percent": 0.0,
-        "question": "meedia",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "25-34",
-        "end": -1.0,
-        "gender": "Male",
-        "percent": 0.0,
-        "question": "valitsus",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "25-34",
-        "end": 0.0,
-        "gender": "Female",
-        "percent": 0.2841799513644961,
-        "question": "valitsus",
-        "start": -0.2841799513644961,
-        "trust": "Distrust"
-      },
-      {
-        "age_group": "25-34",
-        "end": 0.0,
-        "gender": "Female",
-        "percent": 0.32437179140772765,
-        "question": "riigikogu",
-        "start": -0.32437179140772765,
-        "trust": "Distrust"
-      },
-      {
-        "age_group": "25-34",
         "end": 0.0,
         "gender": "Female",
         "percent": 0.40833558497703326,
@@ -411,30 +294,12 @@
       },
       {
         "age_group": "25-34",
-        "end": 0.0,
-        "gender": "Male",
-        "percent": 0.20180430256766135,
-        "question": "valitsus",
-        "start": -0.20180430256766135,
-        "trust": "Distrust"
-      },
-      {
-        "age_group": "25-34",
-        "end": 0.0,
-        "gender": "Male",
-        "percent": 0.2734212352532963,
-        "question": "riigikogu",
-        "start": -0.2734212352532963,
-        "trust": "Distrust"
-      },
-      {
-        "age_group": "25-34",
-        "end": 0.0,
-        "gender": "Male",
-        "percent": 0.4358084663428175,
+        "end": -0.987976222642529,
+        "gender": "Female",
+        "percent": 0.012023777357470953,
         "question": "meedia",
-        "start": -0.4358084663428175,
-        "trust": "Distrust"
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
       },
       {
         "age_group": "25-34",
@@ -456,12 +321,75 @@
       },
       {
         "age_group": "25-34",
-        "end": 0.38854961832061075,
-        "gender": "Male",
-        "percent": 0.3885496183206107,
-        "question": "meedia",
+        "end": -0.32437179140772765,
+        "gender": "Female",
+        "percent": 0.13611186165901107,
+        "question": "riigikogu",
+        "start": -0.46048365306673866,
+        "trust": "Completely distrust"
+      },
+      {
+        "age_group": "25-34",
+        "end": 0.0,
+        "gender": "Female",
+        "percent": 0.32437179140772765,
+        "question": "riigikogu",
+        "start": -0.32437179140772765,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "25-34",
+        "end": -0.9350851121318563,
+        "gender": "Female",
+        "percent": 0.06491488786814374,
+        "question": "riigikogu",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "age_group": "25-34",
+        "end": 0.4209673061334775,
+        "gender": "Female",
+        "percent": 0.42096730613347744,
+        "question": "riigikogu",
         "start": -0.0,
         "trust": "Trust"
+      },
+      {
+        "age_group": "25-34",
+        "end": 0.4746014590651176,
+        "gender": "Female",
+        "percent": 0.053634152931640096,
+        "question": "riigikogu",
+        "start": 0.42096730613347744,
+        "trust": "Trust completely"
+      },
+      {
+        "age_group": "25-34",
+        "end": -0.2841799513644961,
+        "gender": "Female",
+        "percent": 0.1500270197243988,
+        "question": "valitsus",
+        "start": -0.4342069710888949,
+        "trust": "Completely distrust"
+      },
+      {
+        "age_group": "25-34",
+        "end": 0.0,
+        "gender": "Female",
+        "percent": 0.2841799513644961,
+        "question": "valitsus",
+        "start": -0.2841799513644961,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "25-34",
+        "end": -0.895771413131586,
+        "gender": "Female",
+        "percent": 0.10422858686841394,
+        "question": "valitsus",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
       },
       {
         "age_group": "25-34",
@@ -474,10 +402,46 @@
       },
       {
         "age_group": "25-34",
-        "end": 0.4209673061334775,
+        "end": 0.46156444204269104,
         "gender": "Female",
-        "percent": 0.42096730613347744,
-        "question": "riigikogu",
+        "percent": 0.06599567684409618,
+        "question": "valitsus",
+        "start": 0.39556876519859496,
+        "trust": "Trust completely"
+      },
+      {
+        "age_group": "25-34",
+        "end": -0.43580846634281756,
+        "gender": "Male",
+        "percent": 0.1344205412907703,
+        "question": "meedia",
+        "start": -0.5702290076335879,
+        "trust": "Completely distrust"
+      },
+      {
+        "age_group": "25-34",
+        "end": 0.0,
+        "gender": "Male",
+        "percent": 0.4358084663428175,
+        "question": "meedia",
+        "start": -0.4358084663428175,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "25-34",
+        "end": -1.0,
+        "gender": "Male",
+        "percent": 0.0,
+        "question": "meedia",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "age_group": "25-34",
+        "end": 0.38854961832061075,
+        "gender": "Male",
+        "percent": 0.3885496183206107,
+        "question": "meedia",
         "start": -0.0,
         "trust": "Trust"
       },
@@ -492,21 +456,30 @@
       },
       {
         "age_group": "25-34",
-        "end": 0.46156444204269104,
-        "gender": "Female",
-        "percent": 0.06599567684409618,
-        "question": "valitsus",
-        "start": 0.39556876519859496,
-        "trust": "Trust completely"
+        "end": -0.2734212352532963,
+        "gender": "Male",
+        "percent": 0.10749479528105482,
+        "question": "riigikogu",
+        "start": -0.3809160305343512,
+        "trust": "Completely distrust"
       },
       {
         "age_group": "25-34",
-        "end": 0.4746014590651176,
-        "gender": "Female",
-        "percent": 0.053634152931640096,
+        "end": 0.0,
+        "gender": "Male",
+        "percent": 0.2734212352532963,
         "question": "riigikogu",
-        "start": 0.42096730613347744,
-        "trust": "Trust completely"
+        "start": -0.2734212352532963,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "25-34",
+        "end": -0.9863983344899375,
+        "gender": "Male",
+        "percent": 0.013601665510062456,
+        "question": "riigikogu",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
       },
       {
         "age_group": "25-34",
@@ -514,15 +487,6 @@
         "gender": "Male",
         "percent": 0.5631505898681471,
         "question": "riigikogu",
-        "start": -0.0,
-        "trust": "Trust"
-      },
-      {
-        "age_group": "25-34",
-        "end": 0.6052047189451769,
-        "gender": "Male",
-        "percent": 0.6052047189451769,
-        "question": "valitsus",
         "start": -0.0,
         "trust": "Trust"
       },
@@ -537,57 +501,48 @@
       },
       {
         "age_group": "25-34",
+        "end": -0.20180430256766133,
+        "gender": "Male",
+        "percent": 0.10957668285912561,
+        "question": "valitsus",
+        "start": -0.31138098542678694,
+        "trust": "Completely distrust"
+      },
+      {
+        "age_group": "25-34",
+        "end": 0.0,
+        "gender": "Male",
+        "percent": 0.20180430256766135,
+        "question": "valitsus",
+        "start": -0.20180430256766135,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "25-34",
+        "end": -1.0,
+        "gender": "Male",
+        "percent": 0.0,
+        "question": "valitsus",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "age_group": "25-34",
+        "end": 0.6052047189451769,
+        "gender": "Male",
+        "percent": 0.6052047189451769,
+        "question": "valitsus",
+        "start": -0.0,
+        "trust": "Trust"
+      },
+      {
+        "age_group": "25-34",
         "end": 0.688619014573213,
         "gender": "Male",
         "percent": 0.08341429562803608,
         "question": "valitsus",
         "start": 0.6052047189451769,
         "trust": "Trust completely"
-      },
-      {
-        "age_group": "35-44",
-        "end": -0.17764746464298034,
-        "gender": "Female",
-        "percent": 0.23582844659077842,
-        "question": "valitsus",
-        "start": -0.4134759112337587,
-        "trust": "Completely distrust"
-      },
-      {
-        "age_group": "35-44",
-        "end": -0.19738638580066314,
-        "gender": "Male",
-        "percent": 0.16330212599960992,
-        "question": "valitsus",
-        "start": -0.36068851180027306,
-        "trust": "Completely distrust"
-      },
-      {
-        "age_group": "35-44",
-        "end": -0.21206358494246144,
-        "gender": "Male",
-        "percent": 0.14482153306026915,
-        "question": "riigikogu",
-        "start": -0.3568851180027306,
-        "trust": "Completely distrust"
-      },
-      {
-        "age_group": "35-44",
-        "end": -0.21760377141543058,
-        "gender": "Female",
-        "percent": 0.19299758537426698,
-        "question": "riigikogu",
-        "start": -0.41060135678969756,
-        "trust": "Completely distrust"
-      },
-      {
-        "age_group": "35-44",
-        "end": -0.30251609128145107,
-        "gender": "Male",
-        "percent": 0.2044080358884338,
-        "question": "meedia",
-        "start": -0.506924127169885,
-        "trust": "Completely distrust"
       },
       {
         "age_group": "35-44",
@@ -600,78 +555,6 @@
       },
       {
         "age_group": "35-44",
-        "end": -0.9474839087185488,
-        "gender": "Male",
-        "percent": 0.05251609128145114,
-        "question": "riigikogu",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "35-44",
-        "end": -0.9498244587478057,
-        "gender": "Male",
-        "percent": 0.05017554125219426,
-        "question": "valitsus",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "35-44",
-        "end": -0.9548120041393584,
-        "gender": "Female",
-        "percent": 0.0451879958606416,
-        "question": "riigikogu",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "35-44",
-        "end": -0.9652178912268599,
-        "gender": "Female",
-        "percent": 0.03478210877314016,
-        "question": "meedia",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "35-44",
-        "end": -0.9682649189375647,
-        "gender": "Female",
-        "percent": 0.03173508106243532,
-        "question": "valitsus",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "35-44",
-        "end": -0.9700604642090891,
-        "gender": "Male",
-        "percent": 0.029939535790910864,
-        "question": "meedia",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "35-44",
-        "end": 0.0,
-        "gender": "Female",
-        "percent": 0.17764746464298034,
-        "question": "valitsus",
-        "start": -0.1776474646429803,
-        "trust": "Distrust"
-      },
-      {
-        "age_group": "35-44",
-        "end": 0.0,
-        "gender": "Female",
-        "percent": 0.2176037714154306,
-        "question": "riigikogu",
-        "start": -0.21760377141543064,
-        "trust": "Distrust"
-      },
-      {
-        "age_group": "35-44",
         "end": 0.0,
         "gender": "Female",
         "percent": 0.4447510635851443,
@@ -681,30 +564,12 @@
       },
       {
         "age_group": "35-44",
-        "end": 0.0,
-        "gender": "Male",
-        "percent": 0.19738638580066314,
-        "question": "valitsus",
-        "start": -0.19738638580066314,
-        "trust": "Distrust"
-      },
-      {
-        "age_group": "35-44",
-        "end": 0.0,
-        "gender": "Male",
-        "percent": 0.21206358494246147,
-        "question": "riigikogu",
-        "start": -0.21206358494246147,
-        "trust": "Distrust"
-      },
-      {
-        "age_group": "35-44",
-        "end": 0.0,
-        "gender": "Male",
-        "percent": 0.3025160912814511,
+        "end": -0.9652178912268599,
+        "gender": "Female",
+        "percent": 0.03478210877314016,
         "question": "meedia",
-        "start": -0.3025160912814512,
-        "trust": "Distrust"
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
       },
       {
         "age_group": "35-44",
@@ -726,54 +591,36 @@
       },
       {
         "age_group": "35-44",
-        "end": 0.41476496976789545,
-        "gender": "Male",
-        "percent": 0.41476496976789545,
-        "question": "meedia",
-        "start": -0.0,
-        "trust": "Trust"
+        "end": -0.21760377141543058,
+        "gender": "Female",
+        "percent": 0.19299758537426698,
+        "question": "riigikogu",
+        "start": -0.41060135678969756,
+        "trust": "Completely distrust"
       },
       {
         "age_group": "35-44",
-        "end": 0.419972404277337,
+        "end": 0.0,
         "gender": "Female",
-        "percent": 0.419972404277337,
-        "question": "valitsus",
-        "start": -0.0,
-        "trust": "Trust"
+        "percent": 0.2176037714154306,
+        "question": "riigikogu",
+        "start": -0.21760377141543064,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "35-44",
+        "end": -0.9548120041393584,
+        "gender": "Female",
+        "percent": 0.0451879958606416,
+        "question": "riigikogu",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
       },
       {
         "age_group": "35-44",
         "end": 0.45337472691732783,
         "gender": "Female",
         "percent": 0.45337472691732783,
-        "question": "riigikogu",
-        "start": -0.0,
-        "trust": "Trust"
-      },
-      {
-        "age_group": "35-44",
-        "end": 0.4631363370392042,
-        "gender": "Male",
-        "percent": 0.04837136727130876,
-        "question": "meedia",
-        "start": 0.41476496976789545,
-        "trust": "Trust completely"
-      },
-      {
-        "age_group": "35-44",
-        "end": 0.4860054612834016,
-        "gender": "Male",
-        "percent": 0.4860054612834016,
-        "question": "valitsus",
-        "start": -0.0,
-        "trust": "Trust"
-      },
-      {
-        "age_group": "35-44",
-        "end": 0.5065340354983421,
-        "gender": "Male",
-        "percent": 0.5065340354983421,
         "question": "riigikogu",
         "start": -0.0,
         "trust": "Trust"
@@ -789,6 +636,42 @@
       },
       {
         "age_group": "35-44",
+        "end": -0.17764746464298034,
+        "gender": "Female",
+        "percent": 0.23582844659077842,
+        "question": "valitsus",
+        "start": -0.4134759112337587,
+        "trust": "Completely distrust"
+      },
+      {
+        "age_group": "35-44",
+        "end": 0.0,
+        "gender": "Female",
+        "percent": 0.17764746464298034,
+        "question": "valitsus",
+        "start": -0.1776474646429803,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "35-44",
+        "end": -0.9682649189375647,
+        "gender": "Female",
+        "percent": 0.03173508106243532,
+        "question": "valitsus",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "age_group": "35-44",
+        "end": 0.419972404277337,
+        "gender": "Female",
+        "percent": 0.419972404277337,
+        "question": "valitsus",
+        "start": -0.0,
+        "trust": "Trust"
+      },
+      {
+        "age_group": "35-44",
         "end": 0.554789007703806,
         "gender": "Female",
         "percent": 0.1348166034264689,
@@ -798,12 +681,84 @@
       },
       {
         "age_group": "35-44",
-        "end": 0.5891359469475327,
+        "end": -0.30251609128145107,
         "gender": "Male",
-        "percent": 0.10313048566413108,
-        "question": "valitsus",
-        "start": 0.4860054612834016,
+        "percent": 0.2044080358884338,
+        "question": "meedia",
+        "start": -0.506924127169885,
+        "trust": "Completely distrust"
+      },
+      {
+        "age_group": "35-44",
+        "end": 0.0,
+        "gender": "Male",
+        "percent": 0.3025160912814511,
+        "question": "meedia",
+        "start": -0.3025160912814512,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "35-44",
+        "end": -0.9700604642090891,
+        "gender": "Male",
+        "percent": 0.029939535790910864,
+        "question": "meedia",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "age_group": "35-44",
+        "end": 0.41476496976789545,
+        "gender": "Male",
+        "percent": 0.41476496976789545,
+        "question": "meedia",
+        "start": -0.0,
+        "trust": "Trust"
+      },
+      {
+        "age_group": "35-44",
+        "end": 0.4631363370392042,
+        "gender": "Male",
+        "percent": 0.04837136727130876,
+        "question": "meedia",
+        "start": 0.41476496976789545,
         "trust": "Trust completely"
+      },
+      {
+        "age_group": "35-44",
+        "end": -0.21206358494246144,
+        "gender": "Male",
+        "percent": 0.14482153306026915,
+        "question": "riigikogu",
+        "start": -0.3568851180027306,
+        "trust": "Completely distrust"
+      },
+      {
+        "age_group": "35-44",
+        "end": 0.0,
+        "gender": "Male",
+        "percent": 0.21206358494246147,
+        "question": "riigikogu",
+        "start": -0.21206358494246147,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "35-44",
+        "end": -0.9474839087185488,
+        "gender": "Male",
+        "percent": 0.05251609128145114,
+        "question": "riigikogu",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "age_group": "35-44",
+        "end": 0.5065340354983421,
+        "gender": "Male",
+        "percent": 0.5065340354983421,
+        "question": "riigikogu",
+        "start": -0.0,
+        "trust": "Trust"
       },
       {
         "age_group": "35-44",
@@ -815,49 +770,49 @@
         "trust": "Trust completely"
       },
       {
-        "age_group": "45-54",
-        "end": -0.12355885495753893,
+        "age_group": "35-44",
+        "end": -0.19738638580066314,
         "gender": "Male",
-        "percent": 0.21112423373263595,
+        "percent": 0.16330212599960992,
         "question": "valitsus",
-        "start": -0.33468308869017493,
+        "start": -0.36068851180027306,
         "trust": "Completely distrust"
       },
       {
-        "age_group": "45-54",
-        "end": -0.19886395590799166,
+        "age_group": "35-44",
+        "end": 0.0,
         "gender": "Male",
-        "percent": 0.2328890388617063,
-        "question": "meedia",
-        "start": -0.431752994769698,
-        "trust": "Completely distrust"
-      },
-      {
-        "age_group": "45-54",
-        "end": -0.21969790003684148,
-        "gender": "Female",
-        "percent": 0.13483973965369028,
+        "percent": 0.19738638580066314,
         "question": "valitsus",
-        "start": -0.35453763969053165,
-        "trust": "Completely distrust"
+        "start": -0.19738638580066314,
+        "trust": "Distrust"
       },
       {
-        "age_group": "45-54",
-        "end": -0.22299083291153482,
+        "age_group": "35-44",
+        "end": -0.9498244587478057,
         "gender": "Male",
-        "percent": 0.10016309543895169,
-        "question": "riigikogu",
-        "start": -0.3231539283504865,
-        "trust": "Completely distrust"
+        "percent": 0.05017554125219426,
+        "question": "valitsus",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
       },
       {
-        "age_group": "45-54",
-        "end": -0.2671619796143928,
-        "gender": "Female",
-        "percent": 0.13625199557902493,
-        "question": "riigikogu",
-        "start": -0.4034139751934177,
-        "trust": "Completely distrust"
+        "age_group": "35-44",
+        "end": 0.4860054612834016,
+        "gender": "Male",
+        "percent": 0.4860054612834016,
+        "question": "valitsus",
+        "start": -0.0,
+        "trust": "Trust"
+      },
+      {
+        "age_group": "35-44",
+        "end": 0.5891359469475327,
+        "gender": "Male",
+        "percent": 0.10313048566413108,
+        "question": "valitsus",
+        "start": 0.4860054612834016,
+        "trust": "Trust completely"
       },
       {
         "age_group": "45-54",
@@ -870,78 +825,6 @@
       },
       {
         "age_group": "45-54",
-        "end": -0.9141594007122682,
-        "gender": "Female",
-        "percent": 0.0858405992877318,
-        "question": "riigikogu",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "45-54",
-        "end": -0.9161856809529657,
-        "gender": "Female",
-        "percent": 0.08381431904703426,
-        "question": "meedia",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "45-54",
-        "end": -0.927299521061034,
-        "gender": "Female",
-        "percent": 0.07270047893896599,
-        "question": "valitsus",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "45-54",
-        "end": -0.9644002024633035,
-        "gender": "Male",
-        "percent": 0.035599797536696474,
-        "question": "meedia",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "45-54",
-        "end": -0.9895956357910128,
-        "gender": "Male",
-        "percent": 0.01040436420898712,
-        "question": "riigikogu",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "45-54",
-        "end": -1.0,
-        "gender": "Male",
-        "percent": 0.0,
-        "question": "valitsus",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "45-54",
-        "end": 0.0,
-        "gender": "Female",
-        "percent": 0.21969790003684145,
-        "question": "valitsus",
-        "start": -0.21969790003684142,
-        "trust": "Distrust"
-      },
-      {
-        "age_group": "45-54",
-        "end": 0.0,
-        "gender": "Female",
-        "percent": 0.26716197961439275,
-        "question": "riigikogu",
-        "start": -0.2671619796143928,
-        "trust": "Distrust"
-      },
-      {
-        "age_group": "45-54",
         "end": 0.0,
         "gender": "Female",
         "percent": 0.38094068525113595,
@@ -951,30 +834,12 @@
       },
       {
         "age_group": "45-54",
-        "end": 0.0,
-        "gender": "Male",
-        "percent": 0.12355885495753895,
-        "question": "valitsus",
-        "start": -0.12355885495753893,
-        "trust": "Distrust"
-      },
-      {
-        "age_group": "45-54",
-        "end": 0.0,
-        "gender": "Male",
-        "percent": 0.19886395590799166,
+        "end": -0.9161856809529657,
+        "gender": "Female",
+        "percent": 0.08381431904703426,
         "question": "meedia",
-        "start": -0.19886395590799166,
-        "trust": "Distrust"
-      },
-      {
-        "age_group": "45-54",
-        "end": 0.0,
-        "gender": "Male",
-        "percent": 0.2229908329115348,
-        "question": "riigikogu",
-        "start": -0.22299083291153476,
-        "trust": "Distrust"
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
       },
       {
         "age_group": "45-54",
@@ -996,28 +861,37 @@
       },
       {
         "age_group": "45-54",
+        "end": -0.2671619796143928,
+        "gender": "Female",
+        "percent": 0.13625199557902493,
+        "question": "riigikogu",
+        "start": -0.4034139751934177,
+        "trust": "Completely distrust"
+      },
+      {
+        "age_group": "45-54",
+        "end": 0.0,
+        "gender": "Female",
+        "percent": 0.26716197961439275,
+        "question": "riigikogu",
+        "start": -0.2671619796143928,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "45-54",
+        "end": -0.9141594007122682,
+        "gender": "Female",
+        "percent": 0.0858405992877318,
+        "question": "riigikogu",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "age_group": "45-54",
         "end": 0.4643865897089524,
         "gender": "Female",
         "percent": 0.46438658970895247,
         "question": "riigikogu",
-        "start": -0.0,
-        "trust": "Trust"
-      },
-      {
-        "age_group": "45-54",
-        "end": 0.46797143017828013,
-        "gender": "Male",
-        "percent": 0.4679714301782802,
-        "question": "meedia",
-        "start": -0.0,
-        "trust": "Trust"
-      },
-      {
-        "age_group": "45-54",
-        "end": 0.46843915019034754,
-        "gender": "Female",
-        "percent": 0.46843915019034754,
-        "question": "valitsus",
         "start": -0.0,
         "trust": "Trust"
       },
@@ -1032,10 +906,82 @@
       },
       {
         "age_group": "45-54",
-        "end": 0.5306225746583433,
-        "gender": "Male",
-        "percent": 0.5306225746583432,
+        "end": -0.21969790003684148,
+        "gender": "Female",
+        "percent": 0.13483973965369028,
         "question": "valitsus",
+        "start": -0.35453763969053165,
+        "trust": "Completely distrust"
+      },
+      {
+        "age_group": "45-54",
+        "end": 0.0,
+        "gender": "Female",
+        "percent": 0.21969790003684145,
+        "question": "valitsus",
+        "start": -0.21969790003684142,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "45-54",
+        "end": -0.927299521061034,
+        "gender": "Female",
+        "percent": 0.07270047893896599,
+        "question": "valitsus",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "age_group": "45-54",
+        "end": 0.46843915019034754,
+        "gender": "Female",
+        "percent": 0.46843915019034754,
+        "question": "valitsus",
+        "start": -0.0,
+        "trust": "Trust"
+      },
+      {
+        "age_group": "45-54",
+        "end": 0.5727618813705023,
+        "gender": "Female",
+        "percent": 0.10432273118015474,
+        "question": "valitsus",
+        "start": 0.4684391501903476,
+        "trust": "Trust completely"
+      },
+      {
+        "age_group": "45-54",
+        "end": -0.19886395590799166,
+        "gender": "Male",
+        "percent": 0.2328890388617063,
+        "question": "meedia",
+        "start": -0.431752994769698,
+        "trust": "Completely distrust"
+      },
+      {
+        "age_group": "45-54",
+        "end": 0.0,
+        "gender": "Male",
+        "percent": 0.19886395590799166,
+        "question": "meedia",
+        "start": -0.19886395590799166,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "45-54",
+        "end": -0.9644002024633035,
+        "gender": "Male",
+        "percent": 0.035599797536696474,
+        "question": "meedia",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "age_group": "45-54",
+        "end": 0.46797143017828013,
+        "gender": "Male",
+        "percent": 0.4679714301782802,
+        "question": "meedia",
         "start": -0.0,
         "trust": "Trust"
       },
@@ -1050,12 +996,30 @@
       },
       {
         "age_group": "45-54",
-        "end": 0.5727618813705023,
-        "gender": "Female",
-        "percent": 0.10432273118015474,
-        "question": "valitsus",
-        "start": 0.4684391501903476,
-        "trust": "Trust completely"
+        "end": -0.22299083291153482,
+        "gender": "Male",
+        "percent": 0.10016309543895169,
+        "question": "riigikogu",
+        "start": -0.3231539283504865,
+        "trust": "Completely distrust"
+      },
+      {
+        "age_group": "45-54",
+        "end": 0.0,
+        "gender": "Male",
+        "percent": 0.2229908329115348,
+        "question": "riigikogu",
+        "start": -0.22299083291153476,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "45-54",
+        "end": -0.9895956357910128,
+        "gender": "Male",
+        "percent": 0.01040436420898712,
+        "question": "riigikogu",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
       },
       {
         "age_group": "45-54",
@@ -1063,6 +1027,51 @@
         "gender": "Male",
         "percent": 0.5887182948090659,
         "question": "riigikogu",
+        "start": -0.0,
+        "trust": "Trust"
+      },
+      {
+        "age_group": "45-54",
+        "end": 0.6664417074405264,
+        "gender": "Male",
+        "percent": 0.07772341263146054,
+        "question": "riigikogu",
+        "start": 0.5887182948090659,
+        "trust": "Trust completely"
+      },
+      {
+        "age_group": "45-54",
+        "end": -0.12355885495753893,
+        "gender": "Male",
+        "percent": 0.21112423373263595,
+        "question": "valitsus",
+        "start": -0.33468308869017493,
+        "trust": "Completely distrust"
+      },
+      {
+        "age_group": "45-54",
+        "end": 0.0,
+        "gender": "Male",
+        "percent": 0.12355885495753895,
+        "question": "valitsus",
+        "start": -0.12355885495753893,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "45-54",
+        "end": -1.0,
+        "gender": "Male",
+        "percent": 0.0,
+        "question": "valitsus",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "age_group": "45-54",
+        "end": 0.5306225746583433,
+        "gender": "Male",
+        "percent": 0.5306225746583432,
+        "question": "valitsus",
         "start": -0.0,
         "trust": "Trust"
       },
@@ -1076,60 +1085,6 @@
         "trust": "Trust completely"
       },
       {
-        "age_group": "45-54",
-        "end": 0.6664417074405264,
-        "gender": "Male",
-        "percent": 0.07772341263146054,
-        "question": "riigikogu",
-        "start": 0.5887182948090659,
-        "trust": "Trust completely"
-      },
-      {
-        "age_group": "55-64",
-        "end": -0.1560950479747569,
-        "gender": "Male",
-        "percent": 0.144310644600425,
-        "question": "riigikogu",
-        "start": -0.3004056925751819,
-        "trust": "Completely distrust"
-      },
-      {
-        "age_group": "55-64",
-        "end": -0.1580269173803851,
-        "gender": "Male",
-        "percent": 0.23279026337819564,
-        "question": "valitsus",
-        "start": -0.39081718075858074,
-        "trust": "Completely distrust"
-      },
-      {
-        "age_group": "55-64",
-        "end": -0.21863757688290592,
-        "gender": "Female",
-        "percent": 0.13009167923871418,
-        "question": "valitsus",
-        "start": -0.3487292561216201,
-        "trust": "Completely distrust"
-      },
-      {
-        "age_group": "55-64",
-        "end": -0.23482650574445862,
-        "gender": "Female",
-        "percent": 0.10577927352907045,
-        "question": "riigikogu",
-        "start": -0.3406057792735291,
-        "trust": "Completely distrust"
-      },
-      {
-        "age_group": "55-64",
-        "end": -0.24573378839590443,
-        "gender": "Male",
-        "percent": 0.22216498164724063,
-        "question": "meedia",
-        "start": -0.4678987700431451,
-        "trust": "Completely distrust"
-      },
-      {
         "age_group": "55-64",
         "end": -0.3319020540791459,
         "gender": "Female",
@@ -1137,78 +1092,6 @@
         "question": "meedia",
         "start": -0.5268074735987003,
         "trust": "Completely distrust"
-      },
-      {
-        "age_group": "55-64",
-        "end": -0.9521875362655217,
-        "gender": "Female",
-        "percent": 0.04781246373447836,
-        "question": "meedia",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "55-64",
-        "end": -0.9521875362655217,
-        "gender": "Female",
-        "percent": 0.04781246373447836,
-        "question": "valitsus",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "55-64",
-        "end": -0.95230358593478,
-        "gender": "Female",
-        "percent": 0.04769641406521991,
-        "question": "riigikogu",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "55-64",
-        "end": -0.9629725030587932,
-        "gender": "Male",
-        "percent": 0.03702749694120677,
-        "question": "meedia",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "55-64",
-        "end": -0.9743061369051452,
-        "gender": "Male",
-        "percent": 0.025693863094854788,
-        "question": "valitsus",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "55-64",
-        "end": -1.0,
-        "gender": "Male",
-        "percent": 0.0,
-        "question": "riigikogu",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "55-64",
-        "end": 0.0,
-        "gender": "Female",
-        "percent": 0.2186375768829059,
-        "question": "valitsus",
-        "start": -0.21863757688290586,
-        "trust": "Distrust"
-      },
-      {
-        "age_group": "55-64",
-        "end": 0.0,
-        "gender": "Female",
-        "percent": 0.23482650574445862,
-        "question": "riigikogu",
-        "start": -0.23482650574445862,
-        "trust": "Distrust"
       },
       {
         "age_group": "55-64",
@@ -1221,48 +1104,12 @@
       },
       {
         "age_group": "55-64",
-        "end": 0.0,
-        "gender": "Male",
-        "percent": 0.1560950479747569,
-        "question": "riigikogu",
-        "start": -0.15609504797475693,
-        "trust": "Distrust"
-      },
-      {
-        "age_group": "55-64",
-        "end": 0.0,
-        "gender": "Male",
-        "percent": 0.15802691738038507,
-        "question": "valitsus",
-        "start": -0.1580269173803851,
-        "trust": "Distrust"
-      },
-      {
-        "age_group": "55-64",
-        "end": 0.0,
-        "gender": "Male",
-        "percent": 0.24573378839590443,
+        "end": -0.9521875362655217,
+        "gender": "Female",
+        "percent": 0.04781246373447836,
         "question": "meedia",
-        "start": -0.24573378839590448,
-        "trust": "Distrust"
-      },
-      {
-        "age_group": "55-64",
-        "end": 0.3815442076115655,
-        "gender": "Male",
-        "percent": 0.38154420761156543,
-        "question": "meedia",
-        "start": -0.0,
-        "trust": "Trust"
-      },
-      {
-        "age_group": "55-64",
-        "end": 0.3932642153390431,
-        "gender": "Male",
-        "percent": 0.3932642153390431,
-        "question": "valitsus",
-        "start": -0.0,
-        "trust": "Trust"
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
       },
       {
         "age_group": "55-64",
@@ -1284,10 +1131,127 @@
       },
       {
         "age_group": "55-64",
+        "end": -0.23482650574445862,
+        "gender": "Female",
+        "percent": 0.10577927352907045,
+        "question": "riigikogu",
+        "start": -0.3406057792735291,
+        "trust": "Completely distrust"
+      },
+      {
+        "age_group": "55-64",
+        "end": 0.0,
+        "gender": "Female",
+        "percent": 0.23482650574445862,
+        "question": "riigikogu",
+        "start": -0.23482650574445862,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "55-64",
+        "end": -0.95230358593478,
+        "gender": "Female",
+        "percent": 0.04769641406521991,
+        "question": "riigikogu",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "age_group": "55-64",
+        "end": 0.5518742021585239,
+        "gender": "Female",
+        "percent": 0.5518742021585239,
+        "question": "riigikogu",
+        "start": -0.0,
+        "trust": "Trust"
+      },
+      {
+        "age_group": "55-64",
+        "end": 0.6116978066612511,
+        "gender": "Female",
+        "percent": 0.05982360450272717,
+        "question": "riigikogu",
+        "start": 0.5518742021585239,
+        "trust": "Trust completely"
+      },
+      {
+        "age_group": "55-64",
+        "end": -0.21863757688290592,
+        "gender": "Female",
+        "percent": 0.13009167923871418,
+        "question": "valitsus",
+        "start": -0.3487292561216201,
+        "trust": "Completely distrust"
+      },
+      {
+        "age_group": "55-64",
+        "end": 0.0,
+        "gender": "Female",
+        "percent": 0.2186375768829059,
+        "question": "valitsus",
+        "start": -0.21863757688290586,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "55-64",
+        "end": -0.9521875362655217,
+        "gender": "Female",
+        "percent": 0.04781246373447836,
+        "question": "valitsus",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "age_group": "55-64",
         "end": 0.47487524660554714,
         "gender": "Female",
         "percent": 0.4748752466055472,
         "question": "valitsus",
+        "start": -0.0,
+        "trust": "Trust"
+      },
+      {
+        "age_group": "55-64",
+        "end": 0.6034582801439016,
+        "gender": "Female",
+        "percent": 0.1285830335383544,
+        "question": "valitsus",
+        "start": 0.47487524660554714,
+        "trust": "Trust completely"
+      },
+      {
+        "age_group": "55-64",
+        "end": -0.24573378839590443,
+        "gender": "Male",
+        "percent": 0.22216498164724063,
+        "question": "meedia",
+        "start": -0.4678987700431451,
+        "trust": "Completely distrust"
+      },
+      {
+        "age_group": "55-64",
+        "end": 0.0,
+        "gender": "Male",
+        "percent": 0.24573378839590443,
+        "question": "meedia",
+        "start": -0.24573378839590448,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "55-64",
+        "end": -0.9629725030587932,
+        "gender": "Male",
+        "percent": 0.03702749694120677,
+        "question": "meedia",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "age_group": "55-64",
+        "end": 0.3815442076115655,
+        "gender": "Male",
+        "percent": 0.38154420761156543,
+        "question": "meedia",
         "start": -0.0,
         "trust": "Trust"
       },
@@ -1302,12 +1266,30 @@
       },
       {
         "age_group": "55-64",
-        "end": 0.5518742021585239,
-        "gender": "Female",
-        "percent": 0.5518742021585239,
+        "end": -0.1560950479747569,
+        "gender": "Male",
+        "percent": 0.144310644600425,
         "question": "riigikogu",
-        "start": -0.0,
-        "trust": "Trust"
+        "start": -0.3004056925751819,
+        "trust": "Completely distrust"
+      },
+      {
+        "age_group": "55-64",
+        "end": 0.0,
+        "gender": "Male",
+        "percent": 0.1560950479747569,
+        "question": "riigikogu",
+        "start": -0.15609504797475693,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "55-64",
+        "end": -1.0,
+        "gender": "Male",
+        "percent": 0.0,
+        "question": "riigikogu",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
       },
       {
         "age_group": "55-64",
@@ -1315,6 +1297,51 @@
         "gender": "Male",
         "percent": 0.5582458625796897,
         "question": "riigikogu",
+        "start": -0.0,
+        "trust": "Trust"
+      },
+      {
+        "age_group": "55-64",
+        "end": 0.6995943074248181,
+        "gender": "Male",
+        "percent": 0.14134844484512846,
+        "question": "riigikogu",
+        "start": 0.5582458625796897,
+        "trust": "Trust completely"
+      },
+      {
+        "age_group": "55-64",
+        "end": -0.1580269173803851,
+        "gender": "Male",
+        "percent": 0.23279026337819564,
+        "question": "valitsus",
+        "start": -0.39081718075858074,
+        "trust": "Completely distrust"
+      },
+      {
+        "age_group": "55-64",
+        "end": 0.0,
+        "gender": "Male",
+        "percent": 0.15802691738038507,
+        "question": "valitsus",
+        "start": -0.1580269173803851,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "55-64",
+        "end": -0.9743061369051452,
+        "gender": "Male",
+        "percent": 0.025693863094854788,
+        "question": "valitsus",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "age_group": "55-64",
+        "end": 0.3932642153390431,
+        "gender": "Male",
+        "percent": 0.3932642153390431,
+        "question": "valitsus",
         "start": -0.0,
         "trust": "Trust"
       },
@@ -1328,78 +1355,6 @@
         "trust": "Trust completely"
       },
       {
-        "age_group": "55-64",
-        "end": 0.6034582801439016,
-        "gender": "Female",
-        "percent": 0.1285830335383544,
-        "question": "valitsus",
-        "start": 0.47487524660554714,
-        "trust": "Trust completely"
-      },
-      {
-        "age_group": "55-64",
-        "end": 0.6116978066612511,
-        "gender": "Female",
-        "percent": 0.05982360450272717,
-        "question": "riigikogu",
-        "start": 0.5518742021585239,
-        "trust": "Trust completely"
-      },
-      {
-        "age_group": "55-64",
-        "end": 0.6995943074248181,
-        "gender": "Male",
-        "percent": 0.14134844484512846,
-        "question": "riigikogu",
-        "start": 0.5582458625796897,
-        "trust": "Trust completely"
-      },
-      {
-        "age_group": "65-74",
-        "end": -0.18171765573166238,
-        "gender": "Female",
-        "percent": 0.08606708440840398,
-        "question": "valitsus",
-        "start": -0.26778474014006626,
-        "trust": "Completely distrust"
-      },
-      {
-        "age_group": "65-74",
-        "end": -0.19090194537237182,
-        "gender": "Male",
-        "percent": 0.09500884260168992,
-        "question": "riigikogu",
-        "start": -0.2859107879740618,
-        "trust": "Completely distrust"
-      },
-      {
-        "age_group": "65-74",
-        "end": -0.19168795441147574,
-        "gender": "Male",
-        "percent": 0.11593633326783258,
-        "question": "valitsus",
-        "start": -0.3076242876793084,
-        "trust": "Completely distrust"
-      },
-      {
-        "age_group": "65-74",
-        "end": -0.2582626858336405,
-        "gender": "Female",
-        "percent": 0.061924069295982306,
-        "question": "riigikogu",
-        "start": -0.3201867551296228,
-        "trust": "Completely distrust"
-      },
-      {
-        "age_group": "65-74",
-        "end": -0.30094321084692466,
-        "gender": "Male",
-        "percent": 0.2091766555315386,
-        "question": "meedia",
-        "start": -0.5101198663784633,
-        "trust": "Completely distrust"
-      },
-      {
         "age_group": "65-74",
         "end": -0.31723798992505214,
         "gender": "Female",
@@ -1407,78 +1362,6 @@
         "question": "meedia",
         "start": -0.4619117827742966,
         "trust": "Completely distrust"
-      },
-      {
-        "age_group": "65-74",
-        "end": -0.9159601916697383,
-        "gender": "Female",
-        "percent": 0.0840398083302617,
-        "question": "riigikogu",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "65-74",
-        "end": -0.9402633130280998,
-        "gender": "Male",
-        "percent": 0.059736686971900176,
-        "question": "meedia",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "65-74",
-        "end": -0.9600117901355866,
-        "gender": "Male",
-        "percent": 0.03998820986441344,
-        "question": "riigikogu",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "65-74",
-        "end": -0.961727484949011,
-        "gender": "Female",
-        "percent": 0.03827251505098907,
-        "question": "meedia",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "65-74",
-        "end": -0.9650448458041528,
-        "gender": "Female",
-        "percent": 0.03495515419584715,
-        "question": "valitsus",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "65-74",
-        "end": -0.9786795048143053,
-        "gender": "Male",
-        "percent": 0.021320495185694635,
-        "question": "valitsus",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "65-74",
-        "end": 0.0,
-        "gender": "Female",
-        "percent": 0.18171765573166238,
-        "question": "valitsus",
-        "start": -0.18171765573166232,
-        "trust": "Distrust"
-      },
-      {
-        "age_group": "65-74",
-        "end": 0.0,
-        "gender": "Female",
-        "percent": 0.2582626858336405,
-        "question": "riigikogu",
-        "start": -0.25826268583364054,
-        "trust": "Distrust"
       },
       {
         "age_group": "65-74",
@@ -1491,57 +1374,12 @@
       },
       {
         "age_group": "65-74",
-        "end": 0.0,
-        "gender": "Male",
-        "percent": 0.1909019453723718,
-        "question": "riigikogu",
-        "start": -0.19090194537237182,
-        "trust": "Distrust"
-      },
-      {
-        "age_group": "65-74",
-        "end": 0.0,
-        "gender": "Male",
-        "percent": 0.19168795441147574,
-        "question": "valitsus",
-        "start": -0.1916879544114758,
-        "trust": "Distrust"
-      },
-      {
-        "age_group": "65-74",
-        "end": 0.0,
-        "gender": "Male",
-        "percent": 0.3009432108469247,
+        "end": -0.961727484949011,
+        "gender": "Female",
+        "percent": 0.03827251505098907,
         "question": "meedia",
-        "start": -0.30094321084692466,
-        "trust": "Distrust"
-      },
-      {
-        "age_group": "65-74",
-        "end": 0.3134211043426999,
-        "gender": "Male",
-        "percent": 0.31342110434269993,
-        "question": "meedia",
-        "start": -0.0,
-        "trust": "Trust"
-      },
-      {
-        "age_group": "65-74",
-        "end": 0.43014344664963644,
-        "gender": "Male",
-        "percent": 0.11672234230693652,
-        "question": "meedia",
-        "start": 0.31342110434269993,
-        "trust": "Trust completely"
-      },
-      {
-        "age_group": "65-74",
-        "end": 0.44065631754765183,
-        "gender": "Male",
-        "percent": 0.4406563175476518,
-        "question": "valitsus",
-        "start": -0.0,
-        "trust": "Trust"
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
       },
       {
         "age_group": "65-74",
@@ -1563,28 +1401,37 @@
       },
       {
         "age_group": "65-74",
+        "end": -0.2582626858336405,
+        "gender": "Female",
+        "percent": 0.061924069295982306,
+        "question": "riigikogu",
+        "start": -0.3201867551296228,
+        "trust": "Completely distrust"
+      },
+      {
+        "age_group": "65-74",
+        "end": 0.0,
+        "gender": "Female",
+        "percent": 0.2582626858336405,
+        "question": "riigikogu",
+        "start": -0.25826268583364054,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "65-74",
+        "end": -0.9159601916697383,
+        "gender": "Female",
+        "percent": 0.0840398083302617,
+        "question": "riigikogu",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "age_group": "65-74",
         "end": 0.509644919523283,
         "gender": "Female",
         "percent": 0.509644919523283,
         "question": "riigikogu",
-        "start": -0.0,
-        "trust": "Trust"
-      },
-      {
-        "age_group": "65-74",
-        "end": 0.5590489290626843,
-        "gender": "Male",
-        "percent": 0.5590489290626842,
-        "question": "riigikogu",
-        "start": -0.0,
-        "trust": "Trust"
-      },
-      {
-        "age_group": "65-74",
-        "end": 0.5599582258262685,
-        "gender": "Female",
-        "percent": 0.5599582258262685,
-        "question": "valitsus",
         "start": -0.0,
         "trust": "Trust"
       },
@@ -1599,12 +1446,129 @@
       },
       {
         "age_group": "65-74",
-        "end": 0.671055217134997,
-        "gender": "Male",
-        "percent": 0.23039889958734525,
+        "end": -0.18171765573166238,
+        "gender": "Female",
+        "percent": 0.08606708440840398,
         "question": "valitsus",
-        "start": 0.4406563175476518,
+        "start": -0.26778474014006626,
+        "trust": "Completely distrust"
+      },
+      {
+        "age_group": "65-74",
+        "end": 0.0,
+        "gender": "Female",
+        "percent": 0.18171765573166238,
+        "question": "valitsus",
+        "start": -0.18171765573166232,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "65-74",
+        "end": -0.9650448458041528,
+        "gender": "Female",
+        "percent": 0.03495515419584715,
+        "question": "valitsus",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "age_group": "65-74",
+        "end": 0.5599582258262685,
+        "gender": "Female",
+        "percent": 0.5599582258262685,
+        "question": "valitsus",
+        "start": -0.0,
+        "trust": "Trust"
+      },
+      {
+        "age_group": "65-74",
+        "end": 0.6972601056640865,
+        "gender": "Female",
+        "percent": 0.13730187983781791,
+        "question": "valitsus",
+        "start": 0.5599582258262685,
         "trust": "Trust completely"
+      },
+      {
+        "age_group": "65-74",
+        "end": -0.30094321084692466,
+        "gender": "Male",
+        "percent": 0.2091766555315386,
+        "question": "meedia",
+        "start": -0.5101198663784633,
+        "trust": "Completely distrust"
+      },
+      {
+        "age_group": "65-74",
+        "end": 0.0,
+        "gender": "Male",
+        "percent": 0.3009432108469247,
+        "question": "meedia",
+        "start": -0.30094321084692466,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "65-74",
+        "end": -0.9402633130280998,
+        "gender": "Male",
+        "percent": 0.059736686971900176,
+        "question": "meedia",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "age_group": "65-74",
+        "end": 0.3134211043426999,
+        "gender": "Male",
+        "percent": 0.31342110434269993,
+        "question": "meedia",
+        "start": -0.0,
+        "trust": "Trust"
+      },
+      {
+        "age_group": "65-74",
+        "end": 0.43014344664963644,
+        "gender": "Male",
+        "percent": 0.11672234230693652,
+        "question": "meedia",
+        "start": 0.31342110434269993,
+        "trust": "Trust completely"
+      },
+      {
+        "age_group": "65-74",
+        "end": -0.19090194537237182,
+        "gender": "Male",
+        "percent": 0.09500884260168992,
+        "question": "riigikogu",
+        "start": -0.2859107879740618,
+        "trust": "Completely distrust"
+      },
+      {
+        "age_group": "65-74",
+        "end": 0.0,
+        "gender": "Male",
+        "percent": 0.1909019453723718,
+        "question": "riigikogu",
+        "start": -0.19090194537237182,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "65-74",
+        "end": -0.9600117901355866,
+        "gender": "Male",
+        "percent": 0.03998820986441344,
+        "question": "riigikogu",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "age_group": "65-74",
+        "end": 0.5590489290626843,
+        "gender": "Male",
+        "percent": 0.5590489290626842,
+        "question": "riigikogu",
+        "start": -0.0,
+        "trust": "Trust"
       },
       {
         "age_group": "65-74",
@@ -1617,57 +1581,48 @@
       },
       {
         "age_group": "65-74",
-        "end": 0.6972601056640865,
-        "gender": "Female",
-        "percent": 0.13730187983781791,
+        "end": -0.19168795441147574,
+        "gender": "Male",
+        "percent": 0.11593633326783258,
         "question": "valitsus",
-        "start": 0.5599582258262685,
+        "start": -0.3076242876793084,
+        "trust": "Completely distrust"
+      },
+      {
+        "age_group": "65-74",
+        "end": 0.0,
+        "gender": "Male",
+        "percent": 0.19168795441147574,
+        "question": "valitsus",
+        "start": -0.1916879544114758,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "65-74",
+        "end": -0.9786795048143053,
+        "gender": "Male",
+        "percent": 0.021320495185694635,
+        "question": "valitsus",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "age_group": "65-74",
+        "end": 0.44065631754765183,
+        "gender": "Male",
+        "percent": 0.4406563175476518,
+        "question": "valitsus",
+        "start": -0.0,
+        "trust": "Trust"
+      },
+      {
+        "age_group": "65-74",
+        "end": 0.671055217134997,
+        "gender": "Male",
+        "percent": 0.23039889958734525,
+        "question": "valitsus",
+        "start": 0.4406563175476518,
         "trust": "Trust completely"
-      },
-      {
-        "age_group": "75+",
-        "end": -0.11617476851851852,
-        "gender": "Female",
-        "percent": 0.10170717592592593,
-        "question": "valitsus",
-        "start": -0.21788194444444442,
-        "trust": "Completely distrust"
-      },
-      {
-        "age_group": "75+",
-        "end": -0.1869936342592593,
-        "gender": "Female",
-        "percent": 0.04246238425925926,
-        "question": "riigikogu",
-        "start": -0.2294560185185186,
-        "trust": "Completely distrust"
-      },
-      {
-        "age_group": "75+",
-        "end": -0.18741199662067023,
-        "gender": "Male",
-        "percent": 0.23331455927907632,
-        "question": "valitsus",
-        "start": -0.4207265558997465,
-        "trust": "Completely distrust"
-      },
-      {
-        "age_group": "75+",
-        "end": -0.23753872148690508,
-        "gender": "Male",
-        "percent": 0.22599267811883977,
-        "question": "meedia",
-        "start": -0.46353139960574496,
-        "trust": "Completely distrust"
-      },
-      {
-        "age_group": "75+",
-        "end": -0.25091523514502956,
-        "gender": "Male",
-        "percent": 0.1937482399324134,
-        "question": "riigikogu",
-        "start": -0.44466347507744297,
-        "trust": "Completely distrust"
       },
       {
         "age_group": "75+",
@@ -1680,78 +1635,6 @@
       },
       {
         "age_group": "75+",
-        "end": -0.917910447761194,
-        "gender": "Male",
-        "percent": 0.08208955223880597,
-        "question": "meedia",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "75+",
-        "end": -0.9547164351851852,
-        "gender": "Female",
-        "percent": 0.04528356481481482,
-        "question": "meedia",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "75+",
-        "end": -0.9716435185185185,
-        "gender": "Female",
-        "percent": 0.028356481481481483,
-        "question": "riigikogu",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "75+",
-        "end": -0.9716435185185185,
-        "gender": "Female",
-        "percent": 0.028356481481481483,
-        "question": "valitsus",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "75+",
-        "end": -1.0,
-        "gender": "Male",
-        "percent": 0.0,
-        "question": "riigikogu",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "75+",
-        "end": -1.0,
-        "gender": "Male",
-        "percent": 0.0,
-        "question": "valitsus",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "age_group": "75+",
-        "end": 0.0,
-        "gender": "Female",
-        "percent": 0.11617476851851852,
-        "question": "valitsus",
-        "start": -0.11617476851851849,
-        "trust": "Distrust"
-      },
-      {
-        "age_group": "75+",
-        "end": 0.0,
-        "gender": "Female",
-        "percent": 0.18699363425925927,
-        "question": "riigikogu",
-        "start": -0.1869936342592593,
-        "trust": "Distrust"
-      },
-      {
-        "age_group": "75+",
         "end": 0.0,
         "gender": "Female",
         "percent": 0.3404947916666667,
@@ -1761,75 +1644,12 @@
       },
       {
         "age_group": "75+",
-        "end": 0.0,
-        "gender": "Male",
-        "percent": 0.18741199662067023,
-        "question": "valitsus",
-        "start": -0.1874119966206702,
-        "trust": "Distrust"
-      },
-      {
-        "age_group": "75+",
-        "end": 0.0,
-        "gender": "Male",
-        "percent": 0.2375387214869051,
-        "question": "meedia",
-        "start": -0.23753872148690514,
-        "trust": "Distrust"
-      },
-      {
-        "age_group": "75+",
-        "end": 0.0,
-        "gender": "Male",
-        "percent": 0.25091523514502956,
-        "question": "riigikogu",
-        "start": -0.25091523514502956,
-        "trust": "Distrust"
-      },
-      {
-        "age_group": "75+",
-        "end": 0.3883413123063926,
-        "gender": "Male",
-        "percent": 0.38834131230639257,
-        "question": "valitsus",
-        "start": -0.0,
-        "trust": "Trust"
-      },
-      {
-        "age_group": "75+",
-        "end": 0.3976344691636159,
-        "gender": "Male",
-        "percent": 0.3976344691636159,
-        "question": "meedia",
-        "start": -0.0,
-        "trust": "Trust"
-      },
-      {
-        "age_group": "75+",
-        "end": 0.4414249507181076,
-        "gender": "Male",
-        "percent": 0.44142495071810756,
-        "question": "riigikogu",
-        "start": -0.0,
-        "trust": "Trust"
-      },
-      {
-        "age_group": "75+",
-        "end": 0.45437904815544916,
-        "gender": "Male",
-        "percent": 0.056744578991833286,
-        "question": "meedia",
-        "start": 0.3976344691636159,
-        "trust": "Trust completely"
-      },
-      {
-        "age_group": "75+",
-        "end": 0.4853877314814815,
+        "end": -0.9547164351851852,
         "gender": "Female",
-        "percent": 0.48538773148148145,
-        "question": "valitsus",
-        "start": -0.0,
-        "trust": "Trust"
+        "percent": 0.04528356481481482,
+        "question": "meedia",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
       },
       {
         "age_group": "75+",
@@ -1851,21 +1671,30 @@
       },
       {
         "age_group": "75+",
-        "end": 0.555336524922557,
-        "gender": "Male",
-        "percent": 0.11391157420444945,
+        "end": -0.1869936342592593,
+        "gender": "Female",
+        "percent": 0.04246238425925926,
         "question": "riigikogu",
-        "start": 0.4414249507181076,
-        "trust": "Trust completely"
+        "start": -0.2294560185185186,
+        "trust": "Completely distrust"
       },
       {
         "age_group": "75+",
-        "end": 0.5792734441002534,
-        "gender": "Male",
-        "percent": 0.19093213179386087,
-        "question": "valitsus",
-        "start": 0.3883413123063925,
-        "trust": "Trust completely"
+        "end": 0.0,
+        "gender": "Female",
+        "percent": 0.18699363425925927,
+        "question": "riigikogu",
+        "start": -0.1869936342592593,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "75+",
+        "end": -0.9716435185185185,
+        "gender": "Female",
+        "percent": 0.028356481481481483,
+        "question": "riigikogu",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
       },
       {
         "age_group": "75+",
@@ -1887,11 +1716,182 @@
       },
       {
         "age_group": "75+",
+        "end": -0.11617476851851852,
+        "gender": "Female",
+        "percent": 0.10170717592592593,
+        "question": "valitsus",
+        "start": -0.21788194444444442,
+        "trust": "Completely distrust"
+      },
+      {
+        "age_group": "75+",
+        "end": 0.0,
+        "gender": "Female",
+        "percent": 0.11617476851851852,
+        "question": "valitsus",
+        "start": -0.11617476851851849,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "75+",
+        "end": -0.9716435185185185,
+        "gender": "Female",
+        "percent": 0.028356481481481483,
+        "question": "valitsus",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "age_group": "75+",
+        "end": 0.4853877314814815,
+        "gender": "Female",
+        "percent": 0.48538773148148145,
+        "question": "valitsus",
+        "start": -0.0,
+        "trust": "Trust"
+      },
+      {
+        "age_group": "75+",
         "end": 0.7537615740740742,
         "gender": "Female",
         "percent": 0.2683738425925926,
         "question": "valitsus",
         "start": 0.48538773148148145,
+        "trust": "Trust completely"
+      },
+      {
+        "age_group": "75+",
+        "end": -0.23753872148690508,
+        "gender": "Male",
+        "percent": 0.22599267811883977,
+        "question": "meedia",
+        "start": -0.46353139960574496,
+        "trust": "Completely distrust"
+      },
+      {
+        "age_group": "75+",
+        "end": 0.0,
+        "gender": "Male",
+        "percent": 0.2375387214869051,
+        "question": "meedia",
+        "start": -0.23753872148690514,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "75+",
+        "end": -0.917910447761194,
+        "gender": "Male",
+        "percent": 0.08208955223880597,
+        "question": "meedia",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "age_group": "75+",
+        "end": 0.3976344691636159,
+        "gender": "Male",
+        "percent": 0.3976344691636159,
+        "question": "meedia",
+        "start": -0.0,
+        "trust": "Trust"
+      },
+      {
+        "age_group": "75+",
+        "end": 0.45437904815544916,
+        "gender": "Male",
+        "percent": 0.056744578991833286,
+        "question": "meedia",
+        "start": 0.3976344691636159,
+        "trust": "Trust completely"
+      },
+      {
+        "age_group": "75+",
+        "end": -0.25091523514502956,
+        "gender": "Male",
+        "percent": 0.1937482399324134,
+        "question": "riigikogu",
+        "start": -0.44466347507744297,
+        "trust": "Completely distrust"
+      },
+      {
+        "age_group": "75+",
+        "end": 0.0,
+        "gender": "Male",
+        "percent": 0.25091523514502956,
+        "question": "riigikogu",
+        "start": -0.25091523514502956,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "75+",
+        "end": -1.0,
+        "gender": "Male",
+        "percent": 0.0,
+        "question": "riigikogu",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "age_group": "75+",
+        "end": 0.4414249507181076,
+        "gender": "Male",
+        "percent": 0.44142495071810756,
+        "question": "riigikogu",
+        "start": -0.0,
+        "trust": "Trust"
+      },
+      {
+        "age_group": "75+",
+        "end": 0.555336524922557,
+        "gender": "Male",
+        "percent": 0.11391157420444945,
+        "question": "riigikogu",
+        "start": 0.4414249507181076,
+        "trust": "Trust completely"
+      },
+      {
+        "age_group": "75+",
+        "end": -0.18741199662067023,
+        "gender": "Male",
+        "percent": 0.23331455927907632,
+        "question": "valitsus",
+        "start": -0.4207265558997465,
+        "trust": "Completely distrust"
+      },
+      {
+        "age_group": "75+",
+        "end": 0.0,
+        "gender": "Male",
+        "percent": 0.18741199662067023,
+        "question": "valitsus",
+        "start": -0.1874119966206702,
+        "trust": "Distrust"
+      },
+      {
+        "age_group": "75+",
+        "end": -1.0,
+        "gender": "Male",
+        "percent": 0.0,
+        "question": "valitsus",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "age_group": "75+",
+        "end": 0.3883413123063926,
+        "gender": "Male",
+        "percent": 0.38834131230639257,
+        "question": "valitsus",
+        "start": -0.0,
+        "trust": "Trust"
+      },
+      {
+        "age_group": "75+",
+        "end": 0.5792734441002534,
+        "gender": "Male",
+        "percent": 0.19093213179386087,
+        "question": "valitsus",
+        "start": 0.3883413123063925,
         "trust": "Trust completely"
       }
     ]

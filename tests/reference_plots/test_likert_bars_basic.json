@@ -5,22 +5,6 @@
   "datasets": {
     "data-normalized": [
       {
-        "end": -0.30475191667872126,
-        "party_preference": "EKRE",
-        "percent": 0.4308549110371763,
-        "question": "valitsus",
-        "start": -0.7356068277158976,
-        "trust": "Completely distrust"
-      },
-      {
-        "end": -0.30811514537827284,
-        "party_preference": "EKRE",
-        "percent": 0.25227831621582525,
-        "question": "riigikogu",
-        "start": -0.5603934615940982,
-        "trust": "Completely distrust"
-      },
-      {
         "end": -0.35158397222624044,
         "party_preference": "EKRE",
         "percent": 0.4081802401272964,
@@ -29,12 +13,12 @@
         "trust": "Completely distrust"
       },
       {
-        "end": -0.9648126717778099,
+        "end": 0.0,
         "party_preference": "EKRE",
-        "percent": 0.035187328222190076,
-        "question": "riigikogu",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
+        "percent": 0.35158397222624044,
+        "question": "meedia",
+        "start": -0.3515839722262404,
+        "trust": "Distrust"
       },
       {
         "end": -0.9708881816866772,
@@ -43,38 +27,6 @@
         "question": "meedia",
         "start": -1.0,
         "trust": "Neither trust nor distrust"
-      },
-      {
-        "end": -0.9856068277158976,
-        "party_preference": "EKRE",
-        "percent": 0.014393172284102416,
-        "question": "valitsus",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "end": 0.0,
-        "party_preference": "EKRE",
-        "percent": 0.30475191667872126,
-        "question": "valitsus",
-        "start": -0.30475191667872126,
-        "trust": "Distrust"
-      },
-      {
-        "end": 0.0,
-        "party_preference": "EKRE",
-        "percent": 0.30811514537827284,
-        "question": "riigikogu",
-        "start": -0.3081151453782729,
-        "trust": "Distrust"
-      },
-      {
-        "end": 0.0,
-        "party_preference": "EKRE",
-        "percent": 0.35158397222624044,
-        "question": "meedia",
-        "start": -0.3515839722262404,
-        "trust": "Distrust"
       },
       {
         "end": 0.2032764357008534,
@@ -93,20 +45,28 @@
         "trust": "Trust completely"
       },
       {
-        "end": 0.24215246636771304,
+        "end": -0.30811514537827284,
         "party_preference": "EKRE",
-        "percent": 0.242152466367713,
-        "question": "valitsus",
-        "start": -0.0,
-        "trust": "Trust"
+        "percent": 0.25227831621582525,
+        "question": "riigikogu",
+        "start": -0.5603934615940982,
+        "trust": "Completely distrust"
       },
       {
-        "end": 0.25,
+        "end": 0.0,
         "party_preference": "EKRE",
-        "percent": 0.007847533632286996,
-        "question": "valitsus",
-        "start": 0.242152466367713,
-        "trust": "Trust completely"
+        "percent": 0.30811514537827284,
+        "question": "riigikogu",
+        "start": -0.3081151453782729,
+        "trust": "Distrust"
+      },
+      {
+        "end": -0.9648126717778099,
+        "party_preference": "EKRE",
+        "percent": 0.035187328222190076,
+        "question": "riigikogu",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
       },
       {
         "end": 0.3819615217705772,
@@ -125,20 +85,44 @@
         "trust": "Trust completely"
       },
       {
-        "end": -0.0841611050752755,
-        "party_preference": "Eesti 200",
-        "percent": 0.03007139531274251,
+        "end": -0.30475191667872126,
+        "party_preference": "EKRE",
+        "percent": 0.4308549110371763,
         "question": "valitsus",
-        "start": -0.11423250038801802,
+        "start": -0.7356068277158976,
         "trust": "Completely distrust"
       },
       {
-        "end": -0.17410367841067825,
-        "party_preference": "Eesti 200",
-        "percent": 0.030304206115163743,
-        "question": "riigikogu",
-        "start": -0.20440788452584202,
-        "trust": "Completely distrust"
+        "end": 0.0,
+        "party_preference": "EKRE",
+        "percent": 0.30475191667872126,
+        "question": "valitsus",
+        "start": -0.30475191667872126,
+        "trust": "Distrust"
+      },
+      {
+        "end": -0.9856068277158976,
+        "party_preference": "EKRE",
+        "percent": 0.014393172284102416,
+        "question": "valitsus",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "end": 0.24215246636771304,
+        "party_preference": "EKRE",
+        "percent": 0.242152466367713,
+        "question": "valitsus",
+        "start": -0.0,
+        "trust": "Trust"
+      },
+      {
+        "end": 0.25,
+        "party_preference": "EKRE",
+        "percent": 0.007847533632286996,
+        "question": "valitsus",
+        "start": 0.242152466367713,
+        "trust": "Trust completely"
       },
       {
         "end": -0.30606860158311344,
@@ -149,12 +133,12 @@
         "trust": "Completely distrust"
       },
       {
-        "end": -0.9603057581871799,
+        "end": 0.0,
         "party_preference": "Eesti 200",
-        "percent": 0.039694241812820115,
-        "question": "riigikogu",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
+        "percent": 0.30606860158311344,
+        "question": "meedia",
+        "start": -0.30606860158311344,
+        "trust": "Distrust"
       },
       {
         "end": -0.9676781002638523,
@@ -165,58 +149,10 @@
         "trust": "Neither trust nor distrust"
       },
       {
-        "end": -0.978542604376843,
-        "party_preference": "Eesti 200",
-        "percent": 0.021457395623156916,
-        "question": "valitsus",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "end": 0.0,
-        "party_preference": "Eesti 200",
-        "percent": 0.0841611050752755,
-        "question": "valitsus",
-        "start": -0.08416110507527552,
-        "trust": "Distrust"
-      },
-      {
-        "end": 0.0,
-        "party_preference": "Eesti 200",
-        "percent": 0.17410367841067825,
-        "question": "riigikogu",
-        "start": -0.1741036784106783,
-        "trust": "Distrust"
-      },
-      {
-        "end": 0.0,
-        "party_preference": "Eesti 200",
-        "percent": 0.30606860158311344,
-        "question": "meedia",
-        "start": -0.30606860158311344,
-        "trust": "Distrust"
-      },
-      {
         "end": 0.4872342076672358,
         "party_preference": "Eesti 200",
         "percent": 0.48723420766723574,
         "question": "meedia",
-        "start": -0.0,
-        "trust": "Trust"
-      },
-      {
-        "end": 0.5853639608877852,
-        "party_preference": "Eesti 200",
-        "percent": 0.5853639608877852,
-        "question": "riigikogu",
-        "start": -0.0,
-        "trust": "Trust"
-      },
-      {
-        "end": 0.6050364736923793,
-        "party_preference": "Eesti 200",
-        "percent": 0.6050364736923793,
-        "question": "valitsus",
         "start": -0.0,
         "trust": "Trust"
       },
@@ -229,12 +165,76 @@
         "trust": "Trust completely"
       },
       {
+        "end": -0.17410367841067825,
+        "party_preference": "Eesti 200",
+        "percent": 0.030304206115163743,
+        "question": "riigikogu",
+        "start": -0.20440788452584202,
+        "trust": "Completely distrust"
+      },
+      {
+        "end": 0.0,
+        "party_preference": "Eesti 200",
+        "percent": 0.17410367841067825,
+        "question": "riigikogu",
+        "start": -0.1741036784106783,
+        "trust": "Distrust"
+      },
+      {
+        "end": -0.9603057581871799,
+        "party_preference": "Eesti 200",
+        "percent": 0.039694241812820115,
+        "question": "riigikogu",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "end": 0.5853639608877852,
+        "party_preference": "Eesti 200",
+        "percent": 0.5853639608877852,
+        "question": "riigikogu",
+        "start": -0.0,
+        "trust": "Trust"
+      },
+      {
         "end": 0.7558978736613379,
         "party_preference": "Eesti 200",
         "percent": 0.1705339127735527,
         "question": "riigikogu",
         "start": 0.5853639608877852,
         "trust": "Trust completely"
+      },
+      {
+        "end": -0.0841611050752755,
+        "party_preference": "Eesti 200",
+        "percent": 0.03007139531274251,
+        "question": "valitsus",
+        "start": -0.11423250038801802,
+        "trust": "Completely distrust"
+      },
+      {
+        "end": 0.0,
+        "party_preference": "Eesti 200",
+        "percent": 0.0841611050752755,
+        "question": "valitsus",
+        "start": -0.08416110507527552,
+        "trust": "Distrust"
+      },
+      {
+        "end": -0.978542604376843,
+        "party_preference": "Eesti 200",
+        "percent": 0.021457395623156916,
+        "question": "valitsus",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "end": 0.6050364736923793,
+        "party_preference": "Eesti 200",
+        "percent": 0.6050364736923793,
+        "question": "valitsus",
+        "start": -0.0,
+        "trust": "Trust"
       },
       {
         "end": 0.864310103988825,
@@ -245,22 +245,6 @@
         "trust": "Trust completely"
       },
       {
-        "end": -0.271096803862957,
-        "party_preference": "Isamaa",
-        "percent": 0.02981528320686748,
-        "question": "riigikogu",
-        "start": -0.3009120870698244,
-        "trust": "Completely distrust"
-      },
-      {
-        "end": -0.27462251858664827,
-        "party_preference": "Isamaa",
-        "percent": 0.049973173909711045,
-        "question": "valitsus",
-        "start": -0.3245956924963592,
-        "trust": "Completely distrust"
-      },
-      {
         "end": -0.4410209243504254,
         "party_preference": "Isamaa",
         "percent": 0.15244883881352034,
@@ -269,12 +253,12 @@
         "trust": "Completely distrust"
       },
       {
-        "end": -0.9533226028972177,
+        "end": 0.0,
         "party_preference": "Isamaa",
-        "percent": 0.04667739710278225,
-        "question": "valitsus",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
+        "percent": 0.4410209243504254,
+        "question": "meedia",
+        "start": -0.4410209243504254,
+        "trust": "Distrust"
       },
       {
         "end": -0.9533992488694719,
@@ -283,38 +267,6 @@
         "question": "meedia",
         "start": -1.0,
         "trust": "Neither trust nor distrust"
-      },
-      {
-        "end": -0.9659691883191538,
-        "party_preference": "Isamaa",
-        "percent": 0.03403081168084617,
-        "question": "riigikogu",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "end": 0.0,
-        "party_preference": "Isamaa",
-        "percent": 0.271096803862957,
-        "question": "riigikogu",
-        "start": -0.271096803862957,
-        "trust": "Distrust"
-      },
-      {
-        "end": 0.0,
-        "party_preference": "Isamaa",
-        "percent": 0.27462251858664827,
-        "question": "valitsus",
-        "start": -0.2746225185866482,
-        "trust": "Distrust"
-      },
-      {
-        "end": 0.0,
-        "party_preference": "Isamaa",
-        "percent": 0.4410209243504254,
-        "question": "meedia",
-        "start": -0.4410209243504254,
-        "trust": "Distrust"
       },
       {
         "end": 0.3005288572085537,
@@ -333,18 +285,74 @@
         "trust": "Trust completely"
       },
       {
-        "end": 0.5385912470299685,
+        "end": -0.271096803862957,
         "party_preference": "Isamaa",
-        "percent": 0.5385912470299685,
-        "question": "valitsus",
-        "start": -0.0,
-        "trust": "Trust"
+        "percent": 0.02981528320686748,
+        "question": "riigikogu",
+        "start": -0.3009120870698244,
+        "trust": "Completely distrust"
+      },
+      {
+        "end": 0.0,
+        "party_preference": "Isamaa",
+        "percent": 0.271096803862957,
+        "question": "riigikogu",
+        "start": -0.271096803862957,
+        "trust": "Distrust"
+      },
+      {
+        "end": -0.9659691883191538,
+        "party_preference": "Isamaa",
+        "percent": 0.03403081168084617,
+        "question": "riigikogu",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
       },
       {
         "end": 0.6215221890089675,
         "party_preference": "Isamaa",
         "percent": 0.6215221890089676,
         "question": "riigikogu",
+        "start": -0.0,
+        "trust": "Trust"
+      },
+      {
+        "end": 0.6650571012493294,
+        "party_preference": "Isamaa",
+        "percent": 0.04353491224036177,
+        "question": "riigikogu",
+        "start": 0.6215221890089676,
+        "trust": "Trust completely"
+      },
+      {
+        "end": -0.27462251858664827,
+        "party_preference": "Isamaa",
+        "percent": 0.049973173909711045,
+        "question": "valitsus",
+        "start": -0.3245956924963592,
+        "trust": "Completely distrust"
+      },
+      {
+        "end": 0.0,
+        "party_preference": "Isamaa",
+        "percent": 0.27462251858664827,
+        "question": "valitsus",
+        "start": -0.2746225185866482,
+        "trust": "Distrust"
+      },
+      {
+        "end": -0.9533226028972177,
+        "party_preference": "Isamaa",
+        "percent": 0.04667739710278225,
+        "question": "valitsus",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "end": 0.5385912470299685,
+        "party_preference": "Isamaa",
+        "percent": 0.5385912470299685,
+        "question": "valitsus",
         "start": -0.0,
         "trust": "Trust"
       },
@@ -357,30 +365,6 @@
         "trust": "Trust completely"
       },
       {
-        "end": 0.6650571012493294,
-        "party_preference": "Isamaa",
-        "percent": 0.04353491224036177,
-        "question": "riigikogu",
-        "start": 0.6215221890089676,
-        "trust": "Trust completely"
-      },
-      {
-        "end": -0.2656012176560122,
-        "party_preference": "Keskerakond",
-        "percent": 0.17819634703196346,
-        "question": "riigikogu",
-        "start": -0.4437975646879757,
-        "trust": "Completely distrust"
-      },
-      {
-        "end": -0.31472602739726024,
-        "party_preference": "Keskerakond",
-        "percent": 0.20254946727549467,
-        "question": "valitsus",
-        "start": -0.517275494672755,
-        "trust": "Completely distrust"
-      },
-      {
         "end": -0.42058599695586,
         "party_preference": "Keskerakond",
         "percent": 0.24577625570776257,
@@ -389,20 +373,12 @@
         "trust": "Completely distrust"
       },
       {
-        "end": -0.9562785388127854,
+        "end": 0.0,
         "party_preference": "Keskerakond",
-        "percent": 0.043721461187214615,
-        "question": "riigikogu",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "end": -0.9565829528158295,
-        "party_preference": "Keskerakond",
-        "percent": 0.04341704718417047,
-        "question": "valitsus",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
+        "percent": 0.42058599695585996,
+        "question": "meedia",
+        "start": -0.4205859969558599,
+        "trust": "Distrust"
       },
       {
         "end": -0.9635844748858448,
@@ -411,30 +387,6 @@
         "question": "meedia",
         "start": -1.0,
         "trust": "Neither trust nor distrust"
-      },
-      {
-        "end": 0.0,
-        "party_preference": "Keskerakond",
-        "percent": 0.2656012176560122,
-        "question": "riigikogu",
-        "start": -0.2656012176560122,
-        "trust": "Distrust"
-      },
-      {
-        "end": 0.0,
-        "party_preference": "Keskerakond",
-        "percent": 0.3147260273972603,
-        "question": "valitsus",
-        "start": -0.3147260273972603,
-        "trust": "Distrust"
-      },
-      {
-        "end": 0.0,
-        "party_preference": "Keskerakond",
-        "percent": 0.42058599695585996,
-        "question": "meedia",
-        "start": -0.4205859969558599,
-        "trust": "Distrust"
       },
       {
         "end": 0.28238203957382035,
@@ -453,20 +405,28 @@
         "trust": "Trust completely"
       },
       {
-        "end": 0.38002283105022827,
+        "end": -0.2656012176560122,
         "party_preference": "Keskerakond",
-        "percent": 0.3800228310502283,
-        "question": "valitsus",
-        "start": -0.0,
-        "trust": "Trust"
+        "percent": 0.17819634703196346,
+        "question": "riigikogu",
+        "start": -0.4437975646879757,
+        "trust": "Completely distrust"
       },
       {
-        "end": 0.4393074581430746,
+        "end": 0.0,
         "party_preference": "Keskerakond",
-        "percent": 0.05928462709284627,
-        "question": "valitsus",
-        "start": 0.3800228310502283,
-        "trust": "Trust completely"
+        "percent": 0.2656012176560122,
+        "question": "riigikogu",
+        "start": -0.2656012176560122,
+        "trust": "Distrust"
+      },
+      {
+        "end": -0.9562785388127854,
+        "party_preference": "Keskerakond",
+        "percent": 0.043721461187214615,
+        "question": "riigikogu",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
       },
       {
         "end": 0.45292998477929985,
@@ -485,20 +445,44 @@
         "trust": "Trust completely"
       },
       {
-        "end": -0.2435280501918743,
-        "party_preference": "No opinion",
-        "percent": 0.1696412255588719,
+        "end": -0.31472602739726024,
+        "party_preference": "Keskerakond",
+        "percent": 0.20254946727549467,
         "question": "valitsus",
-        "start": -0.4131692757507462,
+        "start": -0.517275494672755,
         "trust": "Completely distrust"
       },
       {
-        "end": -0.24626911128708043,
-        "party_preference": "No opinion",
-        "percent": 0.1318145824450265,
-        "question": "riigikogu",
-        "start": -0.37808369373210704,
-        "trust": "Completely distrust"
+        "end": 0.0,
+        "party_preference": "Keskerakond",
+        "percent": 0.3147260273972603,
+        "question": "valitsus",
+        "start": -0.3147260273972603,
+        "trust": "Distrust"
+      },
+      {
+        "end": -0.9565829528158295,
+        "party_preference": "Keskerakond",
+        "percent": 0.04341704718417047,
+        "question": "valitsus",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "end": 0.38002283105022827,
+        "party_preference": "Keskerakond",
+        "percent": 0.3800228310502283,
+        "question": "valitsus",
+        "start": -0.0,
+        "trust": "Trust"
+      },
+      {
+        "end": 0.4393074581430746,
+        "party_preference": "Keskerakond",
+        "percent": 0.05928462709284627,
+        "question": "valitsus",
+        "start": 0.3800228310502283,
+        "trust": "Trust completely"
       },
       {
         "end": -0.42187975878662365,
@@ -509,52 +493,20 @@
         "trust": "Completely distrust"
       },
       {
-        "end": -0.8773222878723275,
-        "party_preference": "No opinion",
-        "percent": 0.12267771212767253,
-        "question": "meedia",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "end": -0.8776877626850216,
-        "party_preference": "No opinion",
-        "percent": 0.12231223731497838,
-        "question": "riigikogu",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "end": -0.8996771639154535,
-        "party_preference": "No opinion",
-        "percent": 0.10032283608454651,
-        "question": "valitsus",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "end": 0.0,
-        "party_preference": "No opinion",
-        "percent": 0.2435280501918743,
-        "question": "valitsus",
-        "start": -0.24352805019187423,
-        "trust": "Distrust"
-      },
-      {
-        "end": 0.0,
-        "party_preference": "No opinion",
-        "percent": 0.24626911128708046,
-        "question": "riigikogu",
-        "start": -0.2462691112870805,
-        "trust": "Distrust"
-      },
-      {
         "end": 0.0,
         "party_preference": "No opinion",
         "percent": 0.42187975878662365,
         "question": "meedia",
         "start": -0.42187975878662365,
         "trust": "Distrust"
+      },
+      {
+        "end": -0.8773222878723275,
+        "party_preference": "No opinion",
+        "percent": 0.12267771212767253,
+        "question": "meedia",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
       },
       {
         "end": 0.21301090333191208,
@@ -573,18 +525,74 @@
         "trust": "Trust completely"
       },
       {
-        "end": 0.4396661996710726,
+        "end": -0.24626911128708043,
         "party_preference": "No opinion",
-        "percent": 0.4396661996710727,
-        "question": "valitsus",
-        "start": -0.0,
-        "trust": "Trust"
+        "percent": 0.1318145824450265,
+        "question": "riigikogu",
+        "start": -0.37808369373210704,
+        "trust": "Completely distrust"
+      },
+      {
+        "end": 0.0,
+        "party_preference": "No opinion",
+        "percent": 0.24626911128708046,
+        "question": "riigikogu",
+        "start": -0.2462691112870805,
+        "trust": "Distrust"
+      },
+      {
+        "end": -0.8776877626850216,
+        "party_preference": "No opinion",
+        "percent": 0.12231223731497838,
+        "question": "riigikogu",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
       },
       {
         "end": 0.4767009806907474,
         "party_preference": "No opinion",
         "percent": 0.4767009806907474,
         "question": "riigikogu",
+        "start": -0.0,
+        "trust": "Trust"
+      },
+      {
+        "end": 0.49960406895291465,
+        "party_preference": "No opinion",
+        "percent": 0.022903088262167266,
+        "question": "riigikogu",
+        "start": 0.4767009806907474,
+        "trust": "Trust completely"
+      },
+      {
+        "end": -0.2435280501918743,
+        "party_preference": "No opinion",
+        "percent": 0.1696412255588719,
+        "question": "valitsus",
+        "start": -0.4131692757507462,
+        "trust": "Completely distrust"
+      },
+      {
+        "end": 0.0,
+        "party_preference": "No opinion",
+        "percent": 0.2435280501918743,
+        "question": "valitsus",
+        "start": -0.24352805019187423,
+        "trust": "Distrust"
+      },
+      {
+        "end": -0.8996771639154535,
+        "party_preference": "No opinion",
+        "percent": 0.10032283608454651,
+        "question": "valitsus",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "end": 0.4396661996710726,
+        "party_preference": "No opinion",
+        "percent": 0.4396661996710727,
+        "question": "valitsus",
         "start": -0.0,
         "trust": "Trust"
       },
@@ -597,76 +605,12 @@
         "trust": "Trust completely"
       },
       {
-        "end": 0.49960406895291465,
-        "party_preference": "No opinion",
-        "percent": 0.022903088262167266,
-        "question": "riigikogu",
-        "start": 0.4767009806907474,
-        "trust": "Trust completely"
-      },
-      {
-        "end": -0.37176380563703604,
-        "party_preference": "None of the parties",
-        "percent": 0.3157760489733452,
-        "question": "valitsus",
-        "start": -0.6875398546103813,
-        "trust": "Completely distrust"
-      },
-      {
-        "end": -0.38292309654380813,
-        "party_preference": "None of the parties",
-        "percent": 0.3440249968116312,
-        "question": "riigikogu",
-        "start": -0.7269480933554394,
-        "trust": "Completely distrust"
-      },
-      {
         "end": -0.38534625685499296,
         "party_preference": "None of the parties",
         "percent": 0.39318964417803853,
         "question": "meedia",
         "start": -0.7785359010330315,
         "trust": "Completely distrust"
-      },
-      {
-        "end": -0.9114271138885346,
-        "party_preference": "None of the parties",
-        "percent": 0.08857288611146537,
-        "question": "valitsus",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "end": -0.9230327764315776,
-        "party_preference": "None of the parties",
-        "percent": 0.0769672235684224,
-        "question": "meedia",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "end": -0.936870297155975,
-        "party_preference": "None of the parties",
-        "percent": 0.063129702844025,
-        "question": "riigikogu",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "end": 0.0,
-        "party_preference": "None of the parties",
-        "percent": 0.3717638056370361,
-        "question": "valitsus",
-        "start": -0.3717638056370361,
-        "trust": "Distrust"
-      },
-      {
-        "end": 0.0,
-        "party_preference": "None of the parties",
-        "percent": 0.3829230965438082,
-        "question": "riigikogu",
-        "start": -0.3829230965438082,
-        "trust": "Distrust"
       },
       {
         "end": 0.0,
@@ -677,12 +621,12 @@
         "trust": "Distrust"
       },
       {
-        "end": 0.14449687539854605,
+        "end": -0.9230327764315776,
         "party_preference": "None of the parties",
-        "percent": 0.0,
+        "percent": 0.0769672235684224,
         "question": "meedia",
-        "start": 0.1444968753985461,
-        "trust": "Trust completely"
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
       },
       {
         "end": 0.14449687539854605,
@@ -691,6 +635,38 @@
         "question": "meedia",
         "start": -0.0,
         "trust": "Trust"
+      },
+      {
+        "end": 0.14449687539854605,
+        "party_preference": "None of the parties",
+        "percent": 0.0,
+        "question": "meedia",
+        "start": 0.1444968753985461,
+        "trust": "Trust completely"
+      },
+      {
+        "end": -0.38292309654380813,
+        "party_preference": "None of the parties",
+        "percent": 0.3440249968116312,
+        "question": "riigikogu",
+        "start": -0.7269480933554394,
+        "trust": "Completely distrust"
+      },
+      {
+        "end": 0.0,
+        "party_preference": "None of the parties",
+        "percent": 0.3829230965438082,
+        "question": "riigikogu",
+        "start": -0.3829230965438082,
+        "trust": "Distrust"
+      },
+      {
+        "end": -0.936870297155975,
+        "party_preference": "None of the parties",
+        "percent": 0.063129702844025,
+        "question": "riigikogu",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
       },
       {
         "end": 0.1979339369978319,
@@ -709,12 +685,28 @@
         "trust": "Trust completely"
       },
       {
-        "end": 0.22388725927815334,
+        "end": -0.37176380563703604,
         "party_preference": "None of the parties",
-        "percent": 0.0,
+        "percent": 0.3157760489733452,
         "question": "valitsus",
-        "start": 0.22388725927815328,
-        "trust": "Trust completely"
+        "start": -0.6875398546103813,
+        "trust": "Completely distrust"
+      },
+      {
+        "end": 0.0,
+        "party_preference": "None of the parties",
+        "percent": 0.3717638056370361,
+        "question": "valitsus",
+        "start": -0.3717638056370361,
+        "trust": "Distrust"
+      },
+      {
+        "end": -0.9114271138885346,
+        "party_preference": "None of the parties",
+        "percent": 0.08857288611146537,
+        "question": "valitsus",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
       },
       {
         "end": 0.22388725927815334,
@@ -725,20 +717,12 @@
         "trust": "Trust"
       },
       {
-        "end": -0.18688738836854712,
-        "party_preference": "Other",
-        "percent": 0.6379873665868002,
+        "end": 0.22388725927815334,
+        "party_preference": "None of the parties",
+        "percent": 0.0,
         "question": "valitsus",
-        "start": -0.8248747549553475,
-        "trust": "Completely distrust"
-      },
-      {
-        "end": -0.4027445001089087,
-        "party_preference": "Other",
-        "percent": 0.4201698976257896,
-        "question": "riigikogu",
-        "start": -0.8229143977346983,
-        "trust": "Completely distrust"
+        "start": 0.22388725927815328,
+        "trust": "Trust completely"
       },
       {
         "end": -0.40514049226747983,
@@ -749,46 +733,6 @@
         "trust": "Completely distrust"
       },
       {
-        "end": -0.9525157917664997,
-        "party_preference": "Other",
-        "percent": 0.04748420823350033,
-        "question": "meedia",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "end": -1.0,
-        "party_preference": "Other",
-        "percent": 0.0,
-        "question": "riigikogu",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "end": -1.0,
-        "party_preference": "Other",
-        "percent": 0.0,
-        "question": "valitsus",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "end": 0.0,
-        "party_preference": "Other",
-        "percent": 0.18688738836854715,
-        "question": "valitsus",
-        "start": -0.18688738836854715,
-        "trust": "Distrust"
-      },
-      {
-        "end": 0.0,
-        "party_preference": "Other",
-        "percent": 0.4027445001089087,
-        "question": "riigikogu",
-        "start": -0.4027445001089087,
-        "trust": "Distrust"
-      },
-      {
         "end": 0.0,
         "party_preference": "Other",
         "percent": 0.40514049226747983,
@@ -797,12 +741,12 @@
         "trust": "Distrust"
       },
       {
-        "end": 0.04138531910259202,
+        "end": -0.9525157917664997,
         "party_preference": "Other",
-        "percent": 0.0,
+        "percent": 0.04748420823350033,
         "question": "meedia",
-        "start": 0.04138531910259203,
-        "trust": "Trust completely"
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
       },
       {
         "end": 0.04138531910259202,
@@ -813,18 +757,82 @@
         "trust": "Trust"
       },
       {
-        "end": 0.13373992594206052,
+        "end": 0.04138531910259202,
         "party_preference": "Other",
-        "percent": 0.13373992594206055,
-        "question": "valitsus",
-        "start": -0.0,
-        "trust": "Trust"
+        "percent": 0.0,
+        "question": "meedia",
+        "start": 0.04138531910259203,
+        "trust": "Trust completely"
+      },
+      {
+        "end": -0.4027445001089087,
+        "party_preference": "Other",
+        "percent": 0.4201698976257896,
+        "question": "riigikogu",
+        "start": -0.8229143977346983,
+        "trust": "Completely distrust"
+      },
+      {
+        "end": 0.0,
+        "party_preference": "Other",
+        "percent": 0.4027445001089087,
+        "question": "riigikogu",
+        "start": -0.4027445001089087,
+        "trust": "Distrust"
+      },
+      {
+        "end": -1.0,
+        "party_preference": "Other",
+        "percent": 0.0,
+        "question": "riigikogu",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
       },
       {
         "end": 0.13570028316270966,
         "party_preference": "Other",
         "percent": 0.13570028316270966,
         "question": "riigikogu",
+        "start": -0.0,
+        "trust": "Trust"
+      },
+      {
+        "end": 0.17708560226530168,
+        "party_preference": "Other",
+        "percent": 0.04138531910259203,
+        "question": "riigikogu",
+        "start": 0.13570028316270966,
+        "trust": "Trust completely"
+      },
+      {
+        "end": -0.18688738836854712,
+        "party_preference": "Other",
+        "percent": 0.6379873665868002,
+        "question": "valitsus",
+        "start": -0.8248747549553475,
+        "trust": "Completely distrust"
+      },
+      {
+        "end": 0.0,
+        "party_preference": "Other",
+        "percent": 0.18688738836854715,
+        "question": "valitsus",
+        "start": -0.18688738836854715,
+        "trust": "Distrust"
+      },
+      {
+        "end": -1.0,
+        "party_preference": "Other",
+        "percent": 0.0,
+        "question": "valitsus",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "end": 0.13373992594206052,
+        "party_preference": "Other",
+        "percent": 0.13373992594206055,
+        "question": "valitsus",
         "start": -0.0,
         "trust": "Trust"
       },
@@ -837,30 +845,6 @@
         "trust": "Trust completely"
       },
       {
-        "end": 0.17708560226530168,
-        "party_preference": "Other",
-        "percent": 0.04138531910259203,
-        "question": "riigikogu",
-        "start": 0.13570028316270966,
-        "trust": "Trust completely"
-      },
-      {
-        "end": -0.08256172839506172,
-        "party_preference": "Parempoolsed",
-        "percent": 0.0787037037037037,
-        "question": "valitsus",
-        "start": -0.16126543209876543,
-        "trust": "Completely distrust"
-      },
-      {
-        "end": -0.12326388888888891,
-        "party_preference": "Parempoolsed",
-        "percent": 0.0787037037037037,
-        "question": "riigikogu",
-        "start": -0.20196759259259267,
-        "trust": "Completely distrust"
-      },
-      {
         "end": -0.24170524691358022,
         "party_preference": "Parempoolsed",
         "percent": 0.22492283950617284,
@@ -869,20 +853,12 @@
         "trust": "Completely distrust"
       },
       {
-        "end": -0.8863811728395061,
+        "end": 0.0,
         "party_preference": "Parempoolsed",
-        "percent": 0.11361882716049383,
-        "question": "valitsus",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "end": -0.919945987654321,
-        "party_preference": "Parempoolsed",
-        "percent": 0.08005401234567901,
-        "question": "riigikogu",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
+        "percent": 0.24170524691358025,
+        "question": "meedia",
+        "start": -0.2417052469135802,
+        "trust": "Distrust"
       },
       {
         "end": -1.0,
@@ -891,30 +867,6 @@
         "question": "meedia",
         "start": -1.0,
         "trust": "Neither trust nor distrust"
-      },
-      {
-        "end": 0.0,
-        "party_preference": "Parempoolsed",
-        "percent": 0.08256172839506173,
-        "question": "valitsus",
-        "start": -0.0825617283950617,
-        "trust": "Distrust"
-      },
-      {
-        "end": 0.0,
-        "party_preference": "Parempoolsed",
-        "percent": 0.1232638888888889,
-        "question": "riigikogu",
-        "start": -0.12326388888888895,
-        "trust": "Distrust"
-      },
-      {
-        "end": 0.0,
-        "party_preference": "Parempoolsed",
-        "percent": 0.24170524691358025,
-        "question": "meedia",
-        "start": -0.2417052469135802,
-        "trust": "Distrust"
       },
       {
         "end": 0.45717592592592593,
@@ -933,12 +885,28 @@
         "trust": "Trust completely"
       },
       {
-        "end": 0.6163194444444444,
+        "end": -0.12326388888888891,
         "party_preference": "Parempoolsed",
-        "percent": 0.6163194444444444,
-        "question": "valitsus",
-        "start": -0.0,
-        "trust": "Trust"
+        "percent": 0.0787037037037037,
+        "question": "riigikogu",
+        "start": -0.20196759259259267,
+        "trust": "Completely distrust"
+      },
+      {
+        "end": 0.0,
+        "party_preference": "Parempoolsed",
+        "percent": 0.1232638888888889,
+        "question": "riigikogu",
+        "start": -0.12326388888888895,
+        "trust": "Distrust"
+      },
+      {
+        "end": -0.919945987654321,
+        "party_preference": "Parempoolsed",
+        "percent": 0.08005401234567901,
+        "question": "riigikogu",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
       },
       {
         "end": 0.6419753086419753,
@@ -957,28 +925,44 @@
         "trust": "Trust completely"
       },
       {
+        "end": -0.08256172839506172,
+        "party_preference": "Parempoolsed",
+        "percent": 0.0787037037037037,
+        "question": "valitsus",
+        "start": -0.16126543209876543,
+        "trust": "Completely distrust"
+      },
+      {
+        "end": 0.0,
+        "party_preference": "Parempoolsed",
+        "percent": 0.08256172839506173,
+        "question": "valitsus",
+        "start": -0.0825617283950617,
+        "trust": "Distrust"
+      },
+      {
+        "end": -0.8863811728395061,
+        "party_preference": "Parempoolsed",
+        "percent": 0.11361882716049383,
+        "question": "valitsus",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "end": 0.6163194444444444,
+        "party_preference": "Parempoolsed",
+        "percent": 0.6163194444444444,
+        "question": "valitsus",
+        "start": -0.0,
+        "trust": "Trust"
+      },
+      {
         "end": 0.7251157407407407,
         "party_preference": "Parempoolsed",
         "percent": 0.1087962962962963,
         "question": "valitsus",
         "start": 0.6163194444444444,
         "trust": "Trust completely"
-      },
-      {
-        "end": -0.044367471208577855,
-        "party_preference": "Reformierakond",
-        "percent": 0.009089705687684772,
-        "question": "valitsus",
-        "start": -0.053457176896262615,
-        "trust": "Completely distrust"
-      },
-      {
-        "end": -0.1323522922825751,
-        "party_preference": "Reformierakond",
-        "percent": 0.016921855005956846,
-        "question": "riigikogu",
-        "start": -0.14927414728853194,
-        "trust": "Completely distrust"
       },
       {
         "end": -0.21345364691347132,
@@ -989,46 +973,6 @@
         "trust": "Completely distrust"
       },
       {
-        "end": -0.9730618188236332,
-        "party_preference": "Reformierakond",
-        "percent": 0.026938181176366763,
-        "question": "meedia",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "end": -0.987292061951198,
-        "party_preference": "Reformierakond",
-        "percent": 0.012707938048802011,
-        "question": "valitsus",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "end": -0.9912412301990028,
-        "party_preference": "Reformierakond",
-        "percent": 0.00875876980099722,
-        "question": "riigikogu",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "end": 0.0,
-        "party_preference": "Reformierakond",
-        "percent": 0.044367471208577855,
-        "question": "valitsus",
-        "start": -0.04436747120857787,
-        "trust": "Distrust"
-      },
-      {
-        "end": 0.0,
-        "party_preference": "Reformierakond",
-        "percent": 0.1323522922825751,
-        "question": "riigikogu",
-        "start": -0.13235229228257506,
-        "trust": "Distrust"
-      },
-      {
         "end": 0.0,
         "party_preference": "Reformierakond",
         "percent": 0.2134536469134713,
@@ -1037,26 +981,18 @@
         "trust": "Distrust"
       },
       {
-        "end": 0.5841680271808675,
+        "end": -0.9730618188236332,
         "party_preference": "Reformierakond",
-        "percent": 0.5841680271808675,
-        "question": "valitsus",
-        "start": -0.0,
-        "trust": "Trust"
+        "percent": 0.026938181176366763,
+        "question": "meedia",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
       },
       {
         "end": 0.5959493447469444,
         "party_preference": "Reformierakond",
         "percent": 0.5959493447469444,
         "question": "meedia",
-        "start": -0.0,
-        "trust": "Trust"
-      },
-      {
-        "end": 0.675109208842607,
-        "party_preference": "Reformierakond",
-        "percent": 0.675109208842607,
-        "question": "riigikogu",
         "start": -0.0,
         "trust": "Trust"
       },
@@ -1069,12 +1005,76 @@
         "trust": "Trust completely"
       },
       {
+        "end": -0.1323522922825751,
+        "party_preference": "Reformierakond",
+        "percent": 0.016921855005956846,
+        "question": "riigikogu",
+        "start": -0.14927414728853194,
+        "trust": "Completely distrust"
+      },
+      {
+        "end": 0.0,
+        "party_preference": "Reformierakond",
+        "percent": 0.1323522922825751,
+        "question": "riigikogu",
+        "start": -0.13235229228257506,
+        "trust": "Distrust"
+      },
+      {
+        "end": -0.9912412301990028,
+        "party_preference": "Reformierakond",
+        "percent": 0.00875876980099722,
+        "question": "riigikogu",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "end": 0.675109208842607,
+        "party_preference": "Reformierakond",
+        "percent": 0.675109208842607,
+        "question": "riigikogu",
+        "start": -0.0,
+        "trust": "Trust"
+      },
+      {
         "end": 0.8419670829104708,
         "party_preference": "Reformierakond",
         "percent": 0.16685787406786393,
         "question": "riigikogu",
         "start": 0.675109208842607,
         "trust": "Trust completely"
+      },
+      {
+        "end": -0.044367471208577855,
+        "party_preference": "Reformierakond",
+        "percent": 0.009089705687684772,
+        "question": "valitsus",
+        "start": -0.053457176896262615,
+        "trust": "Completely distrust"
+      },
+      {
+        "end": 0.0,
+        "party_preference": "Reformierakond",
+        "percent": 0.044367471208577855,
+        "question": "valitsus",
+        "start": -0.04436747120857787,
+        "trust": "Distrust"
+      },
+      {
+        "end": -0.987292061951198,
+        "party_preference": "Reformierakond",
+        "percent": 0.012707938048802011,
+        "question": "valitsus",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "end": 0.5841680271808675,
+        "party_preference": "Reformierakond",
+        "percent": 0.5841680271808675,
+        "question": "valitsus",
+        "start": -0.0,
+        "trust": "Trust"
       },
       {
         "end": 0.9338348850549354,
@@ -1085,14 +1085,6 @@
         "trust": "Trust completely"
       },
       {
-        "end": -0.16429567642956763,
-        "party_preference": "Rohelised",
-        "percent": 0.05411436541143654,
-        "question": "riigikogu",
-        "start": -0.2184100418410042,
-        "trust": "Completely distrust"
-      },
-      {
         "end": -0.3319386331938633,
         "party_preference": "Rohelised",
         "percent": 0.11241283124128312,
@@ -1101,60 +1093,20 @@
         "trust": "Completely distrust"
       },
       {
-        "end": -1.0,
-        "party_preference": "Rohelised",
-        "percent": 0.0,
-        "question": "meedia",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "end": -1.0,
-        "party_preference": "Rohelised",
-        "percent": 0.0,
-        "question": "riigikogu",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "end": -1.0,
-        "party_preference": "Rohelised",
-        "percent": 0.0,
-        "question": "valitsus",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "end": 0.0,
-        "party_preference": "Rohelised",
-        "percent": 0.0,
-        "question": "valitsus",
-        "start": -0.0,
-        "trust": "Completely distrust"
-      },
-      {
-        "end": 0.0,
-        "party_preference": "Rohelised",
-        "percent": 0.0,
-        "question": "valitsus",
-        "start": -0.0,
-        "trust": "Distrust"
-      },
-      {
-        "end": 0.0,
-        "party_preference": "Rohelised",
-        "percent": 0.16429567642956763,
-        "question": "riigikogu",
-        "start": -0.16429567642956766,
-        "trust": "Distrust"
-      },
-      {
         "end": 0.0,
         "party_preference": "Rohelised",
         "percent": 0.3319386331938633,
         "question": "meedia",
         "start": -0.3319386331938633,
         "trust": "Distrust"
+      },
+      {
+        "end": -1.0,
+        "party_preference": "Rohelised",
+        "percent": 0.0,
+        "question": "meedia",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
       },
       {
         "end": 0.502649930264993,
@@ -1173,6 +1125,30 @@
         "trust": "Trust completely"
       },
       {
+        "end": -0.16429567642956763,
+        "party_preference": "Rohelised",
+        "percent": 0.05411436541143654,
+        "question": "riigikogu",
+        "start": -0.2184100418410042,
+        "trust": "Completely distrust"
+      },
+      {
+        "end": 0.0,
+        "party_preference": "Rohelised",
+        "percent": 0.16429567642956763,
+        "question": "riigikogu",
+        "start": -0.16429567642956766,
+        "trust": "Distrust"
+      },
+      {
+        "end": -1.0,
+        "party_preference": "Rohelised",
+        "percent": 0.0,
+        "question": "riigikogu",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
         "end": 0.7269177126917713,
         "party_preference": "Rohelised",
         "percent": 0.7269177126917713,
@@ -1189,12 +1165,28 @@
         "trust": "Trust completely"
       },
       {
-        "end": 1.0,
+        "end": 0.0,
         "party_preference": "Rohelised",
         "percent": 0.0,
         "question": "valitsus",
-        "start": 1.0,
-        "trust": "Trust completely"
+        "start": -0.0,
+        "trust": "Completely distrust"
+      },
+      {
+        "end": 0.0,
+        "party_preference": "Rohelised",
+        "percent": 0.0,
+        "question": "valitsus",
+        "start": -0.0,
+        "trust": "Distrust"
+      },
+      {
+        "end": -1.0,
+        "party_preference": "Rohelised",
+        "percent": 0.0,
+        "question": "valitsus",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
       },
       {
         "end": 1.0,
@@ -1205,20 +1197,12 @@
         "trust": "Trust"
       },
       {
-        "end": -0.1336856171039844,
-        "party_preference": "SDE",
-        "percent": 0.025085034013605442,
+        "end": 1.0,
+        "party_preference": "Rohelised",
+        "percent": 0.0,
         "question": "valitsus",
-        "start": -0.1587706511175898,
-        "trust": "Completely distrust"
-      },
-      {
-        "end": -0.19533527696793002,
-        "party_preference": "SDE",
-        "percent": 0.024477648202138,
-        "question": "riigikogu",
-        "start": -0.21981292517006812,
-        "trust": "Completely distrust"
+        "start": 1.0,
+        "trust": "Trust completely"
       },
       {
         "end": -0.2916666666666667,
@@ -1229,20 +1213,12 @@
         "trust": "Completely distrust"
       },
       {
-        "end": -0.9289965986394558,
+        "end": 0.0,
         "party_preference": "SDE",
-        "percent": 0.07100340136054421,
-        "question": "riigikogu",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
-      },
-      {
-        "end": -0.954142371234208,
-        "party_preference": "SDE",
-        "percent": 0.04585762876579203,
-        "question": "valitsus",
-        "start": -1.0,
-        "trust": "Neither trust nor distrust"
+        "percent": 0.2916666666666667,
+        "question": "meedia",
+        "start": -0.29166666666666674,
+        "trust": "Distrust"
       },
       {
         "end": -0.9653790087463556,
@@ -1251,30 +1227,6 @@
         "question": "meedia",
         "start": -1.0,
         "trust": "Neither trust nor distrust"
-      },
-      {
-        "end": 0.0,
-        "party_preference": "SDE",
-        "percent": 0.13368561710398444,
-        "question": "valitsus",
-        "start": -0.1336856171039844,
-        "trust": "Distrust"
-      },
-      {
-        "end": 0.0,
-        "party_preference": "SDE",
-        "percent": 0.19533527696793002,
-        "question": "riigikogu",
-        "start": -0.19533527696793007,
-        "trust": "Distrust"
-      },
-      {
-        "end": 0.0,
-        "party_preference": "SDE",
-        "percent": 0.2916666666666667,
-        "question": "meedia",
-        "start": -0.29166666666666674,
-        "trust": "Distrust"
       },
       {
         "end": 0.5192541302235181,
@@ -1293,18 +1245,34 @@
         "trust": "Trust completely"
       },
       {
+        "end": -0.19533527696793002,
+        "party_preference": "SDE",
+        "percent": 0.024477648202138,
+        "question": "riigikogu",
+        "start": -0.21981292517006812,
+        "trust": "Completely distrust"
+      },
+      {
+        "end": 0.0,
+        "party_preference": "SDE",
+        "percent": 0.19533527696793002,
+        "question": "riigikogu",
+        "start": -0.19533527696793007,
+        "trust": "Distrust"
+      },
+      {
+        "end": -0.9289965986394558,
+        "party_preference": "SDE",
+        "percent": 0.07100340136054421,
+        "question": "riigikogu",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
         "end": 0.6485665694849369,
         "party_preference": "SDE",
         "percent": 0.6485665694849369,
         "question": "riigikogu",
-        "start": -0.0,
-        "trust": "Trust"
-      },
-      {
-        "end": 0.6875607385811466,
-        "party_preference": "SDE",
-        "percent": 0.6875607385811467,
-        "question": "valitsus",
         "start": -0.0,
         "trust": "Trust"
       },
@@ -1315,6 +1283,38 @@
         "question": "riigikogu",
         "start": 0.6485665694849369,
         "trust": "Trust completely"
+      },
+      {
+        "end": -0.1336856171039844,
+        "party_preference": "SDE",
+        "percent": 0.025085034013605442,
+        "question": "valitsus",
+        "start": -0.1587706511175898,
+        "trust": "Completely distrust"
+      },
+      {
+        "end": 0.0,
+        "party_preference": "SDE",
+        "percent": 0.13368561710398444,
+        "question": "valitsus",
+        "start": -0.1336856171039844,
+        "trust": "Distrust"
+      },
+      {
+        "end": -0.954142371234208,
+        "party_preference": "SDE",
+        "percent": 0.04585762876579203,
+        "question": "valitsus",
+        "start": -1.0,
+        "trust": "Neither trust nor distrust"
+      },
+      {
+        "end": 0.6875607385811466,
+        "party_preference": "SDE",
+        "percent": 0.6875607385811467,
+        "question": "valitsus",
+        "start": -0.0,
+        "trust": "Trust"
       },
       {
         "end": 0.7953717201166179,
