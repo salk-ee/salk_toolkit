@@ -697,7 +697,6 @@ def wrangle_data(raw_df, col_meta, factor_cols, weight_col, pp_desc, n_questions
 
             if agg_fn == 'mean':
                 data = data.with_columns( pl.col('percent') / pl.col(weight_col) )
-                # data = data.with_columns(pl.col(res_col)/pl.col(weight_col).alias(res_col))
             elif agg_fn == 'posneg_mean':
                 raise Exception("Use maxdiff plot only on ordinal data")
             elif agg_fn != 'sum':
