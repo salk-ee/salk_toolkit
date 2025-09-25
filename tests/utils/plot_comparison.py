@@ -82,7 +82,7 @@ def sort_dataset_records(records):
     """Sort dataset records using categorical fields first for deterministic ordering."""
     if not records or not isinstance(records[0], dict):
         return records
-    
+
     unnamed = [k for k in records[0].keys() if k.startswith('level_')]
     if unnamed:
         raise ValueError(f"Unnamed index ({', '.join(unnamed)}) found in dataset records. This can lead to unstable tests and should be fixed.")
