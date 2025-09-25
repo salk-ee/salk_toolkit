@@ -553,7 +553,7 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     if c_meta[rcl[0]].get('continuous'):
         val_format, val_range = c_meta[rcl[0]].get('val_format') or '.1f', None
         transform_fn = plot_meta.get('transform_fn',None)
-        if transform_fn and 'cont_transform' not in pp_desc:
+        if transform_fn:
             pp_desc['cont_transform'] = transform_fn
         if 'cont_transform' in pp_desc:
             filtered_df, val_format, val_range = transform_cont(filtered_df, rcl, transform=pp_desc['cont_transform'],
@@ -697,6 +697,9 @@ def wrangle_data(raw_df, col_meta, factor_cols, weight_col, pp_desc, n_questions
 
             if agg_fn == 'mean':
                 data = data.with_columns( pl.col('percent') / pl.col(weight_col) )
+                # data = data.with_columns(pl.col(res_col)/pl.col(weight_col).alias(res_col))
+            elif agg_fn == 'posneg_mean':
+                raise Exception("Use maxdiff plot only on ordinal data")
             elif agg_fn != 'sum':
                 raise Exception(f"Unknown agg_fn: {agg_fn}")
 
@@ -708,10 +711,7 @@ def wrangle_data(raw_df, col_meta, factor_cols, weight_col, pp_desc, n_questions
                         .agg(pl.col([res_col,weight_col]).sum())
                         )
                 if agg_fn == 'mean':
-                    data = (raw_df
-                        .group_by(gb_dims)
-                        .agg([getattr(pl.col(res_col), agg_fn)().alias(res_col), pl.col(weight_col).sum()])
-                        )
+                    data = data.with_columns(pl.col(res_col)/pl.col(weight_col).alias(res_col))
             elif agg_fn == 'posneg_mean':
                 # Needs prefix to avoid name conflict while aggregating
                 data = (

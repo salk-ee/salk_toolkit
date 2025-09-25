@@ -69,19 +69,15 @@ class TestPlots:
         
         # Normalize the chart JSON for comparison
         normalized_result = normalize_chart_json(result.to_json())
-        
-        if not reference_file.exists():
-            if recompute:
-                with open(reference_file, 'w') as f:
-                    json.dump(normalized_result, f, indent=2, sort_keys=True)
-                print(f"Created reference for test {test_name}")
-            else:
-                raise ValueError(f"Reference file for {test_name} not found")
-        elif recompute:
+
+        already_exists = reference_file.exists()
+        if recompute:
             # Save/update the reference
             with open(reference_file, 'w') as f:
                 json.dump(normalized_result, f, indent=2, sort_keys=True)
-            print(f"{'Updated' if recompute else 'Created'} reference for test {test_name}")
+            print(f"{'Updated' if already_exists else 'Created'} reference for test {test_name}")
+        elif not already_exists:
+            raise ValueError(f"Reference file for {test_name} not found")
         else:
             # Compare against reference
             with open(reference_file, 'r') as f:
