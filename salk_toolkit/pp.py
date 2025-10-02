@@ -718,7 +718,9 @@ def wrangle_data(raw_df, col_meta, factor_cols, weight_col, pp_desc, n_questions
                             .rename({"reverse_reverse_"+res_col:"reverse_"+res_col})
                             .with_columns(pl.col("reverse_"+res_col)/pl.col(weight_col).alias("reverse_"+res_col))
                             .with_columns(pl.col(res_col)/pl.col(weight_col).alias(res_col))
+                            .with_columns((pl.col(res_col) + pl.col("reverse_"+res_col)).alias("diff_"+res_col))
                         )
+                res_col = "diff_"+res_col #to sort by diffs
             else:  # median, min, max, etc. - ignore weight_col
                 data = (raw_df
                         .group_by(gb_dims)
