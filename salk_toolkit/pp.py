@@ -67,7 +67,7 @@ def get_cat_num_vals(res_meta,pp_desc):
     return nvals
 
 # %% ../nbs/02_pp.ipynb 9
-special_columns = ['id', 'weight', 'draw', 'training_subsample', 'original_inds', '__index_level_0__', 'group_size']
+special_columns = ['id', 'weight', 'draw', 'original_inds', '__index_level_0__', 'group_size']
 
 # %% ../nbs/02_pp.ipynb 10
 registry = {}
@@ -486,7 +486,6 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     if pp_desc['res_col'] in factor_cols: factor_cols.remove(pp_desc['res_col'])
 
     extra_cols = columns + ([ weight_col ] +
-                    (['training_subsample'] if not pp_desc.get('poststrat',True) else []) +
                     (['draw'] if plot_meta.get('draws') else []))
     cols = [ pp_desc['res_col'] ]  + factor_cols + list(pp_desc.get('filter',{}).keys())
     cols += [ c for c in extra_cols if c in all_col_names and c not in cols ]
@@ -514,10 +513,6 @@ def pp_transform_data(full_df, data_meta, pp_desc, columns=[]):
     if pp_desc.get('filter'):
         filtered_df, cols = pp_filter_data_lz(df, pp_desc.get('filter',{}), c_meta, gc_dict)
     else: filtered_df = df
-
-    # If we want to approximate original data without poststrat, filter to training subsample
-    if (not pp_desc.get('poststrat',True)) and 'training_subsample' in cols:
-        filtered_df = filtered_df.filter(pl.col('training_subsample'))
 
     # Discretize factor columns that are numeric
     for c in factor_cols:

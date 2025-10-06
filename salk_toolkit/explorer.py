@@ -305,9 +305,6 @@ with st.sidebar: #.expander("Select dimensions"):
     args['plot_args'] = {**args.get('plot_args',{}),**plot_args}
 
     with st.expander('Advanced'):
-        args['poststrat'] = st.toggle('Post-stratified?', True,key='poststrat')
-        if args['poststrat']: del args['poststrat'] # True is default, so clean the dict from it in that case
-
         detailed = st.toggle('Fine-grained filter', False,key='fine_grained')
 
         if res_cont: # Extra settings for continuous data
