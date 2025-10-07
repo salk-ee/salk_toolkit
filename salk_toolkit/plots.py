@@ -182,9 +182,7 @@ def maxdiff_manual(data, value_col='value', facets=[], val_format='%', width=800
     Only meant to be used with highest_lowest_ranked custom_row_transform.
     """
     f0, f1 = facets[0], facets[1] if len(facets)>1 else None
-
-    reverse_val_col = "Reverse " + value_col.lower()
-    has_reverse_ordinal = reverse_val_col in data.columns
+    reverse_val_col = next(filter(lambda s: value_col.lower() in s.lower() and 'reverse' in s.lower(), data.columns))
 
     if val_format[-1] == '%': # Boxplots being a compound plot, this workaround is needed for axis & tooltips to be proper
         data[value_col]*=100
@@ -199,10 +197,9 @@ def maxdiff_manual(data, value_col='value', facets=[], val_format='%', width=800
     f_cols = outer_factors+[f['col'] for f in facets[:2] if f is not None]
     # data.to_csv("tmp_data.csv",index=False)
     df = data.groupby(f_cols,observed=True)[value_col].apply(boxplot_vals,delta=(maxv-minv)/400).reset_index()
-    if has_reverse_ordinal:
-        df_reverse = data.groupby(f_cols,observed=True)[reverse_val_col].apply(boxplot_vals,delta=(maxv-minv)/400).reset_index()
-        df_reverse['mean'] = -df_reverse['mean']
-        df_reverse['kind'] = 'Least important'
+    df_reverse = data.groupby(f_cols,observed=True)[reverse_val_col].apply(boxplot_vals,delta=(maxv-minv)/400).reset_index()
+    df_reverse['mean'] = -df_reverse['mean']
+    df_reverse['kind'] = 'Least important'
 
     df['kind'] = 'Most important'
 
@@ -219,11 +216,11 @@ def maxdiff_manual(data, value_col='value', facets=[], val_format='%', width=800
         ] + tooltip[1:]
     }
 
-    df = pd.concat([df[f_cols + ['kind','mean']], df_reverse[f_cols + ['kind','mean']]], ignore_index=True, sort=False) if has_reverse_ordinal else df
+    df = pd.concat([df[f_cols + ['kind','mean']], df_reverse[f_cols + ['kind','mean']]], ignore_index=True, sort=False)
     clean_levels(df) # For test consistency
     root = alt.Chart(df).encode(**shared)
     size = 12
-    red, blue = redblue_gradient[0], redblue_gradient[-1]
+    red, blue = redblue_gradient[1], redblue_gradient[-2]
 
     return root.mark_bar(size=size).encode(
         x=alt.X('mean'),
@@ -371,9 +368,6 @@ def massplot(data, value_col='value', facets=[], filtered_size=1, val_format='%'
 # %% ../nbs/03_plots.ipynb 27
 # Make the likert bar pieces
 def make_start_end(x,value_col,cat_col,cat_order,neutral,n_negative):
-    #print("######################")
-    #print(value_col,cat_order)
-    #print(x)
     if len(x) != len(cat_order):
         shared = x.to_dict(orient='records')[0]
         # Fill in missing rows with value zero so they would just be skipped
@@ -401,7 +395,6 @@ def make_start_end(x,value_col,cat_col,cat_order,neutral,n_negative):
     x_other.loc[:,'end'] = x_other[value_col].cumsum() - x_other[:o_mid][value_col].sum()
     x_other.loc[:,'start'] = (x_other[value_col][::-1].cumsum()[::-1] - x_other[o_mid:][value_col].sum())*-1
     res = pd.concat([x_other] + x_mids).dropna(subset=[value_col]) # drop any na rows added in the filling in step
-    #print("RES",res)
     return res
 
 
@@ -756,7 +749,6 @@ def likert_aggregate(x, cat_col, cat_order, value_col):
 
     nonmid_sum = vc[cc !=  cats[mid]].sum() if odd else vc.sum()
 
-    #print(len(x),x.columns,x.head())
     pol = ( np.minimum(
                 vc[cc.isin(cats[:mid])].sum(),
                 vc[cc.isin(cats[mid+odd:])].sum()
