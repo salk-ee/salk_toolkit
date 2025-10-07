@@ -109,7 +109,6 @@ class ColumnBlockMeta(PBase):
     # Block level flags
     generated: bool = False # This block is for data that is generated, i.e. not initially in the file.
     hidden: bool = False # Use this to hide the block in explorer.py
-    virtual: bool = False # This block is virtual (i.e. just used in display. NB! Ignores all transformations on values)
 
 # %% ../nbs/06_validation.ipynb 9
 # Again, convert list to dict for easier debugging in case errors get thrown
@@ -163,10 +162,6 @@ class DataMeta(PBase):
     # Different global processing steps
     preprocessing: Optional[Union[str,List[str]]] = None # Performed on raw data
     postprocessing: Optional[Union[str,List[str]]] = None # Performed after columns and blocks have been processed
-
-    # Deprecated as this does not work well for lazy loading
-    #virtual_preprocessing: Optional[Union[str,List[str]]] = None # Same as preprocessing, but only in virtual step
-    #virtual_postprocessing: Optional[Union[str,List[str]]] = None # Same as postprocessing, but only in virtual step
 
     weight_col: Optional[str] = None # Column to use for weighting - overriden by model to population weight column
 

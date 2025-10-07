@@ -192,13 +192,13 @@ def is_series_of_lists(s):
 # Default usage with mature metafile: process_annotated_data(<metafile name>)
 # When figuring out the metafile, it can also be run as: process_annotated_data(meta=<dict>, data_file=<>)
 def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=None,
-                        return_meta=False, ignore_exclusions=False, only_fix_categories=False, return_raw=False, add_original_inds=False, virtual_pass=False):
+                        return_meta=False, ignore_exclusions=False, only_fix_categories=False, return_raw=False, add_original_inds=False):
     # Read metafile
     if meta_fname is not None:
         meta = read_json(stk_file_map.get(meta_fname,meta_fname),replace_const=False)
 
     # Print any issues with the meta without raising an error - for now
-    if not virtual_pass: soft_validate(meta,DataMeta)
+    soft_validate(meta,DataMeta)
 
     # Setup constants with a simple replacement mechanic
     constants = meta['constants'] if 'constants' in meta else {}
@@ -214,15 +214,13 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
 
     globs = {'pd':pd, 'np':np, 'sp':sp, 'stk':stk, 'df':raw_data, **einfo, **constants }
 
-    pp_key = 'preprocessing' if not virtual_pass else 'virtual_preprocessing'
-    if pp_key in meta and not only_fix_categories:
-        exec(str_from_list(meta[pp_key]),globs)
+    if 'preprocessing' in meta and not only_fix_categories:
+        exec(str_from_list(meta['preprocessing']),globs)
         raw_data = globs['df']
 
-    ndf = pd.DataFrame() if not virtual_pass else raw_data # In vitrual pass, start with the raw_data as it is already processed by normal steps
+    ndf = pd.DataFrame()
     all_cns = dict()
     for group in meta['structure']:
-        if group.get('virtual',False) != virtual_pass: continue
         if group['name'] in all_cns:
             raise Exception(f"Group name {group['name']} duplicates a column name in group {all_cns[cn]}")
         all_cns[group['name']] = group['name']
@@ -251,7 +249,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
             g_cols.append(cn)
 
             if sn not in raw_data:
-                if not group.get('generated') and not group.get('virtual'): # bypass warning for columns marked as being generated later
+                if not group.get('generated'): # bypass warning for columns marked as being generated later
                     warn(f"Column {sn} not found")
                 continue
 
@@ -316,7 +314,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
                 s = ns
 
             # Update ndf in real-time so it would be usable in transforms for next columns
-            if s.name in ndf.columns: ndf = ndf.drop(columns=s.name) # Overwrite existing instead of duplicates. Esp. important for virtual cols
+            if s.name in ndf.columns: ndf = ndf.drop(columns=s.name) # Overwrite existing instead of duplicates
             ndf = pd.concat([ndf,s],axis=1)
 
         if 'subgroup_transform' in group:
@@ -324,10 +322,9 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
             for sg in subgroups:
                 ndf[sg] = eval(group['subgroup_transform'],{ 'gdf':ndf[sg], 'df':raw_data, 'ndf':ndf, 'pd':pd, 'np':np, 'stk':stk , **constants })
 
-    pp_key = 'postprocessing' if not virtual_pass else 'virtual_postprocessing'
-    if pp_key in meta and not only_fix_categories:
+    if 'postprocessing' in meta and not only_fix_categories:
         globs['df'] = ndf
-        exec(str_from_list(meta[pp_key]),globs)
+        exec(str_from_list(meta['postprocessing']),globs)
         ndf = globs['df']
 
     # Fix categories after postprocessing
@@ -335,7 +332,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
     fix_meta_categories(meta,ndf,warnings=True)
 
     ndf['original_inds'] = np.arange(len(ndf))
-    if 'excluded' in meta and not ignore_exclusions and not virtual_pass:
+    if 'excluded' in meta and not ignore_exclusions:
         excl_inds = [ i for i,_ in meta['excluded'] ]
         ndf = ndf[~ndf['original_inds'].isin(excl_inds)]
     if not add_original_inds: ndf.drop(columns=['original_inds'],inplace=True)
@@ -353,8 +350,6 @@ def read_annotated_data(fname, infer=True, return_raw=False, return_meta=False, 
     elif ext == '.parquet':
         data, full_meta = read_parquet_with_metadata(fname)
         meta = (full_meta or {}).get('data')
-        if meta is not None and not return_raw: # Do the second, virtual pass
-            data, meta = process_annotated_data(meta=meta, raw_data=data, virtual_pass=True, return_meta=True)
 
     if meta is not None or not infer:
         return (data, meta) if return_meta else data
