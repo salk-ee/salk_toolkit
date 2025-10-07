@@ -1,6 +1,5 @@
 from re import S
 import streamlit as st
-from salk_toolkit.io import read_annotated_data
 from streamlit_dimensions import st_dimensions
 import warnings
 
@@ -85,7 +84,7 @@ with st.spinner("Loading libraries.."):
     from pandas.api.types import is_numeric_dtype
     from streamlit_js import st_js, st_js_blocking
 
-    from salk_toolkit.io import read_json, extract_column_meta, read_annotated_data_lazy
+    from salk_toolkit.io import read_json, extract_column_meta, read_parquet_with_metadata
     from salk_toolkit.pp import *
     from salk_toolkit.utils import *
     from salk_toolkit.dashboard import draw_plot_matrix, plot_matrix_html, facet_ui, filter_ui, get_plot_width, default_translate, stss_safety
@@ -170,7 +169,8 @@ if global_data_meta: st.sidebar.info('⚠️ External meta loaded.')
 def load_file(input_file):
     pl.enable_string_cache()
     ifile = paths[input_file]+input_file
-    ldf, dmeta, mmeta = read_annotated_data_lazy(ifile, return_model_meta=True)
+    ldf, full_meta = read_parquet_with_metadata(ifile,lazy=True)
+    dmeta, mmeta = full_meta['data'], full_meta['model']
     columns = ldf.collect_schema().names()
     n0 = ldf.select(pl.len()).collect().item()
     n = dmeta.get('total_size', n0) # N0 is count of rows which is a fallback for older versions

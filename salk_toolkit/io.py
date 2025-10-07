@@ -5,11 +5,10 @@
 # %% auto 0
 __all__ = ['stk_loaded_files_set', 'stk_file_map', 'max_cats', 'custom_meta_key', 'read_json', 'get_loaded_files',
            'reset_file_tracking', 'get_file_map', 'set_file_map', 'process_annotated_data', 'read_annotated_data',
-           'read_annotated_data_lazy', 'fix_df_with_meta', 'extract_column_meta', 'group_columns_dict', 'list_aliases',
-           'change_df_to_meta', 'update_meta_with_model_fields', 'replace_data_meta_in_parquet', 'fix_meta_categories',
+           'fix_df_with_meta', 'extract_column_meta', 'group_columns_dict', 'list_aliases', 'change_df_to_meta',
+           'update_meta_with_model_fields', 'replace_data_meta_in_parquet', 'fix_meta_categories',
            'fix_parquet_categories', 'infer_meta', 'data_with_inferred_meta', 'read_and_process_data',
-           'save_population_h5', 'load_population_h5', 'save_sample_h5', 'find_type_in_dict',
-           'save_parquet_with_metadata', 'load_parquet_metadata', 'load_parquet_with_metadata']
+           'find_type_in_dict', 'write_parquet_with_metadata', 'read_parquet_metadata', 'read_parquet_with_metadata']
 
 # %% ../nbs/01_io.ipynb 4
 import json, os, warnings
@@ -113,7 +112,7 @@ def read_concatenate_files_list(meta,data_file=None,path=None,**kwargs):
         if extension in ['json', 'parquet']: # Allow loading metafiles or annotated data
             if extension == 'json': warn(f"Processing {data_file}") # Print this to separate warnings for input jsons from main
             # Pass in orig_data_file here as it might loop back to this function here and we need to preserve paths
-            raw_data, meta = read_annotated_data(data_file, infer=False, **kwargs)
+            raw_data, meta = read_annotated_data(data_file, infer=False, return_meta=True, **kwargs)
             if meta is not None: metas.append(meta)
         elif extension in ['csv', 'gz']:
             raw_data = pd.read_csv(mapped_file, low_memory=False, **opts)
@@ -346,43 +345,25 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
 # %% ../nbs/01_io.ipynb 12
 # Read either a json annotation and process the data, or a processed parquet with the annotation attached
 # Return_raw is here for easier debugging of metafiles and is not meant to be used in production
-def read_annotated_data(fname, infer=True, return_raw=False, return_model_meta=False, **kwargs):
+def read_annotated_data(fname, infer=True, return_raw=False, return_meta=False, **kwargs):
     _, ext = os.path.splitext(fname)
-    meta, model_meta = None, None
+    meta = None
     if ext == '.json':
         data, meta =  process_annotated_data(fname, return_meta=True, return_raw=return_raw, **kwargs)
     elif ext == '.parquet':
-        data, full_meta = load_parquet_with_metadata(fname)
-        if full_meta is not None:
-            meta, model_meta = full_meta.get('data'), full_meta.get('model')
-            if meta is not None and not return_raw: # Do the second, virtual pass
-                data, meta = process_annotated_data(meta=meta, raw_data=data, virtual_pass=True, return_meta=True)
+        data, full_meta = read_parquet_with_metadata(fname)
+        meta = (full_meta or {}).get('data')
+        if meta is not None and not return_raw: # Do the second, virtual pass
+            data, meta = process_annotated_data(meta=meta, raw_data=data, virtual_pass=True, return_meta=True)
 
-    mm = (model_meta,) if return_model_meta else tuple()
     if meta is not None or not infer:
-        return (data, meta) + mm
-
-    warn(f"Warning: using inferred meta for {fname}")
-    meta = infer_meta(fname,meta_file=False)
-    return process_annotated_data(data_file=fname, meta=meta, return_meta=True) + mm
-
-# Return a lazy polars dataframe instead of a pandas one
-# NB! Only does actual lazy loading if the file is a parquet file
-
-
-def read_annotated_data_lazy(fname,return_model_meta=False):
-    if fname.endswith('.parquet'):
-        ldf, full_meta = load_parquet_with_metadata(fname,lazy=True)
+        return (data, meta) if return_meta else data
     else:
-        full_df, dmeta, mmeta = read_annotated_data(fname, return_model_meta=True)
-        ldf = pl.from_pandas(full_df).lazy()
-
-    if return_model_meta: return (ldf, full_meta['data'], full_meta['model'])
-    else: return (ldf, full_meta['data'])
+        warn(f"Warning: using inferred meta for {fname}")
+        meta = infer_meta(fname,meta_file=False)
+        return process_annotated_data(data_file=fname, meta=meta, return_meta=return_meta)
 
 # Fix df dtypes etc using meta - needed after a lazy load
-
-
 def fix_df_with_meta(df, dmeta):
     cmeta = extract_column_meta(dmeta)
     for c in df.columns:
@@ -536,7 +517,7 @@ def update_meta_with_model_fields(meta, donor):
 
 
 def replace_data_meta_in_parquet(parquet_name,metafile_name,advanced=True):
-    df, meta = load_parquet_with_metadata(parquet_name)
+    df, meta = read_parquet_with_metadata(parquet_name)
 
     ometa = meta['data']
     nmeta = read_json(metafile_name, replace_const=True)
@@ -552,7 +533,7 @@ def replace_data_meta_in_parquet(parquet_name,metafile_name,advanced=True):
     meta['original_data'] = meta.get('original_data',meta['data'])
     meta['data'] = nmeta
 
-    save_parquet_with_metadata(df,meta,parquet_name)
+    write_parquet_with_metadata(df,meta,parquet_name)
 
     return df, meta
 
@@ -592,9 +573,9 @@ def fix_meta_categories(data_meta, df, infers_only=False, warnings=True):
 
 
 def fix_parquet_categories(parquet_name):
-    df, meta = load_parquet_with_metadata(parquet_name)
+    df, meta = read_parquet_with_metadata(parquet_name)
     meta['data'] = fix_meta_categories(meta['data'],df,infers_only=False)
-    save_parquet_with_metadata(df,meta,parquet_name)
+    write_parquet_with_metadata(df,meta,parquet_name)
 
 # %% ../nbs/01_io.ipynb 19
 def is_categorical(col):
@@ -769,59 +750,6 @@ def read_and_process_data(desc, return_meta=False, constants={}, skip_postproces
     return (df, meta) if return_meta else df
 
 # %% ../nbs/01_io.ipynb 25
-def save_population_h5(fname,pdf):
-    hdf = pd.HDFStore(fname,complevel=9, complib='zlib')
-    hdf.put('population',pdf,format='table')
-    hdf.close()
-
-
-def load_population_h5(fname):
-    hdf =  pd.HDFStore(fname, mode='r')
-    res = hdf['population'].copy()
-    hdf.close()
-    return res
-
-# %% ../nbs/01_io.ipynb 26
-def save_sample_h5(fname,trace,COORDS = None, filter_df = None):
-    odims = [d for d in trace.predictions.dims if d not in ['chain','draw','obs_idx']]
-
-    if COORDS is None: # Recover them from trace (requires posterior be saved in same trace)
-        inds = trace.posterior.indexes
-        coords = { t: list(inds[t]) for t in inds if t not in ['chain','draw'] and '_dim_' not in t}
-        COORDS = { 'immutable': coords, 'mutable': ['obs_idx'] }
-
-    if filter_df is None: # Recover filter dimensions and data from trace (works only for GLMs)
-        rmdims = odims + list({'time','unit','combined_inputs'} & set(trace.predictions_constant_data.dims))
-        df = trace.predictions_constant_data.drop_dims(rmdims).to_dataframe()#.set_index(demographics_order).indexb
-        df.columns = [ s.removesuffix('_id') for s in df.columns]
-        df.drop(columns=[c for c in df.columns if c[:4]=='obs_'],inplace=True)
-
-        for d in df.columns:
-            if d in COORDS['immutable']:
-                fs = COORDS['immutable'][d]
-                df[d] = pd.Categorical(df[d].replace(dict(enumerate(fs))),fs)
-                if d in orders: df[d] = pd.Categorical(df[d],orders[d],ordered=True)
-        filter_df = df
-
-    chains, draws = trace.predictions.dims['chain'], trace.predictions.dims['draw']
-    dinds = np.array(list(it.product( range(chains), range(draws), list(filter_df.index)))).reshape( (-1, 3) )
-
-    res_dfs = { 'filter': filter_df }
-    for odim in odims:
-        response_cols = list(np.array(trace.predictions[odim]))
-        xdf = pd.DataFrame(np.concatenate( (
-            dinds,
-            np.array(trace.predictions['y_'+odim]).reshape( ( -1,len(response_cols) ) )
-            ), axis=-1), columns = ['chain', 'draw', 'obs_idx'] + response_cols)
-        res_dfs[odim] = postprocess_rdf(xdf,odim)
-
-    # Save dfs as hdf5
-    hdf = pd.HDFStore(fname,complevel=9, complib='zlib')
-    for k,vdf in res_dfs.items():
-        hdf.put(k,vdf,format='table')
-    hdf.close()
-
-# %% ../nbs/01_io.ipynb 27
 # Small debug tool to help find where jsons become non-serializable
 def find_type_in_dict(d,dtype,path=''):
     print(d,path)
@@ -834,13 +762,12 @@ def find_type_in_dict(d,dtype,path=''):
     elif isinstance(d,dtype):
         raise Exception(f"Value {d} of type {dtype} found at {path}")
 
-# %% ../nbs/01_io.ipynb 28
+# %% ../nbs/01_io.ipynb 26
 # These two very helpful functions are borrowed from https://towardsdatascience.com/saving-metadata-with-dataframes-71f51f558d8e
 
 custom_meta_key = 'salk-toolkit-meta'
 
-
-def save_parquet_with_metadata(df, meta, file_name):
+def write_parquet_with_metadata(df, meta, file_name):
     table = pa.Table.from_pandas(df)
 
     #find_type_in_dict(meta,np.int64)
@@ -856,9 +783,7 @@ def save_parquet_with_metadata(df, meta, file_name):
     pq.write_table(table, file_name, compression='ZSTD')
 
 # Just load the metadata from the parquet file
-
-
-def load_parquet_metadata(file_name):
+def read_parquet_metadata(file_name):
     schema = pq.read_schema(file_name)
     if custom_meta_key.encode() in schema.metadata:
         restored_meta_json = schema.metadata[custom_meta_key.encode()]
@@ -869,9 +794,9 @@ def load_parquet_metadata(file_name):
 # Load parquet with metadata
 
 
-def load_parquet_with_metadata(file_name,lazy=False,**kwargs):
+def read_parquet_with_metadata(file_name,lazy=False,**kwargs):
     if lazy: # Load it as a polars lazy dataframe
-        meta = load_parquet_metadata(file_name)
+        meta = read_parquet_metadata(file_name)
         ldf = pl.scan_parquet(file_name,**kwargs)
         return ldf, meta
 

@@ -14,13 +14,12 @@ from pathlib import Path
 from salk_toolkit.io import (
     read_annotated_data, 
     read_and_process_data,
-    save_parquet_with_metadata,
+    write_parquet_with_metadata,
     reset_file_tracking,
     get_loaded_files,
     extract_column_meta,
     group_columns_dict,
-    replace_data_meta_in_parquet,
-    load_parquet_with_metadata
+    replace_data_meta_in_parquet
 )
 
 # Global test directory and CSV file path
@@ -88,7 +87,7 @@ class TestReadAnnotatedData:
         }
         write_json(meta_file, meta)
         
-        df, meta_result = read_annotated_data(str(meta_file), return_raw=False)
+        df = read_annotated_data(str(meta_file), return_raw=False)
         
         assert len(df) == 5
         assert 'id' in df.columns
@@ -115,11 +114,11 @@ class TestReadAnnotatedData:
         write_json(meta_file, meta)
         
         # Test return_raw=True (should return raw data before processing)
-        raw_df, meta_result = read_annotated_data(str(meta_file), return_raw=True)
+        raw_df = read_annotated_data(str(meta_file), return_raw=True)
         assert 'High' in raw_df['score'].values  # Original values
         
         # Test return_raw=False (should return processed data)
-        processed_df, meta_result = read_annotated_data(str(meta_file), return_raw=False)
+        processed_df = read_annotated_data(str(meta_file), return_raw=False)
         assert 'Good' in processed_df['score'].values  # Translated values
     
     def test_parquet_file_loading(self, temp_dir, sample_csv_data):
@@ -135,20 +134,19 @@ class TestReadAnnotatedData:
             "model": {"test_model": "info"}
         }
         
-        save_parquet_with_metadata(sample_csv_data, meta, str(parquet_file))
+        write_parquet_with_metadata(sample_csv_data, meta, str(parquet_file))
         
-        df, data_meta, model_meta = read_annotated_data(str(parquet_file), return_model_meta=True)
+        df, data_meta = read_annotated_data(str(parquet_file), return_meta=True)
         
         assert len(df) == 5
         assert data_meta is not None
-        assert model_meta is not None
-        assert model_meta["test_model"] == "info"
-    
+        assert data_meta == meta['data']
+
     def test_meta_inference(self, csv_file, sample_csv_data):
         """Test automatic meta inference when no meta exists"""
         sample_csv_data.to_csv_file(csv_file)
         
-        df, meta = read_annotated_data(str(csv_file), infer=True)
+        df, meta = read_annotated_data(str(csv_file), return_meta=True, infer=True)
         
         assert len(df) == 5
         assert meta is not None
@@ -180,7 +178,7 @@ class TestColumnTransformations:
         }
         write_json(meta_file, meta)
         
-        df, _ = read_annotated_data(str(meta_file))
+        df = read_annotated_data(str(meta_file))
         
         assert 'Active' in df['status'].values
         assert 'Blocked' in df['status'].values
@@ -206,7 +204,7 @@ class TestColumnTransformations:
         }
         write_json(meta_file, meta)
         
-        df, _ = read_annotated_data(str(meta_file))
+        df = read_annotated_data(str(meta_file))
         assert df['doubled_value'].tolist() == [20, 40, 60, 80, 100]
     
     def test_translate_after_transformation(self, csv_file, meta_file):
@@ -232,7 +230,7 @@ class TestColumnTransformations:
         }
         write_json(meta_file, meta)
         
-        df, _ = read_annotated_data(str(meta_file))
+        df = read_annotated_data(str(meta_file))
         
         assert 'Low' in df['category'].values
         assert 'Medium' in df['category'].values
@@ -257,7 +255,7 @@ class TestColumnTransformations:
         }
         write_json(meta_file, meta)
         
-        df, _ = read_annotated_data(str(meta_file))
+        df = read_annotated_data(str(meta_file))
         assert pd.api.types.is_datetime64_any_dtype(df['date'])
     
     def test_continuous_transformation(self, csv_file, meta_file):
@@ -279,7 +277,7 @@ class TestColumnTransformations:
         }
         write_json(meta_file, meta)
         
-        df, _ = read_annotated_data(str(meta_file))
+        df = read_annotated_data(str(meta_file))
         
         assert pd.api.types.is_numeric_dtype(df['value'])
         assert df['value'].tolist() == [10.5, 20.3, 30.7]
@@ -306,7 +304,7 @@ class TestCategoricalFeatures:
         }
         write_json(meta_file, meta)
         
-        df, result_meta = read_annotated_data(str(meta_file))
+        df, result_meta = read_annotated_data(str(meta_file), return_meta=True)
         
         assert df['status'].dtype.name == 'category'
         # Check that categories were inferred and stored in meta
@@ -343,7 +341,7 @@ class TestCategoricalFeatures:
         }
         write_json(meta_file, meta)
         
-        df, _ = read_annotated_data(str(meta_file))
+        df = read_annotated_data(str(meta_file))
         
         assert df['rating'].dtype.name == 'category'
         assert df['rating'].dtype.ordered == True
@@ -368,7 +366,7 @@ class TestCategoricalFeatures:
         }
         write_json(meta_file, meta)
         
-        df, _ = read_annotated_data(str(meta_file))
+        df = read_annotated_data(str(meta_file))
         
         # Should map to nearest categories
         expected_mapping = ['1', '3', '5', '1', '3']  # 1.1->1, 2.9->3, 4.8->5, 1.2->1, 3.1->3
@@ -399,7 +397,7 @@ class TestAdvancedFeatures:
         }
         write_json(meta_file, meta)
         
-        df, _ = read_annotated_data(str(meta_file))
+        df = read_annotated_data(str(meta_file))
         
         assert 'Alpha' in df['code'].values
         assert 'Beta' in df['code'].values
@@ -420,7 +418,7 @@ class TestAdvancedFeatures:
         }
         write_json(meta_file, meta)
         
-        df, _ = read_annotated_data(str(meta_file))
+        df = read_annotated_data(str(meta_file))
         assert df['doubled'].tolist() == [2, 4, 6]
         assert df['upper'].tolist() == ['A', 'B', 'C']
         assert df['combined'].tolist() == ['2A', '4B', '6C']
@@ -443,7 +441,7 @@ class TestAdvancedFeatures:
         }
         write_json(meta_file, meta)
         
-        df, result_meta = read_annotated_data(str(meta_file))
+        df, result_meta = read_annotated_data(str(meta_file), return_meta=True)
         # Data should still be categorical
         assert df['rating_num'].tolist() == ['Poor', 'Good', 'Excellent']
         assert df['rating_num'].dtype.name == 'category'
@@ -468,7 +466,7 @@ class TestAdvancedFeatures:
         }
         write_json(meta_file, meta)
         
-        df, result_meta = read_annotated_data(str(meta_file))
+        df, result_meta = read_annotated_data(str(meta_file), return_meta=True)
         # Verify colors are preserved in metadata using extract_column_meta
         column_meta = extract_column_meta(result_meta)
         assert column_meta['party']['colors'] == {"A": "red", "B": "blue", "C": "green"}
@@ -493,7 +491,7 @@ class TestAdvancedFeatures:
         }
         write_json(meta_file, meta)
         
-        df, result_meta = read_annotated_data(str(meta_file))
+        df, result_meta = read_annotated_data(str(meta_file), return_meta=True)
         # Verify groups are preserved using extract_column_meta
         column_meta = extract_column_meta(result_meta)
         assert column_meta['category']['groups'] == {"main": ["A", "B", "C"]}
@@ -519,7 +517,7 @@ class TestAdvancedFeatures:
         }
         write_json(meta_file, meta)
         
-        df, result_meta = read_annotated_data(str(meta_file))
+        df, result_meta = read_annotated_data(str(meta_file), return_meta=True)
         # Data should still be loaded
         assert 'hidden' in df.columns
         # But metadata should preserve hidden flag
@@ -542,7 +540,7 @@ class TestAdvancedFeatures:
         }
         write_json(meta_file, meta)
         
-        df, result_meta = read_annotated_data(str(meta_file))
+        df, result_meta = read_annotated_data(str(meta_file), return_meta=True)
         # Verify label is preserved
         question_col = next(col for group in result_meta['structure'] for col in group['columns'] if isinstance(col, list) and col[0] == 'question')
         assert question_col[-1]['label'] == "Do you agree with this statement?"
@@ -566,7 +564,7 @@ class TestAdvancedFeatures:
         }
         write_json(meta_file, meta)
         
-        df, result_meta = read_annotated_data(str(meta_file))
+        df, result_meta = read_annotated_data(str(meta_file), return_meta=True)
         assert df['response'].dtype.ordered == True
         # Verify all metadata is preserved
         resp_col = next(col for group in result_meta['structure'] for col in group['columns'] if isinstance(col, list) and col[0] == 'response')
@@ -592,7 +590,7 @@ class TestAdvancedFeatures:
         }
         write_json(meta_file, meta)
         
-        df, _ = read_annotated_data(str(meta_file))
+        df = read_annotated_data(str(meta_file))
         
         assert 'computed' in df.columns
         assert df['computed'].tolist() == [2, 4, 6, 8, 10]
@@ -611,7 +609,7 @@ class TestAdvancedFeatures:
         }
         write_json(meta_file, meta)
         
-        df, _ = read_annotated_data(str(meta_file))
+        df = read_annotated_data(str(meta_file))
         
         assert 'final' in df.columns
         assert df['final'].tolist() == [101, 102, 103, 104, 105]
@@ -633,7 +631,7 @@ class TestAdvancedFeatures:
         }
         write_json(meta_file, meta)
         
-        df, _ = read_annotated_data(str(meta_file))
+        df = read_annotated_data(str(meta_file))
         
         # Should have 3 rows (original 5 minus 2 excluded)
         assert len(df) == 3
@@ -655,7 +653,7 @@ class TestAdvancedFeatures:
         }
         write_json(meta_file, meta)
         
-        df, _ = read_annotated_data(str(meta_file), ignore_exclusions=True)
+        df = read_annotated_data(str(meta_file), ignore_exclusions=True)
         
         # Should have all 5 rows when ignoring exclusions
         assert len(df) == 5
@@ -681,7 +679,7 @@ class TestAdvancedFeatures:
         }
         write_json(meta_file, meta)
         
-        df, result_meta = read_annotated_data(str(meta_file))
+        df, result_meta = read_annotated_data(str(meta_file), return_meta=True)
         
         assert 'survey_q1' in df.columns
         assert 'survey_q2' in df.columns
@@ -717,7 +715,7 @@ class TestAdvancedFeatures:
         }
         write_json(meta_file, meta)
         
-        df, _ = read_annotated_data(str(meta_file))
+        df = read_annotated_data(str(meta_file))
         
         assert df['a'].tolist() == [11, 12, 13]
         assert df['b'].tolist() == [14, 15, 16]
@@ -752,7 +750,7 @@ class TestMultipleFiles:
         }
         write_json(meta_file, meta)
         
-        df, _ = read_annotated_data(str(meta_file))
+        df = read_annotated_data(str(meta_file))
         
         assert len(df) == 4
         assert set(df['source'].values) == {'file1', 'file2'}
@@ -778,7 +776,7 @@ class TestMultipleFiles:
         }
         write_json(meta_file, meta)
         
-        df, _ = read_annotated_data(str(meta_file))
+        df = read_annotated_data(str(meta_file))
         
         assert len(df) == 4
         assert 'wave' in df.columns
@@ -1205,7 +1203,7 @@ class TestReplaceDataMetaInParquet:
             "model": {"version": "1.0"}
         }
         
-        save_parquet_with_metadata(df, original_meta, str(parquet_file))
+        write_parquet_with_metadata(df, original_meta, str(parquet_file))
         
         # New metadata with multiple changes: ordered flags, metadata additions, category reordering
         new_meta = {
@@ -1275,7 +1273,7 @@ class TestReplaceDataMetaInParquet:
             }
         }
         
-        save_parquet_with_metadata(df, original_meta, str(parquet_file))
+        write_parquet_with_metadata(df, original_meta, str(parquet_file))
         
         # Test case: Should work - X,Y,Z are raw values
         new_meta = {

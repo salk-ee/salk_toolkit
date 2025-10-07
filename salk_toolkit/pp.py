@@ -28,7 +28,7 @@ from typing import List, Tuple, Dict, Union, Optional
 import altair as alt
 
 from salk_toolkit.utils import *
-from salk_toolkit.io import load_parquet_with_metadata, extract_column_meta, group_columns_dict, list_aliases, read_annotated_data, read_json, read_annotated_data_lazy
+from salk_toolkit.io import extract_column_meta, group_columns_dict, list_aliases, read_parquet_with_metadata
 
 # %% ../nbs/02_pp.ipynb 6
 # Augment each draw with bootstrap data from across whole population to make sure there are at least <threshold> samples
@@ -1086,7 +1086,9 @@ def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, h
         raise Exception('If data provided as full_df then data_meta must also be given')
 
     if full_df is None:
-        full_df, dm = read_annotated_data_lazy(data_file)
+
+        full_df, full_meta = read_parquet_with_metadata(data_file,lazy=True)
+        dm = full_meta['data']
         if data_meta is None: data_meta = dm
 
     pp_desc = pp_desc.copy()
