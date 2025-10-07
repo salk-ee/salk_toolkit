@@ -6,12 +6,12 @@
     "data-normalized": [
       {
         "kind": "Least important",
-        "mean": -54.114,
+        "mean": -54.114000000000004,
         "question": "EKRE"
       },
       {
         "kind": "Least important",
-        "mean": -15.190500000000002,
+        "mean": -15.190499999999997,
         "question": "Eesti 200"
       },
       {
@@ -21,22 +21,22 @@
       },
       {
         "kind": "Least important",
-        "mean": -10.694499999999996,
+        "mean": -10.6945,
         "question": "Keskerakond"
       },
       {
         "kind": "Least important",
-        "mean": -23.281499999999998,
+        "mean": -23.2815,
         "question": "Parempoolsed"
       },
       {
         "kind": "Least important",
-        "mean": -27.929000000000006,
+        "mean": -27.929000000000002,
         "question": "Reformierakond"
       },
       {
         "kind": "Least important",
-        "mean": -20.426499999999997,
+        "mean": -20.4265,
         "question": "Rohelised"
       },
       {
@@ -46,17 +46,17 @@
       },
       {
         "kind": "Most important",
-        "mean": 19.325,
+        "mean": 19.325000000000003,
         "question": "EKRE"
       },
       {
         "kind": "Most important",
-        "mean": 23.579499999999992,
+        "mean": 23.5795,
         "question": "Eesti 200"
       },
       {
         "kind": "Most important",
-        "mean": 13.765999999999996,
+        "mean": 13.766000000000002,
         "question": "Isamaa"
       },
       {
@@ -81,7 +81,7 @@
       },
       {
         "kind": "Most important",
-        "mean": 14.9385,
+        "mean": 14.938500000000001,
         "question": "SDE"
       }
     ]
@@ -124,14 +124,14 @@
     "y": {
       "field": "question",
       "sort": [
-        "Keskerakond",
         "EKRE",
         "Reformierakond",
-        "Isamaa",
-        "SDE",
-        "Rohelised",
         "Eesti 200",
-        "Parempoolsed"
+        "Parempoolsed",
+        "Keskerakond",
+        "Rohelised",
+        "SDE",
+        "Isamaa"
       ],
       "title": null,
       "type": "nominal"

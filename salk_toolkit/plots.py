@@ -182,12 +182,6 @@ def maxdiff_manual(data, value_col='value', facets=[], val_format='%', width=800
     Only meant to be used with highest_lowest_ranked custom_row_transform.
     """
     f0, f1 = facets[0], facets[1] if len(facets)>1 else None
-
-    #value col needed to be difference for ordering before calling this fun
-    #messy because sometimes camelcase sometimes snake in colnames
-    diff_col = value_col
-    value_col = value_col.lower().replace('diff_','').replace('diff ','')
-    value_col = next(filter(lambda s: value_col == (s.lower()), data.columns))
     reverse_val_col = next(filter(lambda s: value_col.lower() in s.lower() and 'reverse' in s.lower(), data.columns))
 
     if val_format[-1] == '%': # Boxplots being a compound plot, this workaround is needed for axis & tooltips to be proper
