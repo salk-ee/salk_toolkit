@@ -326,7 +326,9 @@ def coalition_applet(data, mandates, electoral_system, value_col='value', facets
         rule = alt.Chart(pd.DataFrame({'x': [n]})).mark_rule(color='silver', size=1.25, strokeDash=[5, 2]).encode(x='x')
         col2.altair_chart((k_plot+rule).configure_view(strokeWidth=0), use_container_width=True)
 
-        col2.write(tf("Probability of at least  **{0:.0f}** mandates: **{1:.1%}**").format(n, cdf[cdf['mandates'] >= n]['count'].sum()/cdf['count'].sum()))
+        threshold_prob = float(cdf[cdf['mandates'] >= n]['count'].sum()/cdf['count'].sum())
+
+        col2.write(unescape_vega_label(tf("Probability of at least  **{0}** mandates: **{1:.1%}**")).format(n, threshold_prob))
         #col3.write('Distributsiooni mediaan: **{:d}**'.format(int((d_dist[koalitsioon].sum(1)).median())))
         #m, l, h = hdi(sim_data['riigikogu'][koalitsioon], 0.9)
         #col2.write('Distributsiooni mediaan on **{:.0f}** mandaati. 90% tõenäosusega jääb mandaatide arv **{:.0f}** ning **{:.0f}** vahele.'.format(m, l, h))
