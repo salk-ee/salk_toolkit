@@ -67,7 +67,7 @@ def get_cat_num_vals(res_meta,pp_desc):
     return nvals
 
 # %% ../nbs/02_pp.ipynb 9
-special_columns = ['id', 'weight', 'draw', 'original_inds', '__index_level_0__', 'group_size']
+special_columns = ['id', 'weight', 'draw', 'original_inds', '__index_level_0__', 'group_size', 'ordering_value']
 
 # %% ../nbs/02_pp.ipynb 10
 registry = {}
@@ -307,14 +307,17 @@ def avg_rank(ovs):
 def highest_ranked(ovs):
     return (ovs == np.max(ovs,axis=1)[:,None]).astype('int')
 
+
 def lowest_ranked(ovs):
     return (ovs == np.min(ovs,axis=1)[:,None]).astype('int')
+
 
 def highest_lowest_ranked(ovs):
     r"""
     Let ovs == 1 denote the highest ranked option and -1 denote the lowest ranked option.
     """
     return highest_ranked(ovs) - lowest_ranked(ovs)
+
 
 def lowest_ranked(ovs):
     return (ovs == np.min(ovs,axis=1)[:,None]).astype('int')
@@ -329,6 +332,7 @@ def highest_lowest_ranked(ovs):
 
 def topk_ranked(ovs,k=3): # Todo: make this k changeable with pp_desc
     return (np.argsort(np.argsort(ovs,axis=1),axis=1)>=ovs.shape[1]-k)
+
 
 def win_against_random_field(ovs, opponents=12):
     p = np.argsort(np.argsort(ovs,axis=1),axis=1)/ovs.shape[1]
@@ -718,6 +722,7 @@ def wrangle_data(raw_df, col_meta, factor_cols, weight_col, pp_desc, n_questions
                             .rename({"reverse_reverse_"+res_col:"reverse_"+res_col})
                             .with_columns(pl.col("reverse_"+res_col)/pl.col(weight_col).alias("reverse_"+res_col))
                             .with_columns(pl.col(res_col)/pl.col(weight_col).alias(res_col))
+                            .with_columns((pl.col(res_col) + pl.col("reverse_"+res_col)).alias("ordering_value"))
                         )
             else:  # median, min, max, etc. - ignore weight_col
                 data = (raw_df
@@ -913,6 +918,11 @@ def create_plot(pparams, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=F
                 ordervals = data.groupby(cn,observed=True)[pparams['value_col']].mean()
             order = ordervals.sort_values(ascending=ascending).index
             data[cn] = pd.Categorical(data[cn],list(order))
+    elif 'ordering_value' in data.columns and pp_desc.get('plot') == 'maxdiff':
+        if pp_desc.get('factor_cols'):
+            q = pp_desc['factor_cols'][0]
+            order = data.groupby(q,observed=True)['ordering_value'].mean().sort_values(ascending=False).index
+            data[q] = pd.Categorical(data[q],list(order))
 
     # Handle internal facets (and translate as needed)
     pparams['facets'] = []
