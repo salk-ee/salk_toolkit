@@ -356,12 +356,12 @@ class TestPlots:
     def test_max_diff(self, recompute):
         """Test max_diff plot."""
         config = {
-            'factor_cols': ['question'],
-            'filter': {},
-            'internal_facet': True,
-            'plot': 'maxdiff',
-            'plot_args': {},
-            'res_col': 'thermometer'
+                'factor_cols': ['question'],
+                'filter': {},
+                'internal_facet': True,
+                'plot': 'maxdiff',
+                'plot_args': {},
+                'res_col': 'thermometer'
         }
         self._run_plot_test("test_maxdiff", config, recompute=recompute, float_tolerance=3e-2)
 
