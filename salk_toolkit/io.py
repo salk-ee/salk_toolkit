@@ -4,7 +4,8 @@
 
 # %% auto 0
 __all__ = ['stk_loaded_files_set', 'stk_file_map', 'max_cats', 'custom_meta_key', 'read_json', 'get_loaded_files',
-           'reset_file_tracking', 'get_file_map', 'set_file_map', 'process_annotated_data', 'read_annotated_data',
+           'reset_file_tracking', 'get_file_map', 'set_file_map', 'create_new_columns_and_meta', 'has_create_block',
+           'add_topk_structure', 'create_topk_dataframe', 'process_annotated_data', 'read_annotated_data',
            'fix_df_with_meta', 'extract_column_meta', 'group_columns_dict', 'list_aliases', 'change_df_to_meta',
            'update_meta_with_model_fields', 'replace_data_meta_in_parquet', 'fix_meta_categories',
            'fix_parquet_categories', 'infer_meta', 'data_with_inferred_meta', 'read_and_process_data',
@@ -15,6 +16,7 @@ import json, os, warnings
 import itertools as it
 from collections import defaultdict
 from collections.abc import Iterable
+import re
 
 import numpy as np
 import pandas as pd
@@ -29,7 +31,7 @@ import pyarrow.parquet as pq
 import pyreadstat
 
 import salk_toolkit as stk
-from salk_toolkit.utils import replace_constants, is_datetime, warn, cached_fn
+from salk_toolkit.utils import replace_constants, is_datetime, warn, cached_fn, read_yaml
 from salk_toolkit.validation import DataMeta, DataDescription, soft_validate
 
 # %% ../nbs/01_io.ipynb 5
@@ -109,7 +111,8 @@ def read_concatenate_files_list(meta,data_file=None,path=None,**kwargs):
         mapped_file = stk_file_map.get(data_file,data_file)
 
         extension = os.path.splitext(data_file)[1][1:].lower()
-        if extension in ['json', 'parquet']: # Allow loading metafiles or annotated data
+        # if extension in ['json', 'parquet']: # Allow loading metafiles or annotated data
+        if extension in ['json', 'parquet', 'yaml']: # Allow loading metafiles or annotated data
             if extension == 'json': warn(f"Processing {data_file}") # Print this to separate warnings for input jsons from main
             # Pass in orig_data_file here as it might loop back to this function here and we need to preserve paths
             raw_data, meta = read_annotated_data(data_file, infer=False, return_meta=True, **kwargs)
@@ -189,13 +192,82 @@ def is_series_of_lists(s):
     return isinstance(s_rep,list) or isinstance(s_rep,np.ndarray)
 
 # %% ../nbs/01_io.ipynb 11
+def create_new_columns_and_meta(df,structure):
+    dfas, das = [], []
+    for dict_with_create in filter(lambda s: 'create' in s.keys(), structure):
+        if dict_with_create['create']['type'] == 'topk':
+            topk_meta, df_topk_cols = add_topk_structure(df,dict_with_create)
+            das.append(topk_meta)
+            dfas.append(df_topk_cols)
+        elif dict_with_create['create']['type'] == 'maxdiff':
+            raise NotImplementedError("Maxdiff not implemented yet")
+        else:
+            raise ValueError(f"Create block {dict_with_create['type']} not supported")
+    return zip(dfas, das)
+
+def has_create_block(structure):
+    return any(filter(lambda s: 'create' in s.keys(), structure))
+
+def add_topk_structure(df, dict_with_create):
+    print(f"create {dict_with_create['create']}")
+    create = dict_with_create['create']
+    r = re.compile(create['from_columns'])
+    from_cols = list(filter(lambda s: r.match(s), df.columns))
+    res_cols_prefix = create.get('res_cols_prefix', '')
+    k = int(create['k']) if create['k'] != 'max' else -1
+    na_vals = create.get('na_val', [])
+    has_groups = len(r.match(from_cols[0]).groups())>1
+    if has_groups:
+        groups = np.unique(list(map(lambda s: r.match(s).group(1), from_cols)))
+        print("groups ", groups)
+        groups = [[col for col in from_cols if r.match(col).group(1)==g] for g in groups]
+        print("groups2 ", groups)
+    else:
+        groups = [from_cols]
+        print("groups3 ", groups)
+    print("groups ", groups)
+    dfa = create_topk_dataframe(df, from_cols, res_cols_prefix, k, na_vals)
+    scale = create.get('scale', {})
+    da = {'name': 'issue_importance_raw2', 'scale': scale, 'columns': dfa.columns.tolist()}
+    created_model = {"name": "imp_top3", "structure": [[["A9_R1", "A9_R2", "A9_R3"], None]], "ordered": False}
+    return da, dfa
+
+def create_topk_dataframe(df, from_cols, res_cols_prefix, k, na_vals):
+    def pad(l,k): 
+        return np.pad(
+            l[:k], (0, max(0,k-len(l))), 
+            mode='constant', 
+            constant_values=None
+            )
+    def get_mentioned_columns(tuples):
+        """Pad with Nones until the length of from_cols, remove cols later"""
+        return pad([t[0] for t in tuples if t[1] not in na_vals],len(from_cols))
+    dfa = df.loc[:,from_cols].copy(deep=True)
+    mat = dfa.apply(lambda s: get_mentioned_columns(s.items()),axis=1)
+    mat = np.vstack(mat)
+    min_nones = min(map(lambda s: sum(map(lambda s: s is None, s)), mat))
+    max_mentioned = len(from_cols) - min_nones
+    no_new_cols = min(k,max_mentioned)
+    mat = mat[:,:no_new_cols]
+    print("mat shape ", mat.shape)
+    df = pd.DataFrame(
+        mat,index=dfa.index,
+        columns=[f'{res_cols_prefix}{i+1}' for i in range(no_new_cols)]
+        )
+    print(f"df shape {df.shape} {df.columns}")
+    return df
+
+# %% ../nbs/01_io.ipynb 12
 # Default usage with mature metafile: process_annotated_data(<metafile name>)
 # When figuring out the metafile, it can also be run as: process_annotated_data(meta=<dict>, data_file=<>)
 def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=None,
                         return_meta=False, ignore_exclusions=False, only_fix_categories=False, return_raw=False, add_original_inds=False):
     # Read metafile
-    if meta_fname is not None:
-        meta = read_json(stk_file_map.get(meta_fname,meta_fname),replace_const=False)
+    if meta_fname is not None and os.path.splitext(meta_fname)[1] == '.yaml':
+        meta = read_yaml(stk_file_map.get(meta_fname,meta_fname))
+        print("here0")
+    elif meta_fname is not None:
+        meta = read_json(stk_file_map.get(meta_fname,meta_fname))
 
     # Print any issues with the meta without raising an error - for now
     soft_validate(meta,DataMeta)
@@ -214,9 +286,18 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
 
     globs = {'pd':pd, 'np':np, 'sp':sp, 'stk':stk, 'df':raw_data, **einfo, **constants }
 
-    if 'preprocessing' in meta and not only_fix_categories:
-        exec(str_from_list(meta['preprocessing']),globs)
-        raw_data = globs['df']
+    # if 'preprocessing' in meta and not only_fix_categories:
+    #     exec(str_from_list(meta['preprocessing']),globs)
+    #     raw_data = globs['df']
+
+    if has_create_block(meta.get('structure',[])) and globs.get('df',None) is not None:
+        globs['df'].to_csv('globs_df.csv', index=False)
+        df, structure = globs['df'], meta.get('structure',[])
+        for df_new, new_meta in create_new_columns_and_meta(df, structure):
+            print(f"Appending new columns {df_new.columns} to dataframe and new meta to meta: {new_meta}")
+            meta['structure'].append(new_meta)
+            globs['df'] = pd.concat([globs['df'], df_new], axis=1)
+            raw_data = globs['df']
 
     ndf = pd.DataFrame()
     all_cns = dict()
@@ -339,13 +420,14 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
 
     return (ndf, meta) if return_meta else ndf
 
-# %% ../nbs/01_io.ipynb 12
+# %% ../nbs/01_io.ipynb 13
 # Read either a json annotation and process the data, or a processed parquet with the annotation attached
 # Return_raw is here for easier debugging of metafiles and is not meant to be used in production
 def read_annotated_data(fname, infer=True, return_raw=False, return_meta=False, **kwargs):
     _, ext = os.path.splitext(fname)
     meta = None
-    if ext == '.json':
+    print('fname', fname)
+    if ext == '.json' or ext == '.yaml':
         data, meta =  process_annotated_data(fname, return_meta=True, return_raw=return_raw, **kwargs)
     elif ext == '.parquet':
         data, full_meta = read_parquet_with_metadata(fname)
@@ -369,10 +451,10 @@ def fix_df_with_meta(df, dmeta):
             df[c] = pd.Categorical(df[c],categories=cats,ordered=cd.get('ordered',False))
     return df
 
-# %% ../nbs/01_io.ipynb 13
+# %% ../nbs/01_io.ipynb 14
 #| export
 
-# %% ../nbs/01_io.ipynb 14
+# %% ../nbs/01_io.ipynb 15
 # Helper functions designed to be used with the annotations
 
 # Convert data_meta into a dict where each group and column maps to their metadata dict
@@ -402,7 +484,7 @@ def group_columns_dict(data_meta):
 def list_aliases(lst, da):
     return [ fv for v in lst for fv in (da[v] if isinstance(v,str) and v in da else [v]) ]
 
-# %% ../nbs/01_io.ipynb 16
+# %% ../nbs/01_io.ipynb 17
 # Creates a mapping old -> new
 def get_original_column_names(dmeta):
     res = {}
@@ -431,7 +513,7 @@ def change_mapping(ot, nt, only_matches=False):
                  **{ k:v for k, v in nt.items() if k not in ot }, # do those in nt not in ot
                  **matches }
 
-# %% ../nbs/01_io.ipynb 17
+# %% ../nbs/01_io.ipynb 18
 # Change an existing dataset to correspond better to a new meta_data
 # This is intended to allow making small improvements in the meta even after a model has been run
 # It is by no means perfect, but is nevertheless a useful tool to avoid re-running long pymc models for simple column/translation changes
@@ -532,7 +614,7 @@ def replace_data_meta_in_parquet(parquet_name,metafile_name,advanced=True):
 
     return df, meta
 
-# %% ../nbs/01_io.ipynb 18
+# %% ../nbs/01_io.ipynb 19
 # A function to infer categories (and validate the ones already present)
 # Works in-place
 def fix_meta_categories(data_meta, df, infers_only=False, warnings=True):
@@ -572,11 +654,11 @@ def fix_parquet_categories(parquet_name):
     meta['data'] = fix_meta_categories(meta['data'],df,infers_only=False)
     write_parquet_with_metadata(df,meta,parquet_name)
 
-# %% ../nbs/01_io.ipynb 19
+# %% ../nbs/01_io.ipynb 20
 def is_categorical(col):
     return col.dtype.name in ['object', 'str', 'category'] and not is_datetime(col)
 
-# %% ../nbs/01_io.ipynb 20
+# %% ../nbs/01_io.ipynb 21
 max_cats = 50
 
 # Create a very basic metafile for a dataset based on it's contents
@@ -701,7 +783,7 @@ def data_with_inferred_meta(data_file, **kwargs):
     meta = infer_meta(data_file,meta_file=False, **kwargs)
     return process_annotated_data(meta=meta, data_file=data_file, return_meta=True)
 
-# %% ../nbs/01_io.ipynb 22
+# %% ../nbs/01_io.ipynb 23
 def perform_merges(df,merges,constants={}):
     if not isinstance(merges,list): merges = [merges]
     for ms in merges:
@@ -718,7 +800,7 @@ def perform_merges(df,merges,constants={}):
         df = mdf
     return df
 
-# %% ../nbs/01_io.ipynb 23
+# %% ../nbs/01_io.ipynb 25
 def read_and_process_data(desc, return_meta=False, constants={}, skip_postprocessing=False, **kwargs):
 
     if isinstance(desc,str): desc = { 'file':desc } # Allow easy shorthand for simple cases
@@ -728,6 +810,7 @@ def read_and_process_data(desc, return_meta=False, constants={}, skip_postproces
 
     if desc.get('data') is not None:
         df, meta, einfo = pd.DataFrame(data=desc['data']), None, {}
+        print("df cols:\n",df.columns)
     else:
         df, meta, einfo = read_concatenate_files_list(desc, **kwargs)
 
@@ -736,7 +819,10 @@ def read_and_process_data(desc, return_meta=False, constants={}, skip_postproces
 
     # Perform transformation and filtering
     globs = {'pd':pd, 'np':np, 'sp':sp, 'stk':stk, 'df':df, **einfo,**constants}
-    if desc.get('preprocessing'): exec(str_from_list(desc['preprocessing']), globs)
+    if desc.get('preprocessing'): 
+        exec(str_from_list(desc['preprocessing']), globs)
+        print(f"preprocessing {desc.get('preprocessing')}")
+
     if desc.get('filter'): globs['df'] = globs['df'][eval(desc['filter'], globs)]
     if desc.get('merge'): globs['df'] = perform_merges(globs['df'],desc.get('merge'),constants)
     if desc.get('postprocessing') and not skip_postprocessing: exec(str_from_list(desc['postprocessing']),globs)
@@ -744,7 +830,7 @@ def read_and_process_data(desc, return_meta=False, constants={}, skip_postproces
 
     return (df, meta) if return_meta else df
 
-# %% ../nbs/01_io.ipynb 25
+# %% ../nbs/01_io.ipynb 27
 # Small debug tool to help find where jsons become non-serializable
 def find_type_in_dict(d,dtype,path=''):
     print(d,path)
@@ -757,7 +843,7 @@ def find_type_in_dict(d,dtype,path=''):
     elif isinstance(d,dtype):
         raise Exception(f"Value {d} of type {dtype} found at {path}")
 
-# %% ../nbs/01_io.ipynb 26
+# %% ../nbs/01_io.ipynb 28
 # These two very helpful functions are borrowed from https://towardsdatascience.com/saving-metadata-with-dataframes-71f51f558d8e
 
 custom_meta_key = 'salk-toolkit-meta'
