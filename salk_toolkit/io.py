@@ -5,11 +5,12 @@
 # %% auto 0
 __all__ = ['stk_loaded_files_set', 'stk_file_map', 'max_cats', 'custom_meta_key', 'read_json', 'get_loaded_files',
            'reset_file_tracking', 'get_file_map', 'set_file_map', 'create_new_columns_and_meta', 'has_create_block',
-           'add_topk_structure', 'create_topk_dataframe', 'process_annotated_data', 'read_annotated_data',
-           'fix_df_with_meta', 'extract_column_meta', 'group_columns_dict', 'list_aliases', 'change_df_to_meta',
-           'update_meta_with_model_fields', 'replace_data_meta_in_parquet', 'fix_meta_categories',
-           'fix_parquet_categories', 'infer_meta', 'data_with_inferred_meta', 'read_and_process_data',
-           'find_type_in_dict', 'write_parquet_with_metadata', 'read_parquet_metadata', 'read_parquet_with_metadata']
+           'add_topk_structure', 'create_topk_dataframe', 'expand_columns_with_regex', 'format_cols',
+           'process_annotated_data', 'read_annotated_data', 'fix_df_with_meta', 'extract_column_meta',
+           'group_columns_dict', 'list_aliases', 'change_df_to_meta', 'update_meta_with_model_fields',
+           'replace_data_meta_in_parquet', 'fix_meta_categories', 'fix_parquet_categories', 'infer_meta',
+           'data_with_inferred_meta', 'read_and_process_data', 'find_type_in_dict', 'write_parquet_with_metadata',
+           'read_parquet_metadata', 'read_parquet_with_metadata']
 
 # %% ../nbs/01_io.ipynb 4
 import json, os, warnings
@@ -202,60 +203,113 @@ def create_new_columns_and_meta(df,structure):
         elif dict_with_create['create']['type'] == 'maxdiff':
             raise NotImplementedError("Maxdiff not implemented yet")
         else:
-            raise ValueError(f"Create block {dict_with_create['type']} not supported")
+            raise NotImplementedError(f"Create block {dict_with_create['type']} not supported")
     return zip(dfas, das)
+
 
 def has_create_block(structure):
     return any(filter(lambda s: 'create' in s.keys(), structure))
 
+
 def add_topk_structure(df, dict_with_create):
-    print(f"create {dict_with_create['create']}")
     create = dict_with_create['create']
     r = re.compile(create['from_columns'])
     from_cols = list(filter(lambda s: r.match(s), df.columns))
-    res_cols_prefix = create.get('res_cols_prefix', '')
-    k = int(create['k']) if create['k'] != 'max' else -1
-    na_vals = create.get('na_val', [])
-    has_groups = len(r.match(from_cols[0]).groups())>1
-    if has_groups:
+    has_subgroups = 'g' in r.match(from_cols[0]).groupdict().keys()
+    res_cols_template = create.get('res_cols', '')
+    k = int(create['k']) if create['k'] != 'max' else 'max'
+    na_vals = create.get('na_vals', [])
+    print(f"na_vals0: {na_vals}")
+    if has_subgroups:
         groups = np.unique(list(map(lambda s: r.match(s).group(1), from_cols)))
-        print("groups ", groups)
         groups = [[col for col in from_cols if r.match(col).group(1)==g] for g in groups]
-        print("groups2 ", groups)
     else:
         groups = [from_cols]
-        print("groups3 ", groups)
-    print("groups ", groups)
-    dfa = create_topk_dataframe(df, from_cols, res_cols_prefix, k, na_vals)
+    dfa = pd.DataFrame()
+    for subgroup in groups:
+
+        group_id = r.match(subgroup[0]).group('g') if has_subgroups else None
+        dfaa = create_topk_dataframe(
+            df, subgroup, res_cols_template, k, na_vals, group_id
+        )
+        dfa = pd.concat([dfa, dfaa], axis=1)
+
     scale = create.get('scale', {})
-    da = {'name': 'issue_importance_raw2', 'scale': scale, 'columns': dfa.columns.tolist()}
+    name = create['name']
+    da = {'name': name, 'scale': scale, 'columns': dfa.columns.tolist()}
     created_model = {"name": "imp_top3", "structure": [[["A9_R1", "A9_R2", "A9_R3"], None]], "ordered": False}
     return da, dfa
 
-def create_topk_dataframe(df, from_cols, res_cols_prefix, k, na_vals):
-    def pad(l,k): 
+
+def create_topk_dataframe(df, from_cols, res_cols_template, k, na_vals, group_id):
+    def pad(l,k):
         return np.pad(
-            l[:k], (0, max(0,k-len(l))), 
-            mode='constant', 
+            l[:k], (0, max(0,k-len(l))),
+            mode='constant',
             constant_values=None
             )
+
     def get_mentioned_columns(tuples):
         """Pad with Nones until the length of from_cols, remove cols later"""
         return pad([t[0] for t in tuples if t[1] not in na_vals],len(from_cols))
     dfa = df.loc[:,from_cols].copy(deep=True)
     mat = dfa.apply(lambda s: get_mentioned_columns(s.items()),axis=1)
     mat = np.vstack(mat)
-    min_nones = min(map(lambda s: sum(map(lambda s: s is None, s)), mat))
+    min_nones = min(map(lambda s: sum(map(lambda s: s == 'None', s)), mat))
     max_mentioned = len(from_cols) - min_nones
-    no_new_cols = min(k,max_mentioned)
+    no_new_cols = min(k,max_mentioned) if k != 'max' else max_mentioned #TODO: ask if this is expected behavior
+    group_pattern, topk_pattern = r'\[g\]', r'\[k\]'
+    if group_id is not None:
+        res_cols_template = re.sub(group_pattern,group_id,res_cols_template)
+    columns = [re.sub(topk_pattern,str(c+1),res_cols_template) for c in range(no_new_cols)]
     mat = mat[:,:no_new_cols]
-    print("mat shape ", mat.shape)
-    df = pd.DataFrame(
-        mat,index=dfa.index,
-        columns=[f'{res_cols_prefix}{i+1}' for i in range(no_new_cols)]
-        )
-    print(f"df shape {df.shape} {df.columns}")
+    df = pd.DataFrame(mat, index=dfa.index, columns=columns)
     return df
+
+
+def expand_columns_with_regex(block, df_cols):
+    #TODO: This works with nonregex as well. If worried about performance, could add a check for regex before calling this function.
+    columns = block['columns']
+    translate_d = block.get('scale',{}).get('translate', {})
+    new_cols = []
+    for col_tuple in columns:
+        is_first_dfcol = len(col_tuple) == 1 or isinstance(col_tuple[1],dict)
+        template = col_tuple[0] if is_first_dfcol else col_tuple[1]
+        template = template if template.endswith('$') else template + '$'
+        r = re.compile(template)
+        cols_expanded = list(filter(lambda s: r.match(s), df_cols))
+        has_regex = len(cols_expanded) > 1
+        if block['name'] == 'confidence':
+            print("template ", template, 'cols_expanded', cols_expanded)
+        if has_regex:
+            if len(col_tuple) == 1:
+                raise ValueError(f"Column {col_tuple[0]} needs a label template")
+            label_dict = col_tuple[1] if len(col_tuple) == 2 else col_tuple[2]
+            label_template = label_dict.get('label', '')
+            new_cols = [
+                *new_cols,
+                *format_cols(cols_expanded, translate_d, r, label_template)
+                ]
+        else:
+            new_cols = [*new_cols, col_tuple]
+    if block['name'] == 'confidence':
+        print("new_cols\n",new_cols)
+        print("columns\n",columns)
+    return new_cols #columns
+
+
+def format_cols(cols_expanded, translate_d, r, label_template):
+    new_cols = []
+    for col in cols_expanded:
+        has_translate = 'translate' in r.match(col).groupdict().keys()
+        if has_translate:
+            translated_l = translate_d.get(r.match(col).group('translate'), col)
+            label = label_template.replace('[translate]', translated_l)
+        else:
+            warn(f"Column {col} has no translate key")
+            label = label_template.replace('[translate]', col)
+        new_cols.append([col, col, {'label': label}])
+    return new_cols
 
 # %% ../nbs/01_io.ipynb 12
 # Default usage with mature metafile: process_annotated_data(<metafile name>)
@@ -263,11 +317,15 @@ def create_topk_dataframe(df, from_cols, res_cols_prefix, k, na_vals):
 def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=None,
                         return_meta=False, ignore_exclusions=False, only_fix_categories=False, return_raw=False, add_original_inds=False):
     # Read metafile
-    if meta_fname is not None and os.path.splitext(meta_fname)[1] == '.yaml':
-        meta = read_yaml(stk_file_map.get(meta_fname,meta_fname))
-        print("here0")
-    elif meta_fname is not None:
-        meta = read_json(stk_file_map.get(meta_fname,meta_fname))
+    metafile = stk_file_map.get(meta_fname,meta_fname)
+    ext = os.path.splitext(metafile)[1]
+    if meta_fname is not None:
+        if ext == '.yaml':
+            meta = read_yaml(metafile)
+        elif ext == '.json':
+            meta = read_json(metafile)
+        else:
+            raise Exception(f"Unknown meta file format {ext} for file: {meta_fname}")
 
     # Print any issues with the meta without raising an error - for now
     soft_validate(meta,DataMeta)
@@ -306,6 +364,8 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
             raise Exception(f"Group name {group['name']} duplicates a column name in group {all_cns[cn]}")
         all_cns[group['name']] = group['name']
         g_cols = []
+        group['columns'] = expand_columns_with_regex(group, df.columns)
+        if 'create' in group: del group['create']
         for tpl in group['columns']:
             if type(tpl)==list:
                 cn = tpl[0] # column name
@@ -339,6 +399,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
                 continue
 
             s = raw_data[sn]
+            print(f"s head: {s.head()}, sn {sn}")
             if not only_fix_categories and not is_series_of_lists(s):
                 if s.dtype.name=='category': s = s.astype('object') # This makes it easier to use common ops like replace and fillna
                 if 'translate' in cd:
@@ -441,6 +502,8 @@ def read_annotated_data(fname, infer=True, return_raw=False, return_meta=False, 
         return process_annotated_data(data_file=fname, meta=meta, return_meta=return_meta)
 
 # Fix df dtypes etc using meta - needed after a lazy load
+
+
 def fix_df_with_meta(df, dmeta):
     cmeta = extract_column_meta(dmeta)
     for c in df.columns:
@@ -637,6 +700,7 @@ def fix_meta_categories(data_meta, df, infers_only=False, warnings=True):
                 all_cats |= set(cats)
 
         if g.get('scale') and g['scale'].get('categories')=='infer':
+            print(f"g {g}")
             # IF they all share same categories, keep the category order
             scats = list(cats) if all_cats == set(cats) else sorted(list(all_cats))
             g['scale']['categories'] = scats
@@ -819,7 +883,7 @@ def read_and_process_data(desc, return_meta=False, constants={}, skip_postproces
 
     # Perform transformation and filtering
     globs = {'pd':pd, 'np':np, 'sp':sp, 'stk':stk, 'df':df, **einfo,**constants}
-    if desc.get('preprocessing'): 
+    if desc.get('preprocessing'):
         exec(str_from_list(desc['preprocessing']), globs)
         print(f"preprocessing {desc.get('preprocessing')}")
 
@@ -848,6 +912,7 @@ def find_type_in_dict(d,dtype,path=''):
 
 custom_meta_key = 'salk-toolkit-meta'
 
+
 def write_parquet_with_metadata(df, meta, file_name):
     table = pa.Table.from_pandas(df)
 
@@ -864,6 +929,8 @@ def write_parquet_with_metadata(df, meta, file_name):
     pq.write_table(table, file_name, compression='ZSTD')
 
 # Just load the metadata from the parquet file
+
+
 def read_parquet_metadata(file_name):
     schema = pq.read_schema(file_name)
     if custom_meta_key.encode() in schema.metadata:

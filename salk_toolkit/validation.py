@@ -38,7 +38,7 @@ class ColumnMeta(PBase):
 
     # Plot pipeline extras
     label: Optional[str] = None # Longer description of the column for tooltips
-    label_prefix: Optional[str] = None # Prefix for the column label with regex
+    labels_regex: Optional[str] = None # Column labels specification with regex
     labels: Optional[Dict[str,str]] = None # Dict matching categories to labels
     groups: Optional[Dict[str,List[str]]] = None # Dict of lists of category values defining groups for easier filtering
     colors: Optional[Dict[str,Color]] = None # Dict matching colors to categories
@@ -75,7 +75,8 @@ class BlockScaleMeta(ColumnMeta):
     # Only useful in 'scale' block
     col_prefix: Optional[str] = None # If column name should have the prefix added. Usually used in scale block
     question_colors: Optional[Dict[str,Color]] = None # Dict mapping columns to different colors
-    
+
+
 class TopKBlock(BaseModel):
     type: Literal['topk'] = 'topk'
     k: Union[int,Literal['max']] = 'max'
@@ -83,7 +84,8 @@ class TopKBlock(BaseModel):
     res_cols_prefix: Optional[str] = None
     na_val: Optional[str] = None
     ordered: bool = False
-    
+
+
 class MaxDiffBlock(BaseModel):
     type: Literal['maxdiff'] = 'maxdiff'
     best_columns: Optional[Union[str,List[str]]] = None
@@ -91,7 +93,6 @@ class MaxDiffBlock(BaseModel):
     topics: Optional[str] = None
     sets: Optional[str] = None
     setindex: Optional[str] = None
-    
 
 # %% ../nbs/06_validation.ipynb 7
 # Transform the column tuple to (new name, old name, meta) format
@@ -129,19 +130,20 @@ class ColumnBlockMeta(PBase):
     hidden: bool = False # Use this to hide the block in explorer.py
     create: Optional[Union[TopKBlock,MaxDiffBlock]] = None
 
+
 class TopKBlock(BaseModel):
     k: int = 3
     from_columns: Optional[Union[str,List[str]]] = None
     na_val: Optional[str] = None
     ordered: bool = False
-    
+
+
 class MaxDiffBlock(BaseModel):
     best_columns: Optional[Union[str,List[str]]] = None
     worst_columns: Optional[Union[str,List[str]]] = None
     topics: Optional[str] = None
     sets: Optional[str] = None
     setindex: Optional[str] = None
-    
 
 # %% ../nbs/06_validation.ipynb 9
 # Again, convert list to dict for easier debugging in case errors get thrown
