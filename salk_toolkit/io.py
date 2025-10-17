@@ -215,22 +215,20 @@ def add_topk_structure(df, dict_with_create):
     create = dict_with_create['create']
     r = re.compile(create['from_columns'])
     from_cols = list(filter(lambda s: r.match(s), df.columns))
-    has_subgroups = 'g' in r.match(from_cols[0]).groupdict().keys()
     res_cols_template = create.get('res_cols', '')
-    k = int(create['k']) if create['k'] != 'max' else 'max'
+    kmax = int(create['k']) if create['k'] != 'max' else 'max'
     na_vals = create.get('na_vals', [])
-    print(f"na_vals0: {na_vals}")
+    has_subgroups = 'g' in r.match(from_cols[0]).groupdict().keys()
     if has_subgroups:
-        groups = np.unique(list(map(lambda s: r.match(s).group(1), from_cols)))
-        groups = [[col for col in from_cols if r.match(col).group(1)==g] for g in groups]
+        subgroups = np.unique(list(map(lambda s: r.match(s).group('g'), from_cols)))
+        subgroups = [[col for col in from_cols if r.match(col).group(1)==g] for g in subgroups]
     else:
-        groups = [from_cols]
+        subgroups = [from_cols]
     dfa = pd.DataFrame()
-    for subgroup in groups:
-
+    for subgroup in subgroups:
         group_id = r.match(subgroup[0]).group('g') if has_subgroups else None
         dfaa = create_topk_dataframe(
-            df, subgroup, res_cols_template, k, na_vals, group_id
+            df, subgroup, res_cols_template, kmax, na_vals, group_id, r
         )
         dfa = pd.concat([dfa, dfaa], axis=1)
 
@@ -241,23 +239,31 @@ def add_topk_structure(df, dict_with_create):
     return da, dfa
 
 
-def create_topk_dataframe(df, from_cols, res_cols_template, k, na_vals, group_id):
+def create_topk_dataframe(
+    df, 
+    from_cols, 
+    res_cols_template, 
+    kmax, 
+    na_vals, 
+    group_id, 
+    r
+    ):
+    def format(r, colname):
+        """Format in a way that enables translate be called."""
+        return r.match(colname).group('k')
+    
     def pad(l,k):
-        return np.pad(
-            l[:k], (0, max(0,k-len(l))),
-            mode='constant',
-            constant_values=None
-            )
+        return [*l[:k]] + [None for _ in range(max(0,k-len(l)))]
 
-    def get_mentioned_columns(tuples):
+    def get_mentioned_columns(tuples, r):
         """Pad with Nones until the length of from_cols, remove cols later"""
-        return pad([t[0] for t in tuples if t[1] not in na_vals],len(from_cols))
+        return pad([format(r,t[0]) for t in tuples if t[1] not in na_vals],len(from_cols))
     dfa = df.loc[:,from_cols].copy(deep=True)
-    mat = dfa.apply(lambda s: get_mentioned_columns(s.items()),axis=1)
+    mat = dfa.apply(lambda s: get_mentioned_columns(s.items(), r),axis=1)
     mat = np.vstack(mat)
-    min_nones = min(map(lambda s: sum(map(lambda s: s == 'None', s)), mat))
+    min_nones = min(map(lambda s: sum(map(pd.isna, s)), mat))
     max_mentioned = len(from_cols) - min_nones
-    no_new_cols = min(k,max_mentioned) if k != 'max' else max_mentioned #TODO: ask if this is expected behavior
+    no_new_cols = min(kmax,max_mentioned) if kmax != 'max' else max_mentioned #TODO: ask if this is expected behavior
     group_pattern, topk_pattern = r'\[g\]', r'\[k\]'
     if group_id is not None:
         res_cols_template = re.sub(group_pattern,group_id,res_cols_template)
@@ -279,8 +285,6 @@ def expand_columns_with_regex(block, df_cols):
         r = re.compile(template)
         cols_expanded = list(filter(lambda s: r.match(s), df_cols))
         has_regex = len(cols_expanded) > 1
-        if block['name'] == 'confidence':
-            print("template ", template, 'cols_expanded', cols_expanded)
         if has_regex:
             if len(col_tuple) == 1:
                 raise ValueError(f"Column {col_tuple[0]} needs a label template")
@@ -356,6 +360,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
             meta['structure'].append(new_meta)
             globs['df'] = pd.concat([globs['df'], df_new], axis=1)
             raw_data = globs['df']
+        
 
     ndf = pd.DataFrame()
     all_cns = dict()

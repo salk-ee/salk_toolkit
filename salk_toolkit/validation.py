@@ -38,7 +38,6 @@ class ColumnMeta(PBase):
 
     # Plot pipeline extras
     label: Optional[str] = None # Longer description of the column for tooltips
-    labels_regex: Optional[str] = None # Column labels specification with regex
     labels: Optional[Dict[str,str]] = None # Dict matching categories to labels
     groups: Optional[Dict[str,List[str]]] = None # Dict of lists of category values defining groups for easier filtering
     colors: Optional[Dict[str,Color]] = None # Dict matching colors to categories
