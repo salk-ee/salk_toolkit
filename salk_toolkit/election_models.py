@@ -26,7 +26,12 @@ from salk_toolkit.plots import stk_plot
 
 import streamlit as st
 
-# %% ../nbs/04_election_models.ipynb 5
+# %% ../nbs/04_election_models.ipynb 4
+# List of party names that can never be elected because they are just aggregates
+# They still count towards Threshold computation but need to be ignored afterwards
+party_aggregate_cat_names = ["Other"]
+
+# %% ../nbs/04_election_models.ipynb 6
 def dhondt(pvotes, n_mandates, dh_power=1.0, pmand=None):
 
     # Calculate d'Hondt values and get party indices out
@@ -46,13 +51,19 @@ def dhondt(pvotes, n_mandates, dh_power=1.0, pmand=None):
 # Input 'support' should be of shape (draws,districts,parties)
 
 
-def simulate_election(support, nmandates, threshold=0.0, ed_threshold=0.0, quotas=True, first_quota_coef=1.0, dh_power=1.0, body_size=None, special=None, **kwargs):
+def simulate_election(support, nmandates, threshold=0.0, ed_threshold=0.0, quotas=True, first_quota_coef=1.0, dh_power=1.0, body_size=None, special=None, exclude=[],**kwargs):
     if special=='cz':
         return cz_system(support, nmandates, threshold=threshold, body_size=body_size, **kwargs)
 
+    # Exclude the parties in the exclude list.
+    # usually the grouping of "Other" that might otherwise exceed the threshold if they were a single entity but they are not)
+    exclude_zero_mask = np.ones(support.shape[-1])
+    exclude_zero_mask[exclude] = 0
+    uzsim_t = np.ones_like(support)*exclude_zero_mask
+
     # Remove parties below a national threshold
     zero_mask = (support.sum(axis=1)/(support.sum(axis=(1,2))+1e-3)[:,None])>threshold
-    uzsim_t = zero_mask[:,None,:]*support
+    uzsim_t = zero_mask[:,None,:]*support*uzsim_t
 
     # Remove parties below an electoral_district specific threshold
     zero_mask = (support/(support.sum(axis=(2))+1e-3)[:,:,None])>ed_threshold
@@ -82,7 +93,7 @@ def simulate_election(support, nmandates, threshold=0.0, ed_threshold=0.0, quota
             dhondt(uzsim_t[:,i,:],nmandates[i],dh_power)
             for i in range(support.shape[1]) ],axis=1)
 
-# %% ../nbs/04_election_models.ipynb 6
+# %% ../nbs/04_election_models.ipynb 7
 # Input a tensor t and a tensor kv of one less dimension
 # Output a tensor of same shape as t with k ones marking the smallest values in t over the last axis
 def vec_smallest_k(t, kv):
@@ -97,7 +108,7 @@ def vec_smallest_k(t, kv):
     # Marginalize that function over the newly created dimension
     return comp_ident[(np.argsort(t,axis=-1)+1)*ri].sum(axis=-2)
 
-# %% ../nbs/04_election_models.ipynb 8
+# %% ../nbs/04_election_models.ipynb 9
 # Czech electoral system based on https://pspen.psp.cz/chamber-members/plenary/elections/#electoralsystem
 def cz_system(support, nmandates, threshold=0.0, body_size=None, **kwargs):
 
@@ -134,7 +145,7 @@ def cz_system(support, nmandates, threshold=0.0, body_size=None, **kwargs):
     # Return the districts + compensation results
     return np.concatenate( [dmandates,slmandates[:,None,:]],axis=1 )
 
-# %% ../nbs/04_election_models.ipynb 9
+# %% ../nbs/04_election_models.ipynb 10
 # Basic wrapper around simulate elections that goes from dataframe to dataframe
 def simulate_election_e2e(sdf, parties, mandates_dict, ed_col='electoral_district', **kwargs):
 
@@ -145,6 +156,9 @@ def simulate_election_e2e(sdf, parties, mandates_dict, ed_col='electoral_distric
     support = ed_df.reset_index(drop=True).to_numpy().reshape( (-1,len(districts),len(parties)) )
     nmandates = np.array([ mandates_dict[d] for d in districts ])
 
+    # Translate exclusion list to party indices (and add the proper default)
+    kwargs['exclude'] = [ parties.index(p) for p in kwargs.get('exclude', party_aggregate_cat_names) ]
+
     edt = simulate_election(support, nmandates, **kwargs)
 
     if edt.shape[1]>support.shape[1]: districts = districts + ['Compensation']
@@ -154,7 +168,8 @@ def simulate_election_e2e(sdf, parties, mandates_dict, ed_col='electoral_distric
     eddf.loc[:, ['draw', ed_col, 'party']] = np.array(tuple(it.product( range(edt.shape[0]), districts, parties )))
     return eddf
 
-# %% ../nbs/04_election_models.ipynb 13
+# %% ../nbs/04_election_models.ipynb 14
+# Factor = districts, Category = parties
 def simulate_election_pp(data, mandates, electoral_system, cat_col, value_col, factor_col, cat_order, factor_order):
     # Reshape input to (draws,electoral_districts,parties)
     draws = data.draw.unique()
@@ -167,6 +182,9 @@ def simulate_election_pp(data, mandates, electoral_system, cat_col, value_col, f
         electoral_system['threshold'] = np.array([td[d] if d in td else td['default'] for d in cat_order])
         print(td, electoral_system['threshold'])
 
+    # Translate exclusion list to party indices (and add the proper default)
+    electoral_system['exclude'] = [ cat_order.index(p) for p in electoral_system.get('exclude', party_aggregate_cat_names) ]
+
     # Run the actual electoral simulation
     nmandates = np.array([ mandates[d] for d in factor_order ])
     edt = simulate_election(sdata,nmandates,**electoral_system)
@@ -178,7 +196,7 @@ def simulate_election_pp(data, mandates, electoral_system, cat_col, value_col, f
 
     return df
 
-# %% ../nbs/04_election_models.ipynb 14
+# %% ../nbs/04_election_models.ipynb 15
 # This fits into the pp framework as: f0['col']=party_pref, factor=electoral_district, hence the as_is and hidden flags
 @stk_plot('mandate_plot', data_format='longform', draws=True, requires_factor=True, agg_fn='sum', n_facets=(2,2), requires=[{},{'mandates':'pass','electoral_system':'pass'}], as_is=True, priority=-500)#, hidden=True)
 def mandate_plot(data, mandates, electoral_system, value_col='value', facets=[], width=None, alt_properties={}, outer_factors=[], translate=None, sim_done=False):
@@ -244,7 +262,7 @@ def mandate_plot(data, mandates, electoral_system, value_col='value', facets=[],
     )
     return plot
 
-# %% ../nbs/04_election_models.ipynb 17
+# %% ../nbs/04_election_models.ipynb 18
 # This fits into the pp framework as: f0['col']=party_pref, factor=electoral_district, hence the as_is and hidden flags
 @stk_plot('coalition_applet', data_format='longform', draws=True, requires_factor=True, agg_fn='sum', args={'initial_coalition':'list'},
                 requires=[{},{'mandates':'pass','electoral_system':'pass'}], as_is=True, n_facets=(2,2), priority=-1000)#, hidden=True)
