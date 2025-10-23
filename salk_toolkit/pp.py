@@ -179,6 +179,13 @@ def update_data_meta_with_pp_desc(data_meta, pp_desc):
     # Allow creating a new meta group for res_col
     if pp_desc.get('res_meta'):
         data_meta, rmeta = deepcopy(data_meta), deepcopy(pp_desc['res_meta'])
+
+        # Shortcut - if no group scale meta is provided, borrow it from the first column
+        if 'scale' not in rmeta:
+            col_meta = extract_column_meta(data_meta)
+            rmeta['scale'] = col_meta[rmeta['columns'][0]].copy()
+            rmeta['scale']['col_prefix'] = '' # This will cause confusion with column names
+
         sdict = { d['name']:d for d in data_meta['structure']}
         # Overwrite existing group if it exists
         if rmeta['name'] in sdict: data_meta['structure'].remove(sdict[rmeta['name']])
