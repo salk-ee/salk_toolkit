@@ -422,6 +422,7 @@ def merge_series(*lst):
 
 # %% ../nbs/10_utils.ipynb 43
 # Turn a list of selected/not seleced into a list of selected values in the same dataframe
+@warnings.deprecated("Preprocessing will be removed in the future. See create block for more details.")
 def aggregate_multiselect(df, prefix, out_prefix, na_vals=[], colnames_as_values=False, inplace=True):
      cols = [ c for c in df.columns if c.startswith(prefix) ]
      dfc = df[cols].astype('object').replace(dict(zip(na_vals,[None]*len(na_vals))))
@@ -438,11 +439,13 @@ def aggregate_multiselect(df, prefix, out_prefix, na_vals=[], colnames_as_values
 
      lst = list(map(lambda l: [ v for v in l if v is not None ],dfc.values.tolist()))
      n_res = max(map(len,lst))
+     columns = [f'{out_prefix}{i+1}' for i in range(n_res)]
      if inplace: df[columns] = pd.DataFrame(lst)
      else: return pd.DataFrame(lst, columns=columns)
 
 # %% ../nbs/10_utils.ipynb 44
 # Take a list of values and create a one-hot matrix of them. Basically the inverse of previous
+@warnings.deprecated("Preprocessing will be removed in the future. See create block for more details.")
 def deaggregate_multiselect(df, prefix, out_prefix=''):
     cols = [ c for c in df.columns if c.startswith(prefix) ]
 

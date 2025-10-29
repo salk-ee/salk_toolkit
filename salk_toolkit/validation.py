@@ -81,6 +81,8 @@ class TopKBlock(BaseModel):
     k: Union[int,Literal['max']] = 'max'
     from_columns: Optional[Union[str,List[str]]] = None
     res_cols_prefix: Optional[str] = None
+    res_cols: Optional[str] = None
+    agg_index: int = -1 #TODO: Is this allowed to vary properly here?
     na_val: Optional[str] = None
     ordered: bool = False
 
