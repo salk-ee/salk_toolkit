@@ -1,0 +1,12 @@
+website:
+  sidebar:
+    contents:
+      - index.ipynb
+      - 01_io.ipynb
+      - 02_pp.ipynb
+      - 03_plots.ipynb
+      - 04_election_models.ipynb
+      - 05_dashboard.ipynb
+      - 06_validation.ipynb
+      - 10_utils.ipynb
+      - 11_commands.ipynb
