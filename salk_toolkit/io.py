@@ -902,9 +902,7 @@ def read_and_process_data(desc, return_meta=False, constants={}, skip_postproces
 
     # Perform transformation and filtering
     globs = {'pd':pd, 'np':np, 'sp':sp, 'stk':stk, 'df':df, **einfo,**constants}
-    if desc.get('preprocessing'):
-        exec(str_from_list(desc['preprocessing']), globs)
-        print(f"preprocessing {desc.get('preprocessing')}")
+    if desc.get('preprocessing'): exec(str_from_list(desc['preprocessing']), globs)
 
     if desc.get('filter'): globs['df'] = globs['df'][eval(desc['filter'], globs)]
     if desc.get('merge'): globs['df'] = perform_merges(globs['df'],desc.get('merge'),constants)
