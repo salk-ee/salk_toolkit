@@ -195,8 +195,8 @@ class TestReadAnnotatedData:
         diffs = data_df[newcols].astype(str)
         expected_result = pd.DataFrame([
             ["USA","USA","Canada","Mexico"],
-            ["Canada","Canada",None, None],
-            ["Mexico","USA","Canada",None]
+            ["Canada","Canada",np.nan, np.nan],
+            ["Mexico","USA","Canada",np.nan]
             ]).astype(str) 
         expected_result.columns = newcols
         expected_meta = {
@@ -207,7 +207,7 @@ class TestReadAnnotatedData:
                 {'name': 'issue_importance_raw_2', 'scale': {'categories': ['USA', 'Canada', 'Mexico'], 'translate': {'1': 'USA', '2': 'Canada', '3': 'Mexico'}}, 'columns': ['q2_R1', 'q2_R2', 'q2_R3']}
             ]
         }
-        assert_frame_equal(diffs.iloc[:1], expected_result.iloc[:1])
+        assert_frame_equal(diffs, expected_result)
         assert data_meta == expected_meta
 
 
