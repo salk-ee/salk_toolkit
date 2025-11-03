@@ -422,7 +422,7 @@ def merge_series(*lst):
 
 # %% ../nbs/10_utils.ipynb 43
 # Turn a list of selected/not seleced into a list of selected values in the same dataframe
-@warnings.deprecated("Preprocessing will be removed in the future. See create block for more details.")
+@warnings.deprecated("This functionality is now built into create block.")
 def aggregate_multiselect(df, prefix, out_prefix, na_vals=[], colnames_as_values=False, inplace=True):
      cols = [ c for c in df.columns if c.startswith(prefix) ]
      dfc = df[cols].astype('object').replace(dict(zip(na_vals,[None]*len(na_vals))))
@@ -569,9 +569,6 @@ def unescape_vega_label(label):
 
 # %% ../nbs/10_utils.ipynb 53
 def read_yaml(model_desc_file):
-    print(model_desc_file)
-    import os
-    print(os.listdir())
     if '.yaml' not in model_desc_file:
         raise FileNotFoundError(f"Model description file {model_desc_file} must have a .yaml extension")
     with open(model_desc_file) as stream:

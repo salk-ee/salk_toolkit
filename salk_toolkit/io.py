@@ -250,11 +250,7 @@ def add_topk_structure(df, dict_with_create):
             'scale': scale,
             'columns': subgroup_df.columns.tolist()
             }
-        if 'name' in subgroups:
-            print(f"Problem in {meta_subgroup}")
-            raise Exception("Problem in meta2")
         subgroup_metas.append(meta_subgroup)
-    # created_model = {"name": "imp_top3", "structure": [[["A9_R1", "A9_R2", "A9_R3"], None]], "ordered": False}
     return subgroup_metas, topk_dfs #note: each df has one meta for zip later
 
 
@@ -364,14 +360,12 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
     globs = {'pd':pd, 'np':np, 'sp':sp, 'stk':stk, 'df':raw_data, **einfo, **constants }
 
     if 'preprocessing' in meta and not only_fix_categories:
-        warn("Preprocessing is deprecated. See create block for more details.")
         exec(str_from_list(meta['preprocessing']),globs)
         raw_data = globs['df']
 
     if has_create(meta.get('structure',[])) and globs.get('df') is not None:
         df, structure = globs['df'], meta.get('structure',[])
         for df_new, meta_new in create_new_columns_and_meta(df, structure):
-            print(f"Append columns {list(df_new.columns)} to df and new meta {meta_new['name']}")
             meta['structure'].append(meta_new)
             # TODO: when deprecating preprocessing, use this
             # globs['df'] = pd.concat([globs['df'], df_new], axis=1)
@@ -508,7 +502,6 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
 def read_annotated_data(fname, infer=True, return_raw=False, return_meta=False, **kwargs):
     _, ext = os.path.splitext(fname)
     meta = None
-    print('fname', fname)
     if ext == '.json' or ext == '.yaml':
         data, meta =  process_annotated_data(fname, return_meta=True, return_raw=return_raw, **kwargs)
     elif ext == '.parquet':
@@ -884,7 +877,7 @@ def perform_merges(df,merges,constants={}):
         df = mdf
     return df
 
-# %% ../nbs/01_io.ipynb 25
+# %% ../nbs/01_io.ipynb 24
 def read_and_process_data(desc, return_meta=False, constants={}, skip_postprocessing=False, **kwargs):
 
     if isinstance(desc,str): desc = { 'file':desc } # Allow easy shorthand for simple cases
@@ -911,7 +904,7 @@ def read_and_process_data(desc, return_meta=False, constants={}, skip_postproces
 
     return (df, meta) if return_meta else df
 
-# %% ../nbs/01_io.ipynb 27
+# %% ../nbs/01_io.ipynb 26
 # Small debug tool to help find where jsons become non-serializable
 def find_type_in_dict(d,dtype,path=''):
     print(d,path)
@@ -924,7 +917,7 @@ def find_type_in_dict(d,dtype,path=''):
     elif isinstance(d,dtype):
         raise Exception(f"Value {d} of type {dtype} found at {path}")
 
-# %% ../nbs/01_io.ipynb 28
+# %% ../nbs/01_io.ipynb 27
 # These two very helpful functions are borrowed from https://towardsdatascience.com/saving-metadata-with-dataframes-71f51f558d8e
 
 custom_meta_key = 'salk-toolkit-meta'
