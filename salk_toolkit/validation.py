@@ -129,22 +129,7 @@ class ColumnBlockMeta(PBase):
     # Block level flags
     generated: bool = False # This block is for data that is generated, i.e. not initially in the file.
     hidden: bool = False # Use this to hide the block in explorer.py
-    create: Optional[Union[TopKBlock,MaxDiffBlock]] = None
-
-
-class TopKBlock(BaseModel):
-    k: int = 3
-    from_columns: Optional[Union[str,List[str]]] = None
-    na_val: Optional[str] = None
-    ordered: bool = False
-
-
-class MaxDiffBlock(BaseModel):
-    best_columns: Optional[Union[str,List[str]]] = None
-    worst_columns: Optional[Union[str,List[str]]] = None
-    topics: Optional[str] = None
-    sets: Optional[str] = None
-    setindex: Optional[str] = None
+    create: Optional[Union[TopKBlock, None]] = None #TODO: None -> MaxDiff
 
 # %% ../nbs/06_validation.ipynb 9
 # Again, convert list to dict for easier debugging in case errors get thrown
