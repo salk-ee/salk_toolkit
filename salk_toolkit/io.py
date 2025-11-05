@@ -4,8 +4,7 @@
 
 # %% auto 0
 __all__ = ['stk_loaded_files_set', 'stk_file_map', 'max_cats', 'custom_meta_key', 'read_json', 'get_loaded_files',
-           'reset_file_tracking', 'get_file_map', 'set_file_map', 'create_new_columns_and_meta', 'has_create',
-           'throw_vals_left', 'create_topk_metas_and_dfs', 'process_annotated_data', 'read_annotated_data',
+           'reset_file_tracking', 'get_file_map', 'set_file_map', 'process_annotated_data', 'read_annotated_data',
            'fix_df_with_meta', 'extract_column_meta', 'group_columns_dict', 'list_aliases', 'change_df_to_meta',
            'update_meta_with_model_fields', 'replace_data_meta_in_parquet', 'fix_meta_categories',
            'fix_parquet_categories', 'infer_meta', 'data_with_inferred_meta', 'read_and_process_data',
