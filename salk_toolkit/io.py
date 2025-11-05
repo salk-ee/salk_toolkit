@@ -5,12 +5,11 @@
 # %% auto 0
 __all__ = ['stk_loaded_files_set', 'stk_file_map', 'max_cats', 'custom_meta_key', 'read_json', 'get_loaded_files',
            'reset_file_tracking', 'get_file_map', 'set_file_map', 'create_new_columns_and_meta', 'has_create',
-           'add_topk_structure', 'create_topk_dataframe', 'expand_columns_with_regex', 'format_cols',
-           'process_annotated_data', 'read_annotated_data', 'fix_df_with_meta', 'extract_column_meta',
-           'group_columns_dict', 'list_aliases', 'change_df_to_meta', 'update_meta_with_model_fields',
-           'replace_data_meta_in_parquet', 'fix_meta_categories', 'fix_parquet_categories', 'infer_meta',
-           'data_with_inferred_meta', 'read_and_process_data', 'find_type_in_dict', 'write_parquet_with_metadata',
-           'read_parquet_metadata', 'read_parquet_with_metadata']
+           'throw_vals_left', 'create_topk_metas_and_dfs', 'process_annotated_data', 'read_annotated_data',
+           'fix_df_with_meta', 'extract_column_meta', 'group_columns_dict', 'list_aliases', 'change_df_to_meta',
+           'update_meta_with_model_fields', 'replace_data_meta_in_parquet', 'fix_meta_categories',
+           'fix_parquet_categories', 'infer_meta', 'data_with_inferred_meta', 'read_and_process_data',
+           'find_type_in_dict', 'write_parquet_with_metadata', 'read_parquet_metadata', 'read_parquet_with_metadata']
 
 # %% ../nbs/01_io.ipynb 4
 import json, os, warnings
@@ -195,15 +194,17 @@ def is_series_of_lists(s):
 # %% ../nbs/01_io.ipynb 11
 def create_new_columns_and_meta(df,structure):
     dfs_new, metas_new = [], []
-    for dict_with_create in filter(lambda s: 'create' in s.keys(), structure):
-        if dict_with_create['create']['type'] == 'topk':
-            metas_topk, topk_dfs = add_topk_structure(df,dict_with_create)
-            metas_new.extend(metas_topk)
-            dfs_new.extend(topk_dfs)
-        elif dict_with_create['create']['type'] == 'maxdiff':
-            raise NotImplementedError("Maxdiff not implemented yet")
-        else:
-            raise NotImplementedError(f"Create block {dict_with_create['type']} not supported")
+    create_block_type_to_create_fn = {
+        'topk': create_topk_metas_and_dfs,
+        'maxdiff': NotImplementedError("Maxdiff not implemented yet")
+        }
+    for dict_create in filter(lambda s: 'create' in s.keys(), structure):
+        type = dict_create['create']['type']
+        if type not in create_block_type_to_create_fn:
+            raise NotImplementedError(f"Create block {type} not supported")
+        metas, dfs = create_block_type_to_create_fn[type](df,dict_create)
+        metas_new.extend(metas)
+        dfs_new.extend(dfs)
     return zip(dfs_new, metas_new)
 
 
@@ -211,120 +212,117 @@ def has_create(structure):
     return any(filter(lambda s: 'create' in s.keys(), structure))
 
 
-def add_topk_structure(df, dict_with_create):
-    """
-    agg_index = -1  index of the from_cols group to be aggregated.
-                    Note that 1 is first group, -1 to last, 0 not allowed.
+def throw_vals_left(df):
+    # Helper fun to move inplace all nan values to right.
+    df.iloc[:,:] = df.apply(lambda l: sorted(l, key=pd.isna),axis=1).to_list()
+
+
+def create_topk_metas_and_dfs(df, dict_with_create):
+    r""" Create new columns and metas.
+
+    Meta args:
+        agg_index (int, optional)   Index of the from_cols group to be 
+            aggregated. Note that 1 is first group, -1 last, 0 not allowed.
+        from_columns (str)          Regex template with groups to select df 
+            cols from. If more than one group, then separate into subgroups.
+        res_cols (str)              Regex template with groups to create new 
+            cols. Note that new structure is created for each subgroup.
+        k (int, optional)           Number of new cols to create per subgroup.
+            Defaults to max and selects columns that include other vals than NA.
+        na_vals (list)              List of values to consider as NA.
+        scale (dict, optional)      Scale block to be added to each subgroup.
+        name (str, optional)        Name of the new columns. Defaults to
+            dict_with_create['name'] + "_topk".
+
+    Example:
+        df = pd.DataFrame({
+            'A_a_1': ['Mentioned'],
+            'A_a_2': ['Not mentioned'],
+            'B_b_1': ['Not mentioned'],
+            'B_b_2': ['Mentioned']
+        }, columns = ['A_a_1', 'A_a_2', 'B_b_1', 'B_b_2'])
+        meta = {
+            'from_columns': r'(.)_(.+)_(\d+)',
+            'res_cols': r'\1_\2_R\3',
+            'name': 'R10',
+            'k': 1
+        }
+        Creates subgroup ['A_a_1', 'A_a_2'] that map to ['A_a_R1'] 
+            and subgroup ['B_b_1', 'B_b_2'] that map to ['B_b_R1']
+            and creates metas with name 'R10_A_a' and 'R10_B_b'.
+        res = pd.DataFrame({
+            'A_a_R1': [1], #if scale has translate, 1 will be translated
+            'B_b_R1': [2]  #if scale has translate, 2 will be translated
+        }, columns = ['A_a_R1', 'B_b_R1'])
+        meta1 = {
+            'name': 'R10_A_a',
+            'columns': [['A_a_R1']]
+        }
+        meta2 = {
+            'name': 'R10_B_b',
+            'columns': [['B_b_R1']]
+        }
     """
     create = dict_with_create['create']
-    name = create['name']
-    scale = create.get('scale', {})
-    r = re.compile(create['from_columns'])
+    name = create.get('name', f"{dict_with_create['name']}_{create['type']}")
+    # Compile regex to catch df.columns that we want to apply topk for.
+    regex_from = re.compile(create['from_columns'])
+    from_cols = list(filter(lambda s: regex_from.match(s), df.columns))
+    # agg_ind is index of the regex group that we want to aggregate over.
+    # All other indeces are unique identifiers for each subgroup
+    # e.g. ['A', 'a'] and ['B', 'b'] (that are also added to column names)
+    # Recall that regex group 0 is the whole match.
+    # Note that re.Match.groups() does not include the whole match.
+    # This means that we need to subtract 1 from agg_ind.
     agg_ind = create.get('agg_index', -1)
     agg_ind = agg_ind-1 if agg_ind > 0 else agg_ind
-    from_cols = list(filter(lambda s: r.match(s), df.columns))
-    no_groups = len(r.match(from_cols[0]).groups())
-    has_subgroups = no_groups >= 2
-    template = create.get('res_cols', '')
-    kmax = int(create['k']) if create.get('k','max') != 'max' else 'max'
+    n_groups = len(regex_from.match(from_cols[0]).groups())
+    has_subgroups = n_groups >= 2 # Multiple aggregations needed?
+    regex_to = create.get('res_cols', '')
+    kmax = create.get('k',None)
     na_vals = create.get('na_vals', [])
     if has_subgroups:
-        def get_groups(column):
-            gs = list(r.match(column).groups())
-            gs.pop(agg_ind)
-            return gs
-        subgroups_ids = np.unique(np.vstack(list(map(get_groups,from_cols))),axis=0)
-        subgroups = [[col for col in from_cols if get_groups(col)==g] for g in subgroups_ids]
+        # collect all subgroups, later aggregate each subgroup separately
+        def get_subgroup_id(column):
+            "Discard the aggregation index and collect the rest as identifier."
+            subgroup_id = list(regex_from.match(column).groups())
+            subgroup_id.pop(agg_ind)
+            return subgroup_id
+        subgroups_ids = np.unique(
+            np.vstack(list(map(get_subgroup_id,from_cols))),
+            axis=0
+            )
+        subgroups = [
+            [col for col in from_cols if get_subgroup_id(col)==subgroup_id]
+            for subgroup_id in subgroups_ids
+            ]
     else: subgroups = [from_cols]
     topk_dfs, subgroup_metas = [], []
+    # replace column name with regex group to allow translate later in io.py
+    get_regex_group_at_agg_ind = lambda s: regex_from.match(s).groups()[agg_ind]
     for subgroup in subgroups:
-        subgroup_df = create_topk_dataframe(
-            df[subgroup].copy(deep=True), template, kmax, na_vals, agg_ind, r
-        )
-        topk_dfs.append(subgroup_df)
+        sdf = df[subgroup].astype('object').replace(na_vals,None)
+        newcols = [
+            regex_from.match(col).expand(regex_to) for col in sdf.columns
+            ] # new col names are from previous col names, later drop NA cols
+        # replace col names with regex groups at agg_ind
+        sdf.columns = sdf.columns.map(get_regex_group_at_agg_ind)
+        sdf = sdf.where(sdf.isna(), other=pd.Series(sdf.columns, index=sdf.columns), axis=1) # replace cell with column name where not NA
+        throw_vals_left(sdf) # changes df in place, Nones go to rightmost side
+        sdf.columns = newcols # set column names per the regex_to template
+        sdf = sdf.dropna(axis=1,how='all') #drop columns that are all NA
+        sdf = sdf.iloc[:,:kmax] if kmax else sdf # up to kmax columns if spec-d
+        sname = name
         if has_subgroups:
-            subgroup_name = '_'+'_'.join(map(str,get_groups(subgroup[0])))
-        else: subgroup_name = ''
+            sname += '_'+'_'.join(map(str,get_subgroup_id(subgroup[0])))
         meta_subgroup = {
-            'name': name+subgroup_name,
-            'scale': scale,
-            'columns': subgroup_df.columns.tolist()
+            'name': sname,
+            'scale': create.get('scale', {}),
+            'columns': sdf.columns.tolist()
             }
+        topk_dfs.append(sdf)
         subgroup_metas.append(meta_subgroup)
     return subgroup_metas, topk_dfs #note: each df has one meta for zip later
-
-
-def create_topk_dataframe(df, template, kmax, na_vals, agg_ind, r):
-    def pad(l,k):
-        return [*l[:k]] + [None for _ in range(max(0,k-len(l)))]
-
-    def get_mentioned_columns(ts, r, agg_ind):
-        """Pad with Nones until the length of from_cols, remove cols later"""
-        return pad(
-            [r.match(t[0]).groups()[agg_ind] for t in ts if t[1] not in na_vals],
-            df.shape[1]
-            )
-
-    def subst(col, agg_ind, substr):
-        ifirst, ilast = r.match(col).regs[agg_ind]
-        return col[:ifirst] + substr + col[ilast:]
-
-    mat = df.apply(
-        lambda s: get_mentioned_columns(s.items(), r, agg_ind),
-        axis=1
-        )
-    mat = np.vstack(mat)
-    min_nones = min(map(lambda s: sum(map(pd.isna, s)), mat))
-    max_mentioned = df.shape[1] - min_nones
-    no_new_cols = min(kmax,max_mentioned) if kmax != 'max' else max_mentioned
-    if kmax != max_mentioned and kmax != 'max':
-        warn(f"k ({kmax}) specified in meta differs from max mentioned columns ({max_mentioned}) in {df.columns}")
-    # columns = [re.sub(topk_pattern,str(c+1),res_cols_template) for c in range(no_new_cols)]
-    cols = [subst(df.columns[c], agg_ind, str(c+1)) for c in range(no_new_cols)]
-    cols = [r.match(col).expand(template) for col in cols]
-    mat = mat[:,:no_new_cols]
-    df = pd.DataFrame(mat, index=df.index, columns=cols)
-    return df
-
-
-def expand_columns_with_regex(block, df_cols):
-    #TODO: This works with nonregex as well. If worried about performance, could add a check for regex before calling this function.
-    columns = block['columns']
-    translate_d = block.get('scale',{}).get('translate', {})
-    new_cols = []
-    for col_tuple in columns:
-        is_first_dfcol = len(col_tuple) == 1 or isinstance(col_tuple[1],dict)
-        template = col_tuple[0] if is_first_dfcol else col_tuple[1]
-        template = template if template.endswith('$') else template + '$'
-        r = re.compile(template)
-        cols_expanded = list(filter(lambda s: r.match(s), df_cols))
-        has_regex = len(cols_expanded) > 1
-        if has_regex:
-            if len(col_tuple) == 1:
-                raise ValueError(f"Column {col_tuple[0]} needs a label template")
-            label_dict = col_tuple[1] if len(col_tuple) == 2 else col_tuple[2]
-            label_template = label_dict.get('label', '')
-            new_cols = [
-                *new_cols,
-                *format_cols(cols_expanded, translate_d, r, label_template)
-                ]
-        else:
-            new_cols = [*new_cols, col_tuple]
-    return new_cols #columns
-
-
-def format_cols(cols_expanded, translate_d, r, label_template):
-    new_cols = []
-    for col in cols_expanded:
-        has_translate = 'translate' in r.match(col).groupdict().keys()
-        if has_translate:
-            translated_l = translate_d.get(r.match(col).group('translate'), col)
-            label = label_template.replace('[translate]', translated_l)
-        else:
-            warn(f"Column {col} has no translate key")
-            label = label_template.replace('[translate]', col)
-        new_cols.append([col, col, {'label': label}])
-    return new_cols
 
 # %% ../nbs/01_io.ipynb 12
 # Default usage with mature metafile: process_annotated_data(<metafile name>)
@@ -367,9 +365,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
         df, structure = globs['df'], meta.get('structure',[])
         for df_new, meta_new in create_new_columns_and_meta(df, structure):
             meta['structure'].append(meta_new)
-            # TODO: when deprecating preprocessing, use this
-            # globs['df'] = pd.concat([globs['df'], df_new], axis=1)
-            # currently overwrites preprocessing columns
+            # NB: Following line can overwrite preprocessing columns
             globs['df'] = df_new.combine_first(globs['df'])
             raw_data = globs['df']
 
@@ -380,7 +376,6 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
             raise Exception(f"Group name {group['name']} duplicates a column name in group {all_cns[cn]}")
         all_cns[group['name']] = group['name']
         g_cols = []
-        group['columns'] = expand_columns_with_regex(group, raw_data.columns)
         if 'create' in group: del group['create']
         for tpl in group['columns']:
             if type(tpl)==list:

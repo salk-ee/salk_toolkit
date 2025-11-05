@@ -192,13 +192,13 @@ class TestReadAnnotatedData:
         df.to_csv_file(csv_file)
         data_df, data_meta = read_and_process_data(str(meta_file),return_meta=True)
         newcols = data_df.columns.difference(df.columns)
-        diffs = data_df[newcols].astype(str)
+        diffs = data_df[newcols].replace('<NA>',pd.NA)
         expected_result = pd.DataFrame([
             ["USA","USA","Canada","Mexico"],
-            ["Canada","Canada",np.nan, np.nan],
-            ["Mexico","USA","Canada",np.nan]
-            ]).astype(str) 
-        expected_result.columns = newcols
+            ["Canada","Canada",pd.NA, pd.NA],
+            ["Mexico","USA","Canada",pd.NA]
+            ], columns=newcols, 
+            dtype=pd.CategoricalDtype(categories=['USA', 'Canada','Mexico']))
         expected_meta = {
             'file': 'test.csv',
             'structure': [
@@ -207,7 +207,7 @@ class TestReadAnnotatedData:
                 {'name': 'issue_importance_raw_2', 'scale': {'categories': ['USA', 'Canada', 'Mexico'], 'translate': {'1': 'USA', '2': 'Canada', '3': 'Mexico'}}, 'columns': ['q2_R1', 'q2_R2', 'q2_R3']}
             ]
         }
-        assert_frame_equal(diffs, expected_result)
+        assert_frame_equal(diffs.fillna(pd.NA), expected_result.fillna(pd.NA), check_dtype=False, check_categorical=False)
         assert data_meta == expected_meta
 
 

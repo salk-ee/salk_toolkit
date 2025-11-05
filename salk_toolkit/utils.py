@@ -422,8 +422,8 @@ def merge_series(*lst):
 
 # %% ../nbs/10_utils.ipynb 43
 # Turn a list of selected/not seleced into a list of selected values in the same dataframe
-@warnings.deprecated("This functionality is now built into create block.")
 def aggregate_multiselect(df, prefix, out_prefix, na_vals=[], colnames_as_values=False, inplace=True):
+     warn("This functionality is now built into create block.")
      cols = [ c for c in df.columns if c.startswith(prefix) ]
      dfc = df[cols].astype('object').replace(dict(zip(na_vals,[None]*len(na_vals))))
 
@@ -445,7 +445,6 @@ def aggregate_multiselect(df, prefix, out_prefix, na_vals=[], colnames_as_values
 
 # %% ../nbs/10_utils.ipynb 44
 # Take a list of values and create a one-hot matrix of them. Basically the inverse of previous
-@warnings.deprecated("Preprocessing will be removed in the future. See create block for more details.")
 def deaggregate_multiselect(df, prefix, out_prefix=''):
     cols = [ c for c in df.columns if c.startswith(prefix) ]
 
