@@ -226,6 +226,7 @@ def create_topk_metas_and_dfs(df, dict_with_create):
             cols from. If more than one group, then separate into subgroups.
         res_cols (str)              Regex template with groups to create new 
             cols. Note that new structure is created for each subgroup.
+            Currently res_cols assumes same number of groups in from_columns.
         k (int, optional)           Number of new cols to create per subgroup.
             Defaults to max and selects columns that include other vals than NA.
         na_vals (list)              List of values to consider as NA.
@@ -301,15 +302,16 @@ def create_topk_metas_and_dfs(df, dict_with_create):
     get_regex_group_at_agg_ind = lambda s: regex_from.match(s).groups()[agg_ind]
     for subgroup in subgroups:
         sdf = df[subgroup].astype('object').replace(na_vals,None)
-        newcols = [
+        newcols = [ # new col names mapped with regex groups from orig col names
             regex_from.match(col).expand(regex_to) for col in sdf.columns
-            ] # new col names are from previous col names, later drop NA cols
-        # replace col names with regex groups at agg_ind
+            ]
+        # next, replace col names with only the regex group at agg_ind
+        # fun is defined inside a bigger fun, thus agg_ind acts as a global var
         sdf.columns = sdf.columns.map(get_regex_group_at_agg_ind)
         sdf = sdf.where(sdf.isna(), other=pd.Series(sdf.columns, index=sdf.columns), axis=1) # replace cell with column name where not NA
         throw_vals_left(sdf) # changes df in place, Nones go to rightmost side
         sdf.columns = newcols # set column names per the regex_to template
-        sdf = sdf.dropna(axis=1,how='all') #drop columns that are all NA
+        sdf = sdf.dropna(axis=1,how='all')#drop (rightmost) cols that are all NA
         sdf = sdf.iloc[:,:kmax] if kmax else sdf # up to kmax columns if spec-d
         sname = name
         if has_subgroups:
