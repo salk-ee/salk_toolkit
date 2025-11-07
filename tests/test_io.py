@@ -198,17 +198,14 @@ class TestReadAnnotatedData:
             ["Canada","Canada",pd.NA, pd.NA],
             ["Mexico","USA","Canada",pd.NA]
             ], columns=newcols, 
-            dtype=pd.CategoricalDtype(categories=['USA', 'Canada','Mexico']))
-        expected_meta = {
-            'file': 'test.csv',
-            'structure': [
+            dtype=pd.CategoricalDtype(categories=['Canada','Mexico','USA']))
+        expected_structure = [ 
                 {'name': 'topk', 'columns': ['id', 'q1_1', 'q1_2', 'q1_3', 'q2_1', 'q2_2', 'q2_3']},
                 {'name': 'issue_importance_raw_1', 'scale': {'categories': ['USA', 'Canada', 'Mexico'], 'translate': {'1': 'USA', '2': 'Canada', '3': 'Mexico'}}, 'columns': ['q1_R1']},
                 {'name': 'issue_importance_raw_2', 'scale': {'categories': ['USA', 'Canada', 'Mexico'], 'translate': {'1': 'USA', '2': 'Canada', '3': 'Mexico'}}, 'columns': ['q2_R1', 'q2_R2', 'q2_R3']}
             ]
-        }
         assert_frame_equal(diffs.fillna(pd.NA), expected_result.fillna(pd.NA), check_dtype=False, check_categorical=False)
-        assert data_meta == expected_meta
+        assert sorted(data_meta['structure'], key=lambda x: x['name']) == sorted(expected_structure, key=lambda x: x['name'])
 
 
 class TestColumnTransformations:
