@@ -198,7 +198,7 @@ class TestReadAnnotatedData:
             ["Canada","Canada",pd.NA, pd.NA],
             ["Mexico","USA","Canada",pd.NA]
             ], columns=newcols, 
-            dtype=pd.CategoricalDtype(categories=['Canada','Mexico','USA']))
+            dtype=pd.CategoricalDtype(categories=['USA', 'Canada','Mexico']))
         expected_structure = [ 
                 {'name': 'topk', 'columns': ['id', 'q1_1', 'q1_2', 'q1_3', 'q2_1', 'q2_2', 'q2_3']},
                 {'name': 'issue_importance_raw_1', 'scale': {'categories': ['USA', 'Canada', 'Mexico'], 'translate': {'1': 'USA', '2': 'Canada', '3': 'Mexico'}}, 'columns': ['q1_R1']},

@@ -111,7 +111,6 @@ def read_concatenate_files_list(meta,data_file=None,path=None,**kwargs):
         mapped_file = stk_file_map.get(data_file,data_file)
 
         extension = os.path.splitext(data_file)[1][1:].lower()
-        # if extension in ['json', 'parquet']: # Allow loading metafiles or annotated data
         if extension in ['json', 'parquet', 'yaml']: # Allow loading metafiles or annotated data
             if extension == 'json': warn(f"Processing {data_file}") # Print this to separate warnings for input jsons from main
             # Pass in orig_data_file here as it might loop back to this function here and we need to preserve paths
