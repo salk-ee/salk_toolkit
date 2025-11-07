@@ -280,6 +280,7 @@ def create_topk_metas_and_dfs(df, dict_with_create):
 
     # select group at agg_ind in col name to allow translate if spec-d in scale
     # e.g. {A_11: selected} |-> {11: selected}, later by using mask |-> {11: 11}
+    # this fun is def-d in current fun, so agg_ind acts as global var
     get_regex_group_at_agg_ind = lambda s: regex_from.match(s).groups()[agg_ind]
 
     for subgroup in subgroups:
@@ -290,13 +291,13 @@ def create_topk_metas_and_dfs(df, dict_with_create):
             regex_from.match(col).expand(regex_to) for col in sdf.columns
             ]
 
-        # fun used in map is def-d in current fun, so agg_ind acts as global var
+        # Convert one-hot encoded columns into a list-of-selected format
         sdf.columns = sdf.columns.map(get_regex_group_at_agg_ind)
-
         sdf = sdf.mask(~sdf.isna(), other=pd.Series(sdf.columns, index=sdf.columns), axis=1) # replace cell with column name where not NA
         throw_vals_left(sdf) # changes df in place, Nones go to rightmost side
+
         sdf.columns = newcols # set column names per the regex_to template
-        sdf = sdf.dropna(axis=1,how='all')#drop (rightmost) cols that are all NA
+        sdf = sdf.dropna(axis=1,how='all') # drop rightmost cols that are all NA
         sdf = sdf.iloc[:,:kmax] if kmax else sdf # up to kmax columns if spec-d
         sname = name
         if has_subgroups:
