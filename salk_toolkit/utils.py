@@ -11,10 +11,11 @@ __all__ = ['warn', 'default_color', 'default_bidirectional_gradient', 'redblue_g
            'rel_wave_times', 'stable_rng', 'stable_draws', 'deterministic_draws', 'clean_kwargs', 'call_kwsafe',
            'censor_dict', 'cut_nice_labels', 'cut_nice', 'rename_cats', 'str_replace', 'merge_series',
            'aggregate_multiselect', 'deaggregate_multiselect', 'gb_in', 'gb_in_apply', 'stk_defaultdict', 'cached_fn',
-           'scores_to_ordinal_rankings', 'dict_cache', 'get_size', 'escape_vega_label', 'unescape_vega_label']
+           'scores_to_ordinal_rankings', 'dict_cache', 'get_size', 'escape_vega_label', 'unescape_vega_label',
+           'read_yaml']
 
 # %% ../nbs/10_utils.ipynb 3
-import json, os, warnings, math, inspect, sys
+import json, os, warnings, math, inspect, sys, yaml
 import itertools as it
 from collections import defaultdict, OrderedDict
 
@@ -422,6 +423,7 @@ def merge_series(*lst):
 # %% ../nbs/10_utils.ipynb 43
 # Turn a list of selected/not seleced into a list of selected values in the same dataframe
 def aggregate_multiselect(df, prefix, out_prefix, na_vals=[], colnames_as_values=False, inplace=True):
+     warn("This functionality is now built into create block.")
      cols = [ c for c in df.columns if c.startswith(prefix) ]
      dfc = df[cols].astype('object').replace(dict(zip(na_vals,[None]*len(na_vals))))
 
@@ -563,3 +565,14 @@ def escape_vega_label(label):
 
 def unescape_vega_label(label):
     return label.replace('․','.').replace('［','[').replace('］',']')
+
+# %% ../nbs/10_utils.ipynb 53
+def read_yaml(model_desc_file):
+    if '.yaml' not in model_desc_file:
+        raise FileNotFoundError(f"Model description file {model_desc_file} must have a .yaml extension")
+    with open(model_desc_file) as stream:
+        try:
+            yaml_desc = yaml.safe_load(stream)
+        except yaml.YAMLError as exc:
+            print(exc)
+    return yaml_desc

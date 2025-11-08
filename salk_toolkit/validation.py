@@ -75,6 +75,26 @@ class BlockScaleMeta(ColumnMeta):
     col_prefix: Optional[str] = None # If column name should have the prefix added. Usually used in scale block
     question_colors: Optional[Dict[str,Color]] = None # Dict mapping columns to different colors
 
+
+class TopKBlock(BaseModel):
+    type: Literal['topk'] = 'topk'
+    k: Union[int,Literal['max']] = 'max'
+    from_columns: Optional[Union[str,List[str]]] = None
+    res_cols_prefix: Optional[str] = None
+    res_cols: Optional[str] = None
+    agg_index: int = -1 #TODO: Is this allowed to vary properly here?
+    na_val: Optional[str] = None
+    ordered: bool = False
+
+
+class MaxDiffBlock(BaseModel):
+    type: Literal['maxdiff'] = 'maxdiff'
+    best_columns: Optional[Union[str,List[str]]] = None
+    worst_columns: Optional[Union[str,List[str]]] = None
+    topics: Optional[str] = None
+    sets: Optional[str] = None
+    setindex: Optional[str] = None
+
 # %% ../nbs/06_validation.ipynb 7
 # Transform the column tuple to (new name, old name, meta) format
 def cspec(tpl):
@@ -109,6 +129,7 @@ class ColumnBlockMeta(PBase):
     # Block level flags
     generated: bool = False # This block is for data that is generated, i.e. not initially in the file.
     hidden: bool = False # Use this to hide the block in explorer.py
+    create: Optional[Union[TopKBlock, None]] = None #TODO: None -> MaxDiff
 
 # %% ../nbs/06_validation.ipynb 9
 # Again, convert list to dict for easier debugging in case errors get thrown

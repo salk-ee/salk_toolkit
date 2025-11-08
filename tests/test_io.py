@@ -10,6 +10,7 @@ import json
 import tempfile
 import os
 from pathlib import Path
+from pandas.testing import assert_frame_equal
 
 from salk_toolkit.io import (
     read_annotated_data, 
@@ -152,6 +153,60 @@ class TestReadAnnotatedData:
         assert meta is not None
         assert 'structure' in meta
         assert len(meta['structure']) > 0
+
+    def test_topk_create_block(self, meta_file, csv_file):
+        """Test top k create block."""
+        meta = {
+            "file": "test.csv",
+            "structure": [{
+                "name": "topk",
+                "columns": ["id","q1_1","q1_2","q1_3","q2_1","q2_2","q2_3"],
+                "create": {
+                    "type": "topk",
+                    "from_columns": r"q(\d+)_(\d+)",
+                    "name": "issue_importance_raw",
+                    "na_vals": ["not_selected"],
+                    "res_cols": r"q\1_R\2",
+                    "scale": {
+                        "categories": "infer",
+                        "translate": {
+                            "1": "USA",
+                            "2": "Canada",
+                            "3": "Mexico"
+                        }
+                    }
+                }
+            }]
+        }
+        write_json(meta_file, meta)
+
+        df = pd.DataFrame({
+            'q1_1': ['selected', 'not_selected', 'not_selected'],
+            'q1_2': ['not_selected', 'selected', 'not_selected'],
+            'q1_3': ['not_selected', 'not_selected', 'selected'],
+            'q2_1': ['selected', 'not_selected', 'selected'],
+            'q2_2': ['selected', 'selected', 'selected'],
+            'q2_3': ['selected', 'not_selected', 'not_selected'],
+            'id': ['a', 'b', 'c']
+        })
+        df.to_csv_file(csv_file)
+        data_df, data_meta = read_and_process_data(str(meta_file),return_meta=True)
+        newcols = data_df.columns.difference(df.columns)
+        diffs = data_df[newcols].replace('<NA>',pd.NA)
+        expected_result = pd.DataFrame([
+            ["USA","USA","Canada","Mexico"],
+            ["Canada","Canada",pd.NA, pd.NA],
+            ["Mexico","USA","Canada",pd.NA]
+            ], columns=newcols, 
+            dtype=pd.CategoricalDtype(categories=['USA', 'Canada','Mexico']))
+        expected_structure = [ 
+                {'name': 'topk', 'columns': ['id', 'q1_1', 'q1_2', 'q1_3', 'q2_1', 'q2_2', 'q2_3']},
+                {'name': 'issue_importance_raw_1', 'scale': {'categories': ['USA', 'Canada', 'Mexico'], 'translate': {'1': 'USA', '2': 'Canada', '3': 'Mexico'}}, 'columns': ['q1_R1']},
+                {'name': 'issue_importance_raw_2', 'scale': {'categories': ['USA', 'Canada', 'Mexico'], 'translate': {'1': 'USA', '2': 'Canada', '3': 'Mexico'}}, 'columns': ['q2_R1', 'q2_R2', 'q2_R3']}
+            ]
+        assert_frame_equal(diffs.fillna(pd.NA), expected_result.fillna(pd.NA), check_dtype=False, check_categorical=False)
+        assert sorted(data_meta['structure'], key=lambda x: x['name']) == sorted(expected_structure, key=lambda x: x['name'])
+
 
 class TestColumnTransformations:
     """Test various column transformation features"""
