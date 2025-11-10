@@ -12,7 +12,7 @@ __all__ = ['warn', 'default_color', 'default_bidirectional_gradient', 'redblue_g
            'censor_dict', 'cut_nice_labels', 'cut_nice', 'rename_cats', 'str_replace', 'merge_series',
            'aggregate_multiselect', 'deaggregate_multiselect', 'gb_in', 'gb_in_apply', 'stk_defaultdict', 'cached_fn',
            'scores_to_ordinal_rankings', 'dict_cache', 'get_size', 'escape_vega_label', 'unescape_vega_label',
-           'read_yaml']
+           'read_json', 'read_yaml']
 
 # %% ../nbs/10_utils.ipynb 3
 import json, os, warnings, math, inspect, sys, yaml
@@ -567,9 +567,16 @@ def unescape_vega_label(label):
     return label.replace('․','.').replace('［','[').replace('］',']')
 
 # %% ../nbs/10_utils.ipynb 53
+def read_json(fname):
+    if '.json' not in fname:
+        raise FileNotFoundError(f"Expecting {fname} to have a .json extension")
+    with open(fname,'r') as jf:
+        meta = json.load(jf)
+    return meta
+
 def read_yaml(model_desc_file):
     if '.yaml' not in model_desc_file:
-        raise FileNotFoundError(f"Model description file {model_desc_file} must have a .yaml extension")
+        raise FileNotFoundError(f"Expecting {model_desc_file} to have a .yaml extension")
     with open(model_desc_file) as stream:
         try:
             yaml_desc = yaml.safe_load(stream)
