@@ -20,7 +20,7 @@ from salk_toolkit.io import (
     get_loaded_files,
     extract_column_meta,
     group_columns_dict,
-    replace_data_meta_in_parquet
+    replace_data_meta_in_parquet,
 )
 
 # Global test directory and CSV file path
@@ -637,10 +637,16 @@ class TestAdvancedFeatures:
         
         meta = {
             "file": "test.csv",
-            "preprocessing": "df['computed'] = df['value'] * df['multiplier']",
+            "constants": {
+                "offset": 5
+            },
+            "preprocessing": [
+                "df['computed'] = df['value'] * df['multiplier']",
+                "df['with_constant'] = df['computed'] + offset"
+            ],
             "structure": [{
                 "name": "test",
-                "columns": ["value", "computed"]
+                "columns": ["value", "computed", "with_constant"]
             }]
         }
         write_json(meta_file, meta)
@@ -649,6 +655,8 @@ class TestAdvancedFeatures:
         
         assert 'computed' in df.columns
         assert df['computed'].tolist() == [2, 4, 6, 8, 10]
+        assert 'with_constant' in df.columns
+        assert df['with_constant'].tolist() == [7, 9, 11, 13, 15]
     
     def test_postprocessing_execution(self, csv_file, meta_file):
         """Test postprocessing execution"""
