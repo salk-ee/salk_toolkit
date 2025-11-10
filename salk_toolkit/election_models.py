@@ -157,7 +157,7 @@ def simulate_election_e2e(sdf, parties, mandates_dict, ed_col='electoral_distric
     nmandates = np.array([ mandates_dict[d] for d in districts ])
 
     # Translate exclusion list to party indices (and add the proper default)
-    kwargs['exclude'] = [ parties.index(p) for p in kwargs.get('exclude', party_aggregate_cat_names) ]
+    kwargs['exclude'] = [ parties.index(p) for p in kwargs.get('exclude', party_aggregate_cat_names) if p in parties ]
 
     edt = simulate_election(support, nmandates, **kwargs)
 
@@ -183,7 +183,7 @@ def simulate_election_pp(data, mandates, electoral_system, cat_col, value_col, f
         print(td, electoral_system['threshold'])
 
     # Translate exclusion list to party indices (and add the proper default)
-    electoral_system['exclude'] = [ cat_order.index(p) for p in electoral_system.get('exclude', party_aggregate_cat_names) ]
+    electoral_system['exclude'] = [ cat_order.index(p) for p in electoral_system.get('exclude', party_aggregate_cat_names) if p in cat_order ]
 
     # Run the actual electoral simulation
     nmandates = np.array([ mandates[d] for d in factor_order ])
