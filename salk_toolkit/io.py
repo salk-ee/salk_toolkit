@@ -43,7 +43,6 @@ warnings.filterwarnings("ignore",
 # %% ../nbs/01_io.ipynb 6
 #| export
 
-
 # %% ../nbs/01_io.ipynb 7
 def str_from_list(val):
     if isinstance(val,list):
@@ -103,6 +102,7 @@ def read_concatenate_files_list(meta,data_file=None,path=None,**kwargs):
     for fi, fd in enumerate(data_files):
 
         data_file, opts = fd['file'], fd['opts']
+        file_code = fd.get('code', f'F{fi}')  # Default to F0, F1, F2, etc.
         if path: data_file = os.path.join(os.path.dirname(path),data_file)
         mapped_file = stk_file_map.get(data_file,data_file)
 
@@ -130,11 +130,15 @@ def read_concatenate_files_list(meta,data_file=None,path=None,**kwargs):
         # If data is multi-indexed, flatten the index
         if isinstance(raw_data.columns,pd.MultiIndex): raw_data.columns = [" | ".join(tpl) for tpl in raw_data.columns]
 
-        # Add extra columns to raw data that contain info about the file. Always includes column 'file' with filename and file_ind with index
+        # Add extra columns to raw data that contain info about the file
+        # Always includes 'file_ind' with index and 'file_code' with the code identifier
         # Can be used to add survey_date or other useful metainfo
-        if len(data_files)>1: raw_data['file_ind'] = fi
+        if len(data_files)>1:
+            raw_data['file_ind'] = fi
+            raw_data['file_code'] = file_code
+            cat_dtypes['file_code'] = None  # Mark file_code as categorical
         for k,v in fd.items():
-            if k in ['opts']: continue
+            if k in ['opts', 'code']: continue  # Skip opts and code (already handled)
             if len(data_files)<=1 and k in ['file']: continue
             raw_data[k] = v
             if isinstance(v,str): cat_dtypes[k] = None

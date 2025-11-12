@@ -1,0 +1,68 @@
+---
+description: Streamlit dashboard framework usage guide
+globs: nbs/05_dashboard.ipynb, salk_toolkit/dashboard.py, tests/test_dashboard.py
+---
+
+# Dashboard Framework
+
+## Mission statement
+- Make it easy to set up low-code dashboards on annotated datasets with translation, authentication and a standard multipage layout using Streamlit. 
+
+# Basic usage
+
+- initialize a `SalkDashboardBuilder` class as `sdb` with `data_source` as a filename
+  - if required set a whitelist of organizations allowed to access the dashboard
+- create one or more pages via `sdb.page` decorator on a function
+  - to draw plots with plotting pipeline, simply call `sdb.plot` with plot_desc json
+  - to add custom filters or faceting to the plot, use `sdb.filter_ui` and `sdb.facet_ui` in the plot_desc
+  - data can be accessed directly via `sdb.get_df`
+- finally, run `sdb.build` to create the navigation menu and finish setup
+
+## Authentication and user management
+- Using Frontegg as the OAuth provider
+- Public dashboards can be accessed by anyone
+- Other dashboards have a whitelist of organizations they are open to.
+  - If whitelist present, make triple-sure no-one outside it can see any data!
+  - Security here is super important, as failure can cause huge reputational loss!
+
+## Translations/I18n
+- Translation should be seamless, requiring no extra code for most use cases
+  - We wrap streamlit functions with translation automatically
+- Dashboard should self-generate a l10n template file (.pot) with all strings
+  - Translate function also checks and updates the .pot file as needed
+- It should auto-detect all provided languages and allow the user to choose from among them
+- Language in code/template is assumed to be english (en)
+- Language choice is persisted in the OAuth user data
+
+## Layout/Pagination
+- Sidebar is always open and is meant for navigation, showing list of pages
+- Each page is created via a decorator created with `sdb.page` on a function
+
+## Data access & Plotting
+- Assume we are working with large datasets and efficiency is a high priority
+  - Use `polars` library internally as much as possible
+  - `get_df` should still return a pandas dataframe, but should make it easy to filter columns (and ideally rows)
+- Each page can have it's own dataset, but defaults to the the dataset given at sdb construction
+- Data for plots is automatically cached using the plot pipeline
+- `filter_ui`/`facet_ui` rely on annotation metadata (group aliases, category order, continuous ranges) and reuse the dashboard translation context—ensure annotations stay in sync so the UI renders cleanly.
+
+## Admin mode
+- Users can have admin permissions, checked with`sdb.admin`.
+- Admins have a user management UI where they can add/edit/remove users and see all existing users
+  - Built on Frontegg api
+- Admins can impersonate a user from any organization for UI testing purposes.
+  - Kept in session state so browser refresh kills impersonation session
+- For admins, the sidebar shows process memory and plot cache size (`get_size`) for debugging
+
+## Deprecation and planned changes
+We are planning to deprecate multiple functionalities in the near term:
+- `StreamlitAuthenticationManager` and `auth_conf.json` as we are moving towards Frontegg-only authentication
+- `deployment.json` based mapping as it creates an unnecessary maintenance overhead
+We should also re-think the current logging system. 
+
+## Other notes
+- Write new features in `nbs/05_dashboard.ipynb` and regenerate; do not hand-edit `salk_toolkit/dashboard.py`.
+
+## Testing
+- Tests are in `tests/test_dashboard.py`
+- Streamlit functionality is hard to test e2e so just unit-test everything you can.

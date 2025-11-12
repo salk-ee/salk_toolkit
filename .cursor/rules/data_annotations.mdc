@@ -1,0 +1,83 @@
+---
+description: Guidelines for survey data annotation workflows
+globs: nbs/01_io.ipynb, nbs/06_validation.ipynb, salk_toolkit/io.py, salk_toolkit/validation.py, tests/test_io.py
+---
+
+# Data Annotations
+
+## Mission statement
+- Provide an expressive JSON language for re-structuring survey datasets to a standard format in a way that makes all transformations done to data concise, explicit and auditable while providing the additional context for the data required for plotting.
+
+## Organization
+- Processing logic in `nbs/01_io.ipynb`
+- Pydantic schemas in `nbs/06_validation.ipynb`
+- Tests covering annotation behaviour are in `tests/test_io.py`
+
+## Core ideas
+- **Auditability** - the idea of the metafile is to document exactly the transformations applied to data
+  - Many transformations, such as renaming columns or remapping categories have simple shorthand
+  - For more complex transformations, `preprocessing`, `transform` and `postprocessing` properties can be used
+- **Plotting/modeling context** - adding extra metadata to the data
+  - Marking if a category is ordered or not - important both for plots and for modeling
+  - Adding labels to columns and blocks for plot headers and tooltips
+  - Adding colors for categories for colored line/barcharts
+- **Streamlined/Explicated** - Two standard forms for two main use cases
+  - Streamlined (for auditing) shows only bare minimum: only things that are actually mandated/changed
+    - Example: `'categories': 'infer'` if the category order does not matter (defaults to alphabetical)
+  - Explicated (for plotting/modeling) has everything explicitly written out for easier use in code
+    - I.e. you can assume categories list is present instead of dealing with 'infer' special case everywhere
+  - When reading in annotations, they are automatically explicated by read_annotated_data
+    - This is currently not fully implemented, but the goal is to transition towards this state
+  - When displaying to user, the models are streamlined again to make changes easier to track
+    - This not implemented at all yet, but should be the goal.
+- **Question blocks** - groups of columns that are about the same kind of information
+  - Example - demographics; issue positions; opinion about parties; etc.
+  - Questions in a block can (but don't have to) share the answer scale
+    - `scale` property on a block is applied as defaults to all column metadatas in that block
+    - If the scale is shared, they can be displayed on a single plot as well as individually
+  - Column can also have a `col_prefix`
+    - In that case, columns for that block have that prefix prepended to their names in the data but not in visualization
+    - This is needed to disambiguate columns that would otherwise have the same name, where their block prefix provides the context for their meaning.
+
+## Structural notes
+- Column entries support `[new_name, source_name, meta_dict]`; omit pieces for defaults. Block-level `scale` metadata is merged into each column and can add `col_prefix`.
+- Blocks can mark `generated` (materialised later) or `hidden` (excluded from explorer defaults).
+
+## Execution context
+- `preprocessing`, per-column `transform`, `subgroup_transform`, and `postprocessing` run with `df`, `ndf`, `pd`, `np`, `stk`, constants, and any reader-provided extra info in scope. Use them for controlled side effects only.
+- Rows listed under `excluded` are dropped unless `ignore_exclusions=True`.
+- `read_annotated_data(..., return_raw=True)` keeps the raw frame. This is useful for debugging the processing context issues.
+
+## Usage
+- Reading in annotated raw data by providing the annotation file
+  - `read_annotated_data(annotation_file_name)`
+- Reading in a parquet where annotations have been baked into it's metadata
+  - Often the result of statistical modelling with poststratification on a large synthetic population
+  - `read_annotated_data(parquet_file_name)`
+- Reading in multiple annotated files with similarly structured content
+  - `read_and_process_data(<DataDescription>)`
+
+## Detailed annotation spec
+- The exact specifications of the annotation syntax is in `nbs/06_validation.ipynb`
+  - This is the most up-to-date-source and is kept up-to-date with comments
+  - Always read that file thoroughly before making annotation-related changes!
+- If more detail is required about functionality, look at `process_annotated_data` function in `nbs/01_io.ipynb`
+- If anything is ambiguous, ask about it before assuming!
+
+## Minor concepts
+- **constants**: to avoid repeating values, syntax allows defining constants and referencing them by name
+  - Any value in the structure can instead be a string with the name of the constant. In that case, it is replaced with that constant. This is important to avoid duplicating large dictionaries for colors, for instance. 
+  - Constants are also made available to the pre/postprocessing and transform functions.
+- **file_map**: Before reading any file from disk, we consult the global `file_map` dictionary and remap if needed
+  - This is to allow packaging multiple annotations with their source files without worrying about paths
+- **multi-file inputs**: Each entry in `files` can attach extra columns (e.g. survey dates, wave codes). Those values flow into the processed dataframe as categoricals keyed by the added column names.
+- **DataDescription**: `read_and_process_data` accepts inline `data`, `preprocessing`/`postprocessing` snippets, boolean `filter` expressions, and `merge` specs so you can stage joins without editing the base meta.
+
+## Practical notes
+- When dealing with parquets, assume they are big and work with polars lazy if at all possible.
+- Write new features in `nbs/{module}.ipynb` and regenerate; do not hand-edit `salk_toolkit/{module}.py`.
+
+## Testing
+- Data annotation tests are in `tests/test_io.py` 
+- When adding new tests, mimic the existing fixture pattern to keep tests isolated.
+- Add both unit tests (if creating new functions) and also add/modify end-to-end tests to check for the functionality

@@ -101,7 +101,7 @@ class TestPlots:
             'factor_cols': ['age_group'],
             'filter': {},
             'plot': 'boxplots',
-            'internal_facet': True,
+            'internal_facet': True
         }
         self._run_plot_test("test_boxplots_basic", config, recompute=recompute)
 
@@ -137,6 +137,20 @@ class TestPlots:
             'internal_facet': True
         }
         self._run_plot_test("test_columns_thermometer", config, recompute=recompute)
+
+    def test_columns_sorted_median(self, recompute):
+        """Test column plot with custom aggregation and sorting."""
+        config = {
+            'res_col': 'EKRE',
+            'factor_cols': ['nationality'],
+            'filter': {},
+            'plot': 'columns',
+            'internal_facet': True,
+            'agg_fn': 'median',
+            'sort': ['nationality'],
+            'pl_filter': 'pl.col("age") > 40',
+        }
+        self._run_plot_test("test_columns_sorted_median", config, recompute=recompute, width=450)
 
     def test_stacked_columns(self, recompute):
         """Test stacked column plots."""
@@ -276,7 +290,8 @@ class TestPlots:
             'filter': {},
             'plot': 'lines',
             'internal_facet': True,
-            'plot_args': {'smooth': True}
+            'plot_args': {'smooth': True},
+            'n_facet_cols': 2,
         }
         self._run_plot_test("test_lines_smooth", config, recompute=recompute)
 
@@ -397,7 +412,8 @@ class TestPlots:
             'filter': {},
             'plot': 'boxplots',
             'internal_facet': True,
-            'convert_res': 'continuous'
+            'convert_res': 'continuous',
+            'val_range': (0.0, 3.0),
         }
         self._run_plot_test("test_boxplots_convert_res", config, recompute=recompute)
 
@@ -410,8 +426,8 @@ class TestPlots:
             'filter': { 'party_preference': ['Keskerakond','Reformierakond', 'SDE', 'EKRE']}, 
             'convert_res': 'continuous',
             'num_values': [0, 0, 0, 1, 1],
-            'value_name': 'Pr[valitsus==Agree]',
-            'value_format': '.0%',
+            'val_name': 'Pr[valitsus==Agree]',
+            'val_format': '.0%',
             'plot': 'lines_hdi',
             'internal_facet': True,
         }
