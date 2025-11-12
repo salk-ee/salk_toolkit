@@ -42,9 +42,9 @@
       },
       {
         "electoral_district": "Kesklinn, Lasnam\u00e4e ja Pirita",
-        "polarisation": -0.005796960240754999,
-        "radicalisation": 0.5836936655154958,
-        "relevance": 0.09208362696734795
+        "polarisation": -0.005796960240755407,
+        "radicalisation": 0.5836936655154951,
+        "relevance": 0.09208362696734784
       },
       {
         "electoral_district": "L\u00e4\u00e4ne-Virumaa",
@@ -55,7 +55,7 @@
       {
         "electoral_district": "Mustam\u00e4e ja N\u00f5mme",
         "polarisation": 1.0763813996255627,
-        "radicalisation": -0.25634541763888447,
+        "radicalisation": -0.2563454176388837,
         "relevance": 0.011468952734012938
       },
       {
@@ -67,8 +67,8 @@
       {
         "electoral_district": "Tartu linn",
         "polarisation": 0.3048359998819783,
-        "radicalisation": -0.7478521851458633,
-        "relevance": 0.029317657563806887
+        "radicalisation": -0.747852185145864,
+        "relevance": 0.029317657563806776
       },
       {
         "electoral_district": "V\u00f5ru-, Valga- ja P\u00f5lvamaa",

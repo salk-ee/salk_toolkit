@@ -1,0 +1,31 @@
+---
+description: Testing strategy for salk_toolkit
+globs: tests/**/*.py,nbs/**/*.ipynb
+alwaysApply: false
+---
+# Testing
+
+## Running The Suite
+- Preferred command: `python -m pytest tests/` from the project root
+- Run full test suite after all changes to confirm no regressions
+
+## Testing best practices
+- Allow tests to test for multiple things at the same time
+  - Especially for tests with large custom fixtures, to keep test run-time manageable
+  - In these cases, have multiple assert statements that delineate the failure cause 
+- When adding new tests, always check for existing similar tests
+  - If in doubt, prefer tweaking/adding to an existing test over creating a new one.
+- Every change should have a test that checks it
+  - Always add tests with new functionality
+  - Check domain rules to see what kinds of tests are expected
+- Run the subset of tests that cover the modules you touched before committing.
+  - For notebook-driven changes, regenerate the corresponding `.py` via nbdev before running tests.
+- Keep test data small but representative; favour programmatically generated frames over large static fixtures unless a real dataset characteristic is required.
+- Ensure new tests remain deterministic—set random seeds where randomness is involved (see `tests/test_plots.py` and `tests/test_utils.py` examples).
+
+## Utility Tests
+- `tests/test_utils.py` covers helper functions from `salk_toolkit.utils` (factorization, batching, rounding, string matching, gradient helpers, caching utilities). Extend it when adding or altering utility behaviour to guard against regressions.
+
+## Pytest Configuration
+- `tests/conftest.py` adds the project root to `sys.path` and defines a `--recompute` flag plus `recompute` fixture. Respect this interface when writing tests that update persisted artefacts.
+- Custom markers: `@pytest.mark.slow` and `@pytest.mark.integration` exist for opt-in categorisation (`pytest -m "not slow"` to skip).

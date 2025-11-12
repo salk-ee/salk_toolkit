@@ -29,6 +29,7 @@ import altair as alt
 
 from salk_toolkit.utils import *
 from salk_toolkit.io import extract_column_meta, group_columns_dict, list_aliases, read_parquet_with_metadata
+from salk_toolkit.validation import PlotDescriptor, soft_validate
 
 # %% ../nbs/02_pp.ipynb 6
 # Augment each draw with bootstrap data from across whole population to make sure there are at least <threshold> samples
@@ -1010,9 +1011,9 @@ def create_plot(pparams, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=F
         n_facet_cols = plot_meta.get('factor_columns',1)
 
     # Allow value col name to be changed. This can be useful in distinguishing different aggregation options for a column
-    if 'value_name' in pp_desc:
-        data = data.rename(columns={pparams['value_col']:pp_desc['value_name']})
-        pparams['value_col'] = pp_desc['value_name']
+    if 'val_name' in pp_desc:
+        data = data.rename(columns={pparams['value_col']:pp_desc['val_name']})
+        pparams['value_col'] = pp_desc['val_name']
 
     # We consistenly used (and mutated) data and now put it back into pparams
     pparams['data'] = data
@@ -1101,6 +1102,9 @@ def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, h
         raise Exception('Data must be provided either as data_file or full_df')
     if data_file is None and data_meta is None:
         raise Exception('If data provided as full_df then data_meta must also be given')
+
+    # Validate the plot descriptor
+    soft_validate(pp_desc,PlotDescriptor)
 
     if full_df is None:
 

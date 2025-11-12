@@ -454,13 +454,13 @@
       },
       {
         "field": "lo",
-        "format": ".1f",
+        "format": ".0%",
         "title": "HDI lower",
         "type": "quantitative"
       },
       {
         "field": "hi",
-        "format": ".1f",
+        "format": ".0%",
         "title": "HDI upper",
         "type": "quantitative"
       },
@@ -492,7 +492,7 @@
     },
     "y": {
       "axis": {
-        "format": ".1f",
+        "format": ".0%",
         "title": "Pr[valitsus==Agree]"
       },
       "field": "lo",
