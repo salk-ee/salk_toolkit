@@ -23,6 +23,7 @@ import scipy.stats as sps
 from salk_toolkit.utils import *
 from salk_toolkit.io import extract_column_meta, read_json
 from salk_toolkit.plots import stk_plot
+from salk_toolkit.pp import e2e_plot
 
 import streamlit as st
 
@@ -168,7 +169,7 @@ def simulate_election_e2e(sdf, parties, mandates_dict, ed_col='electoral_distric
     eddf.loc[:, ['draw', ed_col, 'party']] = np.array(tuple(it.product( range(edt.shape[0]), districts, parties )))
     return eddf
 
-# %% ../nbs/04_election_models.ipynb 14
+# %% ../nbs/04_election_models.ipynb 15
 # Factor = districts, Category = parties
 def simulate_election_pp(data, mandates, electoral_system, cat_col, value_col, factor_col, cat_order, factor_order):
     # Reshape input to (draws,electoral_districts,parties)
@@ -196,7 +197,7 @@ def simulate_election_pp(data, mandates, electoral_system, cat_col, value_col, f
 
     return df
 
-# %% ../nbs/04_election_models.ipynb 15
+# %% ../nbs/04_election_models.ipynb 16
 # This fits into the pp framework as: f0['col']=party_pref, factor=electoral_district, hence the as_is and hidden flags
 @stk_plot('mandate_plot', data_format='longform', draws=True, requires_factor=True, agg_fn='sum', n_facets=(2,2), requires=[{},{'mandates':'pass','electoral_system':'pass'}], as_is=True, priority=-500)#, hidden=True)
 def mandate_plot(data, mandates, electoral_system, value_col='value', facets=[], width=None, alt_properties={}, outer_factors=[], translate=None, sim_done=False):
@@ -262,7 +263,7 @@ def mandate_plot(data, mandates, electoral_system, value_col='value', facets=[],
     )
     return plot
 
-# %% ../nbs/04_election_models.ipynb 18
+# %% ../nbs/04_election_models.ipynb 19
 # This fits into the pp framework as: f0['col']=party_pref, factor=electoral_district, hence the as_is and hidden flags
 @stk_plot('coalition_applet', data_format='longform', draws=True, requires_factor=True, agg_fn='sum', args={'initial_coalition':'list'},
                 requires=[{},{'mandates':'pass','electoral_system':'pass'}], as_is=True, n_facets=(2,2), priority=-1000)#, hidden=True)

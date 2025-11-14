@@ -136,7 +136,7 @@ def match_data(data1,data2,cols=None):
     ind1, ind2 = d1.index[i1], d2.index[i2]
     return ind1, ind2
 
-# %% ../nbs/10_utils.ipynb 16
+# %% ../nbs/10_utils.ipynb 17
 # Allow 'constants' entries in the dict to provide replacement mappings
 # This leads to much more readable jsons as repetitions can be avoided
 def replace_constants(d, constants = {}, inplace=False):
@@ -154,7 +154,7 @@ def replace_constants(d, constants = {}, inplace=False):
 
     return d
 
-# %% ../nbs/10_utils.ipynb 17
+# %% ../nbs/10_utils.ipynb 18
 # Little function to do approximate string matching between two lists. Useful if things have multiple spellings.
 def approx_str_match(frm,to,dist_fn=None,lower=True):
     if not isinstance(frm,list): frm = list(frm)
@@ -167,7 +167,7 @@ def approx_str_match(frm,to,dist_fn=None,lower=True):
     t1,t2 = scipy.optimize.linear_sum_assignment(dmat)
     return dict(zip([frm[i] for i in t1],[to[i] for i in t2]))
 
-# %% ../nbs/10_utils.ipynb 20
+# %% ../nbs/10_utils.ipynb 21
 # JSON encoder needed to convert pandas indices into lists for serialization
 def index_encoder(z):
     if isinstance(z, pd.Index):
@@ -176,7 +176,7 @@ def index_encoder(z):
         type_name = z.__class__.__name__
         raise TypeError(f"Object of type {type_name} is not serializable")
 
-# %% ../nbs/10_utils.ipynb 21
+# %% ../nbs/10_utils.ipynb 22
 default_color = 'lightgrey' # Something that stands out so it is easy to notice a missing color
 
 # Helper function to turn a dictionary into an Altair scale (or None into alt.Undefined)
@@ -191,7 +191,7 @@ def to_alt_scale(scale, order=None):
         scale = alt.Scale(domain=list(order),range=[ (scale[c] if c in scale else default_color) for c in order ])
     return scale
 
-# %% ../nbs/10_utils.ipynb 22
+# %% ../nbs/10_utils.ipynb 23
 # Turn a question with multiple variants all of which are in distinct columns into a two columns - one with response, the other with which question variant was used
 
 def multicol_to_vals_cats(df, cols=None, col_prefix=None, reverse_cols=[], reverse_suffixes=None, cat_order=None, vals_name='vals', cats_name='cats', inplace=False):
@@ -211,7 +211,7 @@ def multicol_to_vals_cats(df, cols=None, col_prefix=None, reverse_cols=[], rever
     df.loc[:,cats_name] = np.array(tdf.columns)[cinds]
     return df
 
-# %% ../nbs/10_utils.ipynb 24
+# %% ../nbs/10_utils.ipynb 25
 default_bidirectional_gradient = ['#c30d24', '#e67f6c', '#c3b6af', '#74b0ce', '#1770ab']
 redblue_gradient = ["#8D0E26", "#EA9379", "#F2EFEE", "#8FC1DC", "#134C85"]
 greyscale_gradient = ["#444444", "#ffffff"]
@@ -233,7 +233,7 @@ def gradient_subrange(grad, num_colors, range=[-1,1], bidirectional=True):
     mi, ma = round(nt*(range[0]-base[0])/(base[1]-base[0])), round(nt*(range[1]-base[0])/(base[1]-base[0]))
     return grad[mi:ma]
 
-# %% ../nbs/10_utils.ipynb 26
+# %% ../nbs/10_utils.ipynb 27
 # Create a color gradient from a given single color
 def gradient_from_color(color, l_value=0.3, n_points=7, range=[0,1]):
     # Get hue and saturation for color (ignoring luminosity to make scales uniform on that)
@@ -265,7 +265,7 @@ def gradient_from_color_alt(color, l_value=0.6, n_points=7, range=[0,1]):
     ls = np.linspace(0,1,n_points) # Create n_points steps in hsluv space
     return [ hsluv.hsluv_to_hex((ch,min(cs,w*end_s+(1-w)*beg_s),(w*end_l+(1-w)*beg_l))) for w in ls ]
 
-# %% ../nbs/10_utils.ipynb 27
+# %% ../nbs/10_utils.ipynb 28
 # This function is used to choose colors and positioning for likert bars with (potentially multiple) neutral categories
 def split_to_neg_neutral_pos(cats,neutrals):
     cats,mid = list(cats),len(cats)//2
@@ -294,13 +294,13 @@ def split_to_neg_neutral_pos(cats,neutrals):
         pos = [ c for c in cats[ci:] if c not in neutrals ]
         return neg, neutrals, pos
 
-# %% ../nbs/10_utils.ipynb 28
+# %% ../nbs/10_utils.ipynb 29
 def is_datetime(col):
     with warnings.catch_warnings():
         warnings.simplefilter(action='ignore', category=UserWarning)
         return pd.api.types.is_datetime64_any_dtype(col) or (col.dtype.name in ['str','object'] and pd.to_datetime(col,errors='coerce').notna().any())
 
-# %% ../nbs/10_utils.ipynb 29
+# %% ../nbs/10_utils.ipynb 30
 # Convert a series of wave indices and a series of survey dates into a time series usable by our gp model
 def rel_wave_times(ws, dts, dt0=None):
     df = pd.DataFrame({'wave':ws, 'dt': pd.to_datetime(dts)})
@@ -311,13 +311,13 @@ def rel_wave_times(ws, dts, dt0=None):
 
     return pd.Series(df['wave'].replace(w_to_time),name='t')
 
-# %% ../nbs/10_utils.ipynb 31
+# %% ../nbs/10_utils.ipynb 32
 # Generate a stable random number generator from a seed
 # SFC64 is guaranteed to be the same across all platforms and numpy versions
 def stable_rng(seed):
     return np.random.Generator(np.random.SFC64(seed))
 
-# %% ../nbs/10_utils.ipynb 32
+# %% ../nbs/10_utils.ipynb 33
 # Generate a random draws column that is deterministic in n, n_draws and uid
 def stable_draws(n, n_draws, uid):
     # Initialize a random generator with a hash of uid
@@ -336,7 +336,7 @@ def deterministic_draws(df, n_draws, uid, n_total=None):
     df.loc[:,'draw'] = pd.Series(stable_draws(n_total, n_draws, uid), index = np.arange(n_total))
     return df
 
-# %% ../nbs/10_utils.ipynb 34
+# %% ../nbs/10_utils.ipynb 35
 # Clean kwargs leaving only parameters fn can digest
 def clean_kwargs(fn, kwargs):
     aspec = inspect.getfullargspec(fn)
@@ -346,12 +346,12 @@ def clean_kwargs(fn, kwargs):
 def call_kwsafe(fn,*args,**kwargs):
     return fn(*args,**clean_kwargs(fn,kwargs))
 
-# %% ../nbs/10_utils.ipynb 35
+# %% ../nbs/10_utils.ipynb 36
 # Simple one-liner to remove certain keys from a dict
 def censor_dict(d,vs):
     return { k:v for k,v in d.items() if k not in vs }
 
-# %% ../nbs/10_utils.ipynb 36
+# %% ../nbs/10_utils.ipynb 37
 # Create nice labels for a cut
 # Used by the cut_nice below as well as for a lazy polars version in pp
 def cut_nice_labels(breaks, mi=-np.inf, ma=np.inf, isint=False, format='', separator=' - '):
@@ -390,14 +390,14 @@ def cut_nice(s, breaks, format='', separator=' - '):
     breaks, labels = cut_nice_labels(breaks, mi, ma, isint, format, separator)
     return pd.cut(s, breaks, right=False, labels=labels, ordered=False)
 
-# %% ../nbs/10_utils.ipynb 38
+# %% ../nbs/10_utils.ipynb 39
 # Utility function to rename categories in pre/post processing steps as pandas made .replace unusable with categories
 def rename_cats(df, col, cat_map):
     if df[col].dtype.name == 'category':
         df[col] = df[col].cat.rename_categories(cat_map)
     else: df[col] = df[col].replace(cat_map)
 
-# %% ../nbs/10_utils.ipynb 39
+# %% ../nbs/10_utils.ipynb 40
 # Simplify doing multiple replace's on a column
 def str_replace(s,d):
     s = s.astype('object')
@@ -405,7 +405,7 @@ def str_replace(s,d):
         s = s.str.replace(k,v)
     return s
 
-# %% ../nbs/10_utils.ipynb 41
+# %% ../nbs/10_utils.ipynb 42
 # Merge values from multiple columns, iteratively replacing values
 # lst contains either a series or a tuple of (series, whitelist)
 def merge_series(*lst):
@@ -420,7 +420,7 @@ def merge_series(*lst):
             s.loc[~ns.isna()] = ns[~ns.isna()]
     return s
 
-# %% ../nbs/10_utils.ipynb 43
+# %% ../nbs/10_utils.ipynb 44
 # Turn a list of selected/not seleced into a list of selected values in the same dataframe
 def aggregate_multiselect(df, prefix, out_prefix, na_vals=[], colnames_as_values=False, inplace=True):
      warn("This functionality is now built into create block.")
@@ -443,7 +443,7 @@ def aggregate_multiselect(df, prefix, out_prefix, na_vals=[], colnames_as_values
      if inplace: df[columns] = pd.DataFrame(lst)
      else: return pd.DataFrame(lst, columns=columns)
 
-# %% ../nbs/10_utils.ipynb 44
+# %% ../nbs/10_utils.ipynb 45
 # Take a list of values and create a one-hot matrix of them. Basically the inverse of previous
 def deaggregate_multiselect(df, prefix, out_prefix=''):
     cols = [ c for c in df.columns if c.startswith(prefix) ]
@@ -455,7 +455,7 @@ def deaggregate_multiselect(df, prefix, out_prefix=''):
     # Create a one-hot column for each
     for oc in ocols: df[out_prefix+oc] = (df[cols]==oc).any(axis=1)
 
-# %% ../nbs/10_utils.ipynb 45
+# %% ../nbs/10_utils.ipynb 46
 # Groupby if needed - this simplifies things quite often
 def gb_in(df, gb_cols):
     return df.groupby(gb_cols,observed=False) if len(gb_cols)>0 else df
@@ -471,12 +471,12 @@ def gb_in_apply(df, gb_cols, fn, cols=None, **kwargs):
     else: res = df.groupby(gb_cols,observed=False)[cols].apply(fn,**kwargs)
     return res
 
-# %% ../nbs/10_utils.ipynb 46
+# %% ../nbs/10_utils.ipynb 47
 def stk_defaultdict(dv):
     if not isinstance(dv,dict): dv = {'default':dv}
     return defaultdict(lambda: dv['default'], dv)
 
-# %% ../nbs/10_utils.ipynb 47
+# %% ../nbs/10_utils.ipynb 48
 def cached_fn(fn):
     cache = {}
 
@@ -486,7 +486,7 @@ def cached_fn(fn):
         return cache[x]
     return cf
 
-# %% ../nbs/10_utils.ipynb 48
+# %% ../nbs/10_utils.ipynb 49
 def scores_to_ordinal_rankings(df, cols, name, prefix=''):
 
     # If cols is a string, treat it as a prefix and find all columns that start with it
@@ -512,7 +512,7 @@ def scores_to_ordinal_rankings(df, cols, name, prefix=''):
     df[f'{name}_ties'] = ties_a
     return df
 
-# %% ../nbs/10_utils.ipynb 50
+# %% ../nbs/10_utils.ipynb 51
 # Basic limited length cache
 class dict_cache(OrderedDict):
 
@@ -535,7 +535,7 @@ class dict_cache(OrderedDict):
         super().move_to_end(key) # Move it up to indicate recent use
         return res
 
-# %% ../nbs/10_utils.ipynb 51
+# %% ../nbs/10_utils.ipynb 52
 # Borrowed from https://goshippo.com/blog/measure-real-size-any-python-object
 # Get the size of an object recursively
 def get_size(obj, seen=None):
@@ -556,7 +556,7 @@ def get_size(obj, seen=None):
         size += sum([get_size(i, seen) for i in obj])
     return size
 
-# %% ../nbs/10_utils.ipynb 52
+# %% ../nbs/10_utils.ipynb 53
 # Vega Lite (Altair) will fail with certain column names, so we need to escape them
 # To do that, we use unicode symbols that are visually similar to the problematic characters
 def escape_vega_label(label):
@@ -566,7 +566,7 @@ def escape_vega_label(label):
 def unescape_vega_label(label):
     return label.replace('․','.').replace('［','[').replace('］',']')
 
-# %% ../nbs/10_utils.ipynb 53
+# %% ../nbs/10_utils.ipynb 54
 def read_json(fname):
     if '.json' not in fname:
         raise FileNotFoundError(f"Expecting {fname} to have a .json extension")

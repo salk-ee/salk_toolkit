@@ -30,6 +30,7 @@ import altair as alt
 from salk_toolkit.utils import *
 from salk_toolkit.io import extract_column_meta, group_columns_dict, list_aliases, read_parquet_with_metadata
 from salk_toolkit.validation import PlotDescriptor, soft_validate
+from salk_toolkit.utils import replace_constants
 
 # %% ../nbs/02_pp.ipynb 6
 # Augment each draw with bootstrap data from across whole population to make sure there are at least <threshold> samples
@@ -1069,7 +1070,7 @@ def create_plot(pparams, pp_desc, alt_properties={}, alt_wrapper=None, dry_run=F
 
     return plot
 
-# %% ../nbs/02_pp.ipynb 34
+# %% ../nbs/02_pp.ipynb 36
 # Compute the full factor_cols list, including question and res_col as needed
 def impute_factor_cols(pp_desc, col_meta, plot_meta=None):
     factor_cols = pp_desc.get('factor_cols',[]).copy()
@@ -1095,7 +1096,7 @@ def impute_factor_cols(pp_desc, col_meta, plot_meta=None):
 
     return factor_cols
 
-# %% ../nbs/02_pp.ipynb 35
+# %% ../nbs/02_pp.ipynb 37
 # A convenience function to draw a plot straight from a dataset
 def e2e_plot(pp_desc, data_file=None, full_df=None, data_meta=None, width=800, height=None, check_match=True, impute=True, plot_cache=None, return_data=False, **kwargs):
     if data_file is None and full_df is None:
