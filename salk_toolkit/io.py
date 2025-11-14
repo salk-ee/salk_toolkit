@@ -43,7 +43,6 @@ warnings.filterwarnings("ignore",
 # %% ../nbs/01_io.ipynb 6
 #| export
 
-
 # %% ../nbs/01_io.ipynb 7
 def str_from_list(val):
     if isinstance(val,list):
@@ -706,7 +705,13 @@ def fix_meta_categories(data_meta, df, infers_only=False, warnings=True):
 
         if g.get('scale') and g['scale'].get('categories')=='infer':
             # IF they all share same categories, keep the category order
-            scats = list(cats) if all_cats == set(cats) else sorted(list(all_cats))
+            tr = g['scale'].get('translate', {})
+            if all_cats == set(tr.values()): # First prefer translate order
+                scats = list(dict.fromkeys(tr.values()))
+            elif all_cats == set(cats): # Then prefer order from single col
+                scats = list(cats)
+            else: # Otherwise, sort categories
+                scats = sorted(list(all_cats))
             g['scale']['categories'] = scats
         elif ((not infers_only) and g.get('scale') and g['scale'].get('categories') and
                 not set(g['scale']['categories'])>=all_cats):
