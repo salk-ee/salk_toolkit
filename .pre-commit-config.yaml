@@ -52,3 +52,15 @@ repos:
         always_run: true
         stages: [pre-commit]
         description: "Run pytest tests"
+
+  # Docs
+  - repo: local
+    hooks:
+      - id: nbdev_docs
+        name: Create new docs 
+        entry: nbdev_docs
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+        description: "Create new docs"
