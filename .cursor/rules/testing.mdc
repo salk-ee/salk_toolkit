@@ -22,6 +22,7 @@ alwaysApply: false
   - For notebook-driven changes, regenerate the corresponding `.py` via nbdev before running tests.
 - Keep test data small but representative; favour programmatically generated frames over large static fixtures unless a real dataset characteristic is required.
 - Ensure new tests remain deterministic—set random seeds where randomness is involved (see `tests/test_plots.py` and `tests/test_utils.py` examples).
+- Focus on functional logic, avoid testing implementation details
 
 ## Utility Tests
 - `tests/test_utils.py` covers helper functions from `salk_toolkit.utils` (factorization, batching, rounding, string matching, gradient helpers, caching utilities). Extend it when adding or altering utility behaviour to guard against regressions.

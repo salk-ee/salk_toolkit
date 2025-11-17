@@ -1,0 +1,157 @@
+---
+description: How to write and implement specifications
+globs: specs/**
+alwaysApply: false
+---
+
+# Spec Management System
+
+## File Organization
+
+- **Location**: `specs/{DEV|TOOL}-{number}-{description}.md`
+- **Discovery**: `ls specs/*.md` or search: `grep -r "feature" specs/`
+
+## When to Create vs Implement
+
+- **Create new spec**: For new features not covered by existing specs or new tools
+- **Implement existing**: If spec already exists, follow it and update progress
+
+## Component best practices
+
+Always follow the rules set for the specific domain
+- **Data annotations**: [data_annotations.mdc](mdc:.cursor/rules/data_annotations.mdc)
+- **Plotting**: [plot_pipeline.mdc](mdc:.cursor/rules/plot_pipeline.mdc)
+- **Dashboard**: [dashboard.mdc](mdc:.cursor/rules/dashboard.mdc)
+- **Tools**: [tools.mdc](mdc:.cursor/rules/tools.mdc)
+  - Specs for tools start with TOOL instead of DEV
+
+## Best practices for spec writing
+- Prefer short concise bullet-points and sub-points over long winding sentences
+- The more structure, the better. Feel free to add subheadings and sub-subheadings if warranted
+
+## Spec Structure Template
+
+```markdown
+# DEV-XXX: Title
+
+**Last Updated**: YYYY-MM-DD
+**Status**: 🚧 Planning | ⏳ In Progress | ✅ Complete
+**Module**: Annotations | Plotting | Dashboard | Tool
+**Tags**: `#feature`, `#pattern`, `#tech`
+**Dependencies**: {DEV|TOOL}-YYY (or None)
+
+## Overview
+
+What and why in 2-3 sentences.
+
+## Problem Context
+
+- Problem being solved
+- Intended use cases
+  - Use case 1
+  - Use case 2
+- Technical constraints and requirements
+  - Constraint 1
+  - Constraint 2
+- Integration points with existing systems
+  - IP 1
+  - IP 2
+
+## Requirements
+
+**Important context functions/files**
+- Files/functions that this implementation relies on heavily
+
+**Files to Create/Modify:**
+
+- New files being created
+- Existing files that need to be modified
+  - Rembember: edit `nbs/{module}.ipynb` not `salk_toolkit/{module}.py`
+- Exact file paths with purpose and established pattern reference
+
+**Functionality:**
+
+- Core functional requirements
+- Technical implementation details
+- Integration points and constraints
+
+**Architecture:**
+
+- Architectural notes and patterns to adhere to
+
+## Implementation Plan
+
+### Foundation Setup
+
+- [ ] Pydantic data model changes …
+
+### Core Development
+
+- [ ] Change 1 …
+- [ ] Change 2 …
+
+### Integration & Testing
+
+- [ ] Test cases to cover
+
+## Definition of Done
+
+- [ ] All files created/updated
+- [ ] Tests passing (unit + e2e)
+- [ ] Feature working e2e
+- [ ] Follows established patterns
+
+## Implementation Notes
+
+Track decisions and pattern deviations as you work.
+```
+
+## AI Workflow
+
+**1. Before Starting:**
+
+- Search for existing specs: `grep -r "relevant-keyword" specs/`
+- If found: Read context. Then proceed with implementing existing spec
+- If none: ask clarifying questions, then create new spec
+
+ALWAYS: Ask clarifying questions. Do not start coding until all questions are answered. Write down Q&A in spec
+
+**2. While Working:**
+
+- Check off **Implementation Plan** items
+- Document decisions in **Implementation Notes**
+
+**3. Pattern Discovery:**
+
+- Search by tag: `grep -r "#multifile" specs/`
+- Read referenced specs: `cat specs/DEV-122-*.md`
+
+## Implementation Standards
+
+**Code Style**:
+
+- Python: Follow linter rules
+- Comment prefixes: `CORNER:`, `PERF:`, `WORKAROUND:`
+
+**Pydantic Models**:
+
+- Use descriptive field names and constraints
+
+## Common Tags
+
+- To be filled once best practice emerges
+
+## Implementation Decision Guidelines
+
+**Follow Patterns**: Use established patterns unless there's a compelling reason to deviate
+**Document Deviations**: Always explain why you're departing from standard patterns
+**Maintain Backwards Compatibility**: Ensure existing features continue working
+**Performance Considerations**: Always keep in mind parquets can be millions of rows
+
+## Bootstrap (Empty Specs Folder)
+
+If no specs exist:
+
+1. Create first spec following template above
+2. Use generic tags until patterns emerge
+3. Document new patterns as they develop

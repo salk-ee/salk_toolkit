@@ -1,0 +1,8 @@
+---
+description: How to write and implement specifications
+globs: **
+alwaysApply: true
+---
+
+- `salk_toolkit` is abbreviated as `stk`
+- If more info required, see [salk_toolkit.mdc](mdc:.cursor/rules/salk_toolkit.mdc).
