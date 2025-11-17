@@ -37,12 +37,12 @@ jobs:
         run: |
           pwd
           ls -al
-          ls -al docs
+          ls -al _docs
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
           # Upload entire repository
-          path: 'docs'
+          path: '_docs'
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
