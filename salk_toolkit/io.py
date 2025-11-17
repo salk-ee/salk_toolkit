@@ -12,11 +12,11 @@ __all__ = ['stk_loaded_files_set', 'stk_file_map', 'create_block_type_to_create_
            'read_parquet_metadata', 'read_parquet_with_metadata']
 
 # %% ../nbs/01_io.ipynb 4
-import json, os, warnings
+import json, os, warnings, re
 import itertools as it
 from collections import defaultdict
 from collections.abc import Iterable
-import re
+from copy import deepcopy
 
 import numpy as np
 import pandas as pd
@@ -269,7 +269,7 @@ def create_topk_metas_and_dfs(df, dict_with_create):
             subgroup_id = list(regex_from.match(column).groups())
             subgroup_id.pop(agg_ind)
             return tuple(subgroup_id)
-        subgroups_ids = set(map(get_subgroup_id,from_cols))
+        subgroups_ids = dict.fromkeys(map(get_subgroup_id,from_cols))
         subgroups = [
             [col for col in from_cols if get_subgroup_id(col)==subgroup_id]
             for subgroup_id in subgroups_ids
@@ -303,7 +303,7 @@ def create_topk_metas_and_dfs(df, dict_with_create):
             sname += '_'+'_'.join(map(str,get_subgroup_id(subgroup[0])))
         meta_subgroup = {
             'name': sname,
-            'scale': create.get('scale', {}),
+            'scale': deepcopy(create.get('scale', {})),
             'columns': sdf.columns.tolist()
             }
         topk_dfs.append(sdf)
