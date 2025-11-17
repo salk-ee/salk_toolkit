@@ -197,53 +197,42 @@ def throw_vals_left(df):
 
 # %% ../nbs/01_io.ipynb 11
 # We want to show docs for this
-def create_topk_metas_and_dfs(df, dict_with_create):
-    r""" Create new columns and metas.
+def create_topk_metas_and_dfs(
+  df:pd.DataFrame, # Dataframe to create top K aggregations from
+  dict_with_create:dict # Dict with create block and meta args
+  ):
+    r"""\ 
 
-    Meta args:
-        from_columns (str)          Regex template with groups to select df 
-            cols from. If more than one group, then separate into subgroups.
-        res_cols (str)              Regex template with groups to create new 
-            cols. Note that new structure is created for each subgroup.
-            Currently res_cols assumes same number of groups in from_columns.
-        na_vals (list)              List of values to consider as NA.
-        scale (dict, optional)      Scale block to be added to each subgroup.
-        name (str, optional)        Name of the new columns. Defaults to
-            dict_with_create['name'] + "_topk".
-        k (int, optional)           Number of new cols to create per subgroup.
-            Defaults to max and selects columns that include other vals than NA.
-        agg_index (int, optional)   Index of the from_cols group to be 
-            aggregated. Note that 1 is first group, defaults to last group.
+### Create top K aggregations
 
-    Example:
-        df = pd.DataFrame({
-            'A_1': ['Mentioned'],
-            'A_2': ['Not mentioned'],
-            'B_1': ['Not mentioned'],
-            'B_2': ['Mentioned']
-        }, columns = ['A_1', 'A_2', 'B_1', 'B_2'])
-        meta = {
-            'from_columns': r'(.+)_(\d+)',
-            'res_cols': r'\1_R\2',
-            'name': 'R10',
-            'k': 1
-        }
-        Creates subgroup ['A_1', 'A_2'] that map to ['A_R1'] 
-            and subgroup ['B_1', 'B_2'] that map to ['B_R1']
-            and creates metas with name 'R10_A' and 'R10_B'.
-        res = pd.DataFrame({
-            'A_R1': [1], #if scale has translate, 1 will be translated
-            'B_R1': [2]  #if scale has translate, 2 will be translated
-        }, columns = ['A_R1', 'B_R1'])
-        meta1 = {
-            'name': 'R10_A',
-            'columns': [['A_R1']]
-        }
-        meta2 = {
-            'name': 'R10_B',
-            'columns': [['B_R1']]
-        }
-    """
+**Meta args:**
+
+- `from_columns` (str)  
+  Regex template with groups to select df cols from.  
+  If more than one group, then separate into subgroups.
+
+- `res_cols` (str)  
+  Regex template with groups to create new cols. Note that new structure is created for each subgroup.  
+  Currently res_cols assumes same number of groups in from_columns.
+
+- `na_vals` (list)  
+  List of values to consider as NA.
+
+- `type` (str)  
+  Type of aggregation to create. If `"topk"`, this function is called.
+
+- `scale` (dict, optional)  
+  Scale block to be added to each subgroup.
+
+- `name` (str, optional)  
+  Name of the new columns. Defaults to dict_with_create['name'] + "_topk".
+
+- `k` (int, optional)  
+  Number of new cols to create per subgroup. Defaults to max and selects columns that include other vals than NA.
+
+- `agg_index` (int, optional)  
+  Index of the from_cols group to be aggregated. Note that 1 is first group, defaults to last group.
+"""
     create = dict_with_create['create']
     name = create.get('name', f"{dict_with_create['name']}_{create['type']}")
     # Compile regex to catch df.columns that we want to apply topk for.
@@ -316,7 +305,7 @@ create_block_type_to_create_fn = {
     'maxdiff': NotImplementedError("Maxdiff not implemented yet")
     }
 
-# %% ../nbs/01_io.ipynb 12
+# %% ../nbs/01_io.ipynb 13
 def create_new_columns_and_metas(df,group):
     "One group can create multiple metas if it has >1 groups spec-d in regex."
     type = group['create']['type']
@@ -325,7 +314,7 @@ def create_new_columns_and_metas(df,group):
     metas, dfs = create_block_type_to_create_fn[type](df,group)
     return zip(dfs, metas)
 
-# %% ../nbs/01_io.ipynb 13
+# %% ../nbs/01_io.ipynb 14
 # Default usage with mature metafile: process_annotated_data(<metafile name>)
 # When figuring out the metafile, it can also be run as: process_annotated_data(meta=<dict>, data_file=<>)
 def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=None,
@@ -490,7 +479,7 @@ def process_annotated_data(meta_fname=None, meta=None, data_file=None, raw_data=
 
     return (ndf, meta) if return_meta else ndf
 
-# %% ../nbs/01_io.ipynb 14
+# %% ../nbs/01_io.ipynb 15
 # Read either a json annotation and process the data, or a processed parquet with the annotation attached
 # Return_raw is here for easier debugging of metafiles and is not meant to be used in production
 def read_annotated_data(fname, infer=True, return_raw=False, return_meta=False, **kwargs):
@@ -522,10 +511,10 @@ def fix_df_with_meta(df, dmeta):
             df[c] = pd.Categorical(df[c],categories=cats,ordered=cd.get('ordered',False))
     return df
 
-# %% ../nbs/01_io.ipynb 15
+# %% ../nbs/01_io.ipynb 16
 #| export
 
-# %% ../nbs/01_io.ipynb 16
+# %% ../nbs/01_io.ipynb 17
 # Helper functions designed to be used with the annotations
 
 # Convert data_meta into a dict where each group and column maps to their metadata dict
@@ -555,7 +544,7 @@ def group_columns_dict(data_meta):
 def list_aliases(lst, da):
     return [ fv for v in lst for fv in (da[v] if isinstance(v,str) and v in da else [v]) ]
 
-# %% ../nbs/01_io.ipynb 18
+# %% ../nbs/01_io.ipynb 19
 # Creates a mapping old -> new
 def get_original_column_names(dmeta):
     res = {}
@@ -584,7 +573,7 @@ def change_mapping(ot, nt, only_matches=False):
                  **{ k:v for k, v in nt.items() if k not in ot }, # do those in nt not in ot
                  **matches }
 
-# %% ../nbs/01_io.ipynb 19
+# %% ../nbs/01_io.ipynb 20
 # Change an existing dataset to correspond better to a new meta_data
 # This is intended to allow making small improvements in the meta even after a model has been run
 # It is by no means perfect, but is nevertheless a useful tool to avoid re-running long pymc models for simple column/translation changes
@@ -686,7 +675,7 @@ def replace_data_meta_in_parquet(parquet_name,metafile_name,advanced=True):
 
     return df, meta
 
-# %% ../nbs/01_io.ipynb 20
+# %% ../nbs/01_io.ipynb 21
 # A function to infer categories (and validate the ones already present)
 # Works in-place
 def fix_meta_categories(data_meta, df, infers_only=False, warnings=True):
@@ -732,11 +721,11 @@ def fix_parquet_categories(parquet_name):
     meta['data'] = fix_meta_categories(meta['data'],df,infers_only=False)
     write_parquet_with_metadata(df,meta,parquet_name)
 
-# %% ../nbs/01_io.ipynb 21
+# %% ../nbs/01_io.ipynb 22
 def is_categorical(col):
     return col.dtype.name in ['object', 'str', 'category'] and not is_datetime(col)
 
-# %% ../nbs/01_io.ipynb 22
+# %% ../nbs/01_io.ipynb 23
 max_cats = 50
 
 # Create a very basic metafile for a dataset based on it's contents
@@ -861,7 +850,7 @@ def data_with_inferred_meta(data_file, **kwargs):
     meta = infer_meta(data_file,meta_file=False, **kwargs)
     return process_annotated_data(meta=meta, data_file=data_file, return_meta=True)
 
-# %% ../nbs/01_io.ipynb 24
+# %% ../nbs/01_io.ipynb 25
 def perform_merges(df,merges,constants={}):
     if not isinstance(merges,list): merges = [merges]
     for ms in merges:
@@ -878,7 +867,7 @@ def perform_merges(df,merges,constants={}):
         df = mdf
     return df
 
-# %% ../nbs/01_io.ipynb 25
+# %% ../nbs/01_io.ipynb 26
 def read_and_process_data(desc, return_meta=False, constants={}, skip_postprocessing=False, **kwargs):
 
     if isinstance(desc,str): desc = { 'file':desc } # Allow easy shorthand for simple cases
@@ -905,7 +894,7 @@ def read_and_process_data(desc, return_meta=False, constants={}, skip_postproces
 
     return (df, meta) if return_meta else df
 
-# %% ../nbs/01_io.ipynb 27
+# %% ../nbs/01_io.ipynb 28
 # Small debug tool to help find where jsons become non-serializable
 def find_type_in_dict(d,dtype,path=''):
     print(d,path)
@@ -918,7 +907,7 @@ def find_type_in_dict(d,dtype,path=''):
     elif isinstance(d,dtype):
         raise Exception(f"Value {d} of type {dtype} found at {path}")
 
-# %% ../nbs/01_io.ipynb 28
+# %% ../nbs/01_io.ipynb 29
 # These two very helpful functions are borrowed from https://towardsdatascience.com/saving-metadata-with-dataframes-71f51f558d8e
 
 custom_meta_key = 'salk-toolkit-meta'
