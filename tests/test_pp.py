@@ -40,7 +40,10 @@ def test_update_data_meta_with_pp_desc_adds_res_meta_and_updates_columns():
                 "name": "demographics",
                 "scale": {"col_prefix": ""},
                 "columns": [
-                    ["gender", {"categories": ["Female", "Male"], "label": "Gender (meta)"}],
+                    [
+                        "gender",
+                        {"categories": ["Female", "Male"], "label": "Gender (meta)"},
+                    ],
                 ],
             }
         ]
@@ -54,7 +57,10 @@ def test_update_data_meta_with_pp_desc_adds_res_meta_and_updates_columns():
             "name": "likert_question",
             "scale": {"col_prefix": "likert_"},
             "columns": [
-                ["likert_score", {"categories": ["Low", "Medium", "High"], "label": "Likert Score"}],
+                [
+                    "likert_score",
+                    {"categories": ["Low", "Medium", "High"], "label": "Likert Score"},
+                ],
             ],
         },
         "col_meta": {
@@ -190,4 +196,3 @@ def test_impute_factor_cols_handles_categorical_and_continuous_cases():
     }
     continuous_factors = impute_factor_cols(continuous_desc, col_meta)
     assert continuous_factors == ["question", "region"]
-

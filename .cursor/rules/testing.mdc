@@ -1,6 +1,6 @@
 ---
 description: Testing strategy for salk_toolkit
-globs: tests/**/*.py,nbs/**/*.ipynb
+globs: tests/**/*.py
 alwaysApply: false
 ---
 # Testing
@@ -19,7 +19,6 @@ alwaysApply: false
   - Always add tests with new functionality
   - Check domain rules to see what kinds of tests are expected
 - Run the subset of tests that cover the modules you touched before committing.
-  - For notebook-driven changes, regenerate the corresponding `.py` via nbdev before running tests.
 - Keep test data small but representative; favour programmatically generated frames over large static fixtures unless a real dataset characteristic is required.
 - Ensure new tests remain deterministic—set random seeds where randomness is involved (see `tests/test_plots.py` and `tests/test_utils.py` examples).
 - Focus on functional logic, avoid testing implementation details

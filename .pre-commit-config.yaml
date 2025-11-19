@@ -3,33 +3,6 @@
 
 repos:
 
-  # Notebook output cleaning
-  - repo: https://github.com/kynan/nbstripout
-    rev: 0.6.1
-    hooks:
-      - id: nbstripout
-
-  # Handle basic formatting in notebook code cells
-  # Only deal with whitespace issues for now
-  - repo: https://github.com/nbQA-dev/nbQA
-    rev: 1.8.5
-    hooks:
-      - id: nbqa-autopep8
-        args: ["--select=W291,W293"]
-
-  # Make sure the code is exported
-  - repo: local
-    hooks:
-      - id: export-notebooks
-        name: Exporting notebooks
-        entry: nbdev_export
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [pre-commit]
-        description: "Exporting notebooks"
-        fail_fast: true
-
   # Basic file quality hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.4.0
@@ -40,6 +13,21 @@ repos:
       - id: check-added-large-files
         args: [--maxkb=5120]
       - id: debug-statements
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.7.4
+    hooks:
+      - id: ruff
+        args: ["--fix", "--unsafe-fixes"]
+        exclude: '\.ipynb$'
+      - id: ruff-format
+        exclude: '\.ipynb$'
+
+  - repo: https://github.com/hhatto/autopep8
+    rev: v2.3.1
+    hooks:
+      - id: autopep8
+        args: ["--recursive", "--in-place", "--select=W291,W293"]
 
   # Pytest
   - repo: local
@@ -56,11 +44,11 @@ repos:
   # Docs
   - repo: local
     hooks:
-      - id: nbdev_docs
-        name: Create new docs 
-        entry: nbdev_docs
+      - id: build-pdoc
+        name: Build API docs
+        entry: pdoc --output-directory docs_html salk_toolkit !salk_toolkit.tools.explorer
         language: system
         pass_filenames: false
         always_run: true
         stages: [pre-commit]
-        description: "Create new docs"
+        description: "Generate API docs via pdoc"

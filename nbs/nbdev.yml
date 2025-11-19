@@ -1,9 +1,0 @@
-project:
-  output-dir: _docs
-
-website:
-  title: "salk_toolkit"
-  site-url: "https://salk-ee.github.io/salk_toolkit"
-  description: "Common tools and functions useful in multiple different workflows and dashboards"
-  repo-branch: main
-  repo-url: "https://github.com/salk-ee/salk_toolkit"

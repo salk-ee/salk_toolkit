@@ -37,7 +37,10 @@ def test_log_event_appends_rows(tmp_path):
     with log_path.open() as fh:
         rows = list(csv.reader(fh))
 
-    assert [row[1:] for row in rows] == [["login-success", "user-1"], ["view-page", "user-2"]]
+    assert [row[1:] for row in rows] == [
+        ["login-success", "user-1"],
+        ["view-page", "user-2"],
+    ]
 
 
 def test_translate_with_dict_handles_missing():
@@ -81,12 +84,7 @@ def test_add_missing_to_dict_merges_existing():
 
 
 def test_plot_matrix_html_generates_embed_block():
-    chart = (
-        alt.Chart(pd.DataFrame({"x": [0, 1], "y": [1, 2]}))
-        .mark_line()
-        .encode(x="x", y="y")
-        .properties(width=200)
-    )
+    chart = alt.Chart(pd.DataFrame({"x": [0, 1], "y": [1, 2]})).mark_line().encode(x="x", y="y").properties(width=200)
 
     html = dashboard.plot_matrix_html(chart, uid="test", width=400, responsive=True)
 
@@ -140,9 +138,7 @@ def test_get_filter_limits_handles_groups_and_continuous(sample_meta):
         }
     ).lazy()
 
-    limits = dashboard.get_filter_limits(
-        frame, dims=["opinions", "gender", "age"], dmeta=sample_meta, uid="demo"
-    )
+    limits = dashboard.get_filter_limits(frame, dims=["opinions", "gender", "age"], dmeta=sample_meta, uid="demo")
 
     assert limits["opinions"]["categories"] == ["support"]
     assert limits["opinions"]["group"] is True
@@ -151,4 +147,3 @@ def test_get_filter_limits_handles_groups_and_continuous(sample_meta):
     assert limits["age"]["continuous"] is True
     assert limits["age"]["min"] == 21
     assert limits["age"]["max"] == 42
-

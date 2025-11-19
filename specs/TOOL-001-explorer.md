@@ -29,8 +29,8 @@ Explorer is an interactive Streamlit tool for exploratory analysis on annotated 
 **Files to Create/Modify:**
 
 - `salk_toolkit/tools/explorer.py`: Maintain core Streamlit app, syncing with plotting pipeline capabilities and authentication hooks.
-- `nbs/11_commands.ipynb`: Add a function that executes it as a streamlit app that can be referenced from `settings.ini`
-- `settings.ini`: Ensure `stk_explorer` entry point remains registered for CLI launches.
+- `salk_toolkit/commands.py`: Add a function that executes it as a Streamlit app that can be referenced from CLI entry points.
+- `pyproject.toml`: Ensure `stk_explorer` entry point remains registered under `[project.scripts]`.
 - Deployment configs (`.streamlit/secrets.example`, partner runbooks) as needed to document auth/logging setup.
 
 **Functionality:**

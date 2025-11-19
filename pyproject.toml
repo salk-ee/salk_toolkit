@@ -1,3 +1,96 @@
 [build-system]
-requires = ["setuptools >= 64"]
+requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "salk_toolkit"
+version = "0.9.0"
+description = "Toolkit for annotated survey data ingestion, plotting, and dashboards"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.12"
+authors = [
+  { name = "Margus Niitsoo", email = "velochy@gmail.com" },
+]
+keywords = ["polling", "survey", "annotations", "dashboard", "altair"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Natural Language :: English",
+  "Programming Language :: Python :: 3.12",
+  "License :: OSI Approved :: Apache Software License",
+]
+dependencies = [
+  "altair",
+  "arviz",
+  "authlib",
+  "frontegg",
+  "hsluv",
+  "ipywidgets",
+  "kdepy",
+  "libsql_client",
+  "matplotlib",
+  "numpy",
+  "pandas",
+  "pillow",
+  "polars==1.27.1",
+  "polib",
+  "psutil",
+  "pyarrow",
+  "pydantic",
+  "pydantic_extra_types",
+  "pyreadstat",
+  "python-Levenshtein",
+  "pyyaml",
+  "s3fs",
+  "scipy",
+  "streamlit<=1.47.0",
+  "streamlit-authenticator==0.3.3",
+  "streamlit-dimensions",
+  "streamlit-js",
+  "streamlit_option_menu",
+  "streamlit_dimensions",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pdoc>=14.0",
+  "pre-commit>=3.0",
+  "pytest>=7.0",
+]
+
+[project.scripts]
+stk_explorer = "salk_toolkit.commands:run_explorer"
+stk_translate_dashboard = "salk_toolkit.commands:translate_dashboard"
+
+[project.urls]
+Homepage = "https://github.com/salk-ee/salk_toolkit"
+Repository = "https://github.com/salk-ee/salk_toolkit"
+Issues = "https://github.com/salk-ee/salk_toolkit/issues"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["salk_toolkit*"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = [
+    "F405",  # undefined names from star imports - can't auto-fix
+    "F403",  # star imports - can't auto-fix
+    "F821",  # undefined names - requires manual fixes
+    "E741",  # ambiguous variable names - requires manual review
+    "F401",  # unused imports - requires manual review
+    "F811",  # redefinition of unused names - requires manual fixes
+    "E402",  # module import order - manual cleanup
+    "E501",  # long lines - mixed content (docs, strings)
+    "E721",  # direct type comparisons - manual refactor
+    "E722",  # bare except - manual audit
+]
+
+[tool.pdoc]
+docformat = "google"
