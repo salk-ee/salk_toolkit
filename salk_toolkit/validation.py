@@ -256,7 +256,6 @@ class ColumnBlockMeta(PBase):
     @model_validator(mode="after")
     def merge_scale_with_columns(self, info: ValidationInfo) -> Self:
         """Merge scale metadata with each column's metadata automatically on read.
-
         This ensures that column metadata inherits defaults from the block's scale,
         with column-specific metadata taking precedence.
 
