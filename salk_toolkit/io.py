@@ -354,16 +354,27 @@ def create_topk_metas_and_dfs(
         subgroup_metas.append(meta_subgroup)
     return subgroup_metas, topk_dfs  # note: each df has one meta for zip later
 
+def create_maxdiff_metas_and_dfs(
+    df:pd.DataFrame,
+    group:dict
+) -> Tuple[List[dict], List[pd.DataFrame]]:
+    """
+    Create metas and dfs for maxdiff.
+    """
+    return [], []
+
 
 create_block_type_to_create_fn = {
-    "topk": create_topk_metas_and_dfs,
-    "maxdiff": NotImplementedError("Maxdiff not implemented yet"),
-}
+    'topk': create_topk_metas_and_dfs,
+    'maxdiff': create_maxdiff_metas_and_dfs,
+    }
 
 
 def create_new_columns_and_metas(df, group):
     "One group can create multiple metas if it has >1 groups spec-d in regex."
-    type = group["create"]["type"]
+    if 'type' not in group['create']:
+        raise ValueError("Specify the type of create block in meta args.")
+    type = group['create']['type']
     if type not in create_block_type_to_create_fn:
         raise NotImplementedError(f"Create block {type} not supported")
     metas, dfs = create_block_type_to_create_fn[type](df, group)

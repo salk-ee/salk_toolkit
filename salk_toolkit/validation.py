@@ -140,9 +140,9 @@ class MaxDiffBlock(BaseModel):
     type: Literal["maxdiff"] = "maxdiff"
     best_columns: Optional[Union[str, List[str]]] = None
     worst_columns: Optional[Union[str, List[str]]] = None
-    topics: Optional[str] = None
-    sets: Optional[str] = None
     setindex: Optional[str] = None
+    topics: Optional[List[str]] = None
+    sets: Optional[List[List[int]]] = None
 
 
 # Transform the column tuple to (new name, old name, meta) format
@@ -177,10 +177,16 @@ class ColumnBlockMeta(PBase):
     subgroup_transform: Optional[str] = None  # A block-level transform performed after column level transformations
 
     # Block level flags
+<<<<<<< HEAD
     generated: bool = False  # This block is for data that is generated, i.e. not initially in the file.
     hidden: bool = False  # Use this to hide the block in explorer.py
     create: Optional[Union[TopKBlock, None]] = None  # TODO: None -> MaxDiff
 
+=======
+    generated: bool = False # This block is for data that is generated, i.e. not initially in the file.
+    hidden: bool = False # Use this to hide the block in explorer.py
+    create: Optional[Union[TopKBlock, MaxDiffBlock]] = None
+>>>>>>> f21b3b6 (Add maxdiff boilerplate)
 
 # Again, convert list to dict for easier debugging in case errors get thrown
 def cb_lst_to_dict(lst):
