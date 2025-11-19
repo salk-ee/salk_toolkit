@@ -1,5 +1,5 @@
 ---
-globs: nbs/02_pp.ipynb, nbs/03_plots.ipynb, nbs/06_validation.ipynb, salk_toolkit/pp.py, salk_toolkit/plots.py, salk_toolkit/validation.py, tests/test_plots.py, salk_toolkit/explorer.py, tests/test_pp.py
+globs: salk_toolkit/pp.py, salk_toolkit/plots.py, salk_toolkit/validation.py, tests/test_plots.py, salk_toolkit/tools/explorer.py, tests/test_pp.py
 alwaysApply: false
 ---
 # Plot Pipeline
@@ -9,9 +9,9 @@ alwaysApply: false
 - If needed, more context on data annotations is at [data_annotations.mdc](mdc:.cursor/rules/data_annotations.mdc)
 
 ## Organization
-- Pipeline code should be kept in 02_pp
-- Code for specific plot types should be in 03_plots
-- Pydantic models for validation should be in 06_validation
+- Pipeline orchestration lives in `salk_toolkit/pp.py`
+- Plot implementations live in `salk_toolkit/plots.py`
+- Descriptor/validation models live in `salk_toolkit/validation.py`
 
 ## Pipeline flow (`e2e_plot`)
 - Plot suitability (`matching_plots`)
@@ -28,7 +28,7 @@ alwaysApply: false
   - Return either a plot or a matrix (list-of-list) of plots, depending on request
 
 ## Plot Descriptor (`pp_desc`)
-- Schema in `nbs/06_validation.ipynb` (`PlotDescriptor` pydantic model)
+- Schema in `salk_toolkit/validation.py` (`PlotDescriptor` pydantic model)
 - `impute_factor_cols` backfills sensible `factor_cols`; `matching_plots` rejects descriptors when metadata requirements (e.g. ordered facets) aren't met—check its messages before forcing a plot.
 
 ## Plot registration (`stk_plot` decorator factory)
@@ -53,12 +53,12 @@ alwaysApply: false
 - Aggregation happens in `wrangle_data`
 
 ## Development Tips
-- Pipeline is built assuming the Altair plotting library (which is a wrapper for vegajs)
+- Pipeline is built assuming the Altair plotting library (which is a wrapper for Vega Lite)
 - We are locked on polars==1.27.1 to use the old streaming engine, as the new engine does not stream `unpivot` and it is critical. 
 - Keep descriptor mutations local—`e2e_plot` copies the input dict, but downstream code may assume ownership of nested structures.
 - When adding new plot metadata flags, update both `matching_plots` and `calculate_priority` so auto-selection keeps working.
 - Any new column-level requirements should extend the metadata extracted by `update_data_meta_with_pp_desc` to keep dashboards and filters in sync.
-- Write new features in `nbs/{module}.ipynb` and regenerate; do not hand-edit `salk_toolkit/{module}.py`.
+- Edit the `.py` modules directly and capture context via docstrings/section comments—there is no nbdev export step anymore.
 
 ## Testing 
 - `tests/test_plots.py` - e2e tests

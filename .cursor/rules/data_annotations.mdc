@@ -1,6 +1,6 @@
 ---
 description: Guidelines for survey data annotation workflows
-globs: nbs/01_io.ipynb, nbs/06_validation.ipynb, salk_toolkit/io.py, salk_toolkit/validation.py, tests/test_io.py
+globs: salk_toolkit/io.py, salk_toolkit/validation.py, tests/test_io.py
 ---
 
 # Data Annotations
@@ -9,8 +9,8 @@ globs: nbs/01_io.ipynb, nbs/06_validation.ipynb, salk_toolkit/io.py, salk_toolki
 - Provide an expressive JSON language for re-structuring survey datasets to a standard format in a way that makes all transformations done to data concise, explicit and auditable while providing the additional context for the data required for plotting.
 
 ## Organization
-- Processing logic in `nbs/01_io.ipynb`
-- Pydantic schemas in `nbs/06_validation.ipynb`
+- Processing logic lives in `salk_toolkit/io.py`
+- Pydantic schemas live in `salk_toolkit/validation.py`
 - Tests covering annotation behaviour are in `tests/test_io.py`
 
 ## Core ideas
@@ -58,10 +58,9 @@ globs: nbs/01_io.ipynb, nbs/06_validation.ipynb, salk_toolkit/io.py, salk_toolki
   - `read_and_process_data(<DataDescription>)`
 
 ## Detailed annotation spec
-- The exact specifications of the annotation syntax is in `nbs/06_validation.ipynb`
-  - This is the most up-to-date-source and is kept up-to-date with comments
-  - Always read that file thoroughly before making annotation-related changes!
-- If more detail is required about functionality, look at `process_annotated_data` function in `nbs/01_io.ipynb`
+- The exact specifications of the annotation syntax now live in `salk_toolkit/validation.py`.
+  - The docstrings/doc comments in that module replace the old notebook markdown—read them before changing schemas.
+- For behavioural details dive into `process_annotated_data` and related helpers inside `salk_toolkit/io.py`.
 - If anything is ambiguous, ask about it before assuming!
 
 ## Minor concepts
@@ -75,7 +74,7 @@ globs: nbs/01_io.ipynb, nbs/06_validation.ipynb, salk_toolkit/io.py, salk_toolki
 
 ## Practical notes
 - When dealing with parquets, assume they are big and work with polars lazy if at all possible.
-- Write new features in `nbs/{module}.ipynb` and regenerate; do not hand-edit `salk_toolkit/{module}.py`.
+- Edit the `.py` modules directly. Keep docstrings/section comments up to date as you add helpers.
 
 ## Testing
 - Data annotation tests are in `tests/test_io.py` 

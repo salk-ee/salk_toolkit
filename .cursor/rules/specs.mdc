@@ -66,7 +66,7 @@ What and why in 2-3 sentences.
 
 - New files being created
 - Existing files that need to be modified
-  - Rembember: edit `nbs/{module}.ipynb` not `salk_toolkit/{module}.py`
+  - Edit the `.py` modules (e.g. `salk_toolkit/io.py`, `salk_toolkit/pp.py`) directly
 - Exact file paths with purpose and established pattern reference
 
 **Functionality:**

@@ -1,6 +1,6 @@
 ---
 description: Streamlit dashboard framework usage guide
-globs: nbs/05_dashboard.ipynb, salk_toolkit/dashboard.py, tests/test_dashboard.py
+globs: salk_toolkit/dashboard.py, tests/test_dashboard.py
 ---
 
 # Dashboard Framework
@@ -61,7 +61,7 @@ We are planning to deprecate multiple functionalities in the near term:
 We should also re-think the current logging system. 
 
 ## Other notes
-- Write new features in `nbs/05_dashboard.ipynb` and regenerate; do not hand-edit `salk_toolkit/dashboard.py`.
+- Edit `salk_toolkit/dashboard.py` directly. Keep the module-level docstrings and section comments in sync.
 
 ## Testing
 - Tests are in `tests/test_dashboard.py`
