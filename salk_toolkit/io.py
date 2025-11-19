@@ -465,6 +465,15 @@ def _create_topk_metas_and_dfs_regex(
         subgroup_metas.append(meta_subgroup)
     return topk_dfs, subgroup_metas  # note: each df has one meta for zip later
 
+def create_maxdiff_metas_and_dfs(
+    df:pd.DataFrame,
+    group:dict
+) -> Tuple[List[dict], List[pd.DataFrame]]:
+    """
+    Create metas and dfs for maxdiff.
+    """
+    return [], []
+
 
 def _create_topk_metas_and_dfs_list(
     df: pd.DataFrame,
@@ -520,9 +529,9 @@ def _create_topk_metas_and_dfs_list(
 
 
 create_block_type_to_create_fn = {
-    "topk": _create_topk_metas_and_dfs,
-    "maxdiff": NotImplementedError("Maxdiff not implemented yet"),
-}
+    'topk': create_topk_metas_and_dfs,
+    'maxdiff': create_maxdiff_metas_and_dfs,
+    }
 
 
 def _create_new_columns_and_metas(
