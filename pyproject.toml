@@ -83,9 +83,17 @@ line-length = 120
 indent-width = 4
 extend-exclude = ["**.ipynb"]
 
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+skip-magic-trailing-comma = false
+
 [tool.ruff.lint]
 select = ["E", "F", "W", "D1", "ANN"]
-ignore = []
+ignore = [
+  "E731" # lambda-assignment - this has legitimate uses!
+]
 extend-per-file-ignores = { "tests/**/*" = ["ANN"] }
 
 [tool.pdoc]
@@ -94,23 +102,19 @@ docformat = "google"
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "basic"
-reportMissingTypeStubs = false
 reportUnknownMemberType = false
 reportUnknownArgumentType = false
 reportUnknownVariableType = false
 reportAttributeAccessIssue = false
-reportOperatorIssue = false
 reportArgumentType = false
-reportAssignmentType = false
-reportReturnType = false
+reportReturnType = true
 reportCallIssue = false
-reportOptionalIterable = false
-reportIndexIssue = false
-reportOptionalSubscript = false
-reportOptionalMemberAccess = false
-reportOptionalOperand = false
+reportOptionalIterable = true
+reportIndexIssue = true
+reportOptionalSubscript = true
+reportOptionalMemberAccess = true
+reportOptionalOperand = true
 reportGeneralTypeIssues = false
-reportRedeclaration = false
 exclude = [
     "tests",
     "**/__pycache__",

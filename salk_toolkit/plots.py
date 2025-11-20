@@ -57,14 +57,14 @@ import numpy as np
 import pandas as pd
 import scipy as sp
 import scipy.stats as sps
-from KDEpy import FFTKDE
-from KDEpy.bw_selection import silvermans_rule
+from KDEpy import FFTKDE  # type: ignore[import-untyped]
+from KDEpy.bw_selection import silvermans_rule  # type: ignore[import-untyped]
 from matplotlib import font_manager
 from PIL import ImageFont
 from scipy.cluster import hierarchy
 
-from salk_toolkit import utils as stk_utils
-from salk_toolkit.pp import stk_plot
+from salk_toolkit import utils as utils
+from salk_toolkit.pp import AltairChart, stk_plot
 
 
 # --------------------------------------------------------
@@ -111,7 +111,7 @@ def estimate_legend_columns_horiz(
 
     max_cols, restart = len(cats), True
     if extra_text:
-        width -= max(map(legend_font.getlength, extra_text))
+        width -= int(max(map(legend_font.getlength, extra_text)))
     lens = list(map(lambda s: 25 + legend_font.getlength(s), cats))
     while restart:
         restart, rl, cc = False, 0, 0
@@ -194,7 +194,7 @@ def boxplot_manual(
     width: int = 800,
     tooltip: Sequence[str] | None = None,
     outer_factors: Sequence[str] | None = None,
-) -> alt.Chart:
+) -> AltairChart:
     """Manual boxplot implementation using Tukey whiskers."""
 
     facets = facets or []
@@ -296,7 +296,7 @@ def maxdiff_manual(
     width: int = 800,
     tooltip: Sequence[str] | None = None,
     outer_factors: Sequence[str] | None = None,
-) -> alt.Chart:
+) -> AltairChart:
     """Render MaxDiff results as categorical columns."""
 
     facets = facets or []
@@ -363,7 +363,7 @@ def maxdiff_manual(
     clean_levels(df)  # For test consistency
     root = alt.Chart(df).encode(**shared)
     size = 12
-    red, blue = stk_utils.redblue_gradient[1], stk_utils.redblue_gradient[-2]
+    red, blue = utils.redblue_gradient[1], utils.redblue_gradient[-2]
 
     return root.mark_bar(size=size).encode(
         x=alt.X("mean"),
@@ -395,7 +395,7 @@ def columns(
     val_format: str = "%",
     width: int = 800,
     tooltip: Sequence[str] | None = None,
-) -> alt.Chart:
+) -> AltairChart:
     """Simple column chart for categorical comparisons."""
 
     facets = facets or []
@@ -452,7 +452,7 @@ def stacked_columns(
     width: int = 800,
     normalized: bool = False,
     tooltip: Sequence[str] | None = None,
-) -> alt.Chart:
+) -> AltairChart:
     """Stacked columns with optional normalization."""
 
     facets = facets or []
@@ -513,7 +513,7 @@ def diff_columns(
     val_format: str = "%",
     sort_descending: bool = False,
     tooltip: Sequence[str] | None = None,
-) -> alt.Chart:
+) -> AltairChart:
     """Difference columns chart (two categories per row with delta)."""
 
     facets = facets or []
@@ -573,7 +573,7 @@ def massplot(
     val_format: str = "%",
     width: int = 800,
     tooltip: Sequence[str] | None = None,
-) -> alt.Chart:
+) -> AltairChart:
     """Mass plot showing distributions vs. categorical facets."""
 
     facets = facets or []
@@ -676,7 +676,7 @@ def likert_bars(
     tooltip: Sequence[str] | None = None,
     outer_factors: Sequence[str] | None = None,
     width: int = 800,
-) -> alt.Chart:
+) -> AltairChart:
     """Display likert responses as diverging stacked bars."""
 
     facets = facets or []
@@ -693,7 +693,7 @@ def likert_bars(
         f0, f1, f2 = facets[0], facets[1], None
 
     # Split the categories into negative, neutral, positive same way that colors were allocated
-    neg, neutral, pos = stk_utils.split_to_neg_neutral_pos(f0["order"], f0.get("neutrals", []))
+    neg, neutral, pos = utils.split_to_neg_neutral_pos(f0["order"], f0.get("neutrals", []))
     ninds = [f0["order"].index(c) for c in neutral]
 
     gb_cols = outer_factors + [
@@ -743,7 +743,7 @@ def likert_bars(
 def kde_bw(ar: np.ndarray) -> float:
     """Lower-bound Silverman's rule to keep categorical densities stable."""
 
-    return max(silvermans_rule(ar) or 0.0, 0.75 * stk_utils.min_diff(ar[:, 0]))
+    return max(silvermans_rule(ar) or 0.0, 0.75 * utils.min_diff(ar[:, 0]))
 
 
 # Calculate KDE ourselves using a fast libary. This gets around having to do sampling which is unstable
@@ -785,7 +785,7 @@ def density(
     stacked: bool = False,
     bw: float | None = None,
     width: int = 800,
-) -> alt.Chart:
+) -> AltairChart:
     """Stacked (or overlapped) density plot for continuous responses."""
 
     facets = facets or []
@@ -804,7 +804,7 @@ def density(
     ls = np.linspace(data[value_col].min() - 1e-10, data[value_col].max() + 1e-10, 101)
     if bw is None:
         bw = kde_bw(data[[value_col]].sample(10000, replace=True).to_numpy())  # Can get slow for large data otherwise
-    ndata = stk_utils.gb_in_apply(
+    ndata = utils.gb_in_apply(
         data,
         gb_cols,
         cols=[value_col],
@@ -907,7 +907,7 @@ def violin(
     outer_factors: Sequence[str] | None = None,
     bw: float | None = None,
     width: int = 800,
-) -> alt.Chart:
+) -> AltairChart:
     """Violin plot drawing densities per facet."""
 
     facets = facets or []
@@ -921,7 +921,7 @@ def violin(
     ls = np.linspace(data[value_col].min() - 1e-10, data[value_col].max() + 1e-10, 101)
     if bw is None:
         bw = kde_bw(data[[value_col]].sample(10000, replace=True).to_numpy())
-    ndata = stk_utils.gb_in_apply(
+    ndata = utils.gb_in_apply(
         data,
         gb_cols,
         cols=[value_col],
@@ -1008,7 +1008,7 @@ def matrix(
     reorder: bool = False,
     log_colors: bool = False,
     tooltip: Sequence[str] | None = None,
-) -> alt.Chart:
+) -> AltairChart:
     """Heatmap-style matrix plot (optionally reorder rows/cols via clustering)."""
 
     facets = facets or []
@@ -1092,7 +1092,7 @@ def corr_matrix(
     val_format: str = "%",
     reorder: bool = False,
     tooltip: Sequence[str] | None = None,
-) -> alt.Chart:
+) -> AltairChart:
     """Correlation matrix for raw grouped data."""
 
     facets = facets or []
@@ -1143,7 +1143,7 @@ def cat_to_cont_axis(
     """Convert categorical axis to numeric when labels are numeric strings."""
 
     x_cont = pd.to_numeric(
-        data[fx["col"]].apply(stk_utils.unescape_vega_label), errors="coerce"
+        data[fx["col"]].apply(utils.unescape_vega_label), errors="coerce"
     )  # Unescape required as . gets escaped
     if x_cont.notna().all():
         data[fx["col"]] = x_cont.astype("float")
@@ -1190,7 +1190,7 @@ def lines(
     width: int = 800,
     tooltip: Sequence[str] | None = None,
     val_format: str = ".2f",
-) -> alt.Chart:
+) -> AltairChart:
     """Line chart with optional smoothing and categorical faceting."""
 
     facets = facets or []
@@ -1289,7 +1289,7 @@ def lines_hdi(
     val_format: str = ".2f",
     hdi1: float = 0.94,
     hdi2: float = 0.5,
-) -> alt.Chart:
+) -> AltairChart:
     """Line chart showing central tendency plus HDI ribbons."""
 
     facets = facets or []
@@ -1344,7 +1344,7 @@ def lines_hdi(
                         alt.Opacity(
                             "hdi:N",
                             legend=None,
-                            scale=stk_utils.to_alt_scale({0.5: 0.75, 0.94: 0.25}),
+                            scale=utils.to_alt_scale({0.5: 0.75, 0.94: 0.25}),
                         ),
                         alt.value(0.1),
                     ),
@@ -1374,7 +1374,7 @@ def area_smooth(
     facets: list[Dict[str, Any]] | None = None,
     width: int = 800,
     tooltip: Sequence[str] | None = None,
-) -> alt.Chart:
+) -> AltairChart:
     """Area chart with smoothing for cumulative comparisons."""
 
     facets = facets or []
@@ -1454,7 +1454,7 @@ def likert_rad_pol(
     width: int = 800,
     outer_factors: Sequence[str] | None = None,
     tooltip: Sequence[str] | None = None,
-) -> alt.Chart:
+) -> AltairChart:
     """Radial likert plot showing positive/negative split per question."""
 
     facets = facets or []
@@ -1466,7 +1466,7 @@ def likert_rad_pol(
     gb_cols = outer_factors + [
         f["col"] for f in facets[1:]
     ]  # There can be other extra cols (like labels) that should be ignored
-    likert_indices = stk_utils.gb_in_apply(
+    likert_indices = utils.gb_in_apply(
         data,
         gb_cols,
         likert_aggregate,
@@ -1530,7 +1530,7 @@ def barbell(
     val_format: str = "%",
     width: int = 800,
     tooltip: Sequence[str] | None = None,
-) -> alt.Chart:
+) -> AltairChart:
     """Draw barbell-style comparison between two categories per question."""
 
     facets = facets or []
@@ -1597,7 +1597,7 @@ def geoplot(
     outer_factors: Sequence[str] | None = None,
     outer_colors: Mapping[str, Sequence[str]] | None = None,
     value_range: tuple[float, float] | None = None,
-) -> alt.Chart:
+) -> AltairChart:
     """Render a choropleth map based on annotated topojson metadata."""
 
     facets = facets or []
@@ -1615,7 +1615,7 @@ def geoplot(
     # Unescape Vega labels for the column on which we merge with the geojson
     # This is a bit of a hack, but should be the only place where we need to do this due to external data
     data = data.copy()
-    data[f0["col"]] = data[f0["col"]].apply(stk_utils.unescape_vega_label)
+    data[f0["col"]] = data[f0["col"]].apply(utils.unescape_vega_label)
 
     lmi, lma = data[value_col].min(), data[value_col].max()
     mi, ma = value_range if value_range and not separate_axes else (lmi, lma)
@@ -1627,7 +1627,7 @@ def geoplot(
     ofv = data[outer_factors[0]].iloc[0] if outer_factors else None
     # If colors provided, create a gradient based on that
     if outer_factors and outer_colors and data[outer_factors[0]].nunique() == 1 and ofv in outer_colors:
-        grad = stk_utils.gradient_from_color(outer_colors[ofv], range=rel_range)
+        grad = utils.gradient_from_color(outer_colors[ofv], range=rel_range)
         scale = {"domain": [lmi, lma], "range": grad}
     else:  # Blues for pos, reds for neg, redblue for both
         # If axis spans both directions
@@ -1640,7 +1640,7 @@ def geoplot(
                 rel_range[0],
             ]  # Use negative part i.e. red scale
 
-        grad = stk_utils.gradient_subrange(stk_utils.redblue_gradient, 11, range=rel_range)
+        grad = utils.gradient_subrange(utils.redblue_gradient, 11, range=rel_range)
         scale = {"domain": [lmi, lma], "range": grad}
 
         # if mi<0 and ma>0:
@@ -1693,7 +1693,7 @@ def geobest(
     val_format: str = ".2f",
     tooltip: Sequence[str] | None = None,
     width: int = 800,
-) -> alt.VConcatChart:
+) -> AltairChart:
     """Display the top-N winning regions for each facet."""
 
     facets = facets or []
@@ -1702,7 +1702,7 @@ def geobest(
 
     # Same hack as geoplot - required for periods (.) in county names
     data = data.copy()
-    data[f1["col"]] = data[f1["col"]].apply(stk_utils.unescape_vega_label)
+    data[f1["col"]] = data[f1["col"]].apply(utils.unescape_vega_label)
 
     json_url, json_meta, json_col = topo_feature
     if json_meta == "geojson":
@@ -1739,7 +1739,7 @@ def geobest(
 
 
 # Assuming ns is ordered by unique row values, find the split points
-def split_ordered(cvs: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def split_ordered(cvs: np.ndarray) -> np.ndarray:
     """Split ordered category-value pairs into positive/negative halves."""
 
     if len(cvs.shape) == 1:
@@ -1803,7 +1803,7 @@ def facet_dist(
     facets: list[Dict[str, Any]] | None = None,
     tooltip: Sequence[str] | None = None,
     outer_factors: Sequence[str] | None = None,
-) -> alt.Chart:
+) -> AltairChart:
     """Facet of distributions (hist/density) across outer factors."""
 
     facets = facets or []
@@ -1813,7 +1813,7 @@ def facet_dist(
     gb_cols = [
         c for c in outer_factors if c is not None
     ]  # There can be other extra cols (like labels) that should be ignored
-    ndata = stk_utils.gb_in_apply(
+    ndata = utils.gb_in_apply(
         data,
         gb_cols,
         cols=[value_col, f0["col"]],
@@ -1867,6 +1867,8 @@ def linevals(
     pdf = pd.DataFrame(aer, columns=[value_col])
 
     if dim:
+        if ccodes is None:
+            raise ValueError("ccodes must be provided when dim is specified")
         # Find the frequency of each category in ccodes
         osignal = np.stack(
             [
@@ -1886,7 +1888,7 @@ def linevals(
             signal = np.maximum(1e-10, klv)
             pdf["kld"] = np.sum(klv, axis=1)
 
-        rng = stk_utils.stable_rng(42)
+        rng = utils.stable_rng(42)
         # pdf[dim] = cats[signal.apply(lambda r: rng.multinomial(1,r/r.sum()).argmax() if r.sum()>0.0 else 0,axis=1)]
         cat_inds = vectorized_mn(signal, rng)
         pdf[dim] = np.array(cats)[cat_inds]
@@ -1921,7 +1923,7 @@ def ordered_population(
     outer_factors: Sequence[str] | None = None,
     group_categories: bool = False,
     full_data: bool = False,
-) -> alt.Chart:
+) -> AltairChart:
     """Plot ordered categorical distributions with optional grouping."""
 
     facets = facets or []
@@ -1941,7 +1943,7 @@ def ordered_population(
     data = data.sort_values(outer_factors + [value_col])  # Value col is here to ensure consistent order for tests
     vals = data[value_col].to_numpy()
 
-    if len(facets) >= 1:
+    if f0 is not None:
         fcol = f0["col"]
         cat_idx, cats = pd.factorize(data[f0["col"]])
         cats = list(cats)
@@ -2011,7 +2013,7 @@ def ordered_population(
         y=alt.Y(f"{value_col}:Q", impute={"value": None}, title="", axis=alt.Axis(grid=True)),
         # opacity=alt.condition(selection, alt.Opacity("matches:Q",scale=None), alt.value(0.1)),
         color=alt.Color(field=f0["col"], type="nominal", sort=f0["order"], scale=f0["colors"])
-        if len(facets) >= 1
+        if f0 is not None
         else alt.value("red"),
         tooltip=tooltip
         + ([alt.Tooltip("probability:Q", format=".1%", title="category prob.")] if len(facets) >= 1 else []),
@@ -2029,7 +2031,7 @@ def ordered_population(
         line,
         data=tdf,
     )
-    return plot
+    return plot  # type: ignore[return-value]
 
 
 @stk_plot(
@@ -2052,7 +2054,7 @@ def marimekko(
     outer_factors: Sequence[str] | None = None,
     separate: bool = False,
     translate: Callable[[str], str] | None = None,
-) -> alt.Chart:
+) -> AltairChart:
     """Build a Marimekko (mosaic) chart showing joint distributions."""
 
     facets = facets or []

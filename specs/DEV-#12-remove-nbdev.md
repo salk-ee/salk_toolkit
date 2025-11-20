@@ -1,4 +1,4 @@
-# DEV-000: Retire nbdev notebooks
+# DEV-#12: Retire nbdev notebooks
 
 **Last Updated**: 2025-11-18  
 **Status**: ✅ Complete  

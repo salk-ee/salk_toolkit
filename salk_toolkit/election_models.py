@@ -26,6 +26,7 @@ __all__ = [
 ]
 
 import itertools as it
+from typing import Callable
 
 import altair as alt
 import numpy as np
@@ -34,6 +35,7 @@ import streamlit as st
 
 from salk_toolkit import utils as stk_utils
 from salk_toolkit.plots import stk_plot
+from salk_toolkit.pp import AltairChart
 
 # --------------------------------------------------------
 #          MACHINERY
@@ -130,8 +132,8 @@ def simulate_election(
 
     # Districts with quotas, then country-level compensation (Estonian system)
     if quotas:
-        quotas = (support.sum(axis=-1) + 1e-3) / (nmandates[None, :])
-        v, r = np.divmod(uzsim_t / quotas[:, :, None], 1.0)
+        quota_values = (support.sum(axis=-1) + 1e-3) / (nmandates[None, :])
+        v, r = np.divmod(uzsim_t / quota_values[:, :, None], 1.0)
         dmandates = v + (r >= first_quota_coef)
 
         # Calculate votes and mandates for each party
@@ -307,7 +309,7 @@ def simulate_election_pp(
     )
 
     if isinstance(electoral_system.get("threshold"), dict):
-        td = electoral_system["threshold"]
+        td: dict = electoral_system["threshold"]  # type: ignore[assignment]
         electoral_system["threshold"] = np.array([td[d] if d in td else td["default"] for d in cat_order])
         print(td, electoral_system["threshold"])
 
@@ -350,9 +352,9 @@ def mandate_plot(
     width: int | None = None,
     alt_properties: dict[str, object] = {},
     outer_factors: list[str] = [],
-    translate: object | None = None,
+    translate: Callable[[str], str] | None = None,
     sim_done: bool = False,
-) -> alt.Chart:
+) -> AltairChart:
     """Create a mandate distribution visualization for election results.
 
     Args:
@@ -416,7 +418,7 @@ def mandate_plot(
     res = res[~res[f0["col"]].isin(el_cols)]
     cat_order = list(eliminate[~eliminate].index)
 
-    f_width = max(50, width / len(cat_order))
+    f_width = max(50, width / len(cat_order)) if width is not None else 50
 
     plot = (
         alt.Chart(data=res)
@@ -442,7 +444,7 @@ def mandate_plot(
             # header=alt.Header(labelAngle=-90),
             row=alt.X(
                 f"{f1['col']}:N",
-                sort=f1["order"] + [tf("Compensation")],
+                sort=list(f1["order"]) + [tf("Compensation")],
                 title=None,
                 header=alt.Header(labelOrient="top"),
             ),
@@ -454,7 +456,7 @@ def mandate_plot(
             ),
         )
     )
-    return plot
+    return plot  # type: ignore[return-value]
 
 
 # This fits into the pp framework as: f0['col']=party_pref, factor=electoral_district, hence the as_is and hidden flags

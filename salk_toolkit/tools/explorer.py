@@ -19,7 +19,7 @@ if memprofile:
     tracemalloc.start()
 
 if profile:
-    from wfork_streamlit_profiler import Profiler
+    from wfork_streamlit_profiler import Profiler  # type: ignore[import-untyped]
 
     p = Profiler()
     p.start()
@@ -43,7 +43,7 @@ else:
 # Allow explorer to be deployed online with access restrictions similar to other dashboards
 if has_secrets and st.secrets.get("sip", {}).get("input_files"):  # st.secrets.get('auth',{}).get('use_oauth'):
     from salk_toolkit.dashboard import FronteggAuthenticationManager, log_event
-    import s3fs
+    import s3fs  # type: ignore[import-untyped]
 
     groups = ["user", "admin"]
     org_whitelist = st.secrets["sip"]["org_whitelist"]
@@ -60,7 +60,8 @@ if has_secrets and st.secrets.get("sip", {}).get("input_files"):  # st.secrets.g
             event: Event name or description to log.
             uid: User ID. If None, uses the current user's UID from uam.
         """
-        log_event(event, uid or uam.user.get("uid", "anonymous"), log_path, s3_fs=s3fs)
+        user_uid = uam.user.get("uid", "anonymous") if uam and uam.user else "anonymous"
+        log_event(event, uid or user_uid, log_path, s3_fs=s3fs)
 
     uam = FronteggAuthenticationManager(
         groups,
@@ -111,13 +112,14 @@ with st.spinner("Loading libraries.."):
     import warnings
     import contextlib
 
-    from streamlit_js import st_js, st_js_blocking
+    from streamlit_js import st_js, st_js_blocking  # type: ignore[import-untyped]
 
     from salk_toolkit.io import (
         read_json,
         extract_column_meta,
         read_parquet_with_metadata,
     )
+    from salk_toolkit.utils import replace_constants
     from salk_toolkit.pp import (
         update_data_meta_with_pp_desc,
         impute_factor_cols,
@@ -132,7 +134,6 @@ with st.spinner("Loading libraries.."):
         plot_matrix_html,
         facet_ui,
         filter_ui,
-        get_plot_width,
         default_translate,
         stss_safety,
     )
@@ -140,17 +141,7 @@ with st.spinner("Loading libraries.."):
     from typing import TypeVar
 
     T = TypeVar("T")
-
-    def tqdm(x: T) -> T:
-        """Pass-through function to allow notebook code to be used without tqdm dependency.
-
-        Args:
-            x: Any iterable or value to pass through unchanged.
-
-        Returns:
-            The input value unchanged.
-        """
-        return x  # So we can freely copy-paste from notebooks
+    tqdm = lambda x: x  # So we can freely copy-paste from notebooks
 
     # Disable altair schema validations by setting debug_mode = False
     # This speeds plots up considerably as altair performs an excessive amount of these validation for some reason
@@ -200,7 +191,7 @@ if has_secrets and st.secrets.get("sip", {}).get("input_files"):
 else:
     cl_args = sys.argv[1:] if len(sys.argv) > 1 else []
     if cl_args and cl_args[0].endswith(".json") and os.path.isfile(cl_args[0]):
-        global_data_meta = read_json(cl_args[0], replace_const=True)
+        global_data_meta = replace_constants(read_json(cl_args[0]))
         cl_args = cl_args[1:]
     else:
         global_data_meta = None
@@ -259,6 +250,8 @@ def load_file(input_file: str) -> dict[str, object]:
     pl.enable_string_cache()
     ifile = paths[input_file] + input_file
     ldf, full_meta = read_parquet_with_metadata(ifile, lazy=True)
+    if full_meta is None:
+        raise ValueError(f"Parquet file {ifile} has no metadata")
     dmeta, mmeta = full_meta["data"], full_meta["model"]
     columns = ldf.collect_schema().names()
     n0 = ldf.select(pl.len()).collect().item()
@@ -347,7 +340,7 @@ with st.sidebar:  # .expander("Select dimensions"):
     all_cols = list(schema.names())
 
     obs_dims = get_dimensions(first_data_meta, all_cols, show_grouped)
-    obs_dims = [c for c in obs_dims if c not in first_data or not schema[c].is_temporal()]
+    obs_dims = [c for c in obs_dims if c not in all_cols or not schema[c].is_temporal()]
     all_dims = get_dimensions(first_data_meta, all_cols, False)
     q_groups = list(set(obs_dims) - set(all_dims))
 
@@ -361,7 +354,8 @@ with st.sidebar:  # .expander("Select dimensions"):
 
     res_cont = not c_meta[args["res_col"]].get("categories") or args.get("convert_res") == "continuous"
 
-    all_dims = c_meta[obs_name].get("modifiers", []) + all_dims
+    modifiers = c_meta[obs_name].get("modifiers", [])
+    all_dims = list(modifiers) + all_dims if modifiers else all_dims
 
     facet_dims = all_dims
     if len(input_files) > 1:
@@ -438,7 +432,7 @@ with st.sidebar:  # .expander("Select dimensions"):
         qpos = st.selectbox("Question position", ["Auto", 1, 2, 3], key="q_pos")
         if "question" in args["factor_cols"] and qpos != "Auto":
             args["factor_cols"] = [c for c in args["factor_cols"] if c != "question"]
-            args["factor_cols"].insert(qpos - 1, "question")
+            args["factor_cols"].insert(int(qpos) - 1, "question")
 
         override = st.text_area("Override keys", "{}", key="override")
         if override:
@@ -520,7 +514,8 @@ elif input_files_facet:
     dfs = []
     for ifile in input_files:
         df, fargs = loaded[ifile]["data"], args.copy()
-        fargs["filter"] = {k: v for k, v in fargs["filter"].items() if k in loaded[ifile]["columns"] or k in q_groups}
+        ifile_cols = list(loaded[ifile]["columns"])  # type: ignore[arg-type]
+        fargs["filter"] = {k: v for k, v in fargs["filter"].items() if k in ifile_cols or k in q_groups}
         fargs["factor_cols"] = [f for f in fargs["factor_cols"] if f != "input_file"]
         pparams = pp_transform_data(df, raw_first_data_meta, fargs)
         dfs.append(pparams["data"])
@@ -557,18 +552,17 @@ else:
             if data_meta is None:
                 data_meta = raw_first_data_meta
 
+            ifile_cols = list(loaded[ifile]["columns"])  # type: ignore[arg-type]
             if (
                 args["res_col"] in all_cols  # I.e. it is a column, not a group
-                and args["res_col"] not in loaded[ifile]["columns"]
+                and args["res_col"] not in ifile_cols
             ):
                 st.write(f"'{args['res_col']}' not present")
                 continue
 
             # with st.spinner('Filtering data...'):
             fargs = args.copy()
-            fargs["filter"] = {
-                k: v for k, v in args["filter"].items() if k in loaded[ifile]["columns"] or k in q_groups
-            }
+            fargs["filter"] = {k: v for k, v in args["filter"].items() if k in ifile_cols or k in q_groups}
             pparams = pp_transform_data(loaded[ifile]["data"], data_meta, fargs)
             cur_width = width or get_plot_width(f"{i}_{ifile}", len(input_files))
             plot = create_plot(

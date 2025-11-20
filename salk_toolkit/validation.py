@@ -36,7 +36,7 @@ __all__ = [
 ]
 
 from datetime import date, datetime
-from typing import Annotated, Any, Dict, List, Literal, Optional, Self, Tuple, Union
+from typing import Annotated, Any, Dict, List, Literal, Optional, Self, Sequence, Tuple, Union
 from pydantic import BaseModel, ConfigDict, model_validator, BeforeValidator
 from pydantic_extra_types.color import Color
 from salk_toolkit.utils import replace_constants
@@ -144,39 +144,63 @@ class MaxDiffBlock(BaseModel):
     setindex: Optional[str] = None
 
 
+ColumnSpecMeta = Dict[str, Any]
+ColumnSpecInput = Union[str, list[object]]
+ParsedColumnSpec = Tuple[str, str, ColumnSpecMeta]
+
+
 # Transform the column tuple to (new name, old name, meta) format
-def cspec(tpl: list[object] | str) -> list[object]:
+def cspec(tpl: ColumnSpecInput) -> ParsedColumnSpec:
     """Parse column specification tuple/list into [column_name, source_name, metadata].
 
     Args:
         tpl: Column specification (string, [name], [name, source], or [name, source, meta]).
 
     Returns:
-        List of [column_name, source_name, metadata_dict].
+        Tuple of (column_name, source_name, metadata_dict).
     """
     if isinstance(tpl, list):
-        cn = tpl[0]  # column name
-        sn = tpl[1] if len(tpl) > 1 and isinstance(tpl[1], str) else cn  # source column
-        o_cd = tpl[2] if len(tpl) == 3 else tpl[1] if len(tpl) == 2 and isinstance(tpl[1], dict) else {}  # metadata
+        if not tpl:
+            raise TypeError("Column specification lists must contain at least the new column name.")
+
+        raw_cn = tpl[0]
+        if not isinstance(raw_cn, str):
+            raise TypeError("Column specification must start with the target column name.")
+        cn = raw_cn  # column name
+
+        raw_sn = tpl[1] if len(tpl) > 1 else cn
+        sn = raw_sn if isinstance(raw_sn, str) else cn  # source column
+
+        if len(tpl) == 3:
+            raw_meta = tpl[2]
+        elif len(tpl) == 2 and isinstance(tpl[1], dict):
+            raw_meta = tpl[1]
+        else:
+            raw_meta = {}
+
+        if not isinstance(raw_meta, dict):
+            raise TypeError("Column metadata must be provided as a dictionary when present.")
+        o_cd = raw_meta
     else:
         cn = sn = tpl
         o_cd = {}
-    return [cn, sn, o_cd]
+    return (cn, sn, o_cd)
 
 
 # Transform list to dict for better error readability
 
 
-def cs_lst_to_dict(lst: list[object]) -> dict[str, list[object]]:
+def cs_lst_to_dict(lst: Sequence[ColumnSpecInput]) -> dict[str, Tuple[str, ColumnSpecMeta]]:
     """Transform list of column specs to dictionary format.
 
     Args:
         lst: List of column specifications.
 
     Returns:
-        Dictionary mapping column names to [source_name, metadata].
+        Dictionary mapping column names to (source_name, metadata).
     """
-    return {cn: [ocn, meta] for cn, ocn, meta in map(cspec, lst)}  # type: ignore[misc, return-value]
+    parsed_specs = [cspec(item) for item in lst]
+    return {cn: (ocn, meta) for cn, ocn, meta in parsed_specs}
 
 
 ColSpec = Annotated[Dict[str, Tuple[str, ColumnMeta]], BeforeValidator(cs_lst_to_dict)]
@@ -198,7 +222,7 @@ class ColumnBlockMeta(PBase):
 
 
 # Again, convert list to dict for easier debugging in case errors get thrown
-def cb_lst_to_dict(lst: list[dict[str, object]]) -> dict[str, dict[str, object]]:
+def cb_lst_to_dict(lst: Sequence[dict[str, object]]) -> dict[str, dict[str, object]]:
     """Transform list of block specs to dictionary format.
 
     Args:
@@ -207,7 +231,13 @@ def cb_lst_to_dict(lst: list[dict[str, object]]) -> dict[str, dict[str, object]]
     Returns:
         Dictionary mapping block names to block specifications.
     """
-    return {c["name"]: c for c in lst}  # type: ignore[misc, return-value, index]
+    result: dict[str, dict[str, object]] = {}
+    for block in lst:
+        name = block.get("name")
+        if not isinstance(name, str):
+            raise TypeError("Each block specification must contain a 'name' field of type str.")
+        result[name] = block
+    return result
 
 
 BlockSpec = Annotated[Dict[str, ColumnBlockMeta], BeforeValidator(cb_lst_to_dict)]
@@ -329,10 +359,13 @@ def soft_validate(m: dict[str, object], model: type[BaseModel]) -> None:
         print(e)
 
 
+DataSpec = Union[str, "DataDescription"]
+
+
 class SingleMergeSpec(PBase):
     """Specification for merging an additional dataset with the main data."""
 
-    file: Union[str, "DataDescription"]  # Filename to merge with
+    file: DataSpec  # Filename to merge with
     on: Union[str, List[str]]  # Column(s) on which to merge
     add: Optional[List[str]] = None  # Column names to add with merge. If None, add all.
     how: Literal["inner", "outer", "left", "right", "cross"] = "inner"  # Type of merge. See pd.merge

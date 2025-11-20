@@ -86,6 +86,7 @@ from typing import (
     Mapping,
     MutableSequence,
     Sequence,
+    TypeAlias,
     TypeVar,
 )
 
@@ -98,14 +99,17 @@ from scipy.spatial.distance import cdist
 
 import altair as alt
 import matplotlib.colors as mpc
-import hsluv
+import hsluv  # type: ignore[import-untyped]
 
 import Levenshtein
 
 pd.set_option("future.no_silent_downcasting", True)
 
 
-JSONValue = str | int | float | bool | None | dict[str, "JSONValue"] | list["JSONValue"]
+JSONScalar: TypeAlias = str | int | float | bool | None
+JSONValue: TypeAlias = JSONScalar | dict[str, "JSONValue"] | list["JSONValue"]
+JSONObject: TypeAlias = dict[str, JSONValue]
+JSONArray: TypeAlias = list[JSONValue]
 
 
 # convenience for warnings that gives a more useful stack frame (fn calling the warning, not warning fn itself)
@@ -185,10 +189,10 @@ def match_sum_round(s: Sequence[float]) -> np.ndarray:
         Integer numpy array that maintains the rounded sum of ``s``.
     """
 
-    s = np.array(s)
-    fs = np.floor(s)
-    diff = round(s.sum() - fs.sum())
-    residues = np.argsort(-(s % 1))[:diff]
+    s_arr = np.array(s)
+    fs = np.floor(s_arr)
+    diff = round(s_arr.sum() - fs.sum())
+    residues = np.argsort(-(s_arr % 1))[:diff]
     fs[residues] = fs[residues] + 1
     return fs.astype("int")
 
@@ -256,12 +260,13 @@ def match_data(
     Args:
         data1: First dataframe.
         data2: Second dataframe.
-        cols: Columns to align on. Must exist in both frames.
+        cols: Columns to align on. Must exist in both frames. If None, uses all columns.
 
     Returns:
         Tuple of row indices describing optimal matches for ``data1`` and ``data2``.
     """
-
+    if cols is None:
+        cols = list(data1.columns)
     d1 = data1[cols].copy().dropna()
     d2 = data2[cols].copy().dropna()
 
@@ -298,14 +303,17 @@ def match_data(
     dmat = cdist(d1, d2, "mahalanobis", VI=pVI)
     i1, i2 = linear_sum_assignment(dmat, maximize=False)
     ind1, ind2 = d1.index[i1], d2.index[i2]
-    return ind1, ind2
+    return list(ind1), list(ind2)
+
+
+JSONStructure = TypeVar("JSONStructure", JSONScalar, JSONObject, JSONArray)
 
 
 def replace_constants(
-    d: JSONValue | MutableSequence[JSONValue] | MutableSequence[MutableSequence[JSONValue]],
+    d: JSONStructure,
     constants: Mapping[str, JSONValue] | None = None,
     inplace: bool = False,
-) -> JSONValue | MutableSequence[JSONValue] | MutableSequence[MutableSequence[JSONValue]]:
+) -> JSONStructure:
     """Recursively expand ``"constants"`` references inside annotation dicts.
 
     Args:
@@ -321,16 +329,24 @@ def replace_constants(
         d = deepcopy(d)
 
     constants_map: Dict[str, JSONValue] = dict(constants or {})
-    if isinstance(d, dict) and "constants" in d:
-        constants_map.update(d["constants"])
-        del d["constants"]
 
-    iterator = d.items() if isinstance(d, dict) else enumerate(d)
-    for k, v in iterator:
-        if isinstance(v, str) and v in constants_map:
-            d[k] = constants_map[v]
-        elif isinstance(v, (dict, list)):
-            d[k] = replace_constants(v, constants_map, inplace=True)
+    # Handle dict case
+    if isinstance(d, dict):
+        if "constants" in d:
+            constants_map.update(d["constants"])  # type: ignore[arg-type]
+            del d["constants"]
+        for k, v in d.items():
+            if isinstance(v, str) and v in constants_map:
+                d[k] = constants_map[v]
+            elif isinstance(v, (dict, list)):
+                d[k] = replace_constants(v, constants_map, inplace=True)
+    # Handle list case
+    elif isinstance(d, list):
+        for i, v in enumerate(d):
+            if isinstance(v, str) and v in constants_map:
+                d[i] = constants_map[v]
+            elif isinstance(v, (dict, list)):
+                d[i] = replace_constants(v, constants_map, inplace=True)
 
     return d
 
@@ -355,12 +371,10 @@ def approx_str_match(
 
     frm_list = list(frm)
     to_list = list(to)
-    distance_fn = dist_fn or Levenshtein.distance
+    distance_fn = dist_fn or Levenshtein.distance  # type: ignore[assignment]
     if lower:
         original = distance_fn
-
-        def distance_fn(x: str, y: str) -> float:  # type: ignore[redefined-outer-name]
-            return original(x.lower(), y.lower())
+        distance_fn = lambda x, y: original(x.lower(), y.lower())
 
     dmat = scipy.spatial.distance.cdist(
         np.array(frm_list)[:, None],
@@ -403,10 +417,10 @@ def to_alt_scale(
     """Convert a mapping into an Altair scale while preserving category order."""
 
     if scale is None:
-        scale = alt.Undefined
+        scale = alt.Undefined  # type: ignore[assignment]
     if isinstance(scale, dict):
         if order is None:
-            order = scale.keys()
+            order = list(scale.keys())
         # else: order = [ c for c in order if c in scale ]
         scale = alt.Scale(
             domain=list(order),
@@ -543,8 +557,8 @@ def split_to_neg_neutral_pos(
     """Partition Likert categories into negative/neutral/positive lists."""
 
     cats, mid = list(cats), len(cats) // 2
-    neutrals = neutrals.copy()  # Make a copy to avoid modifying input down the line
-    if not neutrals:
+    neutrals_list = list(neutrals)  # Make a copy to avoid modifying input down the line
+    if not neutrals_list:
         if len(cats) % 2 == 1:
             return cats[:mid], [cats[mid]], cats[mid + 1 :]
         else:
@@ -552,25 +566,25 @@ def split_to_neg_neutral_pos(
 
     # Find a neutral that is not at start or end
     bi, ei = 0, 0
-    while cats[bi] in neutrals:
+    while cats[bi] in neutrals_list:
         bi += 1
-    while cats[-ei - 1] in neutrals:
+    while cats[-ei - 1] in neutrals_list:
         ei += 1
-    cn = [c for c in neutrals if c in cats[bi : len(cats) - ei]]
+    cn = [c for c in neutrals_list if c in cats[bi : len(cats) - ei]]
 
     # If no such neutral, split evenly between positive and negative
     if not cn:
-        posneg = [c for c in cats if c not in neutrals]
+        posneg = [c for c in cats if c not in neutrals_list]
         pnmid = len(posneg) // 2
         if len(posneg) % 2 == 1:
-            return posneg[:pnmid], neutrals + [posneg[pnmid]], posneg[pnmid + 1 :]
+            return posneg[:pnmid], neutrals_list + [posneg[pnmid]], posneg[pnmid + 1 :]
         else:
-            return posneg[:pnmid], neutrals, posneg[pnmid:]
+            return posneg[:pnmid], neutrals_list, posneg[pnmid:]
     else:  # Split around the first central neutral found
         ci = cats.index(cn[0])
-        neg = [c for c in cats[:ci] if c not in neutrals]
-        pos = [c for c in cats[ci:] if c not in neutrals]
-        return neg, neutrals, pos
+        neg = [c for c in cats[:ci] if c not in neutrals_list]
+        pos = [c for c in cats[ci:] if c not in neutrals_list]
+        return neg, neutrals_list, pos
 
 
 def is_datetime(col: pd.Series) -> bool:
@@ -578,9 +592,10 @@ def is_datetime(col: pd.Series) -> bool:
 
     with warnings.catch_warnings():
         warnings.simplefilter(action="ignore", category=UserWarning)
-        return pd.api.types.is_datetime64_any_dtype(col) or (
+        result = pd.api.types.is_datetime64_any_dtype(col) or (
             col.dtype.name in ["str", "object"] and pd.to_datetime(col, errors="coerce").notna().any()
         )
+        return bool(result)
 
 
 def rel_wave_times(ws: Sequence[int], dts: Sequence[Any], dt0: pd.Timestamp | None = None) -> pd.Series:
@@ -591,6 +606,7 @@ def rel_wave_times(ws: Sequence[int], dts: Sequence[Any], dt0: pd.Timestamp | No
     if dt0 is None:
         dt0 = adf.max()  # use last wave date as the reference
 
+    assert dt0 is not None, "dt0 must be set"
     w_to_time = dict(((adf - dt0).dt.days / 30).items())
 
     return pd.Series(df["wave"].replace(w_to_time), name="t")
@@ -632,7 +648,8 @@ def clean_kwargs(fn: Callable[..., Any], kwargs: Mapping[str, Any]) -> Dict[str,
     """Filter kwargs to only those accepted by ``fn``."""
 
     aspec = inspect.getfullargspec(fn)
-    return {k: v for k, v in kwargs.items() if k in aspec.args} if aspec.varkw is None else kwargs
+    result = {k: v for k, v in kwargs.items() if k in aspec.args} if aspec.varkw is None else kwargs
+    return dict(result)
 
 
 def call_kwsafe(fn: Callable[..., T], *args: object, **kwargs: object) -> T:
@@ -695,11 +712,11 @@ def cut_nice(
 ) -> pd.Categorical:
     """Wrapper around ``pd.cut`` that keeps prettier labels and inclusivity."""
 
-    s = np.array(s)
-    mi, ma = s.min(), s.max()
-    isint = np.issubdtype(s.dtype, np.integer) or (s % 1 == 0.0).all()
+    s_arr = np.array(s)
+    mi, ma = s_arr.min(), s_arr.max()
+    isint = np.issubdtype(s_arr.dtype, np.integer) or (s_arr % 1 == 0.0).all()
     breaks, labels = cut_nice_labels(breaks, mi, ma, isint, format, separator)
-    return pd.cut(s, breaks, right=False, labels=labels, ordered=False)
+    return pd.cut(s_arr, breaks, right=False, labels=labels, ordered=False)
 
 
 def rename_cats(df: pd.DataFrame, col: str, cat_map: Mapping[str, str]) -> None:
@@ -783,6 +800,8 @@ def deaggregate_multiselect(df: pd.DataFrame, prefix: str, out_prefix: str = "")
     # Create a one-hot column for each
     for oc in ocols:
         df[out_prefix + oc] = (df[cols] == oc).any(axis=1)
+
+    return df
 
 
 def gb_in(df: pd.DataFrame, gb_cols: Sequence[str]) -> pd.core.groupby.generic.DataFrameGroupBy | pd.DataFrame:

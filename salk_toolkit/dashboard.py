@@ -59,7 +59,7 @@ import polars as pl
 import datetime as dt
 
 
-import s3fs
+import s3fs  # type: ignore[import-untyped]
 import polib
 import __main__  # to get name of py file
 
@@ -75,11 +75,14 @@ from salk_toolkit.io import (
 from salk_toolkit.pp import e2e_plot
 
 import streamlit as st
-from streamlit_option_menu import option_menu
-from streamlit_dimensions import st_dimensions
-import streamlit_authenticator as stauth
-import libsql_client
-from typing import Callable
+from streamlit_option_menu import option_menu  # type: ignore[import-untyped]
+from streamlit_dimensions import st_dimensions  # type: ignore[import-untyped]
+import streamlit_authenticator as stauth  # type: ignore[import-untyped]
+import libsql_client  # type: ignore[import-untyped]
+from typing import Callable, Any, cast
+
+# Type alias for JSON data
+JsonDict = dict[str, Any]
 
 
 def get_plot_width(key: str) -> int:
@@ -184,13 +187,16 @@ def read_parquet_with_data_meta_lazy_cached(data_source: str, **kwargs: object) 
     """
     print(f"Reading lazy data from {data_source}")
     df, full_meta = read_parquet_with_metadata(data_source, lazy=True, **kwargs)
-    return df, full_meta["data"]
+    assert full_meta is not None, "Expected metadata to be present"
+    data_meta = full_meta["data"]
+    assert isinstance(data_meta, dict), "Expected data metadata to be a dict"
+    return df, data_meta
 
 
 # Load json uncached - useful for admin pages
 
 
-def load_json(fname: str, _s3_fs: object | None = None, **kwargs: object) -> object:
+def load_json(fname: str, _s3_fs: object | None = None, **kwargs: object) -> JsonDict:
     """Load JSON file from local filesystem or S3 (uncached).
 
     Args:
@@ -199,10 +205,11 @@ def load_json(fname: str, _s3_fs: object | None = None, **kwargs: object) -> obj
         **kwargs: Additional arguments passed to json.load().
 
     Returns:
-        Parsed JSON object (dict, list, etc.).
+        Parsed JSON object (typically a dict).
     """
     with open_fn(fname, "r", s3_fs=_s3_fs, encoding="utf8") as jf:
-        return json.load(jf)
+        result: JsonDict = json.load(jf)
+        return result
 
 
 # This is cached very short term (1 minute) to avoid downloading it on every page change
@@ -210,7 +217,7 @@ def load_json(fname: str, _s3_fs: object | None = None, **kwargs: object) -> obj
 
 
 @st.cache_data(show_spinner=False, ttl=60)
-def load_json_cached(fname: str, _s3_fs: object | None = None, **kwargs: object) -> object:
+def load_json_cached(fname: str, _s3_fs: object | None = None, **kwargs: object) -> JsonDict:
     """Load JSON file from local filesystem or S3 (cached for 60 seconds).
 
     Args:
@@ -219,7 +226,7 @@ def load_json_cached(fname: str, _s3_fs: object | None = None, **kwargs: object)
         **kwargs: Additional arguments passed to json.load().
 
     Returns:
-        Parsed JSON object (dict, list, etc.).
+        Parsed JSON object (typically a dict).
     """
     return load_json(fname, _s3_fs, **kwargs)
 
@@ -585,7 +592,9 @@ def load_translate(
             else:
                 raise ValueError(f"Unknown translation file type: {ext}")
         elif translate in cc_translations:  # country code
-            return cc_translations[translate]
+            fn = cc_translations[translate]
+            assert fn is not None, f"Translation function for {translate} is None"
+            return fn
         else:
             raise ValueError(f"Translation file not found: {translate}")
 
@@ -601,7 +610,7 @@ def load_po_translations() -> dict[str, Callable[[str], str] | None]:
     bname = os.path.splitext(os.path.basename(__main__.__file__))[0]
 
     # Find all locale subdirectories
-    translations = {"en": None}  # English is the default
+    translations: dict[str, Callable[[str], str] | None] = {"en": None}  # English is the default
     if os.path.exists("locale"):
         for country_code in os.listdir("locale"):
             po_path = f"locale/{country_code}/{bname}.po"
@@ -971,12 +980,23 @@ class SalkDashboardBuilder:
                 return
 
             needed_groups = kwargs.get("groups")
-            if (
-                needed_groups is None  # Page is available to all
-                or self.admin  # Admin sees all
-                or "guest" in needed_groups  # some views might be open to all
-                or len(set(self.user.get("groups", [])) & set(needed_groups)) > 0
-            ):  # one of the groups is whitelisted
+            # Check if user can access this page
+            can_access = False
+            if needed_groups is None:  # Page is available to all
+                can_access = True
+            elif self.admin:  # Admin sees all
+                can_access = True
+            else:
+                # At this point needed_groups is not None
+                needed_groups_list = list(needed_groups) if needed_groups else []
+                if "guest" in needed_groups_list:  # some views might be open to all
+                    can_access = True
+                elif (
+                    len(set(self.user.get("groups", [])) & set(needed_groups_list)) > 0
+                ):  # one of the groups is whitelisted
+                    can_access = True
+
+            if can_access:
                 self.pages.append((name, pfunc, kwargs))
 
         return decorator
@@ -1305,9 +1325,10 @@ class StreamlitAuthenticationManager(UserAuthenticationManager):
         """
         super().__init__(groups, info, org_whitelist, logger, languages, translate_func)
         self.s3fs = s3_fs
-        self.stuser = {}
+        self.stuser: JsonDict = {}
         self.client = None
         self.conf_file = auth_conf_file
+        self.conf: JsonDict = {}
         self.load_conf()
         self.passwordless = False
         config = self.conf
@@ -1322,7 +1343,7 @@ class StreamlitAuthenticationManager(UserAuthenticationManager):
     @property
     def authenticated(self) -> bool:
         """Check if user is authenticated via Streamlit Authenticator."""
-        return st.session_state.get("authentication_status") and self.stuser
+        return bool(st.session_state.get("authentication_status") and self.stuser)
 
     # This is abstracted into .user property with impersonation built-in
     def uam_user(self) -> dict[str, object]:
@@ -1391,7 +1412,7 @@ class StreamlitAuthenticationManager(UserAuthenticationManager):
 
         if st.session_state["authentication_status"] is False:
             st.error(tf("Username/password is incorrect"))
-            self.log_event("login-fail", username=username)
+            self.log_event("login-fail", uid=username)
         if st.session_state["authentication_status"] is None:
             st.warning(tf("Please enter your username and password"))
             st.session_state["log_event"] = True
@@ -1437,6 +1458,7 @@ class StreamlitAuthenticationManager(UserAuthenticationManager):
             username: Username to update.
         """
         if "libsql" in self.conf:
+            assert self.client is not None, "libsql client should be initialized"
             user_data = self.users[username]
             self.client.execute(
                 (
@@ -1475,6 +1497,7 @@ class StreamlitAuthenticationManager(UserAuthenticationManager):
             self.log_event(f"add-user: {username}")
 
             if "libsql" in self.conf:
+                assert self.client is not None, "libsql client should be initialized"
                 self.client.execute(
                     (
                         "INSERT INTO users (username, name, email, organization, "
@@ -1507,7 +1530,7 @@ class StreamlitAuthenticationManager(UserAuthenticationManager):
         if "username" in user_data and username != user_data["username"]:
             self.users[user_data["username"]] = self.users[username]
             del self.users[username]
-            username = user_data["username"]
+            username = str(user_data["username"])
             del user_data["username"]
 
         # Handle password change
@@ -1534,6 +1557,7 @@ class StreamlitAuthenticationManager(UserAuthenticationManager):
         self.log_event(f"delete-user: {username}")
 
         if "libsql" in self.conf:
+            assert self.client is not None, "libsql client should be initialized"
             self.client.execute("DELETE FROM users WHERE username = ?", [username])
         else:
             self.update_conf(username)
@@ -1556,7 +1580,7 @@ def frontegg_client() -> object:
     Returns:
         Frontegg HttpClient instance.
     """
-    from frontegg.common.clients import HttpClient
+    from frontegg.common.clients import HttpClient  # type: ignore[import-untyped]
 
     base_url = "https://api.frontegg.com/audits"
     auth = st.secrets["auth"]
@@ -1592,7 +1616,8 @@ class FronteggAuthenticationManager(UserAuthenticationManager):
     @property
     def authenticated(self) -> bool:
         """Check if user is authenticated via Frontegg OAuth."""
-        return st.user["is_logged_in"]
+        logged_in = st.user["is_logged_in"]
+        return bool(logged_in)
 
     def reform_user(self, user: dict[str, object]) -> dict[str, object]:
         """Reformat Frontegg user data to internal format.
@@ -1629,7 +1654,9 @@ class FronteggAuthenticationManager(UserAuthenticationManager):
             return {}
         elif "OAUser" not in st.session_state:
             st.session_state["OAUser"] = self.reform_user(st.user)
-        return st.session_state.get("OAUser")
+        user = st.session_state.get("OAUser")
+        assert isinstance(user, dict), "Expected OAUser to be a dict"
+        return user
 
     # Use the silent login profile to just refresh the user info if prompt config is present
 
@@ -1651,7 +1678,11 @@ class FronteggAuthenticationManager(UserAuthenticationManager):
                 st.session_state["OAUser"] = self.reform_user(st.user)
             elif not st.user["is_logged_in"] and "OAUser" in st.session_state:
                 del st.session_state["OAUser"]
-        elif not st.session_state.get("OA_fresh") and time.time() - st.user["iat"] > 60:
+        elif (
+            not st.session_state.get("OA_fresh")
+            and isinstance(st.user.get("iat"), (int, float))
+            and time.time() - float(st.user["iat"]) > 60
+        ):
             # IF authenticated, but token not refreshed this session and is at least 60 sec old
             # This is to ensure that settings changes are also visible if logging in on another device
             # Also good for keeping users logged in for a while as it refreshes the access token
@@ -1708,6 +1739,7 @@ class FronteggAuthenticationManager(UserAuthenticationManager):
             raise Exception(str(res["errors"]))
         self.info.info(f"User **{res['email']}** added.")
         self.log_event(f"add-user: {res['email']}")
+        return True
 
     def change_user(self, uid: str, user_data: dict[str, object]) -> None:
         """Update user information via Frontegg API.
@@ -1809,9 +1841,7 @@ def user_settings_page(sdb: SalkDashboardBuilder) -> None:
 
     if isinstance(sdb.uam, StreamlitAuthenticationManager):
         try:
-
-            def tf(s: str) -> str:
-                return sdb.tf(s, context="ui")
+            tf = lambda s: sdb.tf(s, context="ui")
 
             if sdb.uam.auth.reset_password(
                 st.session_state["username"],
@@ -2094,9 +2124,7 @@ def facet_ui(
     """
     # Set up translation
     tfc = translate if translate else (lambda s, **kwargs: s)
-
-    def tf(s: str) -> str:
-        return tfc(s, context="data")
+    tf = lambda s: tfc(s, context="data")
 
     tdims = [tf(d) for d in dims]
     r_map = dict(zip(tdims, dims))
@@ -2185,9 +2213,10 @@ def get_filter_limits(
             }
         elif c_meta[d].get("continuous") and schema[d].is_numeric():
             if c_meta[d].get("val_range"):
+                val_range = cast(list[int | float], c_meta[d]["val_range"])
                 limits[d] = {
-                    "min": c_meta[d]["val_range"][0],
-                    "max": c_meta[d]["val_range"][1],
+                    "min": val_range[0],
+                    "max": val_range[1],
                 }
             else:
                 limits[d] = ldf.select([pl.min(d).alias("min"), pl.max(d).alias("max")]).collect().to_dicts()[0]
@@ -2247,8 +2276,7 @@ def filter_ui(
         flt = {}
     tfc = translate if translate else (lambda s, **kwargs: s)
 
-    def tf(s: str) -> str:
-        return tfc(s, context="data")
+    tf = lambda s: tfc(s, context="data")
 
     limits = get_filter_limits(data, dims, dmeta, uid)
     dims = list(limits.keys())
@@ -2285,10 +2313,10 @@ def filter_ui(
 
             # Shared prep for all cateogoricals
             if limits[cn].get("categories"):
-                cats = limits[cn]["categories"]
+                cats = cast(list[object], limits[cn]["categories"])
 
                 if cn in flt:  # Already a filter set
-                    cflt = flt[cn]
+                    cflt: list[object] = flt[cn]  # type: ignore[assignment]
                     if not isinstance(cflt, list):
                         cflt = [cflt]  # Single value
                     if cflt[0] is None:
@@ -2714,7 +2742,7 @@ def plot_matrix_html(
     for i, p in enumerate(pmat):
         for j, pp in enumerate(p):
             pdict = json.loads(pp.to_json())
-            pdict["autosize"] = {"type": "fit", "contains": "padding"}
+            pdict["autosize"] = {"type": "fit-x", "contains": "padding"}
             pdict["config"] = altair_default_config
 
             if responsive:

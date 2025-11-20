@@ -17,6 +17,7 @@ It maps annotated survey data to Altair charts by:
 from __future__ import annotations
 
 __all__ = [
+    "AltairChart",
     "special_columns",
     "registry",
     "registry_meta",
@@ -52,7 +53,7 @@ import numpy as np
 import pandas as pd
 import polars as pl
 
-from salk_toolkit import utils as stk_utils
+from salk_toolkit import utils as utils
 from salk_toolkit.io import (
     extract_column_meta,
     group_columns_dict,
@@ -61,6 +62,9 @@ from salk_toolkit.io import (
 )
 from salk_toolkit.utils import batch, clean_kwargs
 from salk_toolkit.validation import PlotDescriptor, soft_validate
+
+# Type alias for all Altair chart types that plot functions may return
+AltairChart = alt.Chart | alt.LayerChart | alt.FacetChart | alt.VConcatChart | alt.HConcatChart | alt.ConcatChart
 
 
 # --------------------------------------------------------
@@ -80,8 +84,10 @@ def augment_draws(
     if n_draws is None:
         n_draws = data.draw.max() + 1
 
+    assert n_draws is not None, "n_draws must be set"
+
     if factors:  # Run recursively on each factor separately and concatenate results
-        if data[["draw"] + factors].value_counts().min() >= threshold:
+        if data[["draw"] + list(factors)].value_counts().min() >= threshold:
             return data  # This takes care of large datasets fast
         return (
             data.groupby(factors, observed=False)
@@ -150,7 +156,7 @@ def ensure_plot_registry_loaded() -> None:
     try:
         import salk_toolkit.plots  # noqa: F401
     except Exception as exc:  # pragma: no cover
-        stk_utils.warn(f"Plot registry bootstrap failed: {exc}")
+        utils.warn(f"Plot registry bootstrap failed: {exc}")
     else:
         _registry_bootstrapped = True
 
@@ -309,7 +315,9 @@ def update_data_meta_with_pp_desc(
         data_meta["structure"].append(rmeta)
 
     # Do the constants replacement after the res_meta is added
-    data_meta = stk_utils.replace_constants(data_meta, data_meta.get("constants", {}))
+    data_meta_replaced = utils.replace_constants(data_meta, data_meta.get("constants", {}))
+    assert isinstance(data_meta_replaced, dict), "data_meta must remain a dict after replace_constants"
+    data_meta = data_meta_replaced
 
     # Reshape the meta into a more usable format
     col_meta = extract_column_meta(data_meta)
@@ -599,7 +607,7 @@ def pp_filter_data_lz(
         if is_range:  # Range of values over ordered categorical
             cats = ensure_ldf_categories(c_meta, k, df)["categories"]
             if set(v[1:]) & set(cats) != set(v[1:]):
-                stk_utils.warn(f"Column {k} values {v} not found in {cats}, not filtering")
+                utils.warn(f"Column {k} values {v} not found in {cats}, not filtering")
                 flst = cats
             else:
                 bi, ei = cats.index(v[1]), cats.index(v[2])
@@ -679,7 +687,7 @@ def discretize_continuous(
             labels[0], labels[-1] = f"Bottom {bpoints[1]:.0%}", f"Top {bpoints[1]:.0%}"
     else:  # Given breaks
         mi, ma = tuple(pl_quantiles(ldf, col, [0, 1]))  # Determine range of values
-        breaks, labs = stk_utils.cut_nice_labels(breaks, mi, ma, isint, fmt)  # Adds mi/ma to breaks if not in range
+        breaks, labs = utils.cut_nice_labels(breaks, mi, ma, isint, fmt)  # Adds mi/ma to breaks if not in range
         if labels is None:
             labels = labs
 
@@ -710,8 +718,6 @@ def pp_transform_data(
     if not isinstance(full_df, pl.LazyFrame):
         full_df = pl.DataFrame(full_df).lazy()
 
-    extra_columns = list(columns) if columns is not None else []
-
     schema = full_df.collect_schema()
     all_col_names = schema.names()
 
@@ -730,8 +736,8 @@ def pp_transform_data(
     # It will be made one for categorical plots for plotting part, but for pp_transform_data, remove it
     if pp_desc["res_col"] in factor_cols:
         factor_cols.remove(pp_desc["res_col"])
-
-    extra_cols = extra_columns + ([weight_col] + (["draw"] if plot_meta.get("draws") else []))
+    base_cols = list(columns) if columns is not None else []
+    extra_cols = base_cols + ([weight_col] + (["draw"] if plot_meta.get("draws") else []))
     cols = [pp_desc["res_col"]] + factor_cols + list(pp_desc.get("filter", {}).keys())
     cols += [c for c in extra_cols if c in all_col_names and c not in cols]
 
@@ -822,7 +828,7 @@ def pp_transform_data(
     # Compute draws if needed - Nb: also applies if the draws are shared for the group of questions
     if "draw" in cols and pp_desc["res_col"] in draws_data:
         uid, ndraws = draws_data[pp_desc["res_col"]]
-        draws = stk_utils.stable_draws(total_n, ndraws, uid)
+        draws = utils.stable_draws(total_n, ndraws, uid)
         draw_df = pl.DataFrame({"draw": draws, "id": np.arange(0, total_n)})
         filtered_df = filtered_df.drop("draw").join(draw_df.lazy(), on=["id"], how="left")
 
@@ -839,7 +845,7 @@ def pp_transform_data(
                 if c in draws_data:
                     uid, ndraws = draws_data[c]
                     if (uid, ndraws) not in ddf_cache:
-                        draws = stk_utils.stable_draws(total_n, ndraws, uid)
+                        draws = utils.stable_draws(total_n, ndraws, uid)
                         ddf_cache[(uid, ndraws)] = pl.DataFrame(
                             {"draw": draws, "question": c, "id": np.arange(0, total_n)}
                         )
@@ -905,6 +911,7 @@ def wrangle_data(
     plot_meta = get_plot_meta(pp_desc["plot"])
     schema = raw_df.collect_schema()
     res_col = pp_desc.get("res_col")
+    assert res_col is not None, "res_col is required"
 
     draws, continuous, data_format = (plot_meta.get(vn, False) for vn in ["draws", "continuous", "data_format"])
 
@@ -1067,20 +1074,20 @@ def meta_color_scale(
     """Convert metadata colors (or defaults) into an Altair scale definition."""
 
     scale, neutrals = cmeta.get("colors", None), get_neutral_cats(cmeta)
-    cats = column.dtype.categories if column.dtype.name == "category" else None
+    cats = column.dtype.categories if column is not None and column.dtype.name == "category" else None
     if scale is None and column is not None and column.dtype.name == "category" and column.dtype.ordered:
         # Split the values into negative, neutral, positive
-        neg, neut, pos = stk_utils.split_to_neg_neutral_pos(cats, neutrals)
+        neg, neut, pos = utils.split_to_neg_neutral_pos(cats, neutrals)
 
         # Create a color scale for each category and combine them
-        bidir_mid = len(stk_utils.default_bidirectional_gradient) // 2
-        reds = stk_utils.gradient_to_discrete_color_scale(
-            stk_utils.default_bidirectional_gradient[: bidir_mid + 1],
+        bidir_mid = len(utils.default_bidirectional_gradient) // 2
+        reds = utils.gradient_to_discrete_color_scale(
+            utils.default_bidirectional_gradient[: bidir_mid + 1],
             len(neg) + 1,
         )
-        greys = stk_utils.gradient_to_discrete_color_scale(stk_utils.greyscale_gradient, len(neut) + 2)
-        blues = stk_utils.gradient_to_discrete_color_scale(
-            stk_utils.default_bidirectional_gradient[bidir_mid:],
+        greys = utils.gradient_to_discrete_color_scale(utils.greyscale_gradient, len(neut) + 2)
+        blues = utils.gradient_to_discrete_color_scale(
+            utils.default_bidirectional_gradient[bidir_mid:],
             len(pos) + 1,
         )
         scale = {
@@ -1093,7 +1100,7 @@ def meta_color_scale(
         remap = dict(zip(cats, [translate(c) for c in cats]))
         scale = {(remap[k] if k in remap else k): v for k, v in scale.items()} if scale else scale
         cats = [remap[c] for c in cats]
-    return stk_utils.to_alt_scale(scale, cats)
+    return utils.to_alt_scale(scale, cats)
 
 
 def translate_df(df: pd.DataFrame, translate: Callable[[str], str]) -> pd.DataFrame:
@@ -1113,8 +1120,8 @@ def create_tooltip(
     data: pd.DataFrame,
     c_meta: Mapping[str, Any],
     tfn: Callable[[str], str],
-) -> Dict[str, Any]:
-    """Build tooltip metadata (labels + formatted values) for plots."""
+) -> tuple[list[alt.Tooltip], pd.DataFrame]:
+    """Build tooltip metadata (labels + formatted values) for plots and return with modified data."""
 
     label_dict = {}
 
@@ -1204,13 +1211,13 @@ def create_plot(
     pparams: Dict[str, Any],
     pp_desc: Dict[str, Any],
     alt_properties: Mapping[str, Any] | None = None,
-    alt_wrapper: Callable[[alt.Chart], alt.Chart] | None = None,
+    alt_wrapper: Callable[[AltairChart], AltairChart] | None = None,
     dry_run: bool = False,
     width: int = 200,
     height: int | None = None,
     return_matrix_of_plots: bool = False,
     translate: Callable[[str], str] | None = None,
-) -> alt.Chart | List[List[alt.Chart]] | Dict[str, Any]:
+) -> AltairChart | List[List[AltairChart]] | Dict[str, Any]:
     """Produce an Altair plot (or matrix of plots) from prepared parameters."""
 
     # Make a shallow copy so we don't mess with the original object. Important for caching
@@ -1310,14 +1317,12 @@ def create_plot(
 
     # Handle translation funcion
     if translate is None:
-
-        def translate(s: str) -> str:
-            return s
+        translate = lambda s: s
 
     # Add escaping as Vega Lite goes crazy for symbols like ".[]"
     # It would be enough to do it just for column names, but it's easier to do it for all
     def tfunc(s: str) -> str:
-        return stk_utils.escape_vega_label(translate(s))
+        return utils.escape_vega_label(translate(s))
 
     pparams["translate"] = tfunc
 
@@ -1384,9 +1389,7 @@ def create_plot(
     plot_fn = get_plot_fn(pp_desc["plot"])
     pparams = clean_kwargs(plot_fn, pparams)
     if alt_wrapper is None:
-
-        def alt_wrapper(p: alt.Chart) -> alt.Chart:
-            return p
+        alt_wrapper = lambda p: p
 
     if plot_meta.get("as_is"):  # if as_is set, just return the plot as-is
         return plot_fn(**pparams)
@@ -1394,8 +1397,9 @@ def create_plot(
         if return_matrix_of_plots:  # return a 2d list of plots which can be rendeed one plot at a time
             del pparams["data"]
             combs = it.product(*[data[fc].dtype.categories for fc in factor_cols])
-            return list(
-                batch(
+            return [
+                list(batch_item)
+                for batch_item in batch(
                     [
                         alt_wrapper(
                             plot_fn(data[(data[factor_cols] == c).all(axis=1)], **pparams)
@@ -1406,7 +1410,7 @@ def create_plot(
                     ],
                     n_facet_cols,
                 )
-            )
+            ]
         else:  # Use faceting
             if n_facet_cols == 1:
                 plot = alt_wrapper(
@@ -1517,7 +1521,7 @@ def e2e_plot(
     plot_cache: MutableMapping[str, Dict[str, Any]] | None = None,
     return_data: bool = False,
     **kwargs: object,
-) -> alt.Chart | List[List[alt.Chart]] | pd.DataFrame:
+) -> AltairChart | List[List[AltairChart]] | pd.DataFrame:
     """High-level helper that loads data, transforms, and renders a plot."""
 
     if data_file is None and full_df is None:
@@ -1530,9 +1534,12 @@ def e2e_plot(
 
     if full_df is None:
         full_df, full_meta = read_parquet_with_metadata(data_file, lazy=True)
+        if full_meta is None:
+            raise ValueError(f"Parquet file {data_file} has no metadata")
         dm = full_meta["data"]
         if data_meta is None:
-            data_meta = dm
+            assert dm is None or isinstance(dm, dict), "data metadata must be dict or None"
+            data_meta = dm  # type: ignore[assignment]
 
     pp_desc = pp_desc.copy()
     if impute:
@@ -1561,7 +1568,9 @@ def e2e_plot(
 
     if return_data:
         return pparams["data"]
-    return create_plot(pparams, pp_desc, width=width, height=height, **kwargs)
+    # dry_run=True can cause create_plot to return Dict[str, Any], but we don't support that here
+    assert not kwargs.get("dry_run", False), "dry_run not supported in e2e_plot"
+    return create_plot(pparams, pp_desc, width=width, height=height, **kwargs)  # type: ignore[return-value]
 
 
 # Another convenience function to simplify testing new plots
@@ -1573,12 +1582,12 @@ def e2e_plot(
 
 
 def test_new_plot(
-    fn: Callable[..., alt.Chart],
+    fn: Callable[..., AltairChart],
     pp_desc: Dict[str, Any],
     *args: object,
     plot_meta: Mapping[str, Any] | None = None,
     **kwargs: object,
-) -> alt.Chart | List[List[alt.Chart]] | pd.DataFrame:
+) -> AltairChart | List[List[AltairChart]] | pd.DataFrame:
     """Temporarily register a plot for interactive testing."""
 
     plot_meta = dict(plot_meta or {})
