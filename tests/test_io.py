@@ -228,10 +228,7 @@ class TestReadAnnotatedData:
             dtype=pd.CategoricalDtype(categories=["USA", "Canada", "Mexico"]),
         )
         expected_structure = [
-            {
-                "name": "topk",
-                "columns": ["id", "q1_1", "q1_2", "q1_3", "q2_1", "q2_2", "q2_3"],
-            },
+            {"name": "topk", "columns": ["id", "q1_1", "q1_2", "q1_3", "q2_1", "q2_2", "q2_3"]},
             {
                 "name": "issue_importance_raw_1",
                 "scale": {
@@ -250,11 +247,145 @@ class TestReadAnnotatedData:
             },
         ]
         assert_frame_equal(
-            diffs.fillna(pd.NA),
-            expected_result.fillna(pd.NA),
-            check_dtype=False,
-            check_categorical=False,
+            diffs.fillna(pd.NA), expected_result.fillna(pd.NA), check_dtype=False, check_categorical=False
         )
+        assert sorted(data_meta["structure"], key=lambda x: x["name"]) == sorted(
+            expected_structure, key=lambda x: x["name"]
+        )
+
+    def test_maxdiff_create_block(self, meta_file, csv_file):
+        """Test max diff create block."""
+        np.random.seed(42)
+
+        columns = [f"Q2_{k}best" for k in range(1, 11)]
+        columns += [f"Q2_{k}worst" for k in range(1, 11)]
+
+        # survey data formatting
+        l, k, n = 5, 10, 36  # topics per set, sets per person, n_topic_perms
+        q = 18  # questions
+        N = 23  # number of dataframe rows
+        topics = np.array(list(map(chr, range(ord("A"), ord("A") + q))))
+        grid = np.random.randn(n, k, q)
+        perms = np.argsort(grid, axis=2)[:, :, :l]
+        mask = np.arange(1, q + 1)
+        sets = mask[perms]
+
+        # survey data generation
+        best = np.random.choice(range(5), size=(N, k))
+        worst = np.random.choice(range(5), size=(N, k))
+        ids = np.random.choice(range(36), size=N)
+        worst[best == worst] = (worst[best == worst] + 1) % 5
+        A = topics[sets - 1][ids]
+        # with topics
+        i, j = np.ogrid[:N, :k]
+        C = A[i, j, best]
+        D = A[i, j, worst]
+
+        def df_to_csv(self, file_path):
+            """Write DataFrame to CSV file (no index)"""
+            self.to_csv(file_path, index=False)
+            return file_path
+
+        meta = {
+            "file": "test.csv",
+            "constants": {
+                "topics": topics.tolist(),
+                "sets": sets.tolist(),
+            },
+            "structure": [
+                {
+                    "name": "maxdiff",
+                    "columns": [],
+                    "create": {
+                        "type": "maxdiff",
+                        "best_columns": r"Q2_(\d+?)best",
+                        "worst_columns": r"Q2_(\d+?)worst",
+                        "set_columns": r"Q2_\1set",
+                        "setindex_column": ["Q2_Version", {"continuous": True, "categories": None}],
+                        "scale": {"categories": "topics"},
+                    },
+                }
+            ],
+        }
+        meta_file, csv_file = "tmpmeta.json", "test.csv"
+        write_json(meta_file, meta)
+
+        df = pd.DataFrame(np.hstack([ids.reshape(23, 1) + 1, C, D]), columns=["Q2_Version"] + columns)
+        expected_structure = [
+            {"name": "maxdiff", "columns": []},
+            {
+                "name": "maxdiff_maxdiff",
+                "scale": {
+                    "categories": [
+                        "A",
+                        "B",
+                        "C",
+                        "D",
+                        "E",
+                        "F",
+                        "G",
+                        "H",
+                        "I",
+                        "J",
+                        "K",
+                        "L",
+                        "M",
+                        "N",
+                        "O",
+                        "P",
+                        "Q",
+                        "R",
+                    ]
+                },
+                "columns": [
+                    ["Q2_Version", {"continuous": True, "categories": None}],
+                    "Q2_10best",
+                    "Q2_10set",
+                    "Q2_10worst",
+                    "Q2_1best",
+                    "Q2_1set",
+                    "Q2_1worst",
+                    "Q2_2best",
+                    "Q2_2set",
+                    "Q2_2worst",
+                    "Q2_3best",
+                    "Q2_3set",
+                    "Q2_3worst",
+                    "Q2_4best",
+                    "Q2_4set",
+                    "Q2_4worst",
+                    "Q2_5best",
+                    "Q2_5set",
+                    "Q2_5worst",
+                    "Q2_6best",
+                    "Q2_6set",
+                    "Q2_6worst",
+                    "Q2_7best",
+                    "Q2_7set",
+                    "Q2_7worst",
+                    "Q2_8best",
+                    "Q2_8set",
+                    "Q2_8worst",
+                    "Q2_9best",
+                    "Q2_9set",
+                    "Q2_9worst",
+                ],
+            },
+        ]
+        q2sets = [f"Q2_{k}set" for k in range(1, 11)]
+        q2sethidden = np.array(list(map(lambda s: list(map(lambda s2: "".join(s2), s)), topics[sets - 1][ids])))
+        df[q2sets] = q2sethidden
+        q2sets = [f"Q2_{k}set" for k in range(1, 11)]
+        for q2set in q2sets:
+            df[q2set] = df[q2set].map(list)  # string -> list of chars, test specific
+
+        columnorder = [[f"Q2_{k}best", f"Q2_{k}set", f"Q2_{k}worst"] for k in range(1, 11)]
+        columnorder = [i for l in columnorder for i in l]
+        df = df[["Q2_Version"] + sorted(columnorder)]
+        df["Q2_Version"] = df["Q2_Version"].astype(int)
+        df.to_csv(csv_file, index=False)
+        data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
+        assert_frame_equal(data_df, df, check_dtype=False, check_categorical=False)
         assert sorted(data_meta["structure"], key=lambda x: x["name"]) == sorted(
             expected_structure, key=lambda x: x["name"]
         )

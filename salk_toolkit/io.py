@@ -45,6 +45,7 @@ import re
 from collections import defaultdict
 from collections.abc import Iterable
 from copy import deepcopy
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -248,10 +249,57 @@ def throw_vals_left(df):
     df.iloc[:, :] = df.apply(lambda l: sorted(l, key=pd.isna), axis=1).to_list()
 
 
+def expand_columns_with_regex(block, df_cols):
+    # TODO: This works with nonregex as well. If worried about performance, could add a check for regex before calling this function.
+    columns = block["columns"]
+    block.get("scale", {}).get("translate", {})
+    new_cols = []
+    if isinstance(columns, str):
+        columns = [columns]
+    for col_tuple in columns:
+        if type(col_tuple) == list:
+            new_cols.append(col_tuple)
+        else:
+            template = col_tuple
+            template = template if template.endswith("$") else template + "$"
+            r = re.compile(template)
+            cols_expanded = list(filter(lambda s: r.match(s), df_cols))
+            new_cols.extend(cols_expanded)
+        # has_regex = len(cols_expanded) > 1
+        # if has_regex:
+        #     if len(col_tuple) == 1:
+        #         raise ValueError(f"Column {col_tuple[0]} needs a label template")
+        #     label_dict = col_tuple[1] if len(col_tuple) == 2 else col_tuple[2]
+        #     label_template = label_dict.get('label', '')
+        #     new_cols = [
+        #         *new_cols,
+        #         *format_cols(cols_expanded, translate_d, r, label_template)
+        #         ]
+        # else:
+        #     new_cols = [*new_cols, col_tuple]
+    return new_cols  # columns
+
+
+def format_cols(cols_expanded, translate_d, r, label_template):
+    new_cols = []
+    for col in cols_expanded:
+        has_translate = "translate" in r.match(col).groupdict().keys()
+        if has_translate:
+            translated_l = translate_d.get(r.match(col).group("translate"), col)
+            label = label_template.replace("[translate]", translated_l)
+        else:
+            warn(f"Column {col} has no translate key")
+            label = label_template.replace("[translate]", col)
+        new_cols.append([col, col, {"label": label}])
+    return new_cols
+
+
+# %% ../nbs/01_io.ipynb 11
 # We want to show docs for this
 def create_topk_metas_and_dfs(
     df: pd.DataFrame,  # Dataframe to create top K aggregations from
     dict_with_create: dict,  # Dict with create block and meta args
+    **kwargs,  # used by other create blocks
 ):
     r"""
 
@@ -355,18 +403,87 @@ def create_topk_metas_and_dfs(
     return subgroup_metas, topk_dfs  # note: each df has one meta for zip later
 
 
+def create_maxdiff_metas_and_dfs(
+    df: pd.DataFrame, group: dict, topics=None, sets=None
+) -> Tuple[List[dict], List[pd.DataFrame]]:
+    """
+    Create metas and dfs for maxdiff.
+
+    Meta args:
+        best_columns (Union[str,List[str]]): Regex template with groups to select df cols from OR just a list of cols.
+        worst_columns (Union[str,List[str]]): Regex template with groups to select df cols from OR just a list of cols.
+        setindex (int): The index of the column to use as the set index.
+        topics (Optional[List[str]]): The topics used in maxdiffs. If `None`, then `constants` is used.
+        sets (Optional[List[List[int]]]): The sets of indices per each version. If `None`, then `constants` is used.
+
+    Args:
+        df (pd.DataFrame): The dataframe to create metas and dfs for.
+        group (dict): The create block in meta with meta args.
+        topics (list): The topics used in maxdiffs. Is not none if constants have defined such a variable.
+        sets (list): The sets of indices per each version. Is not none if constants have defined such a variable.
+            E.g. sets[j][k] = k-th topics subset permutation in j-th version. 1:1 mapping between k and best_columns.
+
+    Returns:
+        Tuple[List[dict], List[pd.DataFrame]]: A tuple of 1-list of meta and df with added topics sets.
+    """
+    df = df.copy(deep=True)
+    create = group["create"]
+    topics = create.get("topics", topics)
+    sets = create.get("sets", sets)
+    best_cols = create["best_columns"]
+    worst_cols = create["worst_columns"]
+    set_cols = create["set_columns"]
+    setindex_col = create["setindex_column"]
+    if type(best_cols) != type(set_cols):
+        raise ValueError(
+            f"Create args best_cols and set_cols must be of the same type: {type(best_cols)} != {type(set_cols)}. Got {best_cols} and {set_cols}."
+        )
+    if type(best_cols) == str:
+        best_template = re.compile(best_cols)
+        worst_template = re.compile(worst_cols)
+        best_cols = list(filter(lambda col: best_template.match(col), df.columns))
+        worst_cols = list(filter(lambda col: worst_template.match(col), df.columns))
+        set_cols = list(
+            map(
+                lambda col: best_template.match(col).expand(set_cols),
+                sorted(best_cols, key=lambda s: int(best_template.match(s).group(1))),
+            )
+        )  # order should be based on group indeces. might the group not be numeric?
+
+    df = df[best_cols + worst_cols + [setindex_col[0]]]
+    topics_arr = np.array(["", *topics], dtype=object)
+    sets_arr = np.asarray(sets, dtype=int)
+    lsets = topics_arr[sets_arr]
+
+    setindex = df[setindex_col[0]].astype(np.int64).to_numpy() - 1
+    selected_sets = lsets[setindex]
+    df_setcols = pd.DataFrame(selected_sets.tolist(), columns=set_cols, index=df.index)
+    df[set_cols] = df_setcols
+
+    return [
+        {
+            "name": f"{group['name']}_maxdiff",
+            "scale": deepcopy(create.get("scale", {})),
+            "columns": [setindex_col] + sorted(best_cols + worst_cols + set_cols),
+        }
+    ], [df]
+
+
 create_block_type_to_create_fn = {
     "topk": create_topk_metas_and_dfs,
-    "maxdiff": NotImplementedError("Maxdiff not implemented yet"),
+    "maxdiff": create_maxdiff_metas_and_dfs,
 }
 
 
-def create_new_columns_and_metas(df, group):
+# %% ../nbs/01_io.ipynb 12
+def create_new_columns_and_metas(df, group, **kwargs):
     "One group can create multiple metas if it has >1 groups spec-d in regex."
+    if "type" not in group["create"]:
+        raise ValueError("Specify the type of create block in meta args.")
     type = group["create"]["type"]
     if type not in create_block_type_to_create_fn:
         raise NotImplementedError(f"Create block {type} not supported")
-    metas, dfs = create_block_type_to_create_fn[type](df, group)
+    metas, dfs = create_block_type_to_create_fn[type](df, group, **kwargs)
     return zip(dfs, metas)
 
 
@@ -433,8 +550,14 @@ def process_annotated_data(
             raise Exception(f"Group name {group['name']} duplicates a column name in group {all_cns[cn]}")
         all_cns[group["name"]] = group["name"]
         g_cols = []
+        group["columns"] = expand_columns_with_regex(group, raw_data.columns)
         if "create" in group:
-            for newdf, newmeta in create_new_columns_and_metas(raw_data, group):
+            for newdf, newmeta in create_new_columns_and_metas(
+                raw_data,
+                group,
+                topics=globs.get("topics", None),
+                sets=globs.get("sets", None),
+            ):
                 # If same name cols, we overwrite the old ones
                 raw_data = newdf.combine_first(raw_data)
                 # Note we are appending to the list that we are iterating over
