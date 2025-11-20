@@ -1,14 +1,19 @@
 """Utilities for comparing plot JSON outputs with normalization of non-deterministic elements."""
 
+from __future__ import annotations
+
 import json
 import re
+from typing import Any, Sequence
+
+Records = Sequence[dict[str, Any]] | None
 
 
-def compare_json_with_tolerance(json1, json2, float_tolerance=1e-5):
+def compare_json_with_tolerance(json1: Any, json2: Any, float_tolerance: float = 1e-5) -> bool:
     """Compare two JSON objects with floating point tolerance."""
 
-    def compare_recursive(obj1, obj2):
-        if type(obj1) != type(obj2):
+    def compare_recursive(obj1: Any, obj2: Any) -> bool:
+        if type(obj1) is not type(obj2):
             return False
 
         if isinstance(obj1, dict):
@@ -30,12 +35,12 @@ def compare_json_with_tolerance(json1, json2, float_tolerance=1e-5):
     return compare_recursive(json1, json2)
 
 
-def normalize_chart_json(chart_json):
+def normalize_chart_json(chart_json: Any) -> Any:
     """Normalize chart JSON by removing non-deterministic fields and sorting datasets."""
     if isinstance(chart_json, str):
         chart_json = json.loads(chart_json)
 
-    def normalize_recursive(obj):
+    def normalize_recursive(obj: Any) -> Any:
         if isinstance(obj, dict):
             # Remove non-deterministic fields
             normalized = {k: v for k, v in obj.items() if k not in ["$schema", "config", "usermeta"]}
@@ -78,7 +83,7 @@ def normalize_chart_json(chart_json):
     return normalize_recursive(chart_json)
 
 
-def sort_dataset_records(records):
+def sort_dataset_records(records: Records) -> Records:
     """Sort dataset records using categorical fields first for deterministic ordering."""
     if not records or not isinstance(records[0], dict):
         return records
@@ -86,14 +91,15 @@ def sort_dataset_records(records):
     unnamed = [k for k in records[0].keys() if k.startswith("level_")]
     if unnamed:
         raise ValueError(
-            f"Unnamed index ({', '.join(unnamed)}) found in dataset records. This can lead to unstable tests and should be fixed."
+            f"Unnamed index ({', '.join(unnamed)}) found in dataset records. "
+            "This can lead to unstable tests and should be fixed."
         )
 
     # Numerical fields that should always be last
     # Important for density plots like facet_dist or density
     lesser_fields = ["density", "probability"]
 
-    def sort_key(record):
+    def sort_key(record: dict[str, Any]) -> tuple[str, ...]:
         key_parts = []
         skeys = sorted(record.keys())
 
@@ -117,13 +123,18 @@ def sort_dataset_records(records):
     return sorted(records, key=sort_key)
 
 
-def pretty_print_json_differences(json1, json2, float_tolerance=1e-5, max_differences=10):
+def pretty_print_json_differences(
+    json1: Any,
+    json2: Any,
+    float_tolerance: float = 1e-5,
+    max_differences: int = 10,
+) -> str:
     """Pretty print differences between two JSON objects for better error messages."""
 
-    def find_differences(obj1, obj2, path=""):
+    def find_differences(obj1: Any, obj2: Any, path: str = "") -> list[dict[str, Any]]:
         diffs = []
 
-        if type(obj1) != type(obj2):
+        if type(obj1) is not type(obj2):
             diffs.append(
                 {
                     "path": path,
@@ -244,7 +255,8 @@ def pretty_print_json_differences(json1, json2, float_tolerance=1e-5, max_differ
             elif diff["type"] == "float_difference":
                 result.append(f"  🔢 Location: {diff['path']}")
                 result.append(
-                    f"     Values: {diff['old']:.6f} → {diff['new']:.6f} (Δ{diff['diff']:.2e}, tol: {diff['tolerance']:.2e})"
+                    f"     Values: {diff['old']:.6f} → {diff['new']:.6f} "
+                    f"(Δ{diff['diff']:.2e}, tol: {diff['tolerance']:.2e})"
                 )
 
             elif diff["type"] == "value_mismatch":

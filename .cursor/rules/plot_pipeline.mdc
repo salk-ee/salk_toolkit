@@ -58,7 +58,7 @@ alwaysApply: false
 - Keep descriptor mutations local—`e2e_plot` copies the input dict, but downstream code may assume ownership of nested structures.
 - When adding new plot metadata flags, update both `matching_plots` and `calculate_priority` so auto-selection keeps working.
 - Any new column-level requirements should extend the metadata extracted by `update_data_meta_with_pp_desc` to keep dashboards and filters in sync.
-- Edit the `.py` modules directly and capture context via docstrings/section comments—there is no nbdev export step anymore.
+- Edit the `.py` modules directly and capture context via docstrings/section comments.
 
 ## Testing 
 - `tests/test_plots.py` - e2e tests

@@ -1,3 +1,9 @@
+"""Interactive data exploration tool built on Streamlit and the plot pipeline.
+
+This module provides a web-based interface for exploring annotated survey data,
+allowing users to interactively create plots, filter data, and adjust plot parameters.
+"""
+
 import streamlit as st
 import warnings
 
@@ -47,7 +53,13 @@ if has_secrets and st.secrets.get("sip", {}).get("input_files"):  # st.secrets.g
     uam = None
     log_path = st.secrets["sip"]["log_path"]
 
-    def logger(event, uid=None):
+    def logger(event: str, uid: str | None = None) -> None:
+        """Log an event to S3.
+
+        Args:
+            event: Event name or description to log.
+            uid: User ID. If None, uses the current user's UID from uam.
+        """
         log_event(event, uid or uam.user.get("uid", "anonymous"), log_path, s3_fs=s3fs)
 
     uam = FronteggAuthenticationManager(
@@ -106,8 +118,15 @@ with st.spinner("Loading libraries.."):
         extract_column_meta,
         read_parquet_with_metadata,
     )
-    from salk_toolkit.pp import *
-    from salk_toolkit.utils import *
+    from salk_toolkit.pp import (
+        update_data_meta_with_pp_desc,
+        impute_factor_cols,
+        matching_plots,
+        get_plot_meta,
+        cont_transform_options,
+        pp_transform_data,
+        create_plot,
+    )
     from salk_toolkit.dashboard import (
         draw_plot_matrix,
         plot_matrix_html,
@@ -118,8 +137,19 @@ with st.spinner("Loading libraries.."):
         stss_safety,
     )
     from copy import deepcopy
+    from typing import TypeVar
 
-    def tqdm(x):
+    T = TypeVar("T")
+
+    def tqdm(x: T) -> T:
+        """Pass-through function to allow notebook code to be used without tqdm dependency.
+
+        Args:
+            x: Any iterable or value to pass through unchanged.
+
+        Returns:
+            The input value unchanged.
+        """
         return x  # So we can freely copy-paste from notebooks
 
     # Disable altair schema validations by setting debug_mode = False
@@ -132,8 +162,17 @@ with st.spinner("Loading libraries.."):
 
 
 # Override the st_dimensions based version that can cause refresh loops
-def get_plot_width(str, ncols=1):
-    return min(800, 1200 / ncols)
+def get_plot_width(width_str: str, ncols: int = 1) -> int:
+    """Calculate plot width based on number of columns.
+
+    Args:
+        width_str: Width string (unused, kept for compatibility).
+        ncols: Number of columns (default: 1).
+
+    Returns:
+        Calculated plot width in pixels.
+    """
+    return min(800, int(1200 / ncols))
 
 
 if "ls_loaded" not in st.session_state:
@@ -208,7 +247,15 @@ if global_data_meta:
 
 
 @st.cache_resource(show_spinner=False)
-def load_file(input_file):
+def load_file(input_file: str) -> dict[str, object]:
+    """Load a parquet file with metadata.
+
+    Args:
+        input_file: Name of input file to load.
+
+    Returns:
+        Dictionary with keys: data (LazyFrame), total_size, data_meta, model_meta, columns.
+    """
     pl.enable_string_cache()
     ifile = paths[input_file] + input_file
     ldf, full_meta = read_parquet_with_metadata(ifile, lazy=True)
@@ -244,7 +291,17 @@ else:
 ########################################################################
 
 
-def get_dimensions(data_meta, present_cols, observations=True):
+def get_dimensions(data_meta: dict[str, object], present_cols: list[str], observations: bool = True) -> list[str]:
+    """Extract dimension names from data metadata.
+
+    Args:
+        data_meta: Data metadata dictionary.
+        present_cols: List of column names present in data.
+        observations: Whether to include observation dimensions (default: True).
+
+    Returns:
+        List of dimension names.
+    """
     c_meta = extract_column_meta(data_meta)
     res = []
     for g in data_meta["structure"]:
@@ -412,7 +469,7 @@ with st.sidebar:  # .expander("Select dimensions"):
     # print(list(st.session_state.keys()))
 
     # print(f"localStorage.setItem('args','{json.dumps(args)}');")
-    st_js(f"localStorage.setItem('session_state','{json.dumps(dict(st.session_state)).replace('\'','\\\'')}');")
+    st_js(f"localStorage.setItem('session_state','{json.dumps(dict(st.session_state)).replace("'", "\\'")}');")
 
     # Make all dimensions explicit now that plot is selected (as that can affect the factor columns)
     args["factor_cols"] = impute_factor_cols(args, c_meta, plot_meta)
@@ -524,7 +581,7 @@ else:
 
             # Add export buttons for first data source
             if export and i == 0:
-                name = f'{args['res_col']}_{"_".join(args["factor_cols"]) if args["factor_cols"] else "all"}'
+                name = f"{args['res_col']}_{'_'.join(args['factor_cols']) if args['factor_cols'] else 'all'}"
                 c1, c2 = export_ct.columns(2)
                 c1.download_button(
                     "HTML",
@@ -534,7 +591,8 @@ else:
                 c2.download_button("Data CSV", pparams["data"].to_csv().encode("utf-8"), f"{name}.csv")
 
             # n_questions = pparams['data']['question'].nunique() if 'question' in pparams['data'] else 1
-            # st.write('Based on %.1f%% of data' % (100*pparams['n_datapoints']/(len(loaded[ifile]['data_n'])*n_questions)))
+            # st.write('Based on %.1f%% of data' %
+            #   (100*pparams['n_datapoints']/(len(loaded[ifile]['data_n'])*n_questions)))
             st.write("Based on %.1f%% of data" % (100 * pparams["filtered_size"] / loaded[ifile]["total_size"]))
             # st.altair_chart(plot)#, use_container_width=(len(input_files)>1))
             draw_plot_matrix(plot)

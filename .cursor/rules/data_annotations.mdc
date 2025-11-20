@@ -59,7 +59,6 @@ globs: salk_toolkit/io.py, salk_toolkit/validation.py, tests/test_io.py
 
 ## Detailed annotation spec
 - The exact specifications of the annotation syntax now live in `salk_toolkit/validation.py`.
-  - The docstrings/doc comments in that module replace the old notebook markdown—read them before changing schemas.
 - For behavioural details dive into `process_annotated_data` and related helpers inside `salk_toolkit/io.py`.
 - If anything is ambiguous, ask about it before assuming!
 

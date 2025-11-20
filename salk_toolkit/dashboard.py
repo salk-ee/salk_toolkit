@@ -64,8 +64,14 @@ import polib
 import __main__  # to get name of py file
 
 
-from salk_toolkit.utils import *
-from salk_toolkit.io import *
+from salk_toolkit import utils
+from salk_toolkit.io import (
+    read_parquet_with_metadata,
+    fix_df_with_meta,
+    extract_column_meta,
+    group_columns_dict,
+    list_aliases,
+)
 from salk_toolkit.pp import e2e_plot
 
 import streamlit as st
@@ -73,14 +79,28 @@ from streamlit_option_menu import option_menu
 from streamlit_dimensions import st_dimensions
 import streamlit_authenticator as stauth
 import libsql_client
+from typing import Callable
 
 
-def get_plot_width(key):
+def get_plot_width(key: str) -> int:
+    """Get the plot width based on Streamlit dimensions.
+
+    Args:
+        key: Key used to track dimensions in Streamlit session state.
+
+    Returns:
+        Plot width in pixels, capped at 800px and adjusted to 80% of container width.
+    """
     wobj = st_dimensions(key=key) or {"width": 800}  # Can return none so handle that
     return min(800, int(0.8 * wobj["width"]))  # Needs to be adjusted down  to leave margin for plots
 
 
-def update_manifest(fname):
+def update_manifest(fname: str) -> None:
+    """Update the manifest JSON file with a new file entry.
+
+    Args:
+        fname: Filename to add to the manifest.
+    """
     # Create manifests directory if it doesn't exist
     os.makedirs("manifests", exist_ok=True)
 
@@ -109,7 +129,18 @@ def update_manifest(fname):
 
 
 # Open either a local or an s3 file
-def open_fn(fname, *args, s3_fs=None, **kwargs):
+def open_fn(fname: str, *args: object, s3_fs: object | None = None, **kwargs: object) -> object:
+    """Open a file from local filesystem or S3.
+
+    Args:
+        fname: File path (local or S3 URI starting with 's3:').
+        *args: Additional positional arguments passed to open().
+        s3_fs: Optional S3 filesystem instance (created if needed for S3 paths).
+        **kwargs: Additional keyword arguments passed to open().
+
+    Returns:
+        File-like object opened from local filesystem or S3.
+    """
     # update_manifest(fname) # Actually these tend to be the files we want to be in S3
     if fname[:3] == "s3:":
         if s3_fs is None:
@@ -119,7 +150,18 @@ def open_fn(fname, *args, s3_fs=None, **kwargs):
         return open(fname, *args, **kwargs)
 
 
-def exists_fn(fname, *args, s3_fs=None, **kwargs):
+def exists_fn(fname: str, *args: object, s3_fs: object | None = None, **kwargs: object) -> bool:
+    """Check if a file exists in local filesystem or S3.
+
+    Args:
+        fname: File path (local or S3 URI starting with 's3:').
+        *args: Additional positional arguments (unused).
+        s3_fs: Optional S3 filesystem instance (created if needed for S3 paths).
+        **kwargs: Additional keyword arguments passed to exists().
+
+    Returns:
+        True if file exists, False otherwise.
+    """
     if fname[:3] == "s3:":
         if s3_fs is None:
             s3_fs = s3fs.S3FileSystem(anon=False)
@@ -130,7 +172,16 @@ def exists_fn(fname, *args, s3_fs=None, **kwargs):
 
 # ttl=None - never expire. Makes sense for potentially big data files
 @st.cache_resource(show_spinner=False, ttl=None)
-def read_parquet_with_data_meta_lazy_cached(data_source, **kwargs):
+def read_parquet_with_data_meta_lazy_cached(data_source: str, **kwargs: object) -> tuple[object, dict[str, object]]:
+    """Load parquet file with metadata using lazy Polars loading (cached).
+
+    Args:
+        data_source: Path to parquet file.
+        **kwargs: Additional arguments passed to read_parquet_with_metadata.
+
+    Returns:
+        Tuple of (lazy Polars DataFrame, data metadata dictionary).
+    """
     print(f"Reading lazy data from {data_source}")
     df, full_meta = read_parquet_with_metadata(data_source, lazy=True, **kwargs)
     return df, full_meta["data"]
@@ -139,7 +190,17 @@ def read_parquet_with_data_meta_lazy_cached(data_source, **kwargs):
 # Load json uncached - useful for admin pages
 
 
-def load_json(fname, _s3_fs=None, **kwargs):
+def load_json(fname: str, _s3_fs: object | None = None, **kwargs: object) -> object:
+    """Load JSON file from local filesystem or S3 (uncached).
+
+    Args:
+        fname: Path to JSON file (local or S3 URI).
+        _s3_fs: Optional S3 filesystem instance.
+        **kwargs: Additional arguments passed to json.load().
+
+    Returns:
+        Parsed JSON object (dict, list, etc.).
+    """
     with open_fn(fname, "r", s3_fs=_s3_fs, encoding="utf8") as jf:
         return json.load(jf)
 
@@ -149,19 +210,46 @@ def load_json(fname, _s3_fs=None, **kwargs):
 
 
 @st.cache_data(show_spinner=False, ttl=60)
-def load_json_cached(fname, _s3_fs=None, **kwargs):
+def load_json_cached(fname: str, _s3_fs: object | None = None, **kwargs: object) -> object:
+    """Load JSON file from local filesystem or S3 (cached for 60 seconds).
+
+    Args:
+        fname: Path to JSON file (local or S3 URI).
+        _s3_fs: Optional S3 filesystem instance.
+        **kwargs: Additional arguments passed to json.load().
+
+    Returns:
+        Parsed JSON object (dict, list, etc.).
+    """
     return load_json(fname, _s3_fs, **kwargs)
 
 
 # For saving json back
 
 
-def save_json(d, fname, _s3_fs=None, **kwargs):
+def save_json(d: object, fname: str, _s3_fs: object | None = None, **kwargs: object) -> None:
+    """Save JSON object to local filesystem or S3.
+
+    Args:
+        d: JSON-serializable object to save.
+        fname: Path to output file (local or S3 URI).
+        _s3_fs: Optional S3 filesystem instance.
+        **kwargs: Additional arguments passed to json.dump().
+    """
     with open_fn(fname, "w", s3_fs=_s3_fs, encoding="utf8") as jf:
         json.dump(d, jf, indent=2, ensure_ascii=False)
 
 
-def alias_file(fname, file_map):
+def alias_file(fname: str, file_map: dict[str, str]) -> str:
+    """Resolve file path using alias mapping if local file doesn't exist.
+
+    Args:
+        fname: Original file path.
+        file_map: Dictionary mapping original paths to aliased paths.
+
+    Returns:
+        Original path if file exists or no alias, otherwise aliased path.
+    """
     if fname[:3] != "s3:" and fname in file_map and not os.path.exists(fname):
         # print(f"Redirecting {fname} to {file_map[fname]}")
         return file_map[fname]
@@ -169,7 +257,15 @@ def alias_file(fname, file_map):
         return fname
 
 
-def log_event(event, uid, path, s3_fs=None):
+def log_event(event: str, uid: str, path: str, s3_fs: object | None = None) -> None:
+    """Log an event to a CSV file (local or S3).
+
+    Args:
+        event: Event description string.
+        uid: User identifier.
+        path: Path to log file (local or S3 URI).
+        s3_fs: Optional S3 filesystem instance.
+    """
     timestamp = dt.datetime.now(dt.timezone.utc).strftime("%d-%m-%Y, %H:%M:%S")
 
     if not exists_fn(path, s3_fs=s3_fs):  # If file not present, create it
@@ -188,7 +284,8 @@ def log_event(event, uid, path, s3_fs=None):
 # - User conf
 #   - Cookie key matters; generate a robust random secret
 # - Logfile: touch a local log file so development logs do not pollute deploy logs
-# - Files: if `deploy.json` targets are missing, notify the user. If files are absent in S3, copy them over and expose a flag to update.
+# - Files: if `deploy.json` targets are missing, notify the user.
+#   If files are absent in S3, copy them over and expose a flag to update.
 # - Translations: keep translation sources (.pot/.po) in the repo.
 
 st_wrap_list = [
@@ -234,7 +331,16 @@ st_wrap_list = [
 # Some keyword arguments can be translated
 
 
-def transform_kws(kws, tfo):
+def transform_kws(kws: dict[str, object], tfo: object) -> dict[str, object]:
+    """Transform keyword arguments for Streamlit functions with translation.
+
+    Args:
+        kws: Dictionary of keyword arguments to transform.
+        tfo: Translation function object with tf method.
+
+    Returns:
+        Modified keyword arguments dictionary with translated values.
+    """
     if "context" in kws:
         del kws["context"]
     if "format_func" in kws:
@@ -249,7 +355,17 @@ def transform_kws(kws, tfo):
 # has to be a separate function instead of in a for loop for scoping reasons
 
 
-def wrap_st_with_translate(base, fd, tfo):
+def wrap_st_with_translate(base: object, fd: str | dict[str, object], tfo: object) -> Callable[..., object]:
+    """Wrap a Streamlit function to automatically translate its first argument.
+
+    Args:
+        base: Base object (typically st or st.sidebar) containing the function.
+        fd: Function descriptor (string name or dict with 'name' and 'args').
+        tfo: Translation function object with tf method.
+
+    Returns:
+        Wrapped function that translates arguments before calling the original.
+    """
     if isinstance(fd, str):
         fd = {"name": fd, "args": ["str"]}
     func = getattr(base, fd["name"])
@@ -259,7 +375,7 @@ def wrap_st_with_translate(base, fd, tfo):
 
     tfs = {
         "str": lambda c: (lambda s: tfo.tf(s, context=c)),
-        "list": lambda c: (lambda l: [tfo.tf(s, context=c) for s in l]),
+        "list": lambda c: (lambda item_list: [tfo.tf(s, context=c) for s in item_list]),
     }
     return (
         lambda *args, **kwargs: func(  # debugf(func,
@@ -274,17 +390,36 @@ def wrap_st_with_translate(base, fd, tfo):
 
 
 class ContextManagerWrapper(AbstractContextManager):
-    def __init__(self, obj):
+    """Wrapper for context managers to enable composition."""
+
+    def __init__(self, obj: AbstractContextManager) -> None:
+        """Initialize wrapper with a context manager object.
+
+        Args:
+            obj: Context manager to wrap.
+        """
         self.obj = obj
 
-    def __enter__(self):
+    def __enter__(self) -> object:
+        """Enter the wrapped context manager."""
         return self.obj.__enter__()
 
-    def __exit__(self, *args):
+    def __exit__(self, *args: object) -> None:
+        """Exit the wrapped context manager."""
         self.obj.__exit__(*args)
 
 
-def wrap_all_st_functions(base, tfo, to=None):
+def wrap_all_st_functions(base: object, tfo: object, to: object | None = None) -> object:
+    """Wrap all Streamlit functions in st_wrap_list with translation support.
+
+    Args:
+        base: Base object (typically st or st.sidebar) to wrap functions from.
+        tfo: Translation function object with tf method.
+        to: Target object to attach wrapped functions to (defaults to base).
+
+    Returns:
+        Object with all wrapped Streamlit functions attached.
+    """
     if to is None:
         to = ContextManagerWrapper(base)
 
@@ -325,12 +460,29 @@ def wrap_all_st_functions(base, tfo, to=None):
     return to
 
 
-def default_translate(s, **kwargs):
+def default_translate(s: str, **kwargs: object) -> str:
+    """Default translation function that capitalizes and replaces underscores.
+
+    Args:
+        s: String to translate.
+        **kwargs: Additional arguments (unused).
+
+    Returns:
+        Translated string (capitalized with underscores replaced by spaces).
+    """
     return (s[0].upper() + s[1:]).replace("_", " ") if isinstance(s, str) and len(s) > 0 else s
 
 
 # A function that automatically updates the pot file with untranslated strings
-def po_template_updater(pot_file=None):
+def po_template_updater(pot_file: str | None = None) -> Callable[[str], str]:
+    """Create a translation function that auto-updates .pot files.
+
+    Args:
+        pot_file: Path to .pot template file (auto-detected if None).
+
+    Returns:
+        Translation function that adds new strings to the .pot file.
+    """
     if pot_file is None:
         bname = os.path.splitext(os.path.basename(__main__.__file__))[0]
         pot_file = f"locale/{bname}.pot"
@@ -353,7 +505,16 @@ def po_template_updater(pot_file=None):
         tdc = defaultdict(set)
     update_manifest(pot_file)
 
-    def translate(s, **kwargs):
+    def translate(s: str, **kwargs: object) -> str:
+        """Translate a string using the current translation function.
+
+        Args:
+            s: String to translate.
+            **kwargs: Additional arguments passed to translation function.
+
+        Returns:
+            Translated string.
+        """
         ctx = kwargs.get("context") or ""
         if isinstance(s, str) and s not in tdc[ctx]:
             po.append(
@@ -373,13 +534,38 @@ def po_template_updater(pot_file=None):
     return translate
 
 
-def translate_fn_from_po(po_file):
+def translate_fn_from_po(po_file: str) -> Callable[[str], str]:
+    """Load translations from a .po file and return a translation function.
+
+    Args:
+        po_file: Path to .po file containing translations.
+
+    Returns:
+        Translation function that maps msgid to msgstr.
+    """
     po = polib.pofile(po_file)
     td = {entry.msgid: entry.msgstr for entry in po}
     return lambda s, **kwargs: td.get(s, s)
 
 
-def load_translate(translate, cc_translations={}):
+def load_translate(
+    translate: str | dict[str, str] | Callable[[str], str] | None,
+    cc_translations: dict[str, Callable[[str], str] | None] | None = None,
+) -> Callable[[str], str]:
+    """Load a translation function from various sources.
+
+    Args:
+        translate: Translation source (function, dict, file path, or language code).
+        cc_translations: Dictionary mapping language codes to translation functions.
+
+    Returns:
+        Translation function that takes a string and returns translated string.
+
+    Raises:
+        ValueError: If translation source is invalid or file not found.
+    """
+    if cc_translations is None:
+        cc_translations = {}
     if translate is None:
         return default_translate
     elif callable(translate):
@@ -405,7 +591,12 @@ def load_translate(translate, cc_translations={}):
 
 
 @st.cache_resource(show_spinner=False, ttl=3600)
-def load_po_translations():
+def load_po_translations() -> dict[str, Callable[[str], str] | None]:
+    """Load all .po translation files from locale directory (cached for 1 hour).
+
+    Returns:
+        Dictionary mapping language codes to translation functions (or None for default).
+    """
     # Get base filename from __main__
     bname = os.path.splitext(os.path.basename(__main__.__file__))[0]
 
@@ -428,19 +619,40 @@ def load_po_translations():
 
 
 class SalkDashboardBuilder:
+    """Main dashboard builder class that orchestrates Streamlit dashboard creation.
+
+    Handles authentication, translation, data loading, plot rendering, and page management.
+    """
+
     def __init__(
         self,
-        data_source,
-        auth_conf=None,
-        logfile=None,
-        groups=["guest", "user", "admin"],
-        org_whitelist=None,
-        public=False,
-        default_lang="en",
-        plot_caching=True,
-        header_fn=None,
-        footer_fn=None,
-    ):
+        data_source: str,
+        auth_conf: str | None = None,
+        logfile: str | None = None,
+        groups: list[str] | None = None,
+        org_whitelist: list[str] | None = None,
+        public: bool = False,
+        default_lang: str = "en",
+        plot_caching: bool = True,
+        header_fn: Callable[..., dict[str, object]] | None = None,
+        footer_fn: Callable[..., dict[str, object]] | None = None,
+    ) -> None:
+        """Initialize the dashboard builder.
+
+        Args:
+            data_source: Path to parquet data file.
+            auth_conf: Path to authentication configuration file.
+            logfile: Path to log file for events.
+            groups: List of user groups (default: ["guest", "user", "admin"]).
+            org_whitelist: Optional list of allowed organization names.
+            public: Whether dashboard is publicly accessible without auth.
+            default_lang: Default language code (default: "en").
+            plot_caching: Whether to cache plots for performance.
+            header_fn: Optional function to render header (receives sdb, returns shared dict).
+            footer_fn: Optional function to render footer (receives sdb, shared dict).
+        """
+        if groups is None:
+            groups = ["guest", "user", "admin"]
         # Allow deployment.json to redirect files from local to s3 if local missing (i.e. in deployment scenario)
         if os.path.exists("./deployment.json"):
             dep_meta = load_json_cached("./deployment.json")
@@ -472,7 +684,8 @@ class SalkDashboardBuilder:
         self.default_lang = default_lang
         login_lang_choice = st.sidebar.empty()
 
-        # print("LANG",st.session_state.get('lang'),st.session_state.get('chosen_lang'),st.session_state.get('login_lang'))
+        # print("LANG", st.session_state.get('lang'),
+        #       st.session_state.get('chosen_lang'), st.session_state.get('login_lang'))
 
         # If only one language is available, set it as the one in use
         if len(self.cc_translations) == 1:
@@ -486,13 +699,13 @@ class SalkDashboardBuilder:
                 self.set_translate(st.session_state.get("lang"))
             else:  # Alternatively (if on login page) - show the choice at the top of the sidebar
                 # This is messy because streamlit is ... not great at this kind of thing
-                opts = [self.default_lang] + [l for l in self.cc_translations.keys() if l != self.default_lang]
+                opts = [self.default_lang] + [lang for lang in self.cc_translations.keys() if lang != self.default_lang]
 
                 # chosen_lang is a temporary variable to store the chosen language on the login page
                 clang = st.session_state.get("chosen_lang") or self.default_lang
                 self.set_translate(clang)
 
-                def set_login_lang():
+                def set_login_lang() -> None:
                     st.session_state["chosen_lang"] = st.session_state["login_lang"]
 
                 ind = opts.index(st.session_state.get("login_lang", self.default_lang))  # FIXES lang not updating
@@ -560,7 +773,13 @@ class SalkDashboardBuilder:
         wrap_all_st_functions(st, self, to=self)
         self.sidebar = wrap_all_st_functions(st.sidebar, self)
 
-    def set_translate(self, lang, remember=False):
+    def set_translate(self, lang: str | None, remember: bool = False) -> None:
+        """Set the translation language for the dashboard.
+
+        Args:
+            lang: Language code to use (falls back to default_lang if invalid).
+            remember: Whether to persist language choice in session state.
+        """
         if lang is None or lang not in self.cc_translations:
             lang = self.default_lang
         translate = load_translate(lang, self.cc_translations)
@@ -570,7 +789,15 @@ class SalkDashboardBuilder:
 
     # Get the pandas dataframe with given columns
 
-    def get_df(self, columns=None):
+    def get_df(self, columns: list[str] | None = None) -> pd.DataFrame:
+        """Get pandas DataFrame with specified columns from lazy Polars DataFrame.
+
+        Args:
+            columns: List of column names to select (None for all columns).
+
+        Returns:
+            Pandas DataFrame with metadata applied.
+        """
         if columns is None:
             q = self.ldf
         else:
@@ -579,28 +806,67 @@ class SalkDashboardBuilder:
 
     # For backwards compatibility - this is very inefficient
     @property
-    def df(self):
-        warn("sdb.df is very inefficient. Use sdb.get_df([columns]) instead to get only the columns you need")
+    def df(self) -> pd.DataFrame:
+        """Get full DataFrame (backwards compatibility, inefficient).
+
+        Returns:
+            Full pandas DataFrame with all columns.
+
+        Note:
+            This is inefficient. Use get_df([columns]) instead to get only needed columns.
+        """
+        utils.warn("sdb.df is very inefficient. Use sdb.get_df([columns]) instead to get only the columns you need")
         return self.get_df()
 
     # Try to keep uam abstracted away
     @property
-    def authenticated(self):
+    def authenticated(self) -> bool:
+        """Check if user is authenticated.
+
+        Returns:
+            True if user is authenticated, False otherwise.
+        """
         return self.uam.authenticated
 
     @property
-    def admin(self):
+    def admin(self) -> bool:
+        """Check if current user is an administrator.
+
+        Returns:
+            True if user is an admin, False otherwise.
+        """
         return self.uam.admin
 
     @property
-    def user(self):
+    def user(self) -> dict[str, object]:
+        """Get current user data.
+
+        Returns:
+            Dictionary with user information (uid, name, group, etc.).
+        """
         return self.uam.user
 
-    def log_event(self, event, uid=None):
+    def log_event(self, event: str, uid: str | None = None) -> None:
+        """Log an event to the dashboard log file.
+
+        Args:
+            event: Event description string.
+            uid: User identifier (defaults to current user's uid).
+        """
         log_event(event, uid or self.user["uid"], self.log_path, s3_fs=self.s3fs)
 
     # pos_id is for plot_width to work in columns
-    def plot(self, pp_desc, pos_id="main", width=None, **kwargs):
+    def plot(
+        self, pp_desc: dict[str, object], pos_id: str = "main", width: int | None = None, **kwargs: object
+    ) -> None:
+        """Render a plot using the plot pipeline.
+
+        Args:
+            pp_desc: Plot descriptor dictionary.
+            pos_id: Position identifier for width tracking (default: "main").
+            width: Optional plot width in pixels (auto-calculated if None).
+            **kwargs: Additional arguments passed to st_plot.
+        """
         if width is None:  # Find or reuse auto-width
             width = self.p_widths[pos_id] if pos_id in self.p_widths else get_plot_width(pos_id)
             self.p_widths[pos_id] = width
@@ -619,7 +885,30 @@ class SalkDashboardBuilder:
             **kwargs,
         )
 
-    def filter_ui(self, dims, flt={}, detailed=False, raw=False, force_choice=False, key=""):
+    def filter_ui(
+        self,
+        dims: list[str],
+        flt: dict[str, object] | None = None,
+        detailed: bool = False,
+        raw: bool = False,
+        force_choice: bool = False,
+        key: str = "",
+    ) -> dict[str, object]:
+        """Display filter UI and return filter specification.
+
+        Args:
+            dims: List of dimension names to create filters for.
+            flt: Initial filter values dictionary.
+            detailed: Whether to show detailed filter options.
+            raw: Whether to use raw column names (skip aliases).
+            force_choice: Whether to require user to make a selection.
+            key: Optional key for Streamlit widget state.
+
+        Returns:
+            Filter specification dictionary.
+        """
+        if flt is None:
+            flt = {}
         return filter_ui(
             self.ldf,
             self.meta,
@@ -632,7 +921,28 @@ class SalkDashboardBuilder:
             force_choice=force_choice,
         )
 
-    def facet_ui(self, dims, two=False, raw=False, force_choice=False, label="Facet", key=""):
+    def facet_ui(
+        self,
+        dims: list[str],
+        two: bool = False,
+        raw: bool = False,
+        force_choice: bool = False,
+        label: str = "Facet",
+        key: str = "",
+    ) -> list[str]:
+        """Display facet selection UI and return selected dimensions.
+
+        Args:
+            dims: List of available dimension names.
+            two: Whether to allow selecting two facets.
+            raw: Whether to use raw column names (skip aliases).
+            force_choice: Whether to require user to make a selection.
+            label: Label for the facet selector.
+            key: Optional key for Streamlit widget state.
+
+        Returns:
+            List of selected facet dimension names.
+        """
         return facet_ui(
             dims,
             two=two,
@@ -643,8 +953,18 @@ class SalkDashboardBuilder:
             label=label,
         )
 
-    def page(self, name, **kwargs):
-        def decorator(pfunc):
+    def page(self, name: str, **kwargs: object) -> Callable[[Callable[..., dict[str, object] | None]], None]:
+        """Decorator to register a page function.
+
+        Args:
+            name: Page name displayed in navigation.
+            **kwargs: Additional page metadata (e.g., groups, icon, data_source).
+
+        Returns:
+            Decorator function that registers the page.
+        """
+
+        def decorator(pfunc: Callable[..., dict[str, object] | None]) -> None:
             # If we have a whitelist of organizations, and the user is not in it, don't show any pages
             # This is the second line of defense as whitelist is also checked in build()
             if self.uam.org_whitelist and self.user.get("organization") not in self.uam.org_whitelist:
@@ -661,7 +981,8 @@ class SalkDashboardBuilder:
 
         return decorator
 
-    def build(self):
+    def build(self) -> None:
+        """Build and render the dashboard with navigation and selected page."""
         # This is to avoid a bug of the option menu not showing up on reload
         # I don't get how this row fixes the issue, but it does
         # https://github.com/victoryhb/streamlit-option-menu/issues/68
@@ -743,19 +1064,19 @@ class SalkDashboardBuilder:
         # Render the chosen page
         self.subheader(pname, context="ui")
 
-        shared = call_kwsafe(self.header_fn, sdb=self) if self.header_fn else {}
-        pres = call_kwsafe(pfunc, sdb=self, shared=shared)
+        shared = utils.call_kwsafe(self.header_fn, sdb=self) if self.header_fn else {}
+        pres = utils.call_kwsafe(pfunc, sdb=self, shared=shared)
         if pres:
             shared.update(pres)
         if self.footer_fn:
-            call_kwsafe(self.footer_fn, sdb=self, shared=shared)
+            utils.call_kwsafe(self.footer_fn, sdb=self, shared=shared)
 
         if self.admin:
             with self.sidebar:
                 st.write("Mem: %.1fMb" % (psutil.Process(os.getpid()).memory_info().rss / 1024**2))
                 if self.plot_caching:
                     pcache = plot_cache()
-                    st.write("Plot cache: %d items (%.1fMb)" % (len(pcache), get_size(pcache) / 1024**2))
+                    st.write("Plot cache: %d items (%.1fMb)" % (len(pcache), utils.get_size(pcache) / 1024**2))
 
                 with st.expander("Impersonate (Admin)"):
                     org_list = (self.uam.org_whitelist or []) + (
@@ -781,16 +1102,40 @@ class SalkDashboardBuilder:
                     st.text("Browser refresh clears the impersonation")
 
     # Add enter and exit so it can be used as a context
-    def __enter__(self):
+    def __enter__(self) -> "SalkDashboardBuilder":
+        """Enter context manager."""
         return self
 
     # Render everything once we exit the with block
-    def __exit__(self, exc_type, exc_value, exc_tb):
+    def __exit__(
+        self, exc_type: type[BaseException] | None, exc_value: BaseException | None, exc_tb: object | None
+    ) -> None:
+        """Exit context manager and build dashboard."""
         self.build()
 
 
 class UserAuthenticationManager:
-    def __init__(self, groups, info, org_whitelist, logger, languages, translate_func):
+    """Base class for user authentication managers."""
+
+    def __init__(
+        self,
+        groups: list[str],
+        info: object,
+        org_whitelist: list[str] | None,
+        logger: Callable[[str, str | None], None],
+        languages: dict[str, Callable[[str], str] | None],
+        translate_func: Callable[[str], str],
+    ) -> None:
+        """Initialize authentication manager.
+
+        Args:
+            groups: List of user groups.
+            info: Streamlit info container for messages.
+            org_whitelist: Optional list of allowed organization names.
+            logger: Function to log events (event, uid).
+            languages: Dictionary mapping language codes to translation functions.
+            translate_func: Function to translate UI strings.
+        """
         self.groups, self.info = groups, info
         self.org_whitelist = org_whitelist
         self.languages = languages
@@ -804,57 +1149,103 @@ class UserAuthenticationManager:
 
     @property
     @abstractmethod
-    def authenticated(self):
+    def authenticated(self) -> bool:
+        """Check if user is authenticated."""
         pass
 
     @property
-    def admin(self):
+    def admin(self) -> bool:
+        """Check if current user is an administrator."""
         return self.authenticated and (self.user.get("group") == "admin")
 
-    def require_admin(self):
+    def require_admin(self) -> None:
+        """Raise exception if current user is not an administrator."""
         if not self.admin:
             raise Exception("This action requires administrator privileges")
 
     @abstractmethod
-    def uam_user(self):
+    def uam_user(self) -> dict[str, object]:
+        """Get user data from authentication system."""
         pass
 
     @property
-    def user(self):
+    def user(self) -> dict[str, object]:
+        """Get current user data (with impersonation support)."""
         base = self.uam_user().copy()
         if st.session_state.get("impersonate_user"):
             base.update(st.session_state["impersonate_user"])
         return base
 
     @abstractmethod
-    def login_screen(self):
+    def login_screen(self) -> None:
+        """Display login screen."""
         pass
 
     @abstractmethod
-    def logout_button(self, text, location="sidebar"):
+    def logout_button(self, text: str, location: str = "sidebar") -> None:
+        """Display logout button.
+
+        Args:
+            text: Button text.
+            location: Where to display button (default: "sidebar").
+        """
         pass
 
     @abstractmethod
-    def add_user(self, user_data):
+    def add_user(self, user_data: dict[str, object]) -> bool:
+        """Add a new user.
+
+        Args:
+            user_data: Dictionary with user information.
+
+        Returns:
+            True if user was added successfully, False otherwise.
+        """
         pass
 
     @abstractmethod
-    def change_user(self, uid, user_data):
+    def change_user(self, uid: str, user_data: dict[str, object]) -> None:
+        """Update user information.
+
+        Args:
+            uid: User identifier.
+            user_data: Dictionary with updated user information.
+        """
         pass
 
     @abstractmethod
-    def delete_user(self, uid):
+    def delete_user(self, uid: str) -> None:
+        """Delete a user.
+
+        Args:
+            uid: User identifier to delete.
+        """
         pass
 
     @abstractmethod
-    def list_users(self):
+    def list_users(self) -> dict[str, dict[str, object]]:
+        """List all users.
+
+        Returns:
+            Dictionary mapping user IDs to user data (passwords censored).
+        """
         pass
 
     @abstractmethod
-    def update_user(self, uid):
+    def update_user(self, uid: str) -> None:
+        """Update user in persistent storage.
+
+        Args:
+            uid: User identifier.
+        """
         pass
 
-    def impersonate(self, user_data):
+    def impersonate(self, user_data: dict[str, object]) -> None:
+        """Impersonate another user (admin only).
+
+        Args:
+            user_data: Dictionary with user data to impersonate.
+        """
         self.require_admin()
         st.session_state["impersonate_user"] = user_data
         st.rerun()
@@ -867,7 +1258,16 @@ class UserAuthenticationManager:
 
 
 @st.cache_resource
-def sqlite_client(url, token):
+def sqlite_client(url: str, token: str) -> object:
+    """Create a cached SQLite client connection.
+
+    Args:
+        url: Database URL.
+        token: Authentication token.
+
+    Returns:
+        SQLite client object.
+    """
     print(f"User database from {url}")
     return libsql_client.create_client_sync(url=url, auth_token=token)
 
@@ -878,17 +1278,31 @@ def sqlite_client(url, token):
 
 
 class StreamlitAuthenticationManager(UserAuthenticationManager):
+    """Authentication manager using Streamlit Authenticator and JSON/SQLite storage."""
+
     def __init__(
         self,
-        auth_conf_file,
-        groups,
-        org_whitelist,
-        s3_fs,
-        info,
-        logger,
-        languages,
-        translate_func,
-    ):
+        auth_conf_file: str | None,
+        groups: list[str],
+        org_whitelist: list[str] | None,
+        s3_fs: object,
+        info: object,
+        logger: Callable[[str, str | None], None],
+        languages: dict[str, Callable[[str], str] | None],
+        translate_func: Callable[[str], str],
+    ) -> None:
+        """Initialize Streamlit authentication manager.
+
+        Args:
+            auth_conf_file: Path to authentication configuration JSON file.
+            groups: List of user groups.
+            org_whitelist: Optional list of allowed organization names.
+            s3_fs: S3 filesystem instance for remote file access.
+            info: Streamlit info container for messages.
+            logger: Function to log events (event, uid).
+            languages: Dictionary mapping language codes to translation functions.
+            translate_func: Function to translate UI strings.
+        """
         super().__init__(groups, info, org_whitelist, logger, languages, translate_func)
         self.s3fs = s3_fs
         self.stuser = {}
@@ -906,11 +1320,13 @@ class StreamlitAuthenticationManager(UserAuthenticationManager):
         )
 
     @property
-    def authenticated(self):
+    def authenticated(self) -> bool:
+        """Check if user is authenticated via Streamlit Authenticator."""
         return st.session_state.get("authentication_status") and self.stuser
 
     # This is abstracted into .user property with impersonation built-in
-    def uam_user(self):
+    def uam_user(self) -> dict[str, object]:
+        """Get user data from Streamlit Authenticator session."""
         if self.stuser and self.stuser.get("username"):
             return {
                 "uid": self.stuser["username"],
@@ -923,10 +1339,21 @@ class StreamlitAuthenticationManager(UserAuthenticationManager):
         else:
             return {}
 
-    def logout_button(self, text, location="sidebar"):
+    def logout_button(self, text: str, location: str = "sidebar") -> None:
+        """Display logout button using Streamlit Authenticator.
+
+        Args:
+            text: Button text.
+            location: Where to display button (default: "sidebar").
+        """
         self.auth.logout(text, location)
 
-    def load_conf(self, cached=True):
+    def load_conf(self, cached: bool = True) -> None:
+        """Load authentication configuration from file.
+
+        Args:
+            cached: Whether to use cached version of config file.
+        """
         if cached:
             self.conf = load_json_cached(self.conf_file, _s3_fs=self.s3fs)
         else:
@@ -949,7 +1376,8 @@ class StreamlitAuthenticationManager(UserAuthenticationManager):
 
         self.users = self.conf["credentials"]["usernames"]
 
-    def login_screen(self):
+    def login_screen(self) -> None:
+        """Display login screen using Streamlit Authenticator."""
         tf = self.tf
         _, _, username = self.auth.login(
             "sidebar",
@@ -979,7 +1407,12 @@ class StreamlitAuthenticationManager(UserAuthenticationManager):
                 self.log_event("login-success")
                 st.session_state["log_event"] = False
 
-    def update_conf(self, username):
+    def update_conf(self, username: str) -> None:
+        """Update authentication configuration file with user changes.
+
+        Args:
+            username: Username to update or delete.
+        """
         # Read full conf file (can have more users, as load_conf filters them)
         full_conf = load_json(self.conf_file, _s3_fs=self.s3fs)
 
@@ -997,11 +1430,19 @@ class StreamlitAuthenticationManager(UserAuthenticationManager):
         time.sleep(3)  # Give some time for messages to display etc
         st.rerun()  # Force a rerun to reload the new file
 
-    def update_user(self, username):
+    def update_user(self, username: str) -> None:
+        """Update user in persistent storage (JSON or SQLite).
+
+        Args:
+            username: Username to update.
+        """
         if "libsql" in self.conf:
             user_data = self.users[username]
             self.client.execute(
-                'UPDATE users SET name = ?, email = ?, organization = ?, "group" = ?, password = ?, lang = ? WHERE username = ?',
+                (
+                    "UPDATE users SET name = ?, email = ?, organization = ?, "
+                    '"group" = ?, password = ?, lang = ? WHERE username = ?'
+                ),
                 [
                     user_data["name"],
                     user_data["email"],
@@ -1015,7 +1456,15 @@ class StreamlitAuthenticationManager(UserAuthenticationManager):
         else:
             self.update_conf(username)
 
-    def add_user(self, user_data):
+    def add_user(self, user_data: dict[str, object]) -> bool:
+        """Add a new user to the authentication system.
+
+        Args:
+            user_data: Dictionary with user information (username, password, etc.).
+
+        Returns:
+            True if user was added successfully, False if username already exists.
+        """
         self.require_admin()
         username = user_data["username"]
         if username not in self.users:
@@ -1027,7 +1476,10 @@ class StreamlitAuthenticationManager(UserAuthenticationManager):
 
             if "libsql" in self.conf:
                 self.client.execute(
-                    'INSERT INTO users (username, name, email, organization, "group", password) VALUES (?, ?, ?, ?, ?, ?)',
+                    (
+                        "INSERT INTO users (username, name, email, organization, "
+                        '"group", password) VALUES (?, ?, ?, ?, ?, ?)'
+                    ),
                     [
                         username,
                         user_data["name"],
@@ -1044,7 +1496,13 @@ class StreamlitAuthenticationManager(UserAuthenticationManager):
             self.info.error(f"User **{username}** already exists.")
             return False
 
-    def change_user(self, username, user_data):
+    def change_user(self, username: str, user_data: dict[str, object]) -> None:
+        """Update user information (including username change).
+
+        Args:
+            username: Current username.
+            user_data: Dictionary with updated user information.
+        """
         # Change username
         if "username" in user_data and username != user_data["username"]:
             self.users[user_data["username"]] = self.users[username]
@@ -1064,7 +1522,12 @@ class StreamlitAuthenticationManager(UserAuthenticationManager):
         self.info.success(f"User **{username}** changed.")
         self.update_user(username)
 
-    def delete_user(self, username):
+    def delete_user(self, username: str) -> None:
+        """Delete a user from the authentication system.
+
+        Args:
+            username: Username to delete.
+        """
         self.require_admin()
         del self.users[username]
         self.info.warning(f"User **{username}** deleted.")
@@ -1075,14 +1538,24 @@ class StreamlitAuthenticationManager(UserAuthenticationManager):
         else:
             self.update_conf(username)
 
-    def list_users(self):
+    def list_users(self) -> dict[str, dict[str, object]]:
+        """List all users (passwords censored).
+
+        Returns:
+            Dictionary mapping usernames to user data (passwords removed).
+        """
         self.require_admin()
         self.load_conf(cached=False)  # so all admin updates would immediately be visible
-        return {k: censor_dict({"uid": k, **v}, ["password"]) for k, v in self.users.items()}
+        return {k: utils.censor_dict({"uid": k, **v}, ["password"]) for k, v in self.users.items()}
 
 
 @st.cache_resource
-def frontegg_client():
+def frontegg_client() -> object:
+    """Create a cached Frontegg HTTP client.
+
+    Returns:
+        Frontegg HttpClient instance.
+    """
     from frontegg.common.clients import HttpClient
 
     base_url = "https://api.frontegg.com/audits"
@@ -1091,16 +1564,45 @@ def frontegg_client():
 
 
 class FronteggAuthenticationManager(UserAuthenticationManager):
-    def __init__(self, groups, info, org_whitelist, logger, languages, translate_func):
+    """Authentication manager using Frontegg OAuth."""
+
+    def __init__(
+        self,
+        groups: list[str],
+        info: object,
+        org_whitelist: list[str] | None,
+        logger: Callable[[str, str | None], None],
+        languages: dict[str, Callable[[str], str] | None],
+        translate_func: Callable[[str], str],
+    ) -> None:
+        """Initialize Frontegg authentication manager.
+
+        Args:
+            groups: List of user groups.
+            info: Streamlit info container for messages.
+            org_whitelist: Optional list of allowed organization names.
+            logger: Function to log events (event, uid).
+            languages: Dictionary mapping language codes to translation functions.
+            translate_func: Function to translate UI strings.
+        """
         super().__init__(groups, info, org_whitelist, logger, languages, translate_func)
         self.client = frontegg_client()
         self.passwordless = True
 
     @property
-    def authenticated(self):
+    def authenticated(self) -> bool:
+        """Check if user is authenticated via Frontegg OAuth."""
         return st.user["is_logged_in"]
 
-    def reform_user(self, user):
+    def reform_user(self, user: dict[str, object]) -> dict[str, object]:
+        """Reformat Frontegg user data to internal format.
+
+        Args:
+            user: Raw user data from Frontegg API.
+
+        Returns:
+            Reformatted user dictionary.
+        """
         meta = user.get("metadata") or {}
         if isinstance(meta, str):
             meta = json.loads(meta)
@@ -1115,10 +1617,14 @@ class FronteggAuthenticationManager(UserAuthenticationManager):
         }
 
     # This is abstracted into .user property with impersonation built-in
-    def uam_user(self):
-        # As st.user is not updated unless you log out, and is not writable
+    def uam_user(self) -> dict[str, object]:
+        """Get user data from Frontegg OAuth session.
+
+        Note: As st.user is not updated unless you log out, and is not writable
+        """
         # We need the hacky workaround to allow changing user info (like lang) during session
         # Normally, one would just do an oauth refresh on user change, but streamlit does not support that (yet?)
+
         if not st.user["is_logged_in"]:
             return {}
         elif "OAUser" not in st.session_state:
@@ -1127,7 +1633,8 @@ class FronteggAuthenticationManager(UserAuthenticationManager):
 
     # Use the silent login profile to just refresh the user info if prompt config is present
 
-    def refresh_user(self):
+    def refresh_user(self) -> None:
+        """Refresh user information by triggering OAuth re-authentication."""
         # If prompr config present, assume default conf is silent login
         # In that case, logout + silent login can be used to refresh the user info
         if "prompt" in st.secrets["auth"]:
@@ -1135,7 +1642,8 @@ class FronteggAuthenticationManager(UserAuthenticationManager):
         else:
             print("User refresh needs [auth.prompt] segment in secrets.toml")
 
-    def login_screen(self):
+    def login_screen(self) -> None:
+        """Display Frontegg OAuth login screen."""
         if not self.authenticated:
             st.login()
             st.session_state["OA_fresh"] = True  # just logged in, so no need to refresh
@@ -1157,12 +1665,26 @@ class FronteggAuthenticationManager(UserAuthenticationManager):
             self.log_event("login-success")
             st.session_state["login_recorded"] = True  # Only log once per session, even if user logs in multiple times
 
-    def logout_button(self, text, location="sidebar"):
+    def logout_button(self, text: str, location: str = "sidebar") -> None:
+        """Display logout button that triggers OAuth re-login.
+
+        Args:
+            text: Button text.
+            location: Where to display button (default: "sidebar").
+        """
         if "prompt" in st.secrets["auth"] and st.button(text):
             st.login("prompt")
         # st.write(self.reform_user(st.user)) # Debug: show sdb.user
 
-    def add_user(self, user_data):
+    def add_user(self, user_data: dict[str, object]) -> bool:
+        """Add a new user via Frontegg API.
+
+        Args:
+            user_data: Dictionary with user information.
+
+        Returns:
+            True if user was added successfully.
+        """
         self.require_admin()
         res = self.client.post(
             url="identity/resources/users/v1/",
@@ -1184,16 +1706,22 @@ class FronteggAuthenticationManager(UserAuthenticationManager):
 
         if res.get("errors"):
             raise Exception(str(res["errors"]))
-        self.info.info(f'User **{res['email']}** added.')
-        self.log_event(f'add-user: {res['email']}')
+        self.info.info(f"User **{res['email']}** added.")
+        self.log_event(f"add-user: {res['email']}")
 
-    def change_user(self, uid, user_data):
+    def change_user(self, uid: str, user_data: dict[str, object]) -> None:
+        """Update user information via Frontegg API.
+
+        Args:
+            uid: User email/identifier.
+            user_data: Dictionary with updated user information.
+        """
         if uid != self.user["uid"]:
             self.require_admin()
         uinfo = self.client.get(f"identity/resources/users/v1/email?email={uid}").json()
         if "email" in user_data and user_data["email"] != uinfo["email"]:
             eres = self.client.put(
-                url=f'identity/resources/users/v1/{uinfo['id']}/email',
+                url=f"identity/resources/users/v1/{uinfo['id']}/email",
                 data={"email": user_data["email"].strip()},
             )
             if eres.get("errors"):
@@ -1201,7 +1729,7 @@ class FronteggAuthenticationManager(UserAuthenticationManager):
 
         # Change everything else:
         res = self.client.put(
-            url=f'identity/resources/users/v1/{uinfo['id']}',
+            url=f"identity/resources/users/v1/{uinfo['id']}",
             data={
                 "name": user_data["name"],
                 "metadata": json.dumps(
@@ -1223,32 +1751,50 @@ class FronteggAuthenticationManager(UserAuthenticationManager):
             self.refresh_user()
             # st.session_state['OAUser'] = self.reform_user(res)
 
-    def delete_user(self, uid):
+    def delete_user(self, uid: str) -> None:
+        """Delete a user via Frontegg API.
+
+        Args:
+            uid: User email/identifier to delete.
+        """
         self.require_admin()
         uinfo = self.client.get(f"identity/resources/users/v1/email?email={uid}").json()
-        self.client.delete(f'identity/resources/users/v1/{uinfo['id']}')
+        self.client.delete(f"identity/resources/users/v1/{uinfo['id']}")
 
         # if res.get('error'): raise Exception(res['error'])
         self.info.info(f"User **{uid}** deleted.")
         self.log_event(f"delete-user: {uid}")
 
-    def list_users(self):
+    def list_users(self) -> dict[str, dict[str, object]]:
+        """List all users from Frontegg API (passwords censored).
+
+        Returns:
+            Dictionary mapping user emails to user data (passwords removed).
+
+        Note:
+            This endpoint is paginated, so we may need to cycle over all pages.
+        """
         self.require_admin()
         # TODO: this endpoint is paginated, so we may need to cycle over all pages here
         res = self.client.get(
             "identity/resources/users/v1/?_limit=200",
             headers={"frontegg-tenant-id": "7779b9fb-f279-4cd3-8f61-e751a0d06145"},
         )
-        return {i["email"]: censor_dict(self.reform_user(i), []) for i in res.json()["items"]}
+        return {i["email"]: utils.censor_dict(self.reform_user(i), []) for i in res.json()["items"]}
 
 
 # Password reset
-def user_settings_page(sdb):
+def user_settings_page(sdb: SalkDashboardBuilder) -> None:
+    """Display user settings page with language selection and password reset.
+
+    Args:
+        sdb: Dashboard builder instance.
+    """
     if not sdb.user:
         return
 
     cur_lang = st.session_state.get("lang")
-    opts = [cur_lang] + [l for l in sdb.cc_translations.keys() if l != cur_lang]
+    opts = [cur_lang] + [lang for lang in sdb.cc_translations.keys() if lang != cur_lang]
     lang = st.selectbox(sdb.tf("Language:", context="ui"), opts)
 
     if sdb.button("Save"):
@@ -1264,7 +1810,7 @@ def user_settings_page(sdb):
     if isinstance(sdb.uam, StreamlitAuthenticationManager):
         try:
 
-            def tf(s):
+            def tf(s: str) -> str:
                 return sdb.tf(s, context="ui")
 
             if sdb.uam.auth.reset_password(
@@ -1284,7 +1830,15 @@ def user_settings_page(sdb):
 
 
 # Helper function to highlight log rows
-def highlight_cells(val):
+def highlight_cells(val: str) -> str:
+    """Return CSS color style for log event cells based on event type.
+
+    Args:
+        val: Event string to analyze.
+
+    Returns:
+        CSS color style string (e.g., "color: red").
+    """
     if "fail" in val:
         color = "red"
     # elif 'add' in val:
@@ -1304,7 +1858,12 @@ def highlight_cells(val):
 # --------------------------------------------------------
 
 
-def admin_page(sdb):
+def admin_page(sdb: SalkDashboardBuilder) -> None:
+    """Display admin page for user management and log viewing.
+
+    Args:
+        sdb: Dashboard builder instance.
+    """
     sdb.uam.require_admin()
 
     menu_choice = option_menu(
@@ -1389,7 +1948,7 @@ def admin_page(sdb):
                         sdb.info.error("Must specify username, password and email.")
                 else:
                     if user_data["email"] in all_users:
-                        sdb.info.error(f'User **{user_data['email']}** already exists.')
+                        sdb.info.error(f"User **{user_data['email']}** already exists.")
                     elif "" in [user_data["email"]]:
                         sdb.info.error("Must specify email.")
                     else:
@@ -1419,7 +1978,7 @@ def admin_page(sdb):
                 user_data["email"] = st.text_input("E-mail:", value=user_data["email"])
                 user_data["organization"] = st.text_input("Organization:", value=user_data.get("organization", ""))
                 cur_lang = user_data.get("lang", None)
-                l_opts = [cur_lang] + [l for l in list(sdb.cc_translations.keys()) + [None] if l != cur_lang]
+                l_opts = [cur_lang] + [lang for lang in list(sdb.cc_translations.keys()) + [None] if lang != cur_lang]
                 user_data["lang"] = st.selectbox("Language:", l_opts)
                 # NB! it is known changing language here for current user does not lead to a change.
                 # It's not worth the extra code overhead to make it work.
@@ -1450,7 +2009,12 @@ def admin_page(sdb):
 
 
 # Draw a matrix of plots using separate plots and st columns
-def draw_plot_matrix(pmat):
+def draw_plot_matrix(pmat: list[list[object]] | object | None) -> None:
+    """Draw a matrix of Altair plots in Streamlit columns.
+
+    Args:
+        pmat: Matrix of plots (list of lists) or single plot, or None.
+    """
     if not pmat:
         return  # Do nothing if get None passed to it
     if not isinstance(pmat, list):
@@ -1469,7 +2033,13 @@ def draw_plot_matrix(pmat):
 # Draw the plot described by pp_desc
 
 
-def st_plot(pp_desc, **kwargs):
+def st_plot(pp_desc: dict[str, object], **kwargs: object) -> None:
+    """Draw a plot using the end-to-end plot pipeline.
+
+    Args:
+        pp_desc: Plot descriptor dictionary.
+        **kwargs: Additional arguments passed to e2e_plot.
+    """
     plots = e2e_plot(pp_desc, **kwargs)
     draw_plot_matrix(plots)
 
@@ -1478,29 +2048,54 @@ def st_plot(pp_desc, **kwargs):
 
 
 @st.cache_resource(show_spinner=False, ttl=None)
-def plot_cache():
-    return dict_cache(size=100)
+def plot_cache() -> object:
+    """Create a global plot cache (cached resource).
+
+    Returns:
+        Dictionary cache object for storing plots.
+    """
+    return utils.dict_cache(size=100)
 
 
 # Streamlit session state safety - check and clear session state if it has an unfit value
-def stss_safety(key, opts):
+def stss_safety(key: str, opts: list[object]) -> None:
+    """Clear session state key if its value is not in the allowed options.
+
+    Args:
+        key: Session state key to check.
+        opts: List of allowed values.
+    """
     if key in st.session_state and st.session_state[key] not in opts:
         del st.session_state[key]
 
 
 def facet_ui(
-    dims,
-    two=False,
-    uid="base",
-    raw=False,
-    translate=None,
-    force_choice=False,
-    label="Facet",
-):
+    dims: list[str],
+    two: bool = False,
+    uid: str = "base",
+    raw: bool = False,
+    translate: Callable[[str], str] | None = None,
+    force_choice: bool = False,
+    label: str = "Facet",
+) -> list[str]:
+    """Display facet selection UI and return selected dimensions.
+
+    Args:
+        dims: List of available dimension names.
+        two: Whether to allow selecting two facets.
+        uid: Unique identifier for widget state.
+        raw: Whether to use raw column names (skip aliases).
+        translate: Optional translation function.
+        force_choice: Whether to require user to make a selection.
+        label: Label for the facet selector.
+
+    Returns:
+        List of selected facet dimension names.
+    """
     # Set up translation
     tfc = translate if translate else (lambda s, **kwargs: s)
 
-    def tf(s):
+    def tf(s: str) -> str:
         return tfc(s, context="data")
 
     tdims = [tf(d) for d in dims]
@@ -1530,15 +2125,42 @@ def facet_ui(
 
 
 # Function that creates reset functions for multiselects in filter
-def ms_reset(cn, all_vals, uid):
-    def reset_ms():
+def ms_reset(cn: str, all_vals: list[object], uid: str) -> Callable[[], None]:
+    """Create a reset function for a multiselect filter.
+
+    Args:
+        cn: Column name.
+        all_vals: List of all possible values to reset to.
+        uid: Unique identifier for widget state.
+
+    Returns:
+        Function that resets the multiselect to all values.
+    """
+
+    def reset_ms() -> None:
         st.session_state[f"filter_{uid}_{cn}_multiselect"] = all_vals
 
     return reset_ms
 
 
 @st.cache_data(show_spinner=False)
-def get_filter_limits(_ldf, dims, dmeta, uid):
+def get_filter_limits(
+    _ldf: pl.LazyFrame | pd.DataFrame,
+    dims: list[str] | None,
+    dmeta: dict[str, object] | None,
+    uid: str,
+) -> dict[str, dict[str, object]]:
+    """Get filter limits (min/max for continuous, categories for categorical) for dimensions.
+
+    Args:
+        _ldf: LazyFrame or DataFrame to analyze.
+        dims: List of dimension names to get limits for (None for all).
+        dmeta: Data metadata dictionary.
+        uid: Unique identifier for caching.
+
+    Returns:
+        Dictionary mapping dimension names to their filter limits.
+    """
     ldf = _ldf
 
     if not isinstance(ldf, pl.LazyFrame):
@@ -1573,8 +2195,9 @@ def get_filter_limits(_ldf, dims, dmeta, uid):
         elif c_meta[d].get("categories"):
             if c_meta[d].get("categories") == "infer":
                 if schema[d].is_numeric():
-                    warn(
-                        f"Column {d} is numeric but marked as categorical. Skipping in filter as inferring categories is not possible."
+                    utils.warn(
+                        f"Column {d} is numeric but marked as categorical. "
+                        "Skipping in filter as inferring categories is not possible."
                     )
                     continue
                 else:
@@ -1584,27 +2207,47 @@ def get_filter_limits(_ldf, dims, dmeta, uid):
 
             limits[d]["ordered"] = c_meta[d].get("ordered", False)
         else:
-            warn(f"Skipping {d}: {c_meta[d]} in filter")
+            utils.warn(f"Skipping {d}: {c_meta[d]} in filter")
     return limits
 
 
 # User interface that outputs a filter for the pp_desc
 def filter_ui(
-    data,
-    dmeta=None,
-    dims=None,
-    flt={},
-    uid="base",
-    detailed=False,
-    raw=False,
-    translate=None,
-    force_choice=False,
-    grouped=False,
-    obs_dim=None,
-):
+    data: pl.LazyFrame | pd.DataFrame,
+    dmeta: dict[str, object] | None = None,
+    dims: list[str] | None = None,
+    flt: dict[str, object] | None = None,
+    uid: str = "base",
+    detailed: bool = False,
+    raw: bool = False,
+    translate: Callable[[str], str] | None = None,
+    force_choice: bool = False,
+    grouped: bool = False,
+    obs_dim: str | None = None,
+) -> dict[str, object]:
+    """Display filter UI and return filter specification.
+
+    Args:
+        data: LazyFrame or DataFrame to filter.
+        dmeta: Data metadata dictionary.
+        dims: List of dimension names to create filters for (None for all).
+        flt: Initial filter values dictionary.
+        uid: Unique identifier for widget state.
+        detailed: Whether to show detailed filter options.
+        raw: Whether to use raw column names (skip aliases).
+        translate: Optional translation function.
+        force_choice: Whether to require user to make a selection.
+        grouped: Whether to group filters by metadata groups.
+        obs_dim: Optional observation dimension name.
+
+    Returns:
+        Filter specification dictionary.
+    """
+    if flt is None:
+        flt = {}
     tfc = translate if translate else (lambda s, **kwargs: s)
 
-    def tf(s):
+    def tf(s: str) -> str:
         return tfc(s, context="data")
 
     limits = get_filter_limits(data, dims, dmeta, uid)
@@ -1696,7 +2339,8 @@ def filter_ui(
                     filters[cn] = r_map[filters[cn]]
 
             # Ordered categorical - slider
-            # Use [None,<start>,<end>] for ranges, both categorical and continuous to distinguish them from list of values
+            # Use [None,<start>,<end>] for ranges, both categorical and continuous
+            # to distinguish them from list of values
             elif limits[cn].get("categories") and limits[cn].get("ordered"):  # Ordered categorical - slider
                 key = f"filter_{uid}_{cn}_ocat"
                 if key in stss and not set(stss[key]) <= set(all_vals):
@@ -1742,12 +2386,30 @@ def filter_ui(
 # Use dict here as dicts are ordered as of Python 3.7 and preserving order groups things together better
 
 
-def translate_with_dict(d):
+def translate_with_dict(d: dict[str, str]) -> Callable[[str], str]:
+    """Create a translation function from a dictionary.
+
+    Args:
+        d: Dictionary mapping source strings to translated strings.
+
+    Returns:
+        Translation function that looks up strings in the dictionary.
+    """
     return lambda s: d[s] if isinstance(s, str) and s in d and d[s] is not None else s
 
 
-def log_missing_translations(tf, nonchanged_dict):
-    def ntf(s):
+def log_missing_translations(tf: Callable[[str], str], nonchanged_dict: dict[str, object]) -> Callable[[str], str]:
+    """Wrap a translation function to log untranslated strings.
+
+    Args:
+        tf: Translation function to wrap.
+        nonchanged_dict: Dictionary to populate with untranslated strings.
+
+    Returns:
+        Wrapped translation function that logs missing translations.
+    """
+
+    def ntf(s: str) -> str:
         ns = tf(s)
         if ns == s:
             nonchanged_dict[s] = None
@@ -1756,7 +2418,20 @@ def log_missing_translations(tf, nonchanged_dict):
     return ntf
 
 
-def clean_missing_translations(nonchanged_dict, tdict={}):
+def clean_missing_translations(
+    nonchanged_dict: dict[str, object], tdict: dict[str, str] | None = None
+) -> dict[str, object]:
+    """Filter missing translations to remove numbers and already-translated strings.
+
+    Args:
+        nonchanged_dict: Dictionary of untranslated strings.
+        tdict: Dictionary of existing translations to exclude.
+
+    Returns:
+        Filtered dictionary of missing translations.
+    """
+    if tdict is None:
+        tdict = {}
     # Filter out numbers that come in from data sometimes
     return {
         s: v
@@ -1765,11 +2440,30 @@ def clean_missing_translations(nonchanged_dict, tdict={}):
     }
 
 
-def add_missing_to_dict(missing_dict, tdict):
+def add_missing_to_dict(missing_dict: dict[str, object], tdict: dict[str, str]) -> dict[str, str]:
+    """Add missing translations to dictionary with identity mapping.
+
+    Args:
+        missing_dict: Dictionary of missing translation keys.
+        tdict: Existing translation dictionary.
+
+    Returns:
+        Updated translation dictionary with missing keys added as identity mappings.
+    """
     return {**tdict, **{s: s for s in missing_dict}}
 
 
-def translate_pot(template, dest, tfunc, sources=[]):
+def translate_pot(template: str, dest: str, tfunc: Callable[[str], str], sources: list[str] | None = None) -> None:
+    """Translate a .pot file using a custom translation function.
+
+    Args:
+        template: Path to source .pot template file.
+        dest: Path where translated .po file should be written.
+        tfunc: Translation function that takes source string and returns translated string.
+        sources: Optional list of existing .po files to use as translation sources.
+    """
+    if sources is None:
+        sources = []
     pot = polib.pofile(template)
 
     if os.path.exists(dest):
@@ -1812,7 +2506,7 @@ def translate_pot(template, dest, tfunc, sources=[]):
 
         if not entry.msgstr:
             continue
-        entry.msgstr = t_func(entry.msgstr)
+        entry.msgstr = tfunc(entry.msgstr)
         po.append(entry)
 
         progress.update(1)
@@ -1962,13 +2656,7 @@ altair_default_config = {
 # --------------------------------------------------------
 
 
-def plot_matrix_html(pmat, uid="viz", width=None, responsive=True):
-    if not pmat:
-        return
-    if not isinstance(pmat, list):
-        pmat, _ucw = [[pmat]], False
-
-    template = """
+html_template = """
 <!DOCTYPE html>
 <html>
 <head></head>
@@ -1994,10 +2682,32 @@ def plot_matrix_html(pmat, uid="viz", width=None, responsive=True):
         if (UID_delta!=0) draw_plot();
     }, 5);
     %s
-  </script>
+   </script>
 </body>
 </html>
-""".replace("UID", uid)
+"""
+
+
+def plot_matrix_html(
+    pmat: list[list[object]] | object | None, uid: str = "viz", width: int | None = None, responsive: bool = True
+) -> str | None:
+    """Generate HTML for a matrix of Altair plots.
+
+    Args:
+        pmat: Matrix of plots (list of lists) or single plot, or None.
+        uid: Unique identifier for HTML elements.
+        width: Optional plot width in pixels.
+        responsive: Whether plots should be responsive to container width.
+
+    Returns:
+        HTML string containing the plots, or None if pmat is None.
+    """
+    if not pmat:
+        return None
+    if not isinstance(pmat, list):
+        pmat, _ucw = [[pmat]], False
+
+    template = html_template.replace("UID", uid)
 
     rstring = "XYZresponsiveXZY"  # Something we can replace easy
     specs, ncols = [], len(pmat[0])
@@ -2009,7 +2719,7 @@ def plot_matrix_html(pmat, uid="viz", width=None, responsive=True):
 
             if responsive:
                 cwidth = pdict["spec"]["width"] if "spec" in pdict else pdict["width"]
-                repl = f"(width-{uid}_delta/{ncols})/{width/cwidth}"
+                repl = f"(width-{uid}_delta/{ncols})/{width / cwidth}"
                 if "spec" in pdict:
                     pdict["spec"]["width"] = rstring
                 else:
@@ -2025,11 +2735,11 @@ def plot_matrix_html(pmat, uid="viz", width=None, responsive=True):
     else:
         goal_width, resp_code = str(width), ""
 
-    html = template % (f'[{",".join(specs)}]', goal_width, resp_code)
+    html = template % (f"[{','.join(specs)}]", goal_width, resp_code)
 
     # Add subdivs after the plots - otherwise width% needs complex escaping
     subdivs = "".join(
-        [f'<div id="{uid}-{i}" styles="width: {0.99/ncols:.3}%"></div>' for i in range(sum(map(len, pmat)))]
+        [f'<div id="{uid}-{i}" style="width: {0.99 / ncols:.3%}"></div>' for i in range(sum(map(len, pmat)))]
     )
     html = html.replace("SUBDIVS", subdivs)
 

@@ -16,14 +16,25 @@ __all__ = [
 # Keep this list minimal as this py will actually be executed
 import os
 import sys
+from typing import Callable
 
 
 # --------------------------------------------------------
 #          STK EXPLORER
 # --------------------------------------------------------
 # Run explorer Streamlit app from anywhere with the `stk_explorer` command.
-def streamlit_fn_factory(relpath, curpath):
-    def run_streamlit_fn_fn():
+def streamlit_fn_factory(relpath: str, curpath: str) -> Callable[[], None]:
+    """Create a function that runs a Streamlit app at the given path.
+
+    Args:
+        relpath: Relative path to the Streamlit app file.
+        curpath: Current directory path where the app should be run from.
+
+    Returns:
+        A callable that executes the Streamlit app when called.
+    """
+
+    def run_streamlit_fn_fn() -> None:
         import subprocess
 
         filename = os.path.join(curpath, relpath)
@@ -40,7 +51,17 @@ run_explorer = streamlit_fn_factory("./tools/explorer.py", os.path.dirname(__fil
 
 # Translate a pot file using generic tfunc
 # Could be useful if you don't want to use deepl
-def translate_pot(template, dest, t_func, sources=[]):
+def translate_pot(template: str, dest: str, t_func: Callable[[str], str], sources: list[str] | None = None) -> None:
+    """Translate a .pot file using a custom translation function.
+
+    Args:
+        template: Path to the source .pot template file.
+        dest: Path where the translated .po file should be written.
+        t_func: Translation function that takes a source string and returns translated string.
+        sources: Optional list of existing .po files to use as translation sources.
+    """
+    if sources is None:
+        sources = []
     import polib
     from tqdm import tqdm
     from collections import defaultdict
@@ -109,7 +130,18 @@ def translate_pot(template, dest, t_func, sources=[]):
 #          TRANSLATE DASHBOARD
 # --------------------------------------------------------
 # Use Deepl to translate a dashboard with the `translate_stk_dashboard` command.
-def translate_dashboard_fn(dashboard_file, target_lang, deepl_key, context=None, source_lang="en"):
+def translate_dashboard_fn(
+    dashboard_file: str, target_lang: str, deepl_key: str, context: str | None = None, source_lang: str = "en"
+) -> None:
+    """Translate a dashboard using DeepL API.
+
+    Args:
+        dashboard_file: Path to the dashboard file to translate.
+        target_lang: Target language code (e.g., 'cs', 'lt').
+        deepl_key: DeepL API authentication key.
+        context: Optional context string for better translations.
+        source_lang: Source language code (default: 'en').
+    """
     import deepl  # requires this, but not installed with salk_toolkit
 
     apppath = os.path.splitext(dashboard_file)[0]
@@ -117,8 +149,20 @@ def translate_dashboard_fn(dashboard_file, target_lang, deepl_key, context=None,
 
     translator = deepl.Translator(deepl_key)
 
-    def t_func(txt):
-        return translator.translate_text(txt, source_lang=source_lang, target_lang=target_lang, context=context).text
+    def t_func(txt: str) -> str:
+        """Translate text using DeepL API.
+
+        Args:
+            txt: Source text to translate.
+
+        Returns:
+            Translated text.
+        """
+        result = translator.translate_text(txt, source_lang=source_lang, target_lang=target_lang, context=context)
+        # translate_text returns TextResult for single input, list[TextResult] for batch
+        if isinstance(result, list):
+            return result[0].text
+        return result.text
 
     print(f"Translating {app} to {target_lang}")
 
@@ -144,7 +188,13 @@ def translate_dashboard_fn(dashboard_file, target_lang, deepl_key, context=None,
     translate_pot(pot_loc, po_loc, t_func, sources)
 
 
-def translate_dashboard():
+def translate_dashboard() -> None:
+    """CLI entry point for dashboard translation.
+
+    Reads command-line arguments and calls translate_dashboard_fn.
+    Requires at least 3 arguments: <deepl_key> <dashboard_file> <target_lang>
+    Optional 4th and 5th arguments: <context> <source_lang>
+    """
     if len(sys.argv) < 4:
         print("Requires three parameters: <deepl auth key> <dashboard file name> <language>")
         print("Additional parameters are <'context'> <source language>")

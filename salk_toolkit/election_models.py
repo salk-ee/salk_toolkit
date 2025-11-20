@@ -27,16 +27,13 @@ __all__ = [
 
 import itertools as it
 
+import altair as alt
 import numpy as np
 import pandas as pd
-
-
-import altair as alt
-
-from salk_toolkit.utils import *
-from salk_toolkit.plots import stk_plot
-
 import streamlit as st
+
+from salk_toolkit import utils as stk_utils
+from salk_toolkit.plots import stk_plot
 
 # --------------------------------------------------------
 #          MACHINERY
@@ -47,7 +44,20 @@ import streamlit as st
 party_aggregate_cat_names = ["Other"]
 
 
-def dhondt(pvotes, n_mandates, dh_power=1.0, pmand=None):
+def dhondt(
+    pvotes: np.ndarray, n_mandates: np.ndarray | int, dh_power: float = 1.0, pmand: np.ndarray | None = None
+) -> np.ndarray:
+    """Calculate d'Hondt method mandate allocation.
+
+    Args:
+        pvotes: Party votes array of shape (draws, parties).
+        n_mandates: Number of mandates to allocate (scalar or array).
+        dh_power: Power parameter for d'Hondt divisor (default: 1.0).
+        pmand: Previously allocated mandates by party (default: zeros).
+
+    Returns:
+        Array of compensation mandates allocated to each party.
+    """
     # Calculate d'Hondt values and get party indices out
     n_mandates = np.array(n_mandates)
     max_mandates = int(n_mandates.max())
@@ -68,23 +78,44 @@ def dhondt(pvotes, n_mandates, dh_power=1.0, pmand=None):
 
 
 def simulate_election(
-    support,
-    nmandates,
-    threshold=0.0,
-    ed_threshold=0.0,
-    quotas=True,
-    first_quota_coef=1.0,
-    dh_power=1.0,
-    body_size=None,
-    special=None,
-    exclude=[],
-    **kwargs,
-):
+    support: np.ndarray,
+    nmandates: np.ndarray,
+    threshold: float = 0.0,
+    ed_threshold: float = 0.0,
+    quotas: bool = True,
+    first_quota_coef: float = 1.0,
+    dh_power: float = 1.0,
+    body_size: int | None = None,
+    special: str | None = None,
+    exclude: list[int] | None = None,
+    **kwargs: object,
+) -> np.ndarray:
+    """Simulate election with quota and d'Hondt allocation.
+
+    Args:
+        support: Support array of shape (draws, districts, parties).
+        nmandates: Number of mandates per district (array).
+        threshold: National threshold for party eligibility (default: 0.0).
+        ed_threshold: Electoral district threshold (default: 0.0).
+        quotas: Whether to use quota system (default: True).
+        first_quota_coef: Coefficient for first quota allocation (default: 1.0).
+        dh_power: Power parameter for d'Hondt divisor (default: 1.0).
+        body_size: Total body size for compensation (default: sum of nmandates).
+        special: Special system identifier (e.g., "cz" for Czech system).
+        exclude: List of party indices to exclude from allocation.
+        **kwargs: Additional arguments passed to special systems.
+
+    Returns:
+        Array of mandates allocated per (draw, district, party).
+    """
+    if exclude is None:
+        exclude = []
     if special == "cz":
         return cz_system(support, nmandates, threshold=threshold, body_size=body_size, **kwargs)
 
     # Exclude the parties in the exclude list.
-    # usually the grouping of "Other" that might otherwise exceed the threshold if they were a single entity but they are not)
+    # usually the grouping of "Other" that might otherwise exceed the threshold
+    # if they were a single entity but they are not)
     exclude_zero_mask = np.ones(support.shape[-1])
     exclude_zero_mask[exclude] = 0
     uzsim_t = np.ones_like(support) * exclude_zero_mask
@@ -125,7 +156,16 @@ def simulate_election(
 
 # Input a tensor t and a tensor kv of one less dimension
 # Output a tensor of same shape as t with k ones marking the smallest values in t over the last axis
-def vec_smallest_k(t, kv):
+def vec_smallest_k(t: np.ndarray, kv: np.ndarray) -> np.ndarray:
+    """Mark k smallest values per row with ones.
+
+    Args:
+        t: Input tensor.
+        kv: Number of smallest values to mark (one per row).
+
+    Returns:
+        Tensor with ones marking k smallest values per row.
+    """
     # Create a vector with k ones followed by zeros
     rmand = np.ones(t.shape[:-1]) * kv
     ri = (np.arange(t.shape[-1])[None, :] - rmand[..., None]) < 0
@@ -138,7 +178,21 @@ def vec_smallest_k(t, kv):
 
 
 # Czech electoral system based on https://pspen.psp.cz/chamber-members/plenary/elections/#electoralsystem
-def cz_system(support, nmandates, threshold=0.0, body_size=None, **kwargs):
+def cz_system(
+    support: np.ndarray, nmandates: np.ndarray, threshold: float = 0.0, body_size: int | None = None, **kwargs: object
+) -> np.ndarray:
+    """Simulate Czech electoral system with Imperialis quotas and two-level allocation.
+
+    Args:
+        support: Support array of shape (draws, districts, parties).
+        nmandates: Number of mandates per district (array).
+        threshold: National threshold for party eligibility (default: 0.0).
+        body_size: Total body size for compensation (default: sum of nmandates).
+        **kwargs: Additional arguments (unused).
+
+    Returns:
+        Array of mandates allocated per (draw, district, party).
+    """
     # Remove parties below a national threshold
     zero_mask = (support.sum(axis=1) / (support.sum(axis=(1, 2)) + 1e-3)[:, None]) > threshold
     uzsim_t = zero_mask[:, None, :] * support
@@ -174,7 +228,25 @@ def cz_system(support, nmandates, threshold=0.0, body_size=None, **kwargs):
 
 
 # Basic wrapper around simulate elections that goes from dataframe to dataframe
-def simulate_election_e2e(sdf, parties, mandates_dict, ed_col="electoral_district", **kwargs):
+def simulate_election_e2e(
+    sdf: pd.DataFrame,
+    parties: list[str],
+    mandates_dict: dict[str, int],
+    ed_col: str = "electoral_district",
+    **kwargs: object,
+) -> pd.DataFrame:
+    """End-to-end election simulation from DataFrame to DataFrame.
+
+    Args:
+        sdf: DataFrame with draws, electoral districts, and party support columns.
+        parties: List of party column names.
+        mandates_dict: Dictionary mapping electoral districts to mandate counts.
+        ed_col: Name of electoral district column (default: "electoral_district").
+        **kwargs: Additional arguments passed to simulate_election.
+
+    Returns:
+        DataFrame with columns [draw, electoral_district, party, mandates].
+    """
     # Convert data frame to a numpy tensor for fast vectorized processing
     parties = [p for p in parties if p in sdf.columns]
     ed_df = sdf.groupby(["draw", ed_col])[parties].sum()
@@ -198,15 +270,30 @@ def simulate_election_e2e(sdf, parties, mandates_dict, ed_col="electoral_distric
 
 # Factor = districts, Category = parties
 def simulate_election_pp(
-    data,
-    mandates,
-    electoral_system,
-    cat_col,
-    value_col,
-    factor_col,
-    cat_order,
-    factor_order,
-):
+    data: pd.DataFrame,
+    mandates: dict[str, int],
+    electoral_system: dict[str, object],
+    cat_col: str,
+    value_col: str,
+    factor_col: str,
+    cat_order: list[str],
+    factor_order: list[str],
+) -> pd.DataFrame:
+    """Simulate election using plot pipeline data format.
+
+    Args:
+        data: DataFrame with draws, factor_col, cat_col, and value_col.
+        mandates: Dictionary mapping factor values to mandate counts.
+        electoral_system: Dictionary with electoral system parameters.
+        cat_col: Name of category column (parties).
+        value_col: Name of value column (support).
+        factor_col: Name of factor column (districts).
+        cat_order: Ordered list of category values.
+        factor_order: Ordered list of factor values.
+
+    Returns:
+        DataFrame with columns [draw, factor_col, cat_col, mandates].
+    """
     # Reshape input to (draws,electoral_districts,parties)
     draws = data.draw.unique()
     pdf = data.pivot(index=["draw", factor_col], columns=cat_col, values=value_col).reset_index()
@@ -255,17 +342,34 @@ def simulate_election_pp(
     priority=-500,
 )  # , hidden=True)
 def mandate_plot(
-    data,
-    mandates,
-    electoral_system,
-    value_col="value",
-    facets=[],
-    width=None,
-    alt_properties={},
-    outer_factors=[],
-    translate=None,
-    sim_done=False,
-):
+    data: pd.DataFrame,
+    mandates: dict[str, int],
+    electoral_system: str | object,
+    value_col: str = "value",
+    facets: list[dict[str, object]] = [],
+    width: int | None = None,
+    alt_properties: dict[str, object] = {},
+    outer_factors: list[str] = [],
+    translate: object | None = None,
+    sim_done: bool = False,
+) -> alt.Chart:
+    """Create a mandate distribution visualization for election results.
+
+    Args:
+        data: Election data with party support by draw and facets.
+        mandates: Dictionary mapping regions to number of mandates to allocate.
+        electoral_system: Name of electoral system or custom function.
+        value_col: Column name containing vote values.
+        facets: List of facet specifications (party, region, etc).
+        width: Chart width in pixels.
+        alt_properties: Additional Altair chart properties.
+        outer_factors: Additional grouping factors.
+        translate: Translation function for labels.
+        sim_done: Whether simulation has already been run.
+
+    Returns:
+        Altair chart showing mandate probability distributions.
+    """
     f0, f1 = facets[0], facets[1]
     tf = translate if translate else (lambda s: s)
 
@@ -320,7 +424,7 @@ def mandate_plot(
         .encode(
             x=alt.X("mandates", title=None),
             y=alt.Y("percent", title=None, axis=alt.Axis(format="%")),
-            color=alt.Color(f'{f0["col"]}:N', scale=f0["colors"], legend=None),
+            color=alt.Color(f"{f0['col']}:N", scale=f0["colors"], legend=None),
             tooltip=[
                 alt.Tooltip(f0["col"], title="party"),
                 alt.Tooltip(f1["col"]),
@@ -337,13 +441,13 @@ def mandate_plot(
         .facet(
             # header=alt.Header(labelAngle=-90),
             row=alt.X(
-                f'{f1["col"]}:N',
+                f"{f1['col']}:N",
                 sort=f1["order"] + [tf("Compensation")],
                 title=None,
                 header=alt.Header(labelOrient="top"),
             ),
             column=alt.Y(
-                f'{f0["col"]}:N',
+                f"{f0['col']}:N",
                 sort=cat_order,
                 title=None,
                 header=alt.Header(labelFontWeight="bold"),
@@ -367,18 +471,33 @@ def mandate_plot(
     priority=-1000,
 )  # , hidden=True)
 def coalition_applet(
-    data,
-    mandates,
-    electoral_system,
-    value_col="value",
-    facets=[],
-    width=None,
-    alt_properties={},
-    outer_factors=[],
-    translate=None,
-    initial_coalition=[],
-    sim_done=False,
-):
+    data: pd.DataFrame,
+    mandates: dict[str, int],
+    electoral_system: str | object,
+    value_col: str = "value",
+    facets: list[dict[str, object]] = [],
+    width: int | None = None,
+    alt_properties: dict[str, object] = {},
+    outer_factors: list[str] = [],
+    translate: object | None = None,
+    initial_coalition: list[str] = [],
+    sim_done: bool = False,
+) -> None:
+    """Interactive Streamlit widget for exploring coalition scenarios.
+
+    Args:
+        data: Election data with party support by draw and facets.
+        mandates: Dictionary mapping regions to number of mandates to allocate.
+        electoral_system: Name of electoral system or custom function.
+        value_col: Column name containing vote values.
+        facets: List of facet specifications (party, region, etc).
+        width: Chart width in pixels.
+        alt_properties: Additional Altair chart properties.
+        outer_factors: Additional grouping factors.
+        translate: Translation function for labels.
+        initial_coalition: Initial list of parties in coalition.
+        sim_done: Whether simulation has already been run.
+    """
     f0, f1 = facets[0], facets[1]
     tf = translate if translate else (lambda s: s)
 
@@ -453,8 +572,8 @@ def coalition_applet(
             ),
             alt.X2("x2:Q"),
             alt.Y("percent:Q", title=None, axis=None),
-            alt.Row(f'{f0["col"]}:N', title=None),
-            color=alt.Color(f'{f0["col"]}:N', legend=None, scale=f0["colors"]),
+            alt.Row(f"{f0['col']}:N", title=None),
+            color=alt.Color(f"{f0['col']}:N", legend=None, scale=f0["colors"]),
             tooltip=[
                 alt.Tooltip("mandates:Q", title=tf("mandates"), format=",d"),
                 alt.Tooltip("percent:Q", title=tf("percent"), format=".1%"),
@@ -509,10 +628,13 @@ def coalition_applet(
         threshold_prob = float(cdf[cdf["mandates"] >= n]["count"].sum() / cdf["count"].sum())
 
         col2.write(
-            unescape_vega_label(tf("Probability of at least  **{0}** mandates: **{1:.1%}**")).format(n, threshold_prob)
+            stk_utils.unescape_vega_label(tf("Probability of at least  **{0}** mandates: **{1:.1%}**")).format(
+                n, threshold_prob
+            )
         )
         # col3.write('Distributsiooni mediaan: **{:d}**'.format(int((d_dist[koalitsioon].sum(1)).median())))
         # m, l, h = hdi(sim_data['riigikogu'][koalitsioon], 0.9)
-        # col2.write('Distributsiooni mediaan on **{:.0f}** mandaati. 90% tõenäosusega jääb mandaatide arv **{:.0f}** ning **{:.0f}** vahele.'.format(m, l, h))
+        # col2.write('Distributsiooni mediaan on **{:.0f}** mandaati. '
+        #            '90% tõenäosusega jääb mandaatide arv **{:.0f}** ning **{:.0f}** vahele.'.format(m, l, h))
 
     return None
