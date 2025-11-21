@@ -5,7 +5,7 @@ repos:
 
   # Basic file quality hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.4.0
+    rev: v6.0.0
     hooks:
       - id: check-yaml
       - id: check-toml
@@ -15,7 +15,7 @@ repos:
       - id: debug-statements
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.7.4
+    rev: v0.14.5
     hooks:
       - id: ruff
         args: ["--fix", "--unsafe-fixes"]
@@ -24,10 +24,22 @@ repos:
         exclude: '\.ipynb$'
 
   - repo: https://github.com/hhatto/autopep8
-    rev: v2.3.1
+    rev: v2.3.2
     hooks:
       - id: autopep8
         args: ["--recursive", "--in-place", "--select=W291,W293"]
+
+  # Static type checking
+  - repo: local
+    hooks:
+      - id: pyright
+        name: pyright
+        entry: pyright salk_toolkit
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+        description: "Run Pyright type checker"
 
   # Pytest
   - repo: local

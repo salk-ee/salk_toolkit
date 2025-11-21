@@ -1,4 +1,12 @@
+"""
+Tests for the Streamlit dashboard helper utilities.
+"""
+
+from __future__ import annotations
+
 import csv
+from pathlib import Path
+from typing import Any
 
 import altair as alt
 import pandas as pd
@@ -8,7 +16,8 @@ import pytest
 from salk_toolkit import dashboard
 
 
-def test_alias_file_redirects_missing(tmp_path):
+def test_alias_file_redirects_missing(tmp_path: Path) -> None:
+    """Alias map should redirect missing files to a known replacement."""
     missing = tmp_path / "missing.parquet"
     alias = tmp_path / "redirect.parquet"
     file_map = {str(missing): str(alias)}
@@ -18,7 +27,8 @@ def test_alias_file_redirects_missing(tmp_path):
     assert resolved == str(alias)
 
 
-def test_alias_file_preserves_existing(tmp_path):
+def test_alias_file_preserves_existing(tmp_path: Path) -> None:
+    """Alias map must not overwrite an existing file path."""
     existing = tmp_path / "existing.parquet"
     existing.write_text("")
     file_map = {str(existing): str(tmp_path / "redirect.parquet")}
@@ -28,7 +38,8 @@ def test_alias_file_preserves_existing(tmp_path):
     assert resolved == str(existing)
 
 
-def test_log_event_appends_rows(tmp_path):
+def test_log_event_appends_rows(tmp_path: Path) -> None:
+    """`log_event` should append multiple rows to the CSV log."""
     log_path = tmp_path / "events.csv"
 
     dashboard.log_event("login-success", "user-1", str(log_path))
@@ -43,14 +54,16 @@ def test_log_event_appends_rows(tmp_path):
     ]
 
 
-def test_translate_with_dict_handles_missing():
+def test_translate_with_dict_handles_missing() -> None:
+    """Dictionary-based translator should fall back to the source string."""
     translate = dashboard.translate_with_dict({"hello": "tere"})
 
     assert translate("hello") == "tere"
     assert translate("unknown") == "unknown"
 
 
-def test_log_missing_translations_records():
+def test_log_missing_translations_records() -> None:
+    """Missing translation logger should store unknown keys."""
     captured = {}
 
     wrapped = dashboard.log_missing_translations(lambda s: s, captured)
@@ -63,7 +76,8 @@ def test_log_missing_translations_records():
     assert "translated" not in captured
 
 
-def test_clean_missing_translations_filters_numbers():
+def test_clean_missing_translations_filters_numbers() -> None:
+    """Missing translation cleaner should drop numeric-like keys."""
     missing = {"keep": None, "123": None, "456.7": None}
     filtered = dashboard.clean_missing_translations(missing, tdict={"keep": "hoia"})
 
@@ -73,7 +87,8 @@ def test_clean_missing_translations_filters_numbers():
     assert filtered == {}
 
 
-def test_add_missing_to_dict_merges_existing():
+def test_add_missing_to_dict_merges_existing() -> None:
+    """Merge helper should retain base translations and fill gaps."""
     missing = {"world": None}
     base = {"hello": "tere"}
 
@@ -83,7 +98,8 @@ def test_add_missing_to_dict_merges_existing():
     assert merged["world"] == "world"
 
 
-def test_plot_matrix_html_generates_embed_block():
+def test_plot_matrix_html_generates_embed_block() -> None:
+    """`plot_matrix_html` should emit a Vega embed block."""
     chart = alt.Chart(pd.DataFrame({"x": [0, 1], "y": [1, 2]})).mark_line().encode(x="x", y="y").properties(width=200)
 
     html = dashboard.plot_matrix_html(chart, uid="test", width=400, responsive=True)
@@ -95,7 +111,8 @@ def test_plot_matrix_html_generates_embed_block():
 
 
 @pytest.fixture
-def sample_meta():
+def sample_meta() -> dict[str, Any]:
+    """Synthetic dashboard metadata used by filter limit tests."""
     return {
         "structure": [
             {
@@ -129,7 +146,8 @@ def sample_meta():
     }
 
 
-def test_get_filter_limits_handles_groups_and_continuous(sample_meta):
+def test_get_filter_limits_handles_groups_and_continuous(sample_meta: dict[str, Any]) -> None:
+    """Filter limit extraction should handle grouped metadata and numeric ranges."""
     frame = pl.DataFrame(
         {
             "age": [21, 34, 42],

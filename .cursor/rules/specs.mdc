@@ -14,6 +14,7 @@ alwaysApply: false
 ## When to Create vs Implement
 
 - **Create new spec**: For new features not covered by existing specs or new tools
+  - When creating a new spec, use `XXX` instead of number. Number will be filled in once PR is created
 - **Implement existing**: If spec already exists, follow it and update progress
 
 ## Component best practices
@@ -124,7 +125,7 @@ ALWAYS: Ask clarifying questions. Do not start coding until all questions are an
 **3. Pattern Discovery:**
 
 - Search by tag: `grep -r "#multifile" specs/`
-- Read referenced specs: `cat specs/DEV-122-*.md`
+- Read referenced specs: `cat specs/DEV-XXX-*.md`
 
 ## Implementation Standards
 
@@ -147,11 +148,3 @@ ALWAYS: Ask clarifying questions. Do not start coding until all questions are an
 **Document Deviations**: Always explain why you're departing from standard patterns
 **Maintain Backwards Compatibility**: Ensure existing features continue working
 **Performance Considerations**: Always keep in mind parquets can be millions of rows
-
-## Bootstrap (Empty Specs Folder)
-
-If no specs exist:
-
-1. Create first spec following template above
-2. Use generic tags until patterns emerge
-3. Document new patterns as they develop

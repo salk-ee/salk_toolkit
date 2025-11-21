@@ -3,6 +3,7 @@ Unit tests for plot pipeline utilities in salk_toolkit.pp.
 """
 
 from copy import deepcopy
+from typing import Any
 
 import pandas as pd
 import pytest
@@ -33,7 +34,8 @@ def registry_guard():
         registry_meta.update(snapshot_meta)
 
 
-def test_update_data_meta_with_pp_desc_adds_res_meta_and_updates_columns():
+def test_update_data_meta_with_pp_desc_adds_res_meta_and_updates_columns() -> None:
+    """`update_data_meta_with_pp_desc` should add response metadata without mutating input."""
     data_meta = {
         "structure": [
             {
@@ -88,7 +90,8 @@ def test_update_data_meta_with_pp_desc_adds_res_meta_and_updates_columns():
     assert group_columns["likert_question"] == [new_res_col]
 
 
-def test_calculate_priority_penalizes_missing_requirements():
+def test_calculate_priority_penalizes_missing_requirements() -> None:
+    """`calculate_priority` should penalize matches that miss required properties."""
     plot_meta = {
         "priority": 5,
         "draws": True,
@@ -142,7 +145,9 @@ def _make_basic_meta():
     }
 
 
-def test_matching_plots_respects_hidden_flag(registry_guard):
+def test_matching_plots_respects_hidden_flag(registry_guard: Any) -> None:
+    """Hidden plots should be omitted unless explicitly requested."""
+
     @stk_plot("visible_plot", priority=10)
     def _visible_plot(**_):
         return _
@@ -171,7 +176,8 @@ def test_matching_plots_respects_hidden_flag(registry_guard):
     stk_deregister("hidden_plot")
 
 
-def test_impute_factor_cols_handles_categorical_and_continuous_cases():
+def test_impute_factor_cols_handles_categorical_and_continuous_cases() -> None:
+    """`impute_factor_cols` should handle categorical and continuous conversions."""
     col_meta = {
         "res_group": {
             "columns": ["res_variant"],

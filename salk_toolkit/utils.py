@@ -13,6 +13,8 @@ If you need a generic helper, check this file before adding another bespoke
 version elsewhere.
 """
 
+from __future__ import annotations
+
 __all__ = [
     "warn",
     "default_color",
@@ -72,29 +74,70 @@ import inspect
 import sys
 import yaml
 from collections import defaultdict, OrderedDict
+from copy import deepcopy
+from hashlib import sha256
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Mapping,
+    MutableSequence,
+    Sequence,
+    TypeAlias,
+    TypeVar,
+)
+
 
 import numpy as np
 import pandas as pd
 import scipy
+from scipy.optimize import linear_sum_assignment
+from scipy.spatial.distance import cdist
 
 import altair as alt
 import matplotlib.colors as mpc
-import hsluv
-from copy import deepcopy
-from hashlib import sha256
+import hsluv  # type: ignore[import-untyped]
 
 import Levenshtein
 
 pd.set_option("future.no_silent_downcasting", True)
 
 
+JSONScalar: TypeAlias = str | int | float | bool | None
+JSONValue: TypeAlias = JSONScalar | dict[str, "JSONValue"] | list["JSONValue"]
+JSONObject: TypeAlias = dict[str, JSONValue]
+JSONArray: TypeAlias = list[JSONValue]
+
+
 # convenience for warnings that gives a more useful stack frame (fn calling the warning, not warning fn itself)
-def warn(msg, *args):
-    return warnings.warn(msg, *args, stacklevel=3)
+def warn(msg: str, *args: object) -> None:
+    """Emit a warning while pointing at the caller instead of this helper.
+
+    Args:
+        msg: Warning message to display.
+        *args: Additional positional arguments forwarded to `warnings.warn`.
+    """
+    # mypy doesn't handle *args well with warn overloads
+    warnings.warn(msg, *args, stacklevel=3)  # type: ignore[call-overload]
 
 
-# I'm surprised pandas does not have this function but I could not find it.
-def factorize_w_codes(s, codes):
+def factorize_w_codes(s: pd.Series, codes: Sequence[Any]) -> np.ndarray:
+    """Return integer codes for `s` using an explicit category ordering.
+
+    Args:
+        s: Series with categorical values to encode.
+        codes: Ordered collection describing the allowed category list.
+
+    Returns:
+        Integer numpy array matching the new categorical codes (missing → -1).
+
+    Raises:
+        Exception: If `s` contains values not present in `codes`.
+    """
+
     res = s.astype("object").replace(dict(zip(codes, range(len(codes)))))
     if not s.dropna().isin(codes).all():  # Throw an exception if all values were not replaced
         vals = set(s) - set(codes)
@@ -102,31 +145,68 @@ def factorize_w_codes(s, codes):
     return res.fillna(-1).to_numpy(dtype="int")
 
 
-# Simple batching of an iterable
-def batch(iterable, n=1):
-    l = len(iterable)
-    for ndx in range(0, l, n):
-        yield iterable[ndx : min(ndx + n, l)]
+T = TypeVar("T")
 
 
-# turn index values into order indices
-def loc2iloc(index, vals):
+def batch(iterable: Sequence[T], n: int = 1) -> Iterator[Sequence[T]]:
+    """Yield slices of ``n`` items from a sequence-like iterable.
+
+    Args:
+        iterable: Sequence to chunk; must support ``len`` and slicing.
+        n: Maximum chunk size.
+
+    Yields:
+        Consecutive slices from ``iterable`` no larger than ``n`` items.
+    """
+
+    total = len(iterable)
+    for ndx in range(0, total, n):
+        yield iterable[ndx : min(ndx + n, total)]
+
+
+def loc2iloc(index: Sequence[Any], vals: Sequence[Any]) -> List[int]:
+    """Convert label positions from ``index`` into zero-based integer offsets.
+
+    Args:
+        index: Original index labels defining order.
+        vals: Values whose integer positions should be resolved.
+
+    Returns:
+        Integer offsets corresponding to ``vals`` within ``index``.
+    """
+
     d = dict(zip(np.array(index), range(len(index))))
     return [d[v] for v in vals]
 
 
-# Round in a way that preserves total sum
-def match_sum_round(s):
-    s = np.array(s)
-    fs = np.floor(s)
-    diff = round(s.sum() - fs.sum())
-    residues = np.argsort(-(s % 1))[:diff]
+def match_sum_round(s: Sequence[float]) -> np.ndarray:
+    """Round the values while preserving the original sum exactly.
+
+    Args:
+        s: Sequence of floats that should sum to the same value after rounding.
+
+    Returns:
+        Integer numpy array that maintains the rounded sum of ``s``.
+    """
+
+    s_arr = np.array(s)
+    fs = np.floor(s_arr)
+    diff = round(s_arr.sum() - fs.sum())
+    residues = np.argsort(-(s_arr % 1))[:diff]
     fs[residues] = fs[residues] + 1
     return fs.astype("int")
 
 
-# Find the minimum difference between two values in the array
-def min_diff(arr):
+def min_diff(arr: Sequence[float]) -> float:
+    """Return the smallest strictly positive difference between sorted values.
+
+    Args:
+        arr: Sequence of numeric values.
+
+    Returns:
+        Minimum positive pairwise distance; ``0`` if all values are identical.
+    """
+
     b = np.diff(np.sort(arr))
     if len(b) == 0 or b.max() == 0.0:
         return 0
@@ -134,10 +214,18 @@ def min_diff(arr):
         return b[b > 0].min()
 
 
-# Turn a discretized variable into a more smooth continuous one w a gaussian kernel
+def continify(ar: np.ndarray, bounded: bool = False, delta: float = 0.0) -> np.ndarray:
+    """Add Gaussian noise to discrete values to mimic a continuous distribution.
 
+    Args:
+        ar: Numpy array to smooth.
+        bounded: Whether to reflect noise at min/max bounds.
+        delta: Shift applied when computing the bounds to avoid clipping.
 
-def continify(ar, bounded=False, delta=0.0):
+    Returns:
+        Array of the same shape with jitter applied.
+    """
+
     mi, ma = ar.min() + delta, ar.max() - delta
     noise = np.random.normal(0, 0.5 * min_diff(ar), size=len(ar))
     res = ar + noise
@@ -147,19 +235,38 @@ def continify(ar, bounded=False, delta=0.0):
     return res
 
 
-from scipy.spatial.distance import cdist
-from scipy.optimize import linear_sum_assignment
+def replace_cat_with_dummies(df: pd.DataFrame, c: str, cs: Sequence[str]) -> pd.DataFrame:
+    """Expand a categorical column into dummy variables (dropping the baseline).
 
+    Args:
+        df: Input dataframe.
+        c: Column name to expand.
+        cs: Category order; the first entry is dropped to avoid collinearity.
 
-# Replace categorical with dummy values,
-def replace_cat_with_dummies(df, c, cs):
+    Returns:
+        Dataframe with ``c`` removed and dummy columns appended.
+    """
+
     return pd.concat([df.drop(columns=[c]), pd.get_dummies(df[c])[cs[1:]].astype(float)], axis=1)
 
 
-# Match data1 with data2 on columns cols as closely as possible
+def match_data(
+    data1: pd.DataFrame,
+    data2: pd.DataFrame,
+    cols: Sequence[str] | None = None,
+) -> tuple[Sequence[int], Sequence[int]]:
+    """Pair rows between two frames by minimizing Mahalanobis distance.
 
+    Args:
+        data1: First dataframe.
+        data2: Second dataframe.
+        cols: Columns to align on. Must exist in both frames. If None, uses all columns.
 
-def match_data(data1, data2, cols=None):
+    Returns:
+        Tuple of row indices describing optimal matches for ``data1`` and ``data2``.
+    """
+    if cols is None:
+        cols = list(data1.columns)
     d1 = data1[cols].copy().dropna()
     d2 = data2[cols].copy().dropna()
 
@@ -171,7 +278,7 @@ def match_data(data1, data2, cols=None):
         if d1[c].dtype.ordered:  # replace categories with their index
             s1, s2 = set(d1[c].dtype.categories), set(d2[c].dtype.categories)
             if s1 - s2 and s2 - s1:  # one-way imbalance is fine
-                raise Exception(f"Ordered categorical columns differ in their categories on: {s1-s2} vs {s2-s1}")
+                raise Exception(f"Ordered categorical columns differ in their categories on: {s1 - s2} vs {s2 - s1}")
 
             md = d1 if len(s2 - s1) == 0 else d2
             mdict = dict(
@@ -196,54 +303,105 @@ def match_data(data1, data2, cols=None):
     dmat = cdist(d1, d2, "mahalanobis", VI=pVI)
     i1, i2 = linear_sum_assignment(dmat, maximize=False)
     ind1, ind2 = d1.index[i1], d2.index[i2]
-    return ind1, ind2
+    return list(ind1), list(ind2)
 
 
-# Allow 'constants' entries in the dict to provide replacement mappings
-# This leads to much more readable jsons as repetitions can be avoided
-def replace_constants(d, constants={}, inplace=False):
+JSONStructure = TypeVar("JSONStructure", JSONScalar, JSONObject, JSONArray)
+
+
+def replace_constants(
+    d: JSONStructure,
+    constants: Mapping[str, JSONValue] | None = None,
+    inplace: bool = False,
+) -> JSONStructure:
+    """Recursively expand ``"constants"`` references inside annotation dicts.
+
+    Args:
+        d: Arbitrary nested structure containing optional ``"constants"`` blocks.
+        constants: Pre-existing constant definitions to seed recursion with.
+        inplace: Whether to mutate the provided structure.
+
+    Returns:
+        Structure with string references swapped for their constant values.
+    """
+
     if not inplace:
         d = deepcopy(d)
-    if type(d) == dict and "constants" in d:
-        constants = constants.copy()  # Otherwise it would propagate back up through recursion - see test6 below
-        constants.update(d["constants"])
-        del d["constants"]
 
-    for k, v in d.items() if type(d) == dict else enumerate(d):
-        if type(v) == str and v in constants:
-            d[k] = constants[v]
-        elif type(v) == dict or type(v) == list:
-            d[k] = replace_constants(v, constants, inplace=True)
+    constants_map: Dict[str, JSONValue] = dict(constants or {})
+
+    # Handle dict case
+    if isinstance(d, dict):
+        if "constants" in d:
+            constants_map.update(d["constants"])  # type: ignore[arg-type]
+            del d["constants"]
+        for k, v in d.items():
+            if isinstance(v, str) and v in constants_map:
+                d[k] = constants_map[v]
+            elif isinstance(v, (dict, list)):
+                d[k] = replace_constants(v, constants_map, inplace=True)
+    # Handle list case
+    elif isinstance(d, list):
+        for i, v in enumerate(d):
+            if isinstance(v, str) and v in constants_map:
+                d[i] = constants_map[v]
+            elif isinstance(v, (dict, list)):
+                d[i] = replace_constants(v, constants_map, inplace=True)
 
     return d
 
 
-# Little function to do approximate string matching between two lists. Useful if things have multiple spellings.
-def approx_str_match(frm, to, dist_fn=None, lower=True):
-    if not isinstance(frm, list):
-        frm = list(frm)
-    if not isinstance(frm, list):
-        to = list(to)
-    if dist_fn is None:
-        dist_fn = Levenshtein.distance
+def approx_str_match(
+    frm: Iterable[str],
+    to: Iterable[str],
+    dist_fn: Callable[[str, str], float] | None = None,
+    lower: bool = True,
+) -> Dict[str, str]:
+    """Return the minimum-distance mapping between two label collections.
+
+    Args:
+        frm: Source iterable of labels.
+        to: Target iterable of labels.
+        dist_fn: Optional distance function (defaults to Levenshtein distance).
+        lower: Whether to compare strings case-insensitively.
+
+    Returns:
+        Dictionary mapping each item in ``frm`` to its best match in ``to``.
+    """
+
+    frm_list = list(frm)
+    to_list = list(to)
+    distance_fn = dist_fn or Levenshtein.distance  # type: ignore[assignment]
     if lower:
-        orig_dist_fn = dist_fn
+        original = distance_fn
+        distance_fn = lambda x, y: original(x.lower(), y.lower())
 
-        def dist_fn(x, y):
-            return orig_dist_fn(x.lower(), y.lower())
+    dmat = scipy.spatial.distance.cdist(
+        np.array(frm_list)[:, None],
+        np.array(to_list)[:, None],
+        lambda x, y: distance_fn(x[0], y[0]),
+    )
+    idx_from, idx_to = scipy.optimize.linear_sum_assignment(dmat)
+    return dict(zip([frm_list[i] for i in idx_from], [to_list[i] for i in idx_to]))
 
-    dmat = scipy.spatial.distance.cdist(np.array(frm)[:, None], np.array(to)[:, None], lambda x, y: dist_fn(x[0], y[0]))
-    t1, t2 = scipy.optimize.linear_sum_assignment(dmat)
-    return dict(zip([frm[i] for i in t1], [to[i] for i in t2]))
 
+def index_encoder(z: object) -> list[Any]:
+    """Convert pandas indices to JSON-serialisable lists.
 
-# JSON encoder needed to convert pandas indices into lists for serialization
-def index_encoder(z):
+    Args:
+        z: Arbitrary object (ideally a pandas Index).
+
+    Returns:
+        List representation of ``z`` if it is an Index.
+
+    Raises:
+        TypeError: If ``z`` cannot be serialised.
+    """
+
     if isinstance(z, pd.Index):
         return list(z)
-    else:
-        type_name = z.__class__.__name__
-        raise TypeError(f"Object of type {type_name} is not serializable")
+    type_name = z.__class__.__name__
+    raise TypeError(f"Object of type {type_name} is not serializable")
 
 
 default_color = "lightgrey"  # Something that stands out so it is easy to notice a missing color
@@ -252,12 +410,17 @@ default_color = "lightgrey"  # Something that stands out so it is easy to notice
 # Also: preserving order matters because scale order overrides sort argument
 
 
-def to_alt_scale(scale, order=None):
+def to_alt_scale(
+    scale: Mapping[str, str] | alt.Scale | None,
+    order: Sequence[str] | None = None,
+) -> alt.Scale | alt.utils.schemapi.UndefinedType:
+    """Convert a mapping into an Altair scale while preserving category order."""
+
     if scale is None:
-        scale = alt.Undefined
+        scale = alt.Undefined  # type: ignore[assignment]
     if isinstance(scale, dict):
         if order is None:
-            order = scale.keys()
+            order = list(scale.keys())
         # else: order = [ c for c in order if c in scale ]
         scale = alt.Scale(
             domain=list(order),
@@ -266,29 +429,33 @@ def to_alt_scale(scale, order=None):
     return scale
 
 
-# Turn a question with multiple variants all of which are in distinct columns into a two columns - one with response, the other with which question variant was used
-
-
 def multicol_to_vals_cats(
-    df,
-    cols=None,
-    col_prefix=None,
-    reverse_cols=[],
-    reverse_suffixes=None,
-    cat_order=None,
-    vals_name="vals",
-    cats_name="cats",
-    inplace=False,
-):
+    df: pd.DataFrame,
+    cols: Sequence[str] | None = None,
+    col_prefix: str | None = None,
+    reverse_cols: Sequence[str] | None = None,
+    reverse_suffixes: Sequence[str] | None = None,
+    cat_order: Sequence[str] | None = None,
+    vals_name: str = "vals",
+    cats_name: str = "cats",
+    inplace: bool = False,
+) -> pd.DataFrame:
+    """Pivot question variants spread across multiple columns into long form."""
+
     if not inplace:
         df = df.copy()
     if cols is None:
+        if not col_prefix:
+            raise ValueError("Either cols or col_prefix must be provided")
         cols = [c for c in df.columns if c.startswith(col_prefix)]
+    reverse_cols = list(reverse_cols or [])
 
     if not reverse_cols and reverse_suffixes is not None:
         reverse_cols = list({c for c in cols for rs in reverse_suffixes if c.endswith(rs)})
 
     if len(reverse_cols) > 0:
+        if cat_order is None:
+            raise ValueError("cat_order must be provided when reverse columns are specified")
         remap = dict(zip(cat_order, reversed(cat_order)))
         df.loc[:, reverse_cols] = df.loc[:, reverse_cols].astype("object").replace(remap)
 
@@ -306,12 +473,21 @@ greyscale_gradient = ["#444444", "#ffffff"]
 # Grad is a list of colors
 
 
-def gradient_to_discrete_color_scale(grad, num_colors):
+def gradient_to_discrete_color_scale(grad: Sequence[str], num_colors: int) -> list[str]:
+    """Sample ``num_colors`` evenly spaced colours from a gradient definition."""
+
     cmap = mpc.LinearSegmentedColormap.from_list("grad", grad)
     return [mpc.to_hex(cmap(i)) for i in np.linspace(0, 1, num_colors)]
 
 
-def gradient_subrange(grad, num_colors, range=[-1, 1], bidirectional=True):
+def gradient_subrange(
+    grad: Sequence[str],
+    num_colors: int,
+    range: Sequence[float] = (-1, 1),
+    bidirectional: bool = True,
+) -> list[str]:
+    """Extract a sub-range of a gradient while keeping perceptual spacing."""
+
     base = [-1, 1] if bidirectional else [0, 1]
     wr = (range[1] - range[0]) / (base[1] - base[0])
     nt = round(num_colors / wr)
@@ -324,8 +500,14 @@ def gradient_subrange(grad, num_colors, range=[-1, 1], bidirectional=True):
     return grad[mi:ma]
 
 
-# Create a color gradient from a given single color
-def gradient_from_color(color, l_value=0.3, n_points=7, range=[0, 1]):
+def gradient_from_color(
+    color: str,
+    l_value: float = 0.3,
+    n_points: int = 7,
+    range: Sequence[float] = (0, 1),
+) -> list[str]:
+    """Derive a bi-directional gradient anchored at a single colour."""
+
     # Get hue and saturation for color (ignoring luminosity to make scales uniform on that)
     ch, cs, _ = hsluv.hex_to_hsluv(mpc.to_hex(color))
 
@@ -342,10 +524,14 @@ def gradient_from_color(color, l_value=0.3, n_points=7, range=[0, 1]):
     return [hsluv.hsluv_to_hex((ch, min(cs, w * end_s + (1 - w) * beg_s), (w * end_l + (1 - w) * beg_l))) for w in ls]
 
 
-# Alternative version - preserves colors slightly better, but at the cost of more washing out
+def gradient_from_color_alt(
+    color: str,
+    l_value: float = 0.6,
+    n_points: int = 7,
+    range: Sequence[float] = (0, 1),
+) -> list[str]:
+    """Variant of ``gradient_from_color`` tuned for lighter palettes."""
 
-
-def gradient_from_color_alt(color, l_value=0.6, n_points=7, range=[0, 1]):
     # Get hue and saturation for color (ignoring luminosity to make scales uniform on that)
     ch, cs, cl = hsluv.hex_to_hsluv(mpc.to_hex(color))
 
@@ -364,11 +550,15 @@ def gradient_from_color_alt(color, l_value=0.6, n_points=7, range=[0, 1]):
     return [hsluv.hsluv_to_hex((ch, min(cs, w * end_s + (1 - w) * beg_s), (w * end_l + (1 - w) * beg_l))) for w in ls]
 
 
-# This function is used to choose colors and positioning for likert bars with (potentially multiple) neutral categories
-def split_to_neg_neutral_pos(cats, neutrals):
+def split_to_neg_neutral_pos(
+    cats: Sequence[str],
+    neutrals: Sequence[str],
+) -> tuple[list[str], list[str], list[str]]:
+    """Partition Likert categories into negative/neutral/positive lists."""
+
     cats, mid = list(cats), len(cats) // 2
-    neutrals = neutrals.copy()  # Make a copy to avoid modifying input down the line
-    if not neutrals:
+    neutrals_list = list(neutrals)  # Make a copy to avoid modifying input down the line
+    if not neutrals_list:
         if len(cats) % 2 == 1:
             return cats[:mid], [cats[mid]], cats[mid + 1 :]
         else:
@@ -376,55 +566,61 @@ def split_to_neg_neutral_pos(cats, neutrals):
 
     # Find a neutral that is not at start or end
     bi, ei = 0, 0
-    while cats[bi] in neutrals:
+    while cats[bi] in neutrals_list:
         bi += 1
-    while cats[-ei - 1] in neutrals:
+    while cats[-ei - 1] in neutrals_list:
         ei += 1
-    cn = [c for c in neutrals if c in cats[bi : len(cats) - ei]]
+    cn = [c for c in neutrals_list if c in cats[bi : len(cats) - ei]]
 
     # If no such neutral, split evenly between positive and negative
     if not cn:
-        posneg = [c for c in cats if c not in neutrals]
+        posneg = [c for c in cats if c not in neutrals_list]
         pnmid = len(posneg) // 2
         if len(posneg) % 2 == 1:
-            return posneg[:pnmid], neutrals + [posneg[pnmid]], posneg[pnmid + 1 :]
+            return posneg[:pnmid], neutrals_list + [posneg[pnmid]], posneg[pnmid + 1 :]
         else:
-            return posneg[:pnmid], neutrals, posneg[pnmid:]
+            return posneg[:pnmid], neutrals_list, posneg[pnmid:]
     else:  # Split around the first central neutral found
         ci = cats.index(cn[0])
-        neg = [c for c in cats[:ci] if c not in neutrals]
-        pos = [c for c in cats[ci:] if c not in neutrals]
-        return neg, neutrals, pos
+        neg = [c for c in cats[:ci] if c not in neutrals_list]
+        pos = [c for c in cats[ci:] if c not in neutrals_list]
+        return neg, neutrals_list, pos
 
 
-def is_datetime(col):
+def is_datetime(col: pd.Series) -> bool:
+    """Return True if a pandas Series behaves like a datetime column."""
+
     with warnings.catch_warnings():
         warnings.simplefilter(action="ignore", category=UserWarning)
-        return pd.api.types.is_datetime64_any_dtype(col) or (
+        result = pd.api.types.is_datetime64_any_dtype(col) or (
             col.dtype.name in ["str", "object"] and pd.to_datetime(col, errors="coerce").notna().any()
         )
+        return bool(result)
 
 
-# Convert a series of wave indices and a series of survey dates into a time series usable by our gp model
-def rel_wave_times(ws, dts, dt0=None):
+def rel_wave_times(ws: Sequence[int], dts: Sequence[Any], dt0: pd.Timestamp | None = None) -> pd.Series:
+    """Convert survey wave codes + dates into a relative time axis (months)."""
+
     df = pd.DataFrame({"wave": ws, "dt": pd.to_datetime(dts)})
     adf = df.groupby("wave")["dt"].median()
     if dt0 is None:
         dt0 = adf.max()  # use last wave date as the reference
 
+    assert dt0 is not None, "dt0 must be set"
     w_to_time = dict(((adf - dt0).dt.days / 30).items())
 
     return pd.Series(df["wave"].replace(w_to_time), name="t")
 
 
-# Generate a stable random number generator from a seed
-# SFC64 is guaranteed to be the same across all platforms and numpy versions
-def stable_rng(seed):
+def stable_rng(seed: int | str | bytes) -> np.random.Generator:
+    """Return a platform-stable RNG using numpy's SFC64 bit generator."""
+
     return np.random.Generator(np.random.SFC64(seed))
 
 
-# Generate a random draws column that is deterministic in n, n_draws and uid
-def stable_draws(n, n_draws, uid):
+def stable_draws(n: int, n_draws: int, uid: str | int) -> np.ndarray:
+    """Generate deterministic draw assignments keyed by ``uid``."""
+
     # Initialize a random generator with a hash of uid
     bgen = np.random.SFC64(np.frombuffer(sha256(str(uid).encode("utf-8")).digest(), dtype="uint32"))
     gen = np.random.Generator(bgen)
@@ -434,34 +630,50 @@ def stable_draws(n, n_draws, uid):
     return gen.permuted(draws)
 
 
-# Use the stable_draws function to deterministicall assign shuffled draws to a df
+def deterministic_draws(
+    df: pd.DataFrame,
+    n_draws: int,
+    uid: str | int,
+    n_total: int | None = None,
+) -> pd.DataFrame:
+    """Attach a deterministic ``draw`` column to ``df`` using ``stable_draws``."""
 
-
-def deterministic_draws(df, n_draws, uid, n_total=None):
     if n_total is None:
         n_total = len(df)
     df.loc[:, "draw"] = pd.Series(stable_draws(n_total, n_draws, uid), index=np.arange(n_total))
     return df
 
 
-# Clean kwargs leaving only parameters fn can digest
-def clean_kwargs(fn, kwargs):
+def clean_kwargs(fn: Callable[..., Any], kwargs: Mapping[str, Any]) -> Dict[str, Any]:
+    """Filter kwargs to only those accepted by ``fn``."""
+
     aspec = inspect.getfullargspec(fn)
-    return {k: v for k, v in kwargs.items() if k in aspec.args} if aspec.varkw is None else kwargs
+    result = {k: v for k, v in kwargs.items() if k in aspec.args} if aspec.varkw is None else kwargs
+    return dict(result)
 
 
-def call_kwsafe(fn, *args, **kwargs):
+def call_kwsafe(fn: Callable[..., T], *args: object, **kwargs: object) -> T:
+    """Call ``fn`` after trimming unsupported keyword arguments."""
+
     return fn(*args, **clean_kwargs(fn, kwargs))
 
 
-# Simple one-liner to remove certain keys from a dict
-def censor_dict(d, vs):
+def censor_dict(d: Mapping[str, Any], vs: Sequence[str]) -> Dict[str, Any]:
+    """Return a dict copy without keys in ``vs``."""
+
     return {k: v for k, v in d.items() if k not in vs}
 
 
-# Create nice labels for a cut
-# Used by the cut_nice below as well as for a lazy polars version in pp
-def cut_nice_labels(breaks, mi=-np.inf, ma=np.inf, isint=False, format="", separator=" - "):
+def cut_nice_labels(
+    breaks: MutableSequence[float],
+    mi: float = -np.inf,
+    ma: float = np.inf,
+    isint: bool = False,
+    format: str = "",
+    separator: str = " - ",
+) -> tuple[list[float], list[str]]:
+    """Build human-friendly interval labels (used by both pandas and polars)."""
+
     # Extend breaks if needed
     lopen, ropen = False, False
     if ma > breaks[-1]:
@@ -492,33 +704,42 @@ def cut_nice_labels(breaks, mi=-np.inf, ma=np.inf, isint=False, format="", separ
 # A nicer behaving wrapper around pd.cut
 
 
-def cut_nice(s, breaks, format="", separator=" - "):
-    s = np.array(s)
-    mi, ma = s.min(), s.max()
-    isint = np.issubdtype(s.dtype, np.integer) or (s % 1 == 0.0).all()
+def cut_nice(
+    s: Sequence[float],
+    breaks: MutableSequence[float],
+    format: str = "",
+    separator: str = " - ",
+) -> pd.Categorical:
+    """Wrapper around ``pd.cut`` that keeps prettier labels and inclusivity."""
+
+    s_arr = np.array(s)
+    mi, ma = s_arr.min(), s_arr.max()
+    isint = np.issubdtype(s_arr.dtype, np.integer) or (s_arr % 1 == 0.0).all()
     breaks, labels = cut_nice_labels(breaks, mi, ma, isint, format, separator)
-    return pd.cut(s, breaks, right=False, labels=labels, ordered=False)
+    return pd.cut(s_arr, breaks, right=False, labels=labels, ordered=False)
 
 
-# Utility function to rename categories in pre/post processing steps as pandas made .replace unusable with categories
-def rename_cats(df, col, cat_map):
+def rename_cats(df: pd.DataFrame, col: str, cat_map: Mapping[str, str]) -> None:
+    """Rename categorical levels regardless of dtype quirks."""
+
     if df[col].dtype.name == "category":
         df[col] = df[col].cat.rename_categories(cat_map)
     else:
         df[col] = df[col].replace(cat_map)
 
 
-# Simplify doing multiple replace's on a column
-def str_replace(s, d):
+def str_replace(s: pd.Series, d: Mapping[str, str]) -> pd.Series:
+    """Apply a sequence of string replacements in order."""
+
     s = s.astype("object")
     for k, v in d.items():
         s = s.str.replace(k, v)
     return s
 
 
-# Merge values from multiple columns, iteratively replacing values
-# lst contains either a series or a tuple of (series, whitelist)
-def merge_series(*lst):
+def merge_series(*lst: pd.Series | tuple[pd.Series, Sequence[Any]]) -> pd.Series:
+    """Merge multiple series, preferentially taking non-null values."""
+
     s = lst[0].astype("object").copy()
     for t in lst[1:]:
         if isinstance(t, tuple):
@@ -531,10 +752,19 @@ def merge_series(*lst):
     return s
 
 
-# Turn a list of selected/not seleced into a list of selected values in the same dataframe
-def aggregate_multiselect(df, prefix, out_prefix, na_vals=[], colnames_as_values=False, inplace=True):
+def aggregate_multiselect(
+    df: pd.DataFrame,
+    prefix: str,
+    out_prefix: str,
+    na_vals: Sequence[Any] | None = None,
+    colnames_as_values: bool = False,
+    inplace: bool = True,
+) -> pd.DataFrame | None:
+    """Collect multi-select responses stored as separate columns."""
+
     warn("This functionality is now built into create block.")
     cols = [c for c in df.columns if c.startswith(prefix)]
+    na_vals = list(na_vals or [])
     dfc = df[cols].astype("object").replace(dict(zip(na_vals, [None] * len(na_vals))))
 
     if dfc.isna().sum().sum() == 0:
@@ -547,17 +777,19 @@ def aggregate_multiselect(df, prefix, out_prefix, na_vals=[], colnames_as_values
         for c in dfc.columns:
             dfc.loc[~dfc[c].isna(), c] = c.removeprefix(prefix)
 
-    lst = list(map(lambda l: [v for v in l if v is not None], dfc.values.tolist()))
+    lst = list(map(lambda row: [v for v in row if v is not None], dfc.values.tolist()))
     n_res = max(map(len, lst))
-    columns = [f"{out_prefix}{i+1}" for i in range(n_res)]
+    columns = [f"{out_prefix}{i + 1}" for i in range(n_res)]
+    result = pd.DataFrame(lst, columns=columns)
     if inplace:
         df[columns] = pd.DataFrame(lst)
-    else:
-        return pd.DataFrame(lst, columns=columns)
+        return None
+    return result
 
 
-# Take a list of values and create a one-hot matrix of them. Basically the inverse of previous
-def deaggregate_multiselect(df, prefix, out_prefix=""):
+def deaggregate_multiselect(df: pd.DataFrame, prefix: str, out_prefix: str = "") -> pd.DataFrame:
+    """Expand multi-select columns into one-hot encoded booleans."""
+
     cols = [c for c in df.columns if c.startswith(prefix)]
 
     # Determine all categories
@@ -569,37 +801,52 @@ def deaggregate_multiselect(df, prefix, out_prefix=""):
     for oc in ocols:
         df[out_prefix + oc] = (df[cols] == oc).any(axis=1)
 
+    return df
 
-# Groupby if needed - this simplifies things quite often
-def gb_in(df, gb_cols):
+
+def gb_in(df: pd.DataFrame, gb_cols: Sequence[str]) -> pd.core.groupby.generic.DataFrameGroupBy | pd.DataFrame:
+    """Return ``df.groupby`` when ``gb_cols`` not empty; otherwise return ``df``."""
+
     return df.groupby(gb_cols, observed=False) if len(gb_cols) > 0 else df
 
 
 # Groupby apply if needed - similar to gb_in but for apply
 
 
-def gb_in_apply(df, gb_cols, fn, cols=None, **kwargs):
+def gb_in_apply(
+    df: pd.DataFrame,
+    gb_cols: Sequence[str],
+    fn: Callable[..., pd.DataFrame | pd.Series],
+    cols: Sequence[str] | None = None,
+    **kwargs: object,
+) -> pd.DataFrame:
+    """Apply ``fn`` either to the whole frame or grouped subsets."""
+
     if cols is None:
         cols = list(df.columns)
     if len(gb_cols) == 0:
         res = fn(df[cols], **kwargs)
-        if type(res) == pd.Series:
+        if isinstance(res, pd.Series):
             res = pd.DataFrame(res).T
     else:
         res = df.groupby(gb_cols, observed=False)[cols].apply(fn, **kwargs)
     return res
 
 
-def stk_defaultdict(dv):
+def stk_defaultdict(dv: object) -> defaultdict[str, Any]:
+    """Return a ``defaultdict`` whose fallback value can be configured."""
+
     if not isinstance(dv, dict):
         dv = {"default": dv}
     return defaultdict(lambda: dv["default"], dv)
 
 
-def cached_fn(fn):
-    cache = {}
+def cached_fn(fn: Callable[[Any], T]) -> Callable[[Any], T]:
+    """Memoise a single-argument function."""
 
-    def cf(x):
+    cache: Dict[Any, T] = {}
+
+    def cf(x: object) -> T:
         if x not in cache:
             cache[x] = fn(x)
         return cache[x]
@@ -607,7 +854,14 @@ def cached_fn(fn):
     return cf
 
 
-def scores_to_ordinal_rankings(df, cols, name, prefix=""):
+def scores_to_ordinal_rankings(
+    df: pd.DataFrame,
+    cols: Sequence[str] | str,
+    name: str,
+    prefix: str = "",
+) -> pd.DataFrame:
+    """Convert score columns into ordinal rankings with tie handling."""
+
     # If cols is a string, treat it as a prefix and find all columns that start with it
     if isinstance(cols, str):
         prefix = prefix or cols
@@ -622,8 +876,8 @@ def scores_to_ordinal_rankings(df, cols, name, prefix=""):
     names_a, ties_a = [], []
     for cns, rs in zip(np.array(cols)[sinds], rvals):
         if np.isnan(rs[-1]):
-            l = np.where(np.isnan(rs))[0][0]
-            cns, rs = cns[:l], rs[:l]
+            missing_idx = np.where(np.isnan(rs))[0][0]
+            cns, rs = cns[:missing_idx], rs[:missing_idx]
         ties = (rs - np.arange(len(rs)) - 1).astype(int)
         names_a.append([c[len(prefix) :] for c in cns])
         ties_a.append(list(ties))
@@ -632,30 +886,35 @@ def scores_to_ordinal_rankings(df, cols, name, prefix=""):
     return df
 
 
-# Basic limited length cache
 class dict_cache(OrderedDict):
-    def __init__(self, size=10, *args, **kwargs):
+    """LRU-ish OrderedDict with a configurable size limit."""
+
+    def __init__(self, size: int = 10, *args: object, **kwargs: object) -> None:
+        """Create a cache with the provided max ``size``."""
+
         self.size = size
         super().__init__(*args, **kwargs)
 
-    def __setitem__(self, key, value):
-        # If we would hit the limit, remove the oldest item
+    def __setitem__(self, key: object, value: object) -> None:
+        """Drop the oldest item when the capacity is reached."""
+
         if len(self) >= self.size:
             old = next(iter(self))
             super().__delitem__(old)
 
-        # Add the new item
         super().__setitem__(key, value)
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: object) -> object:
+        """Mark the entry as recently used before returning it."""
+
         res = super().__getitem__(key)
         super().move_to_end(key)  # Move it up to indicate recent use
         return res
 
 
-# Borrowed from https://goshippo.com/blog/measure-real-size-any-python-object
-# Get the size of an object recursively
-def get_size(obj, seen=None):
+def get_size(obj: object, seen: set[int] | None = None) -> int:
+    """Recursively approximate the memory footprint of ``obj``."""
+
     size = sys.getsizeof(obj)
     if seen is None:
         seen = set()
@@ -673,17 +932,21 @@ def get_size(obj, seen=None):
     return size
 
 
-# Vega Lite (Altair) will fail with certain column names, so we need to escape them
-# To do that, we use unicode symbols that are visually similar to the problematic characters
-def escape_vega_label(label):
+def escape_vega_label(label: str) -> str:
+    """Escape characters that confuse Vega Lite (Altair)."""
+
     return label.replace(".", "․").replace("[", "［").replace("]", "］")
 
 
-def unescape_vega_label(label):
+def unescape_vega_label(label: str) -> str:
+    """Undo ``escape_vega_label``."""
+
     return label.replace("․", ".").replace("［", "[").replace("］", "]")
 
 
-def read_json(fname):
+def read_json(fname: str) -> JSONValue:
+    """Load JSON file with extension sanity checks."""
+
     if ".json" not in fname:
         raise FileNotFoundError(f"Expecting {fname} to have a .json extension")
     with open(fname, "r") as jf:
@@ -691,7 +954,9 @@ def read_json(fname):
     return meta
 
 
-def read_yaml(model_desc_file):
+def read_yaml(model_desc_file: str) -> JSONValue:
+    """Load YAML file with extension sanity checks."""
+
     if ".yaml" not in model_desc_file:
         raise FileNotFoundError(f"Expecting {model_desc_file} to have a .yaml extension")
     with open(model_desc_file) as stream:

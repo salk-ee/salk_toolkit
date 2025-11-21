@@ -54,9 +54,13 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+  "pyright>=1.1",
   "pdoc>=14.0",
   "pre-commit>=3.0",
   "pytest>=7.0",
+  "types-polib",
+  "types-PyYAML",
+  "types-tqdm",
 ]
 
 [project.scripts]
@@ -76,21 +80,44 @@ include = ["salk_toolkit*"]
 
 [tool.ruff]
 line-length = 120
+indent-width = 4
+extend-exclude = ["**.ipynb"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+skip-magic-trailing-comma = false
 
 [tool.ruff.lint]
-select = ["E", "F", "W"]
+select = ["E", "F", "W", "D1", "ANN"]
 ignore = [
-    "F405",  # undefined names from star imports - can't auto-fix
-    "F403",  # star imports - can't auto-fix
-    "F821",  # undefined names - requires manual fixes
-    "E741",  # ambiguous variable names - requires manual review
-    "F401",  # unused imports - requires manual review
-    "F811",  # redefinition of unused names - requires manual fixes
-    "E402",  # module import order - manual cleanup
-    "E501",  # long lines - mixed content (docs, strings)
-    "E721",  # direct type comparisons - manual refactor
-    "E722",  # bare except - manual audit
+  "E731" # lambda-assignment - this has legitimate uses!
 ]
+extend-per-file-ignores = { "tests/**/*" = ["ANN"] }
 
 [tool.pdoc]
 docformat = "google"
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "basic"
+reportUnknownMemberType = false
+reportUnknownArgumentType = false
+reportUnknownVariableType = false
+reportAttributeAccessIssue = false
+reportArgumentType = false
+reportReturnType = true
+reportCallIssue = false
+reportOptionalIterable = true
+reportIndexIssue = true
+reportOptionalSubscript = true
+reportOptionalMemberAccess = true
+reportOptionalOperand = true
+reportGeneralTypeIssues = false
+exclude = [
+    "tests",
+    "**/__pycache__",
+    "**/.ipynb_checkpoints",
+    "**.ipynb",
+]

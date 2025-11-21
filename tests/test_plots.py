@@ -3,33 +3,35 @@ Comprehensive tests for all plot types in salk_toolkit.plots module.
 Tests all e2e_plot configurations defined in `salk_toolkit/plots.py`.
 """
 
-import pytest
-import altair as alt
 import json
 import sys
 from pathlib import Path
+from typing import Any, Mapping
+
+import altair as alt
+import pytest
+
+from salk_toolkit.pp import e2e_plot
+from salk_toolkit.io import read_json
 
 # Add tests directory to path for utility imports
 sys.path.insert(0, str(Path(__file__).parent))
 
-# Disable Altair max rows limit for testing
-alt.data_transformers.disable_max_rows()
-
-# Import the plotting functions
-from salk_toolkit.pp import e2e_plot
 from utils.plot_comparison import (
     compare_json_with_tolerance,
     normalize_chart_json,
     pretty_print_json_differences,
 )
-from salk_toolkit.io import read_json
+
+# Disable Altair max rows limit for testing
+alt.data_transformers.disable_max_rows()
 
 
 class TestPlots:
     """Test class for all plot types in the salk_toolkit plotting system."""
 
     @classmethod
-    def setup_class(cls):
+    def setup_class(cls) -> None:
         """Set up test data and common configurations."""
         # Get the path to the test data file
         cls.data_file = Path(__file__).parent / "data" / "master_bootstrap.parquet"
@@ -51,19 +53,19 @@ class TestPlots:
 
     def _run_plot_test(
         self,
-        test_name,
-        config,
-        data_file=None,
-        recompute=False,
-        float_tolerance=5e-4,
-        **kwargs,
-    ):
+        test_name: str,
+        config: Mapping[str, Any],
+        data_file: str | Path | None = None,
+        recompute: bool = False,
+        float_tolerance: float = 5e-4,
+        **kwargs: Any,
+    ) -> alt.TopLevelMixin:
         """Run a plot test and compare against reference JSON."""
         if data_file is None:
             data_file = str(self.data_file)
 
         # Merge common kwargs with test-specific kwargs
-        test_kwargs = {**self.common_kwargs, **kwargs}
+        test_kwargs: dict[str, Any] = {**self.common_kwargs, **kwargs}
 
         # Get reference file path
         reference_file = self.reference_dir / f"{test_name}.json"

@@ -1,1 +1,1 @@
-# Test utilities package
+"""Shared helpers for tests.utils package."""

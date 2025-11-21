@@ -16,7 +16,6 @@ replace the markdown commentary that used to sit in the notebook.
 
 __all__ = [
     "DataDescription",
-    "DataSpec",
     "MergeSpec",
     "FilterScalar",
     "FilterRange",
@@ -37,7 +36,7 @@ __all__ = [
 ]
 
 from datetime import date, datetime
-from typing import *
+from typing import Annotated, Any, Dict, List, Literal, Optional, Self, Sequence, Tuple, Union
 from pydantic import BaseModel, ConfigDict, model_validator, BeforeValidator
 from pydantic_extra_types.color import Color
 from salk_toolkit.utils import replace_constants
@@ -109,7 +108,7 @@ class ColumnMeta(PBase):
                 "topo_feature",
             ]:
                 if getattr(self, f):
-                    raise ValueError(f"Field {f} only makes sense for categorical columns {getattr(self,f)}")
+                    raise ValueError(f"Field {f} only makes sense for categorical columns {getattr(self, f)}")
         else:  # Is categorical
             if not self.ordered:
                 for f in ["likert"]:  # ['num_values'] can be situationally useful in non-ordered settings
@@ -145,23 +144,63 @@ class MaxDiffBlock(BaseModel):
     setindex: Optional[str] = None
 
 
+ColumnSpecMeta = Dict[str, Any]
+ColumnSpecInput = Union[str, list[object]]
+ParsedColumnSpec = Tuple[str, str, ColumnSpecMeta]
+
+
 # Transform the column tuple to (new name, old name, meta) format
-def cspec(tpl):
-    if type(tpl) == list:
-        cn = tpl[0]  # column name
-        sn = tpl[1] if len(tpl) > 1 and type(tpl[1]) == str else cn  # source column
-        o_cd = tpl[2] if len(tpl) == 3 else tpl[1] if len(tpl) == 2 and type(tpl[1]) == dict else {}  # metadata
+def cspec(tpl: ColumnSpecInput) -> ParsedColumnSpec:
+    """Parse column specification tuple/list into [column_name, source_name, metadata].
+
+    Args:
+        tpl: Column specification (string, [name], [name, source], or [name, source, meta]).
+
+    Returns:
+        Tuple of (column_name, source_name, metadata_dict).
+    """
+    if isinstance(tpl, list):
+        if not tpl:
+            raise TypeError("Column specification lists must contain at least the new column name.")
+
+        raw_cn = tpl[0]
+        if not isinstance(raw_cn, str):
+            raise TypeError("Column specification must start with the target column name.")
+        cn = raw_cn  # column name
+
+        raw_sn = tpl[1] if len(tpl) > 1 else cn
+        sn = raw_sn if isinstance(raw_sn, str) else cn  # source column
+
+        if len(tpl) == 3:
+            raw_meta = tpl[2]
+        elif len(tpl) == 2 and isinstance(tpl[1], dict):
+            raw_meta = tpl[1]
+        else:
+            raw_meta = {}
+
+        if not isinstance(raw_meta, dict):
+            raise TypeError("Column metadata must be provided as a dictionary when present.")
+        o_cd = raw_meta
     else:
         cn = sn = tpl
         o_cd = {}
-    return [cn, sn, o_cd]
+    return (cn, sn, o_cd)
 
 
 # Transform list to dict for better error readability
 
 
-def cs_lst_to_dict(lst):
-    return {cn: [ocn, meta] for cn, ocn, meta in map(cspec, lst)}
+def cs_lst_to_dict(lst: Sequence[ColumnSpecInput]) -> dict[str, Tuple[str, ColumnSpecMeta]]:
+    """Transform list of column specs to dictionary format.
+
+    Args:
+        lst: List of column specifications.
+
+    Returns:
+        Dictionary mapping column names to (source_name, metadata).
+    """
+    parsed_specs = [cspec(item) for item in lst]
+    return {cn: (ocn, meta) for cn, ocn, meta in parsed_specs}
 
 
 ColSpec = Annotated[Dict[str, Tuple[str, ColumnMeta]], BeforeValidator(cs_lst_to_dict)]
@@ -183,20 +222,42 @@ class ColumnBlockMeta(PBase):
 
 
 # Again, convert list to dict for easier debugging in case errors get thrown
-def cb_lst_to_dict(lst):
-    return {c["name"]: c for c in lst}
+def cb_lst_to_dict(lst: Sequence[dict[str, object]]) -> dict[str, dict[str, object]]:
+    """Transform list of block specs to dictionary format.
+
+    Args:
+        lst: List of block specification dictionaries.
+
+    Returns:
+        Dictionary mapping block names to block specifications.
+    """
+    result: dict[str, dict[str, object]] = {}
+    for block in lst:
+        name = block.get("name")
+        if not isinstance(name, str):
+            raise TypeError("Each block specification must contain a 'name' field of type str.")
+        result[name] = block
+    return result
 
 
 BlockSpec = Annotated[Dict[str, ColumnBlockMeta], BeforeValidator(cb_lst_to_dict)]
 
 
 class FileDesc(PBase):
+    """Descriptor for a single data file in a multi-file data source."""
+
     file: str
     opts: Optional[Dict] = None
     code: Optional[str] = None  # Short code identifier for the file (e.g., 'F1', 'F2' or 'wave1', 'wave2')
 
 
 class DataMeta(PBase):
+    """Complete metadata specification for annotated survey data.
+
+    Defines the structure, transformations, and metadata for survey datasets including
+    column definitions, preprocessing steps, and categorical mappings.
+    """
+
     #########################################################
     # Metadata
     #########################################################
@@ -242,11 +303,27 @@ class DataMeta(PBase):
 
     @model_validator(mode="before")
     @classmethod
-    def replace_constants(cls, meta: Any) -> Any:
+    def replace_constants(cls, meta: Any) -> Any:  # noqa: ANN401  # pydantic validators require Any
+        """Replace constant references in metadata with their actual values.
+
+        Args:
+            meta: Metadata dictionary potentially containing constant references.
+
+        Returns:
+            Metadata with all constant references replaced by their values.
+        """
         return replace_constants(meta)
 
     @model_validator(mode="after")
     def check_file(self) -> Self:
+        """Validate that either 'file' or 'files' is specified.
+
+        Returns:
+            Self for method chaining.
+
+        Raises:
+            ValueError: If neither 'file' nor 'files' is provided.
+        """
         if self.file is None and self.files is None:
             raise ValueError("One of 'file' or 'files' has to be provided")
         return self
@@ -257,34 +334,55 @@ class DataMeta(PBase):
 # --------------------------------------------------------
 
 
-def hard_validate(m):
+def hard_validate(m: dict[str, object] | DataMeta) -> None:
+    """Validate a DataMeta object, raising errors on failure.
+
+    Args:
+        m: Dictionary or DataMeta object to validate.
+
+    Raises:
+        ValueError: If validation fails.
+    """
     DataMeta.model_validate(m)
 
 
-def soft_validate(m):
+def soft_validate(m: dict[str, object], model: type[BaseModel]) -> None:
+    """Validate a dictionary against a pydantic model, printing errors instead of raising.
+
+    Args:
+        m: Dictionary to validate.
+        model: Pydantic model class to validate against.
+    """
     try:
-        DataMeta.model_validate(m)
+        model.model_validate(m)
     except ValueError as e:
         print(e)
 
 
-DataDescription = ForwardRef("DataDescription")
-DataSpec = Union[str, DataDescription]
+DataSpec = Union[str, "DataDescription"]
 
 
 class SingleMergeSpec(PBase):
+    """Specification for merging an additional dataset with the main data."""
+
     file: DataSpec  # Filename to merge with
     on: Union[str, List[str]]  # Column(s) on which to merge
     add: Optional[List[str]] = None  # Column names to add with merge. If None, add all.
     how: Literal["inner", "outer", "left", "right", "cross"] = "inner"  # Type of merge. See pd.merge
 
 
-MergeSpec = Union[SingleMergeSpec, List[SingleMergeSpec]]
-
 # Make sure MergeSpec results in a list, even if input is a singular SingleMergeSpec
 
 
-def smc_ensure_list(v):
+def smc_ensure_list(v: SingleMergeSpec | list[SingleMergeSpec]) -> list[SingleMergeSpec]:
+    """Ensure merge spec is a list (convert single spec to list).
+
+    Args:
+        v: Single merge spec or list of merge specs.
+
+    Returns:
+        List of merge specs.
+    """
     return v if isinstance(v, list) else [v]
 
 
@@ -298,7 +396,15 @@ MergeSpec = Annotated[List[SingleMergeSpec], BeforeValidator(smc_ensure_list)]
 
 
 class DataDescription(BaseModel):
-    # NB! BaseModel not PBase to allow for extensions such as PopulationDescription
+    """Data source specification with optional preprocessing and filtering.
+
+    Defines how to load data and apply transformations. Can reference a file,
+    multiple files, or inline data dictionary. Supports preprocessing, filtering,
+    merging, and postprocessing steps.
+
+    Note: Uses BaseModel (not PBase) to allow for extensions like PopulationDescription.
+    """
+
     file: Optional[str] = None  # Single file to read
     files: Optional[List[Union[str, Dict]]] = None  # Multiple files to parse
     data: Optional[Dict[str, Any]] = None  # Alternative to file, files. Dictionary of column {name: values} pairs.
@@ -382,10 +488,3 @@ class PlotDescriptor(PBase):
     # Internal / debugging
     calculated_draws: bool = True  # Whether to compute synthetic draws when metadata allows it
     data: Optional[str] = None  # Identifier for the data source (used for caching)
-
-
-def soft_validate(m, pptype):
-    try:
-        pptype.model_validate(m)
-    except ValueError as e:
-        print(e)

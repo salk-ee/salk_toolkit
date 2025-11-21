@@ -13,16 +13,16 @@ Set of tools to help in analysing and visualizing polling data
 
 **Main Functions**: 
 - **Data annotation**: a json-based data annotation language for survey data
-  - Modules 01_io (code) and 06_validation (pydantic model)
-  - Main function: read_and_process_data in 01_io
+  - Modules io (code) and validation (pydantic model)
+  - Main function: read_and_process_data in io
   - If working on that, follow [data_annotations.mdc](mdc:.cursor/rules/data_annotations.mdc).
 - **Plotting**: an efficient plotting framework on large datasets
-  - Modules 02_pp (plot pipeline) and 03_plots (Altair plot code for pipleine)
-    - Other related files: explorer.py, 04_election_models
-  - Main function: e2e_plot in 02_pp
+  - Modules pp (plot pipeline) and plots (Altair plot code for pipleine)
+    - Other related files: explorer.py, election_models
+  - Main function: e2e_plot in pp
   - If working on that, follow [plot_pipeline.mdc](mdc:.cursor/rules/plot_pipeline.mdc).
 - **Dashboards**: a streamlit-based dashboard framework integrated with plotting pipeline
-  - Module 05_dashboard (framework for easy semi-standardized dashboards with translation and login)
+  - Module dashboard (framework for easy semi-standardized dashboards with translation and login)
   - Main class: SalkDashboardBuilder
   - If working on that, follow [dashboard.mdc](mdc:.cursor/rules/dashboard.mdc).
 - **Tools**:
@@ -31,11 +31,20 @@ Set of tools to help in analysing and visualizing polling data
 
 ## Conventions
 
+- **checking the code**
+  - After each substantive change, make sure to run:
+    - `ruff` for linting
+    - `pyright` for type checking
+    - `pytest` for tests
+  - pre-commit hooks contain the exact commands to run
+
 - **tests**: all new functionalities should be covered by tests!
   - For writing tests, follow rules described in [testing.mdc](mdc:.cursor/rules/testing.mdc).
+  - For how to run them, look at `pyproject.toml`
 
 - **utility functions**: generic, small and multi-purpose utility functions go to utils module
   - Always check that module for a function before writing your own
 
 - **location**: Everything lives directly in `salk_toolkit/*.py` (plus the Streamlit helpers in `salk_toolkit/tools/`).
-- **docs**: Regenerate API docs with `make docs` (runs `pdoc --output-directory docs_html --force salk_toolkit`). The HTML output is ignored in git and meant as a local/CI artefact.
+
+- **docs**: Regenerate API docs with `make docs`. The HTML output is ignored in git and meant as a local/CI artefact.
