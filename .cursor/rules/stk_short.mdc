@@ -1,8 +1,10 @@
 ---
-description: How to write and implement specifications
-globs: **
+description: salk_toolkit repo start
+globs: 
 alwaysApply: true
 ---
 
 - `salk_toolkit` is abbreviated as `stk`
-- If more info required, see [salk_toolkit.mdc](mdc:.cursor/rules/salk_toolkit.mdc).
+- **ALWAYS** follow [salk_toolkit.mdc](mdc:.cursor/rules/salk_toolkit.mdc) when:
+  - Reading or examining files in this repository
+  - Making changes to code in this repository

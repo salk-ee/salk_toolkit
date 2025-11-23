@@ -156,3 +156,5 @@ checklink/cookies.txt
 
 samples/
 data/
+!tests/reference_plots/*.json
+tests/reference_plots/diff_html

@@ -1,0 +1,150 @@
+{
+  "area_smooth": [
+    -999960,
+    [
+      "ordered"
+    ]
+  ],
+  "barbell": [
+    0,
+    []
+  ],
+  "boxplots": [
+    50,
+    []
+  ],
+  "boxplots-raw": [
+    -1000000,
+    [
+      "raw_data"
+    ]
+  ],
+  "coalition_applet": [
+    -2001000,
+    [
+      "mandates",
+      "electoral_system"
+    ]
+  ],
+  "columns": [
+    0,
+    []
+  ],
+  "corr_matrix": [
+    -1000000,
+    [
+      "raw_data"
+    ]
+  ],
+  "density": [
+    -1000000,
+    [
+      "continuous_only"
+    ]
+  ],
+  "density-raw": [
+    -1000000,
+    [
+      "raw_data"
+    ]
+  ],
+  "diff_columns": [
+    0,
+    []
+  ],
+  "facet_dist": [
+    -1000000,
+    [
+      "raw_data"
+    ]
+  ],
+  "geobest": [
+    -1000000,
+    [
+      "topo_feature"
+    ]
+  ],
+  "geoplot": [
+    500,
+    []
+  ],
+  "likert_bars": [
+    -999940,
+    [
+      "likert"
+    ]
+  ],
+  "likert_rad_pol": [
+    -1000000,
+    [
+      "likert"
+    ]
+  ],
+  "line": [
+    -999980,
+    [
+      "ordered"
+    ]
+  ],
+  "line_hdi": [
+    -999990,
+    [
+      "ordered"
+    ]
+  ],
+  "lines": [
+    -999990,
+    [
+      "ordered"
+    ]
+  ],
+  "lines_hdi": [
+    -1000000,
+    [
+      "ordered"
+    ]
+  ],
+  "mandate_plot": [
+    -2000500,
+    [
+      "mandates",
+      "electoral_system"
+    ]
+  ],
+  "marimekko": [
+    100,
+    []
+  ],
+  "massplot": [
+    0,
+    []
+  ],
+  "matrix": [
+    55,
+    []
+  ],
+  "maxdiff": [
+    0,
+    []
+  ],
+  "ordered_population": [
+    -1000000,
+    [
+      "raw_data"
+    ]
+  ],
+  "stacked_columns": [
+    40,
+    []
+  ],
+  "violin": [
+    0,
+    []
+  ],
+  "violin-raw": [
+    -1000000,
+    [
+      "raw_data"
+    ]
+  ]
+}

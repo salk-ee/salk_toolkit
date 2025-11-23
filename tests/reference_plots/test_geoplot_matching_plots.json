@@ -1,0 +1,144 @@
+{
+  "area_smooth": [
+    -1000000,
+    [
+      "n_facets"
+    ]
+  ],
+  "barbell": [
+    -1000000,
+    [
+      "n_facets"
+    ]
+  ],
+  "boxplots": [
+    60,
+    []
+  ],
+  "boxplots-raw": [
+    10,
+    []
+  ],
+  "coalition_applet": [
+    -1000000,
+    [
+      "n_facets"
+    ]
+  ],
+  "columns": [
+    10,
+    []
+  ],
+  "corr_matrix": [
+    0,
+    []
+  ],
+  "density": [
+    0,
+    []
+  ],
+  "density-raw": [
+    0,
+    []
+  ],
+  "diff_columns": [
+    -1000000,
+    [
+      "n_facets"
+    ]
+  ],
+  "facet_dist": [
+    0,
+    []
+  ],
+  "geobest": [
+    -1000000,
+    [
+      "n_facets"
+    ]
+  ],
+  "geoplot": [
+    500,
+    []
+  ],
+  "likert_bars": [
+    -999930,
+    [
+      "likert"
+    ]
+  ],
+  "likert_rad_pol": [
+    -999990,
+    [
+      "likert"
+    ]
+  ],
+  "line": [
+    -999990,
+    [
+      "ordered"
+    ]
+  ],
+  "line_hdi": [
+    -1000000,
+    [
+      "ordered"
+    ]
+  ],
+  "lines": [
+    -1000000,
+    [
+      "n_facets"
+    ]
+  ],
+  "lines_hdi": [
+    -1000000,
+    [
+      "n_facets"
+    ]
+  ],
+  "mandate_plot": [
+    -1000000,
+    [
+      "n_facets"
+    ]
+  ],
+  "marimekko": [
+    -1000000,
+    [
+      "n_facets"
+    ]
+  ],
+  "massplot": [
+    10,
+    []
+  ],
+  "matrix": [
+    -1000000,
+    [
+      "n_facets"
+    ]
+  ],
+  "maxdiff": [
+    10,
+    []
+  ],
+  "ordered_population": [
+    0,
+    []
+  ],
+  "stacked_columns": [
+    -1000000,
+    [
+      "n_facets"
+    ]
+  ],
+  "violin": [
+    10,
+    []
+  ],
+  "violin-raw": [
+    10,
+    []
+  ]
+}

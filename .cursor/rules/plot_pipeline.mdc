@@ -1,6 +1,5 @@
 ---
 globs: salk_toolkit/pp.py, salk_toolkit/plots.py, salk_toolkit/validation.py, tests/test_plots.py, salk_toolkit/tools/explorer.py, tests/test_pp.py
-alwaysApply: false
 ---
 # Plot Pipeline
 

@@ -34,14 +34,14 @@ def streamlit_fn_factory(relpath: str, curpath: str) -> Callable[[], None]:
         A callable that executes the Streamlit app when called.
     """
 
-    def run_streamlit_fn_fn() -> None:
+    def _run_streamlit_fn_fn() -> None:
         import subprocess
 
         filename = os.path.join(curpath, relpath)
 
         subprocess.run(["streamlit", "run", filename] + sys.argv[1:])
 
-    return run_streamlit_fn_fn
+    return _run_streamlit_fn_fn
 
 
 # | eval: false
@@ -49,10 +49,11 @@ def streamlit_fn_factory(relpath: str, curpath: str) -> Callable[[], None]:
 run_explorer = streamlit_fn_factory("./tools/explorer.py", os.path.dirname(__file__))
 
 
-# Translate a pot file using generic tfunc
-# Could be useful if you don't want to use deepl
 def translate_pot(template: str, dest: str, t_func: Callable[[str], str], sources: list[str] | None = None) -> None:
-    """Translate a .pot file using a custom translation function.
+    """Translate a pot file using generic tfunc.
+
+    Could be useful if you don't want to use deepl.
+    Translate a .pot file using a custom translation function.
 
     Args:
         template: Path to the source .pot template file.
@@ -149,15 +150,8 @@ def translate_dashboard_fn(
 
     translator = deepl.Translator(deepl_key)
 
-    def t_func(txt: str) -> str:
-        """Translate text using DeepL API.
-
-        Args:
-            txt: Source text to translate.
-
-        Returns:
-            Translated text.
-        """
+    def _t_func(txt: str) -> str:
+        """Translate text using DeepL API."""
         result = translator.translate_text(txt, source_lang=source_lang, target_lang=target_lang, context=context)
         # translate_text returns TextResult for single input, list[TextResult] for batch
         if isinstance(result, list):
@@ -185,7 +179,7 @@ def translate_dashboard_fn(
         slist = [os.path.basename(s) for s in sources]
         print(f"Using {len(sources)} extra sources: {', '.join(slist)}")
 
-    translate_pot(pot_loc, po_loc, t_func, sources)
+    translate_pot(pot_loc, po_loc, _t_func, sources)
 
 
 def translate_dashboard() -> None:

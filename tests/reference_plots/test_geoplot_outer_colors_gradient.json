@@ -1,0 +1,1964 @@
+[
+  [
+    {
+      "data": {
+        "format": {
+          "feature": "data",
+          "type": "topojson"
+        },
+        "url": "https://dl.dropboxusercontent.com/scl/fi/ciunedliwyvlafpm5nlos/estonia.topojson?rlkey=0g56uexaos1v59yghmikv09xi&dl=0"
+      },
+      "datasets": {
+        "data-normalized": [
+          {
+            "party_preference": "Keskerakond",
+            "percent": 0.29778989667049366,
+            "unit": "Haabersti"
+          },
+          {
+            "party_preference": "Keskerakond",
+            "percent": 0.09277128272682364,
+            "unit": "Harjumaa"
+          },
+          {
+            "party_preference": "Keskerakond",
+            "percent": 0.28110289172831204,
+            "unit": "Hiiumaa"
+          },
+          {
+            "party_preference": "Keskerakond",
+            "percent": 0.25602430923609637,
+            "unit": "Ida-Virumaa"
+          },
+          {
+            "party_preference": "Keskerakond",
+            "percent": 0.06493721083939194,
+            "unit": "J\u00e4rvamaa"
+          },
+          {
+            "party_preference": "Keskerakond",
+            "percent": 0.11864406779661017,
+            "unit": "J\u00f5gevamaa"
+          },
+          {
+            "party_preference": "Keskerakond",
+            "percent": 0.122038098188013,
+            "unit": "Kesklinn"
+          },
+          {
+            "party_preference": "Keskerakond",
+            "percent": 0.20758745278370833,
+            "unit": "Kristiine"
+          },
+          {
+            "party_preference": "Keskerakond",
+            "percent": 0.33707645100215444,
+            "unit": "Lasnam\u00e4e"
+          },
+          {
+            "party_preference": "Keskerakond",
+            "percent": 0.07231648670719536,
+            "unit": "L\u00e4\u00e4ne-Virumaa"
+          },
+          {
+            "party_preference": "Keskerakond",
+            "percent": 0.11108025548458761,
+            "unit": "L\u00e4\u00e4nemaa"
+          },
+          {
+            "party_preference": "Keskerakond",
+            "percent": 0.19131896381253707,
+            "unit": "Mustam\u00e4e"
+          },
+          {
+            "party_preference": "Keskerakond",
+            "percent": 0.15552016985138004,
+            "unit": "Pirita"
+          },
+          {
+            "party_preference": "Keskerakond",
+            "percent": 0.07469002895537902,
+            "unit": "P\u00e4rnumaa"
+          },
+          {
+            "party_preference": "Keskerakond",
+            "percent": 0.17650479790636814,
+            "unit": "P\u00f5hja-Tallinn"
+          },
+          {
+            "party_preference": "Keskerakond",
+            "percent": 0.08304735758407687,
+            "unit": "P\u00f5lvamaa"
+          },
+          {
+            "party_preference": "Keskerakond",
+            "percent": 0.12894288150042627,
+            "unit": "Raplamaa"
+          },
+          {
+            "party_preference": "Keskerakond",
+            "percent": 0.05975146960339311,
+            "unit": "Tartu linn"
+          },
+          {
+            "party_preference": "Keskerakond",
+            "percent": 0.019596258000984735,
+            "unit": "Tartumaa"
+          },
+          {
+            "party_preference": "Keskerakond",
+            "percent": 0.136341929321872,
+            "unit": "Valgamaa"
+          },
+          {
+            "party_preference": "Keskerakond",
+            "percent": 0.08948194662480377,
+            "unit": "Viljandimaa"
+          },
+          {
+            "party_preference": "Keskerakond",
+            "percent": 0.030891027631170444,
+            "unit": "V\u00f5rumaa"
+          }
+        ]
+      },
+      "encoding": {
+        "color": {
+          "field": "percent",
+          "legend": {
+            "format": ".1%",
+            "gradientThickness": 6,
+            "orient": "top-left",
+            "title": null,
+            "values": [
+              0.019596258000984735,
+              0.33707645100215444
+            ]
+          },
+          "scale": {
+            "domain": [
+              0.019596258000984735,
+              0.33707645100215444
+            ],
+            "range": [
+              "#eeeeee",
+              "#96dec1",
+              "#00ca99",
+              "#00aa80",
+              "#008b68",
+              "#006e51",
+              "#00513b"
+            ]
+          },
+          "type": "quantitative"
+        },
+        "tooltip": [
+          {
+            "field": "percent",
+            "format": ".1%",
+            "type": "quantitative"
+          },
+          {
+            "field": "unit",
+            "type": "nominal"
+          }
+        ]
+      },
+      "height": 150,
+      "mark": {
+        "stroke": "white",
+        "strokeWidth": 0.1,
+        "type": "geoshape"
+      },
+      "projection": {
+        "type": "mercator"
+      },
+      "title": "Keskerakond",
+      "transform": [
+        {
+          "from": {
+            "data": {
+              "name": "data-normalized"
+            },
+            "fields": [
+              "unit",
+              "party_preference",
+              "percent"
+            ],
+            "key": "unit"
+          },
+          "lookup": "properties.MNIMI"
+        }
+      ],
+      "width": 200
+    },
+    {
+      "data": {
+        "format": {
+          "feature": "data",
+          "type": "topojson"
+        },
+        "url": "https://dl.dropboxusercontent.com/scl/fi/ciunedliwyvlafpm5nlos/estonia.topojson?rlkey=0g56uexaos1v59yghmikv09xi&dl=0"
+      },
+      "datasets": {
+        "data-normalized": [
+          {
+            "party_preference": "EKRE",
+            "percent": 0.02741102181400689,
+            "unit": "Haabersti"
+          },
+          {
+            "party_preference": "EKRE",
+            "percent": 0.11029145397661781,
+            "unit": "Harjumaa"
+          },
+          {
+            "party_preference": "EKRE",
+            "percent": 0.12430216945798883,
+            "unit": "Ida-Virumaa"
+          },
+          {
+            "party_preference": "EKRE",
+            "percent": 0.1622604097818903,
+            "unit": "J\u00e4rvamaa"
+          },
+          {
+            "party_preference": "EKRE",
+            "percent": 0.1694915254237288,
+            "unit": "J\u00f5gevamaa"
+          },
+          {
+            "party_preference": "EKRE",
+            "percent": 0.12172835682205359,
+            "unit": "Kesklinn"
+          },
+          {
+            "party_preference": "EKRE",
+            "percent": 0.09738873378223026,
+            "unit": "Kristiine"
+          },
+          {
+            "party_preference": "EKRE",
+            "percent": 0.03747470131226741,
+            "unit": "Lasnam\u00e4e"
+          },
+          {
+            "party_preference": "EKRE",
+            "percent": 0.17856818800471827,
+            "unit": "L\u00e4\u00e4ne-Virumaa"
+          },
+          {
+            "party_preference": "EKRE",
+            "percent": 0.22938072757567343,
+            "unit": "L\u00e4\u00e4nemaa"
+          },
+          {
+            "party_preference": "EKRE",
+            "percent": 0.1563179750840419,
+            "unit": "Mustam\u00e4e"
+          },
+          {
+            "party_preference": "EKRE",
+            "percent": 0.05342657342657343,
+            "unit": "N\u00f5mme"
+          },
+          {
+            "party_preference": "EKRE",
+            "percent": 0.1624203821656051,
+            "unit": "Pirita"
+          },
+          {
+            "party_preference": "EKRE",
+            "percent": 0.22154577177221768,
+            "unit": "P\u00e4rnumaa"
+          },
+          {
+            "party_preference": "EKRE",
+            "percent": 0.030968304739749927,
+            "unit": "P\u00f5hja-Tallinn"
+          },
+          {
+            "party_preference": "EKRE",
+            "percent": 0.2905513612445665,
+            "unit": "P\u00f5lvamaa"
+          },
+          {
+            "party_preference": "EKRE",
+            "percent": 0.1568627450980392,
+            "unit": "Raplamaa"
+          },
+          {
+            "party_preference": "EKRE",
+            "percent": 0.1183169882948434,
+            "unit": "Saaremaa"
+          },
+          {
+            "party_preference": "EKRE",
+            "percent": 0.17821266463278518,
+            "unit": "Tartu linn"
+          },
+          {
+            "party_preference": "EKRE",
+            "percent": 0.15115706548498276,
+            "unit": "Tartumaa"
+          },
+          {
+            "party_preference": "EKRE",
+            "percent": 0.14851957975167143,
+            "unit": "Valgamaa"
+          },
+          {
+            "party_preference": "EKRE",
+            "percent": 0.20365348936777508,
+            "unit": "Viljandimaa"
+          },
+          {
+            "party_preference": "EKRE",
+            "percent": 0.29074821484011176,
+            "unit": "V\u00f5rumaa"
+          }
+        ]
+      },
+      "encoding": {
+        "color": {
+          "field": "percent",
+          "legend": {
+            "format": ".1%",
+            "gradientThickness": 6,
+            "orient": "top-left",
+            "title": null,
+            "values": [
+              0.02741102181400689,
+              0.29074821484011176
+            ]
+          },
+          "scale": {
+            "domain": [
+              0.02741102181400689,
+              0.29074821484011176
+            ],
+            "range": [
+              "#eeeeee",
+              "#e8c9c0",
+              "#fb9a6d",
+              "#e77727",
+              "#be611e",
+              "#974b15",
+              "#71370d"
+            ]
+          },
+          "type": "quantitative"
+        },
+        "tooltip": [
+          {
+            "field": "percent",
+            "format": ".1%",
+            "type": "quantitative"
+          },
+          {
+            "field": "unit",
+            "type": "nominal"
+          }
+        ]
+      },
+      "height": 150,
+      "mark": {
+        "stroke": "white",
+        "strokeWidth": 0.1,
+        "type": "geoshape"
+      },
+      "projection": {
+        "type": "mercator"
+      },
+      "title": "EKRE",
+      "transform": [
+        {
+          "from": {
+            "data": {
+              "name": "data-normalized"
+            },
+            "fields": [
+              "unit",
+              "party_preference",
+              "percent"
+            ],
+            "key": "unit"
+          },
+          "lookup": "properties.MNIMI"
+        }
+      ],
+      "width": 200
+    }
+  ],
+  [
+    {
+      "data": {
+        "format": {
+          "feature": "data",
+          "type": "topojson"
+        },
+        "url": "https://dl.dropboxusercontent.com/scl/fi/ciunedliwyvlafpm5nlos/estonia.topojson?rlkey=0g56uexaos1v59yghmikv09xi&dl=0"
+      },
+      "datasets": {
+        "data-normalized": [
+          {
+            "party_preference": "Reformierakond",
+            "percent": 0.16661882893226176,
+            "unit": "Haabersti"
+          },
+          {
+            "party_preference": "Reformierakond",
+            "percent": 0.3002469948954388,
+            "unit": "Harjumaa"
+          },
+          {
+            "party_preference": "Reformierakond",
+            "percent": 0.2871553463349025,
+            "unit": "Hiiumaa"
+          },
+          {
+            "party_preference": "Reformierakond",
+            "percent": 0.06882905801710126,
+            "unit": "Ida-Virumaa"
+          },
+          {
+            "party_preference": "Reformierakond",
+            "percent": 0.1599471249173827,
+            "unit": "J\u00e4rvamaa"
+          },
+          {
+            "party_preference": "Reformierakond",
+            "percent": 0.3884636413340623,
+            "unit": "J\u00f5gevamaa"
+          },
+          {
+            "party_preference": "Reformierakond",
+            "percent": 0.21945175778225182,
+            "unit": "Kesklinn"
+          },
+          {
+            "party_preference": "Reformierakond",
+            "percent": 0.23813434061422237,
+            "unit": "Kristiine"
+          },
+          {
+            "party_preference": "Reformierakond",
+            "percent": 0.0882679375856891,
+            "unit": "Lasnam\u00e4e"
+          },
+          {
+            "party_preference": "Reformierakond",
+            "percent": 0.16069322203066871,
+            "unit": "L\u00e4\u00e4ne-Virumaa"
+          },
+          {
+            "party_preference": "Reformierakond",
+            "percent": 0.2188281033046376,
+            "unit": "L\u00e4\u00e4nemaa"
+          },
+          {
+            "party_preference": "Reformierakond",
+            "percent": 0.2154439390943247,
+            "unit": "Mustam\u00e4e"
+          },
+          {
+            "party_preference": "Reformierakond",
+            "percent": 0.4071328671328671,
+            "unit": "N\u00f5mme"
+          },
+          {
+            "party_preference": "Reformierakond",
+            "percent": 0.4278131634819533,
+            "unit": "Pirita"
+          },
+          {
+            "party_preference": "Reformierakond",
+            "percent": 0.2787140841933328,
+            "unit": "P\u00e4rnumaa"
+          },
+          {
+            "party_preference": "Reformierakond",
+            "percent": 0.20093050305321314,
+            "unit": "P\u00f5hja-Tallinn"
+          },
+          {
+            "party_preference": "Reformierakond",
+            "percent": 0.3669640814458934,
+            "unit": "P\u00f5lvamaa"
+          },
+          {
+            "party_preference": "Reformierakond",
+            "percent": 0.2050298380221654,
+            "unit": "Raplamaa"
+          },
+          {
+            "party_preference": "Reformierakond",
+            "percent": 0.3141410945903195,
+            "unit": "Saaremaa"
+          },
+          {
+            "party_preference": "Reformierakond",
+            "percent": 0.2589478383808319,
+            "unit": "Tartu linn"
+          },
+          {
+            "party_preference": "Reformierakond",
+            "percent": 0.2431314623338257,
+            "unit": "Tartumaa"
+          },
+          {
+            "party_preference": "Reformierakond",
+            "percent": 0.23185291308500477,
+            "unit": "Valgamaa"
+          },
+          {
+            "party_preference": "Reformierakond",
+            "percent": 0.1414299985728557,
+            "unit": "Viljandimaa"
+          },
+          {
+            "party_preference": "Reformierakond",
+            "percent": 0.18193107730518474,
+            "unit": "V\u00f5rumaa"
+          }
+        ]
+      },
+      "encoding": {
+        "color": {
+          "field": "percent",
+          "legend": {
+            "format": ".1%",
+            "gradientThickness": 6,
+            "orient": "top-left",
+            "title": null,
+            "values": [
+              0.06882905801710126,
+              0.4278131634819533
+            ]
+          },
+          "scale": {
+            "domain": [
+              0.06882905801710126,
+              0.4278131634819533
+            ],
+            "range": [
+              "#eeeeee",
+              "#dfd092",
+              "#cab300",
+              "#aa9600",
+              "#8b7b00",
+              "#6d6000",
+              "#514700"
+            ]
+          },
+          "type": "quantitative"
+        },
+        "tooltip": [
+          {
+            "field": "percent",
+            "format": ".1%",
+            "type": "quantitative"
+          },
+          {
+            "field": "unit",
+            "type": "nominal"
+          }
+        ]
+      },
+      "height": 150,
+      "mark": {
+        "stroke": "white",
+        "strokeWidth": 0.1,
+        "type": "geoshape"
+      },
+      "projection": {
+        "type": "mercator"
+      },
+      "title": "Reformierakond",
+      "transform": [
+        {
+          "from": {
+            "data": {
+              "name": "data-normalized"
+            },
+            "fields": [
+              "unit",
+              "party_preference",
+              "percent"
+            ],
+            "key": "unit"
+          },
+          "lookup": "properties.MNIMI"
+        }
+      ],
+      "width": 200
+    },
+    {
+      "data": {
+        "format": {
+          "feature": "data",
+          "type": "topojson"
+        },
+        "url": "https://dl.dropboxusercontent.com/scl/fi/ciunedliwyvlafpm5nlos/estonia.topojson?rlkey=0g56uexaos1v59yghmikv09xi&dl=0"
+      },
+      "datasets": {
+        "data-normalized": [
+          {
+            "party_preference": "Isamaa",
+            "percent": 0.08696900114810563,
+            "unit": "Haabersti"
+          },
+          {
+            "party_preference": "Isamaa",
+            "percent": 0.10459410505516219,
+            "unit": "Harjumaa"
+          },
+          {
+            "party_preference": "Isamaa",
+            "percent": 0.02685322592042965,
+            "unit": "Ida-Virumaa"
+          },
+          {
+            "party_preference": "Isamaa",
+            "percent": 0.06345009914077991,
+            "unit": "J\u00e4rvamaa"
+          },
+          {
+            "party_preference": "Isamaa",
+            "percent": 0.02477930927675391,
+            "unit": "Kesklinn"
+          },
+          {
+            "party_preference": "Isamaa",
+            "percent": 0.10067334537690918,
+            "unit": "Kristiine"
+          },
+          {
+            "party_preference": "Isamaa",
+            "percent": 0.038976300842201474,
+            "unit": "Lasnam\u00e4e"
+          },
+          {
+            "party_preference": "Isamaa",
+            "percent": 0.09681517103711097,
+            "unit": "L\u00e4\u00e4ne-Virumaa"
+          },
+          {
+            "party_preference": "Isamaa",
+            "percent": 0.039648012655724735,
+            "unit": "Mustam\u00e4e"
+          },
+          {
+            "party_preference": "Isamaa",
+            "percent": 0.13426573426573427,
+            "unit": "N\u00f5mme"
+          },
+          {
+            "party_preference": "Isamaa",
+            "percent": 0.09102972399150742,
+            "unit": "Pirita"
+          },
+          {
+            "party_preference": "Isamaa",
+            "percent": 0.07290815947731828,
+            "unit": "P\u00e4rnumaa"
+          },
+          {
+            "party_preference": "Isamaa",
+            "percent": 0.06469904041872637,
+            "unit": "P\u00f5hja-Tallinn"
+          },
+          {
+            "party_preference": "Isamaa",
+            "percent": 0.08034953111679455,
+            "unit": "Raplamaa"
+          },
+          {
+            "party_preference": "Isamaa",
+            "percent": 0.014807649378674008,
+            "unit": "Tartu linn"
+          },
+          {
+            "party_preference": "Isamaa",
+            "percent": 0.057705563761693744,
+            "unit": "Tartumaa"
+          },
+          {
+            "party_preference": "Isamaa",
+            "percent": 0.09527220630372493,
+            "unit": "Valgamaa"
+          },
+          {
+            "party_preference": "Isamaa",
+            "percent": 0.13800485229056658,
+            "unit": "Viljandimaa"
+          },
+          {
+            "party_preference": "Isamaa",
+            "percent": 0.06286867432474387,
+            "unit": "V\u00f5rumaa"
+          }
+        ]
+      },
+      "encoding": {
+        "color": {
+          "field": "percent",
+          "legend": {
+            "format": ".1%",
+            "gradientThickness": 6,
+            "orient": "top-left",
+            "title": null,
+            "values": [
+              0.014807649378674008,
+              0.13800485229056658
+            ]
+          },
+          "scale": {
+            "domain": [
+              0.014807649378674008,
+              0.13800485229056658
+            ],
+            "range": [
+              "#eeeeee",
+              "#bed2e8",
+              "#56bbff",
+              "#009fe5",
+              "#0082bc",
+              "#006695",
+              "#004b6f"
+            ]
+          },
+          "type": "quantitative"
+        },
+        "tooltip": [
+          {
+            "field": "percent",
+            "format": ".1%",
+            "type": "quantitative"
+          },
+          {
+            "field": "unit",
+            "type": "nominal"
+          }
+        ]
+      },
+      "height": 150,
+      "mark": {
+        "stroke": "white",
+        "strokeWidth": 0.1,
+        "type": "geoshape"
+      },
+      "projection": {
+        "type": "mercator"
+      },
+      "title": "Isamaa",
+      "transform": [
+        {
+          "from": {
+            "data": {
+              "name": "data-normalized"
+            },
+            "fields": [
+              "unit",
+              "party_preference",
+              "percent"
+            ],
+            "key": "unit"
+          },
+          "lookup": "properties.MNIMI"
+        }
+      ],
+      "width": 200
+    }
+  ],
+  [
+    {
+      "data": {
+        "format": {
+          "feature": "data",
+          "type": "topojson"
+        },
+        "url": "https://dl.dropboxusercontent.com/scl/fi/ciunedliwyvlafpm5nlos/estonia.topojson?rlkey=0g56uexaos1v59yghmikv09xi&dl=0"
+      },
+      "datasets": {
+        "data-normalized": [
+          {
+            "party_preference": "SDE",
+            "percent": 0.028559127439724455,
+            "unit": "Haabersti"
+          },
+          {
+            "party_preference": "SDE",
+            "percent": 0.08891816235797793,
+            "unit": "Harjumaa"
+          },
+          {
+            "party_preference": "SDE",
+            "percent": 0.01279061550420465,
+            "unit": "Ida-Virumaa"
+          },
+          {
+            "party_preference": "SDE",
+            "percent": 0.09781890284203569,
+            "unit": "J\u00e4rvamaa"
+          },
+          {
+            "party_preference": "SDE",
+            "percent": 0.057955166757791145,
+            "unit": "J\u00f5gevamaa"
+          },
+          {
+            "party_preference": "SDE",
+            "percent": 0.1296267616540189,
+            "unit": "Kesklinn"
+          },
+          {
+            "party_preference": "SDE",
+            "percent": 0.09623911972409263,
+            "unit": "Kristiine"
+          },
+          {
+            "party_preference": "SDE",
+            "percent": 0.03747470131226741,
+            "unit": "Lasnam\u00e4e"
+          },
+          {
+            "party_preference": "SDE",
+            "percent": 0.09146175483168496,
+            "unit": "L\u00e4\u00e4ne-Virumaa"
+          },
+          {
+            "party_preference": "SDE",
+            "percent": 0.05776173285198556,
+            "unit": "L\u00e4\u00e4nemaa"
+          },
+          {
+            "party_preference": "SDE",
+            "percent": 0.15760332212774372,
+            "unit": "Mustam\u00e4e"
+          },
+          {
+            "party_preference": "SDE",
+            "percent": 0.07846153846153846,
+            "unit": "N\u00f5mme"
+          },
+          {
+            "party_preference": "SDE",
+            "percent": 0.04224515554235652,
+            "unit": "P\u00e4rnumaa"
+          },
+          {
+            "party_preference": "SDE",
+            "percent": 0.14786275079965105,
+            "unit": "P\u00f5hja-Tallinn"
+          },
+          {
+            "party_preference": "SDE",
+            "percent": 0.04095172729352551,
+            "unit": "P\u00f5lvamaa"
+          },
+          {
+            "party_preference": "SDE",
+            "percent": 0.043265132139812444,
+            "unit": "Raplamaa"
+          },
+          {
+            "party_preference": "SDE",
+            "percent": 0.06010756089844986,
+            "unit": "Saaremaa"
+          },
+          {
+            "party_preference": "SDE",
+            "percent": 0.10581144430389165,
+            "unit": "Tartu linn"
+          },
+          {
+            "party_preference": "SDE",
+            "percent": 0.07907434761201379,
+            "unit": "Tartumaa"
+          },
+          {
+            "party_preference": "SDE",
+            "percent": 0.15448901623686723,
+            "unit": "Valgamaa"
+          },
+          {
+            "party_preference": "SDE",
+            "percent": 0.16940202654488368,
+            "unit": "Viljandimaa"
+          },
+          {
+            "party_preference": "SDE",
+            "percent": 0.1544551381558522,
+            "unit": "V\u00f5rumaa"
+          }
+        ]
+      },
+      "encoding": {
+        "color": {
+          "field": "percent",
+          "legend": {
+            "format": ".1%",
+            "gradientThickness": 6,
+            "orient": "top-left",
+            "title": null,
+            "values": [
+              0.01279061550420465,
+              0.16940202654488368
+            ]
+          },
+          "scale": {
+            "domain": [
+              0.01279061550420465,
+              0.16940202654488368
+            ],
+            "range": [
+              "#eeeeee",
+              "#e9c8c8",
+              "#ff9494",
+              "#ff605f",
+              "#f50700",
+              "#c30400",
+              "#930200"
+            ]
+          },
+          "type": "quantitative"
+        },
+        "tooltip": [
+          {
+            "field": "percent",
+            "format": ".1%",
+            "type": "quantitative"
+          },
+          {
+            "field": "unit",
+            "type": "nominal"
+          }
+        ]
+      },
+      "height": 150,
+      "mark": {
+        "stroke": "white",
+        "strokeWidth": 0.1,
+        "type": "geoshape"
+      },
+      "projection": {
+        "type": "mercator"
+      },
+      "title": "SDE",
+      "transform": [
+        {
+          "from": {
+            "data": {
+              "name": "data-normalized"
+            },
+            "fields": [
+              "unit",
+              "party_preference",
+              "percent"
+            ],
+            "key": "unit"
+          },
+          "lookup": "properties.MNIMI"
+        }
+      ],
+      "width": 200
+    },
+    {
+      "data": {
+        "format": {
+          "feature": "data",
+          "type": "topojson"
+        },
+        "url": "https://dl.dropboxusercontent.com/scl/fi/ciunedliwyvlafpm5nlos/estonia.topojson?rlkey=0g56uexaos1v59yghmikv09xi&dl=0"
+      },
+      "datasets": {
+        "data-normalized": [
+          {
+            "party_preference": "Rohelised",
+            "percent": 0.01267907129919315,
+            "unit": "Harjumaa"
+          },
+          {
+            "party_preference": "Rohelised",
+            "percent": 0.15332885003362476,
+            "unit": "Hiiumaa"
+          },
+          {
+            "party_preference": "Rohelised",
+            "percent": 0.06378056840713814,
+            "unit": "J\u00e4rvamaa"
+          },
+          {
+            "party_preference": "Rohelised",
+            "percent": 0.03035465386402354,
+            "unit": "Kesklinn"
+          },
+          {
+            "party_preference": "Rohelised",
+            "percent": 0.013579682705490632,
+            "unit": "Lasnam\u00e4e"
+          },
+          {
+            "party_preference": "Rohelised",
+            "percent": 0.01987344275262013,
+            "unit": "Mustam\u00e4e"
+          },
+          {
+            "party_preference": "Rohelised",
+            "percent": 0.05599787685774947,
+            "unit": "Pirita"
+          },
+          {
+            "party_preference": "Rohelised",
+            "percent": 0.04134697357203751,
+            "unit": "Raplamaa"
+          },
+          {
+            "party_preference": "Rohelised",
+            "percent": 0.05908177691792544,
+            "unit": "Tartu linn"
+          },
+          {
+            "party_preference": "Rohelised",
+            "percent": 0.04096504185130478,
+            "unit": "Tartumaa"
+          },
+          {
+            "party_preference": "Rohelised",
+            "percent": 0.04297994269340974,
+            "unit": "Valgamaa"
+          },
+          {
+            "party_preference": "Rohelised",
+            "percent": 0.02654488368774083,
+            "unit": "Viljandimaa"
+          }
+        ]
+      },
+      "encoding": {
+        "color": {
+          "field": "percent",
+          "legend": {
+            "format": ".1%",
+            "gradientThickness": 6,
+            "orient": "top-left",
+            "title": null,
+            "values": [
+              0.01267907129919315,
+              0.15332885003362476
+            ]
+          },
+          "scale": {
+            "domain": [
+              0.01267907129919315,
+              0.15332885003362476
+            ],
+            "range": [
+              "#eeeeee",
+              "#bfd8a0",
+              "#95c04f",
+              "#7da141",
+              "#668434",
+              "#4f6827",
+              "#3a4d1b"
+            ]
+          },
+          "type": "quantitative"
+        },
+        "tooltip": [
+          {
+            "field": "percent",
+            "format": ".1%",
+            "type": "quantitative"
+          },
+          {
+            "field": "unit",
+            "type": "nominal"
+          }
+        ]
+      },
+      "height": 150,
+      "mark": {
+        "stroke": "white",
+        "strokeWidth": 0.1,
+        "type": "geoshape"
+      },
+      "projection": {
+        "type": "mercator"
+      },
+      "title": "Rohelised",
+      "transform": [
+        {
+          "from": {
+            "data": {
+              "name": "data-normalized"
+            },
+            "fields": [
+              "unit",
+              "party_preference",
+              "percent"
+            ],
+            "key": "unit"
+          },
+          "lookup": "properties.MNIMI"
+        }
+      ],
+      "width": 200
+    }
+  ],
+  [
+    {
+      "data": {
+        "format": {
+          "feature": "data",
+          "type": "topojson"
+        },
+        "url": "https://dl.dropboxusercontent.com/scl/fi/ciunedliwyvlafpm5nlos/estonia.topojson?rlkey=0g56uexaos1v59yghmikv09xi&dl=0"
+      },
+      "datasets": {
+        "data-normalized": [
+          {
+            "party_preference": "Eesti 200",
+            "percent": 0.08366819747416762,
+            "unit": "Haabersti"
+          },
+          {
+            "party_preference": "Eesti 200",
+            "percent": 0.1422690597727647,
+            "unit": "Harjumaa"
+          },
+          {
+            "party_preference": "Eesti 200",
+            "percent": 0.07200904529715214,
+            "unit": "Ida-Virumaa"
+          },
+          {
+            "party_preference": "Eesti 200",
+            "percent": 0.12723066754791804,
+            "unit": "J\u00e4rvamaa"
+          },
+          {
+            "party_preference": "Eesti 200",
+            "percent": 0.11427009294696555,
+            "unit": "J\u00f5gevamaa"
+          },
+          {
+            "party_preference": "Eesti 200",
+            "percent": 0.23571317949512158,
+            "unit": "Kesklinn"
+          },
+          {
+            "party_preference": "Eesti 200",
+            "percent": 0.22762358351124978,
+            "unit": "Kristiine"
+          },
+          {
+            "party_preference": "Eesti 200",
+            "percent": 0.06195730234380101,
+            "unit": "Lasnam\u00e4e"
+          },
+          {
+            "party_preference": "Eesti 200",
+            "percent": 0.06877778785954088,
+            "unit": "L\u00e4\u00e4ne-Virumaa"
+          },
+          {
+            "party_preference": "Eesti 200",
+            "percent": 0.2168841988336573,
+            "unit": "L\u00e4\u00e4nemaa"
+          },
+          {
+            "party_preference": "Eesti 200",
+            "percent": 0.12161360490409334,
+            "unit": "Mustam\u00e4e"
+          },
+          {
+            "party_preference": "Eesti 200",
+            "percent": 0.1897902097902098,
+            "unit": "N\u00f5mme"
+          },
+          {
+            "party_preference": "Eesti 200",
+            "percent": 0.05493630573248408,
+            "unit": "Pirita"
+          },
+          {
+            "party_preference": "Eesti 200",
+            "percent": 0.1424753136832727,
+            "unit": "P\u00e4rnumaa"
+          },
+          {
+            "party_preference": "Eesti 200",
+            "percent": 0.17606862460017447,
+            "unit": "P\u00f5hja-Tallinn"
+          },
+          {
+            "party_preference": "Eesti 200",
+            "percent": 0.08693662777396477,
+            "unit": "P\u00f5lvamaa"
+          },
+          {
+            "party_preference": "Eesti 200",
+            "percent": 0.08461210571184996,
+            "unit": "Raplamaa"
+          },
+          {
+            "party_preference": "Eesti 200",
+            "percent": 0.37646314457450175,
+            "unit": "Saaremaa"
+          },
+          {
+            "party_preference": "Eesti 200",
+            "percent": 0.17836148522955578,
+            "unit": "Tartu linn"
+          },
+          {
+            "party_preference": "Eesti 200",
+            "percent": 0.17666174298375184,
+            "unit": "Tartumaa"
+          },
+          {
+            "party_preference": "Eesti 200",
+            "percent": 0.044890162368672396,
+            "unit": "Valgamaa"
+          },
+          {
+            "party_preference": "Eesti 200",
+            "percent": 0.11417154274297131,
+            "unit": "Viljandimaa"
+          },
+          {
+            "party_preference": "Eesti 200",
+            "percent": 0.030425333747283453,
+            "unit": "V\u00f5rumaa"
+          }
+        ]
+      },
+      "encoding": {
+        "color": {
+          "field": "percent",
+          "legend": {
+            "format": ".1%",
+            "gradientThickness": 6,
+            "orient": "top-left",
+            "title": null,
+            "values": [
+              0.030425333747283453,
+              0.37646314457450175
+            ]
+          },
+          "scale": {
+            "domain": [
+              0.030425333747283453,
+              0.37646314457450175
+            ],
+            "range": [
+              "#eeeeee",
+              "#b4d5e4",
+              "#55bfe0",
+              "#46a1bd",
+              "#38839b",
+              "#2a677a",
+              "#1d4c5b"
+            ]
+          },
+          "type": "quantitative"
+        },
+        "tooltip": [
+          {
+            "field": "percent",
+            "format": ".1%",
+            "type": "quantitative"
+          },
+          {
+            "field": "unit",
+            "type": "nominal"
+          }
+        ]
+      },
+      "height": 150,
+      "mark": {
+        "stroke": "white",
+        "strokeWidth": 0.1,
+        "type": "geoshape"
+      },
+      "projection": {
+        "type": "mercator"
+      },
+      "title": "Eesti 200",
+      "transform": [
+        {
+          "from": {
+            "data": {
+              "name": "data-normalized"
+            },
+            "fields": [
+              "unit",
+              "party_preference",
+              "percent"
+            ],
+            "key": "unit"
+          },
+          "lookup": "properties.MNIMI"
+        }
+      ],
+      "width": 200
+    },
+    {
+      "data": {
+        "format": {
+          "feature": "data",
+          "type": "topojson"
+        },
+        "url": "https://dl.dropboxusercontent.com/scl/fi/ciunedliwyvlafpm5nlos/estonia.topojson?rlkey=0g56uexaos1v59yghmikv09xi&dl=0"
+      },
+      "datasets": {
+        "data-normalized": [
+          {
+            "party_preference": "Parempoolsed",
+            "percent": 0.05812284730195178,
+            "unit": "Haabersti"
+          },
+          {
+            "party_preference": "Parempoolsed",
+            "percent": 0.03909105878478512,
+            "unit": "Harjumaa"
+          },
+          {
+            "party_preference": "Parempoolsed",
+            "percent": 0.014345275952229524,
+            "unit": "Ida-Virumaa"
+          },
+          {
+            "party_preference": "Parempoolsed",
+            "percent": 0.047566976489885185,
+            "unit": "J\u00f5gevamaa"
+          },
+          {
+            "party_preference": "Parempoolsed",
+            "percent": 0.04426454266501273,
+            "unit": "Lasnam\u00e4e"
+          },
+          {
+            "party_preference": "Parempoolsed",
+            "percent": 0.038472007984756376,
+            "unit": "L\u00e4\u00e4ne-Virumaa"
+          },
+          {
+            "party_preference": "Parempoolsed",
+            "percent": 0.027692307692307693,
+            "unit": "N\u00f5mme"
+          },
+          {
+            "party_preference": "Parempoolsed",
+            "percent": 0.0522823779193206,
+            "unit": "Pirita"
+          },
+          {
+            "party_preference": "Parempoolsed",
+            "percent": 0.045069778082818576,
+            "unit": "P\u00f5lvamaa"
+          },
+          {
+            "party_preference": "Parempoolsed",
+            "percent": 0.027903861894486195,
+            "unit": "Tartu linn"
+          },
+          {
+            "party_preference": "Parempoolsed",
+            "percent": 0.07513540128015755,
+            "unit": "Tartumaa"
+          },
+          {
+            "party_preference": "Parempoolsed",
+            "percent": 0.0508595988538682,
+            "unit": "Valgamaa"
+          },
+          {
+            "party_preference": "Parempoolsed",
+            "percent": 0.026389320086929523,
+            "unit": "V\u00f5rumaa"
+          }
+        ]
+      },
+      "encoding": {
+        "color": {
+          "field": "percent",
+          "legend": {
+            "format": ".1%",
+            "gradientThickness": 6,
+            "orient": "top-left",
+            "title": null,
+            "values": [
+              0.014345275952229524,
+              0.07513540128015755
+            ]
+          },
+          "scale": {
+            "domain": [
+              0.014345275952229524,
+              0.07513540128015755
+            ],
+            "range": [
+              "#eeeeee",
+              "#eacab3",
+              "#f79f00",
+              "#d08600",
+              "#ab6d00",
+              "#875500",
+              "#653e00"
+            ]
+          },
+          "type": "quantitative"
+        },
+        "tooltip": [
+          {
+            "field": "percent",
+            "format": ".1%",
+            "type": "quantitative"
+          },
+          {
+            "field": "unit",
+            "type": "nominal"
+          }
+        ]
+      },
+      "height": 150,
+      "mark": {
+        "stroke": "white",
+        "strokeWidth": 0.1,
+        "type": "geoshape"
+      },
+      "projection": {
+        "type": "mercator"
+      },
+      "title": "Parempoolsed",
+      "transform": [
+        {
+          "from": {
+            "data": {
+              "name": "data-normalized"
+            },
+            "fields": [
+              "unit",
+              "party_preference",
+              "percent"
+            ],
+            "key": "unit"
+          },
+          "lookup": "properties.MNIMI"
+        }
+      ],
+      "width": 200
+    }
+  ],
+  [
+    {
+      "data": {
+        "format": {
+          "feature": "data",
+          "type": "topojson"
+        },
+        "url": "https://dl.dropboxusercontent.com/scl/fi/ciunedliwyvlafpm5nlos/estonia.topojson?rlkey=0g56uexaos1v59yghmikv09xi&dl=0"
+      },
+      "datasets": {
+        "data-normalized": [
+          {
+            "party_preference": "Other",
+            "percent": 0.02769804822043628,
+            "unit": "Haabersti"
+          },
+          {
+            "party_preference": "Other",
+            "percent": 0.14309942760228958,
+            "unit": "Ida-Virumaa"
+          },
+          {
+            "party_preference": "Other",
+            "percent": 0.07736501925964615,
+            "unit": "Lasnam\u00e4e"
+          },
+          {
+            "party_preference": "Other",
+            "percent": 0.0352962526086562,
+            "unit": "L\u00e4\u00e4ne-Virumaa"
+          },
+          {
+            "party_preference": "Other",
+            "percent": 0.019774569903104607,
+            "unit": "Mustam\u00e4e"
+          },
+          {
+            "party_preference": "Other",
+            "percent": 0.026713286713286714,
+            "unit": "N\u00f5mme"
+          },
+          {
+            "party_preference": "Other",
+            "percent": 0.013957977578142402,
+            "unit": "P\u00e4rnumaa"
+          },
+          {
+            "party_preference": "Other",
+            "percent": 0.016370265644765236,
+            "unit": "Tartu linn"
+          }
+        ]
+      },
+      "encoding": {
+        "color": {
+          "field": "percent",
+          "legend": {
+            "format": ".1%",
+            "gradientThickness": 6,
+            "orient": "top-left",
+            "title": null,
+            "values": [
+              0.013957977578142402,
+              0.14309942760228958
+            ]
+          },
+          "scale": {
+            "domain": [
+              0.013957977578142402,
+              0.14309942760228958
+            ],
+            "range": [
+              "#eeeeee",
+              "#d0d0d0",
+              "#b2b2b2",
+              "#969696",
+              "#7a7a7a",
+              "#606060",
+              "#474747"
+            ]
+          },
+          "type": "quantitative"
+        },
+        "tooltip": [
+          {
+            "field": "percent",
+            "format": ".1%",
+            "type": "quantitative"
+          },
+          {
+            "field": "unit",
+            "type": "nominal"
+          }
+        ]
+      },
+      "height": 150,
+      "mark": {
+        "stroke": "white",
+        "strokeWidth": 0.1,
+        "type": "geoshape"
+      },
+      "projection": {
+        "type": "mercator"
+      },
+      "title": "Other",
+      "transform": [
+        {
+          "from": {
+            "data": {
+              "name": "data-normalized"
+            },
+            "fields": [
+              "unit",
+              "party_preference",
+              "percent"
+            ],
+            "key": "unit"
+          },
+          "lookup": "properties.MNIMI"
+        }
+      ],
+      "width": 200
+    },
+    {
+      "data": {
+        "format": {
+          "feature": "data",
+          "type": "topojson"
+        },
+        "url": "https://dl.dropboxusercontent.com/scl/fi/ciunedliwyvlafpm5nlos/estonia.topojson?rlkey=0g56uexaos1v59yghmikv09xi&dl=0"
+      },
+      "datasets": {
+        "data-normalized": [
+          {
+            "party_preference": "None of the parties",
+            "percent": 0.11265786452353617,
+            "unit": "Haabersti"
+          },
+          {
+            "party_preference": "None of the parties",
+            "percent": 0.046665568911575826,
+            "unit": "Harjumaa"
+          },
+          {
+            "party_preference": "None of the parties",
+            "percent": 0.14660390047074648,
+            "unit": "Hiiumaa"
+          },
+          {
+            "party_preference": "None of the parties",
+            "percent": 0.1599886933785598,
+            "unit": "Ida-Virumaa"
+          },
+          {
+            "party_preference": "None of the parties",
+            "percent": 0.06444150693985459,
+            "unit": "J\u00e4rvamaa"
+          },
+          {
+            "party_preference": "None of the parties",
+            "percent": 0.05221432476763259,
+            "unit": "J\u00f5gevamaa"
+          },
+          {
+            "party_preference": "None of the parties",
+            "percent": 0.0856434876877807,
+            "unit": "Kesklinn"
+          },
+          {
+            "party_preference": "None of the parties",
+            "percent": 0.03235342420758745,
+            "unit": "Kristiine"
+          },
+          {
+            "party_preference": "None of the parties",
+            "percent": 0.15988770646993536,
+            "unit": "Lasnam\u00e4e"
+          },
+          {
+            "party_preference": "None of the parties",
+            "percent": 0.11042555122039742,
+            "unit": "L\u00e4\u00e4ne-Virumaa"
+          },
+          {
+            "party_preference": "None of the parties",
+            "percent": 0.055540127742293804,
+            "unit": "L\u00e4\u00e4nemaa"
+          },
+          {
+            "party_preference": "None of the parties",
+            "percent": 0.039450266956693694,
+            "unit": "Mustam\u00e4e"
+          },
+          {
+            "party_preference": "None of the parties",
+            "percent": 0.08251748251748252,
+            "unit": "N\u00f5mme"
+          },
+          {
+            "party_preference": "None of the parties",
+            "percent": 0.03155393867399213,
+            "unit": "P\u00e4rnumaa"
+          },
+          {
+            "party_preference": "None of the parties",
+            "percent": 0.14829892410584472,
+            "unit": "P\u00f5hja-Tallinn"
+          },
+          {
+            "party_preference": "None of the parties",
+            "percent": 0.12446717817561807,
+            "unit": "Raplamaa"
+          },
+          {
+            "party_preference": "None of the parties",
+            "percent": 0.06801645049035115,
+            "unit": "Saaremaa"
+          },
+          {
+            "party_preference": "None of the parties",
+            "percent": 0.04248828037800432,
+            "unit": "Tartu linn"
+          },
+          {
+            "party_preference": "None of the parties",
+            "percent": 0.07671097981290005,
+            "unit": "Tartumaa"
+          },
+          {
+            "party_preference": "None of the parties",
+            "percent": 0.08734123019837306,
+            "unit": "Viljandimaa"
+          },
+          {
+            "party_preference": "None of the parties",
+            "percent": 0.09407016454517231,
+            "unit": "V\u00f5rumaa"
+          }
+        ]
+      },
+      "encoding": {
+        "color": {
+          "field": "percent",
+          "legend": {
+            "format": ".1%",
+            "gradientThickness": 6,
+            "orient": "top-left",
+            "title": null,
+            "values": [
+              0.03155393867399213,
+              0.1599886933785598
+            ]
+          },
+          "scale": {
+            "domain": [
+              0.03155393867399213,
+              0.1599886933785598
+            ],
+            "range": [
+              "#e8eaec",
+              "#d5e2e9",
+              "#c3d9e5",
+              "#b0d0e2",
+              "#9dc8df",
+              "#88bad7",
+              "#70a4c7",
+              "#598eb6",
+              "#4278a6",
+              "#2a6295",
+              "#134c85"
+            ]
+          },
+          "type": "quantitative"
+        },
+        "tooltip": [
+          {
+            "field": "percent",
+            "format": ".1%",
+            "type": "quantitative"
+          },
+          {
+            "field": "unit",
+            "type": "nominal"
+          }
+        ]
+      },
+      "height": 150,
+      "mark": {
+        "stroke": "white",
+        "strokeWidth": 0.1,
+        "type": "geoshape"
+      },
+      "projection": {
+        "type": "mercator"
+      },
+      "title": "None of the parties",
+      "transform": [
+        {
+          "from": {
+            "data": {
+              "name": "data-normalized"
+            },
+            "fields": [
+              "unit",
+              "party_preference",
+              "percent"
+            ],
+            "key": "unit"
+          },
+          "lookup": "properties.MNIMI"
+        }
+      ],
+      "width": 200
+    }
+  ],
+  [
+    {
+      "data": {
+        "format": {
+          "feature": "data",
+          "type": "topojson"
+        },
+        "url": "https://dl.dropboxusercontent.com/scl/fi/ciunedliwyvlafpm5nlos/estonia.topojson?rlkey=0g56uexaos1v59yghmikv09xi&dl=0"
+      },
+      "datasets": {
+        "data-normalized": [
+          {
+            "party_preference": "No opinion",
+            "percent": 0.11050516647531573,
+            "unit": "Haabersti"
+          },
+          {
+            "party_preference": "No opinion",
+            "percent": 0.062473242219660795,
+            "unit": "Harjumaa"
+          },
+          {
+            "party_preference": "No opinion",
+            "percent": 0.13180901143241425,
+            "unit": "Hiiumaa"
+          },
+          {
+            "party_preference": "No opinion",
+            "percent": 0.12175817963394812,
+            "unit": "Ida-Virumaa"
+          },
+          {
+            "party_preference": "No opinion",
+            "percent": 0.19613350958360873,
+            "unit": "J\u00e4rvamaa"
+          },
+          {
+            "party_preference": "No opinion",
+            "percent": 0.05139420448332422,
+            "unit": "J\u00f5gevamaa"
+          },
+          {
+            "party_preference": "No opinion",
+            "percent": 0.030664395229982964,
+            "unit": "Kesklinn"
+          },
+          {
+            "party_preference": "No opinion",
+            "percent": 0.10367565450153424,
+            "unit": "Lasnam\u00e4e"
+          },
+          {
+            "party_preference": "No opinion",
+            "percent": 0.14717357771527084,
+            "unit": "L\u00e4\u00e4ne-Virumaa"
+          },
+          {
+            "party_preference": "No opinion",
+            "percent": 0.11052485420716468,
+            "unit": "L\u00e4\u00e4nemaa"
+          },
+          {
+            "party_preference": "No opinion",
+            "percent": 0.03895590270911608,
+            "unit": "Mustam\u00e4e"
+          },
+          {
+            "party_preference": "No opinion",
+            "percent": 0.12190957012398841,
+            "unit": "P\u00e4rnumaa"
+          },
+          {
+            "party_preference": "No opinion",
+            "percent": 0.05466705437627217,
+            "unit": "P\u00f5hja-Tallinn"
+          },
+          {
+            "party_preference": "No opinion",
+            "percent": 0.08647906657515443,
+            "unit": "P\u00f5lvamaa"
+          },
+          {
+            "party_preference": "No opinion",
+            "percent": 0.13512361466325662,
+            "unit": "Raplamaa"
+          },
+          {
+            "party_preference": "No opinion",
+            "percent": 0.06295476115153432,
+            "unit": "Saaremaa"
+          },
+          {
+            "party_preference": "No opinion",
+            "percent": 0.05826326363568718,
+            "unit": "Tartu linn"
+          },
+          {
+            "party_preference": "No opinion",
+            "percent": 0.07986213687838503,
+            "unit": "Tartumaa"
+          },
+          {
+            "party_preference": "No opinion",
+            "percent": 0.09479465138490926,
+            "unit": "Valgamaa"
+          },
+          {
+            "party_preference": "No opinion",
+            "percent": 0.029970029970029972,
+            "unit": "Viljandimaa"
+          },
+          {
+            "party_preference": "No opinion",
+            "percent": 0.1282210493635517,
+            "unit": "V\u00f5rumaa"
+          }
+        ]
+      },
+      "encoding": {
+        "color": {
+          "field": "percent",
+          "legend": {
+            "format": ".1%",
+            "gradientThickness": 6,
+            "orient": "top-left",
+            "title": null,
+            "values": [
+              0.029970029970029972,
+              0.19613350958360873
+            ]
+          },
+          "scale": {
+            "domain": [
+              0.029970029970029972,
+              0.19613350958360873
+            ],
+            "range": [
+              "#e8eaec",
+              "#d5e2e9",
+              "#c3d9e5",
+              "#b0d0e2",
+              "#9dc8df",
+              "#88bad7",
+              "#70a4c7",
+              "#598eb6",
+              "#4278a6",
+              "#2a6295",
+              "#134c85"
+            ]
+          },
+          "type": "quantitative"
+        },
+        "tooltip": [
+          {
+            "field": "percent",
+            "format": ".1%",
+            "type": "quantitative"
+          },
+          {
+            "field": "unit",
+            "type": "nominal"
+          }
+        ]
+      },
+      "height": 150,
+      "mark": {
+        "stroke": "white",
+        "strokeWidth": 0.1,
+        "type": "geoshape"
+      },
+      "projection": {
+        "type": "mercator"
+      },
+      "title": "No opinion",
+      "transform": [
+        {
+          "from": {
+            "data": {
+              "name": "data-normalized"
+            },
+            "fields": [
+              "unit",
+              "party_preference",
+              "percent"
+            ],
+            "key": "unit"
+          },
+          "lookup": "properties.MNIMI"
+        }
+      ],
+      "width": 200
+    }
+  ]
+]

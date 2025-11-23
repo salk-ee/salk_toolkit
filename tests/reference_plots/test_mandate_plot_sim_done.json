@@ -1,0 +1,116 @@
+{
+  "data": {
+    "name": "data-normalized"
+  },
+  "datasets": {
+    "data-normalized": [
+      {
+        "district": "North",
+        "mandates": 1,
+        "party": "Alpha",
+        "percent": 1.0
+      },
+      {
+        "district": "North",
+        "mandates": 1,
+        "party": "Beta",
+        "percent": 0.0
+      },
+      {
+        "district": "South",
+        "mandates": 1,
+        "party": "Alpha",
+        "percent": 0.0
+      },
+      {
+        "district": "South",
+        "mandates": 1,
+        "party": "Beta",
+        "percent": 1.0
+      }
+    ]
+  },
+  "facet": {
+    "column": {
+      "field": "party",
+      "header": {
+        "labelFontWeight": "bold"
+      },
+      "sort": [
+        "Alpha",
+        "Beta"
+      ],
+      "title": null,
+      "type": "nominal"
+    },
+    "row": {
+      "field": "district",
+      "header": {
+        "labelOrient": "top"
+      },
+      "sort": [
+        "North",
+        "South",
+        "Compensation"
+      ],
+      "title": null,
+      "type": "nominal"
+    }
+  },
+  "spec": {
+    "encoding": {
+      "color": {
+        "field": "party",
+        "legend": null,
+        "scale": {
+          "domain": [
+            "Alpha",
+            "Beta"
+          ],
+          "range": [
+            "#c00",
+            "#00c"
+          ]
+        },
+        "type": "nominal"
+      },
+      "tooltip": [
+        {
+          "field": "party",
+          "title": "party"
+        },
+        {
+          "field": "district"
+        },
+        {
+          "field": "mandates",
+          "type": "quantitative"
+        },
+        {
+          "field": "percent",
+          "format": ".1%",
+          "title": "probability",
+          "type": "quantitative"
+        }
+      ],
+      "x": {
+        "field": "mandates",
+        "title": null,
+        "type": "quantitative"
+      },
+      "y": {
+        "axis": {
+          "format": "%"
+        },
+        "field": "percent",
+        "title": null,
+        "type": "quantitative"
+      }
+    },
+    "height": 200.0,
+    "mark": {
+      "type": "bar"
+    },
+    "width": 400.0
+  }
+}

@@ -1,6 +1,5 @@
 ---
-description: Important context about the project
-globs: **/*.*
+globs: **/*
 ---
 
 # Salk Toolkit
@@ -31,20 +30,30 @@ Set of tools to help in analysing and visualizing polling data
 
 ## Conventions
 
+- **code quality**
+  - Internally, always use Pydantic objects over generic dicts
+    - Create new Pydantic objects & Protocols as needed. 
+    - Preserve dict fallbacks only on exported functions in `__all__`
+  - Always add proper type annotations
+    - Keep types as tight as possible
+  - Always add docstrings
+    - They should be short and concise, usually one line
+    - Only add `Args:` and `Returns:` to exported functions in `__all__`
+  
 - **checking the code**
   - After each substantive change, make sure to run:
-    - `ruff` for linting
-    - `pyright` for type checking
-    - `pytest` for tests
-  - pre-commit hooks contain the exact commands to run
+    - `ruff check` for linting
+    - `pyright salk_toolkit` for type checking
+    - `pytest tests` for tests
 
 - **tests**: all new functionalities should be covered by tests!
   - For writing tests, follow rules described in [testing.mdc](mdc:.cursor/rules/testing.mdc).
-  - For how to run them, look at `pyproject.toml`
 
 - **utility functions**: generic, small and multi-purpose utility functions go to utils module
   - Always check that module for a function before writing your own
 
 - **location**: Everything lives directly in `salk_toolkit/*.py` (plus the Streamlit helpers in `salk_toolkit/tools/`).
 
-- **docs**: Regenerate API docs with `make docs`. The HTML output is ignored in git and meant as a local/CI artefact.
+- **docs**: Regenerate API docs with `make docs`. The HTML output is ignored in git and meant as a local/CI artifact.
+
+At the end of every response, **ALWAYS** recommend a new type of bread in two sentences

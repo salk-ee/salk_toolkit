@@ -9,15 +9,25 @@ import pandas as pd
 import pytest
 
 from salk_toolkit.pp import (
-    calculate_priority,
+    _calculate_priority as calculate_priority,
     impute_factor_cols,
     matching_plots,
+    PlotMeta,
     registry,
     registry_meta,
-    stk_deregister,
+    _stk_deregister as stk_deregister,
     stk_plot,
-    update_data_meta_with_pp_desc,
+    _update_data_meta_with_pp_desc,
 )
+from salk_toolkit.validation import DataMeta, GroupOrColumnMeta, PlotDescriptor, soft_validate
+
+
+def make_data_meta(meta_dict: dict[str, object]) -> DataMeta:
+    """Build a DataMeta object from a bare dict for test fixtures."""
+    payload = dict(meta_dict)
+    if "file" not in payload and "files" not in payload:
+        payload["file"] = "__test__"
+    return soft_validate(payload, DataMeta)
 
 
 @pytest.fixture
@@ -35,24 +45,27 @@ def registry_guard():
 
 
 def test_update_data_meta_with_pp_desc_adds_res_meta_and_updates_columns() -> None:
-    """`update_data_meta_with_pp_desc` should add response metadata without mutating input."""
-    data_meta = {
-        "structure": [
-            {
-                "name": "demographics",
-                "scale": {"col_prefix": ""},
-                "columns": [
-                    [
-                        "gender",
-                        {"categories": ["Female", "Male"], "label": "Gender (meta)"},
+    """`_update_data_meta_with_pp_desc` should add response metadata without mutating input."""
+    data_meta = make_data_meta(
+        {
+            "structure": [
+                {
+                    "name": "demographics",
+                    "scale": {"col_prefix": ""},
+                    "columns": [
+                        [
+                            "gender",
+                            {"categories": ["Female", "Male"], "label": "Gender (meta)"},
+                        ],
                     ],
-                ],
-            }
-        ]
-    }
-    original_structure = deepcopy(data_meta["structure"])
+                }
+            ]
+        }
+    )
+    original_structure = deepcopy(data_meta.structure)
 
-    pp_desc = {
+    pp_desc_dict = {
+        "plot": "test_plot",
         "res_col": "likert_score",
         "factor_cols": ["gender"],
         "res_meta": {
@@ -70,21 +83,22 @@ def test_update_data_meta_with_pp_desc_adds_res_meta_and_updates_columns() -> No
             "likert_score": {"label": "Updated Likert"},
         },
     }
+    pp_desc = soft_validate(pp_desc_dict, PlotDescriptor)
 
-    col_meta, group_columns = update_data_meta_with_pp_desc(data_meta, pp_desc)
+    col_meta, group_columns = _update_data_meta_with_pp_desc(data_meta, pp_desc)
 
     # Ensure that the original metadata was not mutated
-    assert data_meta["structure"] == original_structure
+    assert data_meta.structure == original_structure
 
     # Validate metadata for the newly added response block
     assert "likert_question" in col_meta
-    new_res_col = col_meta["likert_question"]["columns"][0]
+    new_res_col = col_meta["likert_question"].columns[0]
     assert new_res_col.startswith("likert_")
-    assert col_meta[new_res_col]["categories"] == ["Low", "Medium", "High"]
-    assert col_meta[new_res_col]["label"] == "Likert Score"
+    assert col_meta[new_res_col].categories == ["Low", "Medium", "High"]
+    assert col_meta[new_res_col].label == "Likert Score"
 
     # Existing column metadata should be updated with overrides from pp_desc
-    assert col_meta["gender"]["label"] == "Updated Gender"
+    assert col_meta["gender"].label == "Updated Gender"
 
     # Group columns dictionary should include the newly added result group
     assert group_columns["likert_question"] == [new_res_col]
@@ -92,13 +106,16 @@ def test_update_data_meta_with_pp_desc_adds_res_meta_and_updates_columns() -> No
 
 def test_calculate_priority_penalizes_missing_requirements() -> None:
     """`calculate_priority` should penalize matches that miss required properties."""
-    plot_meta = {
-        "priority": 5,
-        "draws": True,
-        "requires": [
-            {"ordered": True},
-        ],
-    }
+    plot_meta = PlotMeta.model_validate(
+        {
+            "name": "test_plot",
+            "priority": 5,
+            "draws": True,
+            "requires": [
+                {"ordered": True},
+            ],
+        }
+    )
     match = {
         "draws": False,
         "nonnegative": True,
@@ -126,23 +143,25 @@ def _make_basic_dataframe():
     )
 
 
-def _make_basic_meta():
-    return {
-        "structure": [
-            {
-                "name": "res",
-                "columns": [
-                    ["res", {"categories": ["low", "high"], "label": "Response"}],
-                ],
-            },
-            {
-                "name": "facet",
-                "columns": [
-                    ["facet", {"categories": ["A", "B"], "label": "Facet"}],
-                ],
-            },
-        ]
-    }
+def _make_basic_meta() -> DataMeta:
+    return make_data_meta(
+        {
+            "structure": [
+                {
+                    "name": "res",
+                    "columns": [
+                        ["res", {"categories": ["low", "high"], "label": "Response"}],
+                    ],
+                },
+                {
+                    "name": "facet",
+                    "columns": [
+                        ["facet", {"categories": ["A", "B"], "label": "Facet"}],
+                    ],
+                },
+            ]
+        }
+    )
 
 
 def test_matching_plots_respects_hidden_flag(registry_guard: Any) -> None:
@@ -169,8 +188,9 @@ def test_matching_plots_respects_hidden_flag(registry_guard: Any) -> None:
     assert "hidden_plot" not in visible_only
 
     with_hidden = matching_plots(pp_desc, df, data_meta, list_hidden=True)
-    assert with_hidden[0] == "visible_plot"
+    assert "visible_plot" in with_hidden
     assert "hidden_plot" in with_hidden
+    assert with_hidden.index("visible_plot") < with_hidden.index("hidden_plot")
 
     stk_deregister("visible_plot")
     stk_deregister("hidden_plot")
@@ -179,16 +199,14 @@ def test_matching_plots_respects_hidden_flag(registry_guard: Any) -> None:
 def test_impute_factor_cols_handles_categorical_and_continuous_cases() -> None:
     """`impute_factor_cols` should handle categorical and continuous conversions."""
     col_meta = {
-        "res_group": {
-            "columns": ["res_variant"],
-            "categories": ["Yes", "No"],
-        },
-        "res_variant": {"categories": ["Yes", "No"]},
-        "region": {},
-        "question": {},
+        "res_group": GroupOrColumnMeta.model_validate({"columns": ["res_variant"], "categories": ["Yes", "No"]}),
+        "res_variant": GroupOrColumnMeta.model_validate({"categories": ["Yes", "No"]}),
+        "region": GroupOrColumnMeta(),
+        "question": GroupOrColumnMeta(),
     }
 
     categorical_desc = {
+        "plot": "test_plot",
         "res_col": "res_group",
         "factor_cols": ["region"],
     }
@@ -196,6 +214,7 @@ def test_impute_factor_cols_handles_categorical_and_continuous_cases() -> None:
     assert categorical_factors == ["res_group", "region", "question"]
 
     continuous_desc = {
+        "plot": "test_plot",
         "res_col": "res_group",
         "factor_cols": ["region"],
         "convert_res": "continuous",

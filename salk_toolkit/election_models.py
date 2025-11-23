@@ -26,7 +26,7 @@ __all__ = [
 ]
 
 import itertools as it
-from typing import Callable
+from typing import Mapping, Sequence
 
 import altair as alt
 import numpy as np
@@ -35,7 +35,8 @@ import streamlit as st
 
 from salk_toolkit import utils as stk_utils
 from salk_toolkit.plots import stk_plot
-from salk_toolkit.pp import AltairChart
+from salk_toolkit.pp import AltairChart, PlotInput
+from salk_toolkit.validation import ElectoralSystem
 
 # --------------------------------------------------------
 #          MACHINERY
@@ -81,77 +82,94 @@ def dhondt(
 
 def simulate_election(
     support: np.ndarray,
-    nmandates: np.ndarray,
-    threshold: float = 0.0,
-    ed_threshold: float = 0.0,
-    quotas: bool = True,
-    first_quota_coef: float = 1.0,
-    dh_power: float = 1.0,
-    body_size: int | None = None,
-    special: str | None = None,
-    exclude: list[int] | None = None,
-    **kwargs: object,
+    parties: list[str],
+    districts: list[str],
+    mandates: Mapping[str, int],
+    es: ElectoralSystem,
 ) -> np.ndarray:
     """Simulate election with quota and d'Hondt allocation.
 
     Args:
         support: Support array of shape (draws, districts, parties).
-        nmandates: Number of mandates per district (array).
-        threshold: National threshold for party eligibility (default: 0.0).
-        ed_threshold: Electoral district threshold (default: 0.0).
-        quotas: Whether to use quota system (default: True).
-        first_quota_coef: Coefficient for first quota allocation (default: 1.0).
-        dh_power: Power parameter for d'Hondt divisor (default: 1.0).
-        body_size: Total body size for compensation (default: sum of nmandates).
-        special: Special system identifier (e.g., "cz" for Czech system).
-        exclude: List of party indices to exclude from allocation.
-        **kwargs: Additional arguments passed to special systems.
+        parties: List of party names in the same order as the last dimension of support.
+        districts: List of district names in the same order as the second dimension of support.
+        mandates: Dictionary mapping district names to mandate counts.
+        es: ElectoralSystem object with election parameters.
 
     Returns:
         Array of mandates allocated per (draw, district, party).
     """
-    if exclude is None:
-        exclude = []
-    if special == "cz":
-        return cz_system(support, nmandates, threshold=threshold, body_size=body_size, **kwargs)
+    if not isinstance(es, ElectoralSystem):
+        es = ElectoralSystem.model_validate(es)
 
-    # Exclude the parties in the exclude list.
+    # Convert mandates dict to array
+    nmandates = np.array([mandates[d] for d in districts])
+
+    # Convert exclude list (party names) to indices
+    exclude_list: list[int] = []
+    if es.exclude:
+        exclude_list = [parties.index(p) for p in es.exclude if p in parties]
+
+    # Handle threshold: can be float or dict of party->threshold
+    if isinstance(es.threshold, dict):
+        # Per-party thresholds: create array of thresholds for each party
+        threshold_array = np.array([es.threshold.get(p, es.threshold.get("default", 0.0)) for p in parties])
+        # Apply threshold per-party: shape (parties,)
+        party_votes = support.sum(axis=1)  # (draws, parties)
+        total_votes = support.sum(axis=(1, 2))  # (draws,)
+        zero_mask = (party_votes / (total_votes[:, None] + 1e-3)) > threshold_array[None, :]
+        zero_mask = zero_mask[:, None, :]  # (draws, 1, parties)
+    else:
+        # Single threshold for all parties
+        threshold_val = es.threshold
+        zero_mask = (support.sum(axis=1) / (support.sum(axis=(1, 2)) + 1e-3)[:, None]) > threshold_val
+        zero_mask = zero_mask[:, None, :]  # (draws, 1, parties)
+
+    # Exclude the parties in the exclude list
     # usually the grouping of "Other" that might otherwise exceed the threshold
     # if they were a single entity but they are not)
     exclude_zero_mask = np.ones(support.shape[-1])
-    exclude_zero_mask[exclude] = 0
+    exclude_zero_mask[exclude_list] = 0
     uzsim_t = np.ones_like(support) * exclude_zero_mask
 
-    # Remove parties below a national threshold
-    zero_mask = (support.sum(axis=1) / (support.sum(axis=(1, 2)) + 1e-3)[:, None]) > threshold
-    uzsim_t = zero_mask[:, None, :] * support * uzsim_t
+    # Apply threshold mask
+    uzsim_t = zero_mask * support * uzsim_t
 
     # Remove parties below an electoral_district specific threshold
-    zero_mask = (support / (support.sum(axis=(2)) + 1e-3)[:, :, None]) > ed_threshold
-    uzsim_t = zero_mask[:, :, :] * uzsim_t
+    zero_mask_ed = (support / (support.sum(axis=(2)) + 1e-3)[:, :, None]) > es.ed_threshold
+    uzsim_t = zero_mask_ed * uzsim_t
+
+    # Handle special systems
+    if es.special == "cz":
+        # For Czech system, use single threshold value (first party's or default)
+        threshold_for_cz = (
+            es.threshold
+            if isinstance(es.threshold, float)
+            else (es.threshold.get(parties[0], es.threshold.get("default", 0.0)) if parties else 0.0)
+        )
+        return cz_system(support, nmandates, threshold=threshold_for_cz, body_size=es.body_size)
 
     # Districts with quotas, then country-level compensation (Estonian system)
-    if quotas:
+    if es.quotas:
         quota_values = (support.sum(axis=-1) + 1e-3) / (nmandates[None, :])
         v, r = np.divmod(uzsim_t / quota_values[:, :, None], 1.0)
-        dmandates = v + (r >= first_quota_coef)
+        dmandates = v + (r >= es.first_quota_coef)
 
         # Calculate votes and mandates for each party
         pvotes = uzsim_t.sum(axis=1)
         pmand = dmandates.sum(axis=1)
 
         # Calculate compensation votes using dHondt
-        if body_size is None:
-            body_size = sum(nmandates)
-        remaining_mand = body_size - pmand.sum(axis=1)
-        comp_mandates = dhondt(pvotes, remaining_mand, dh_power, pmand)
+        body_size_val = es.body_size if es.body_size is not None else sum(nmandates)
+        remaining_mand = body_size_val - pmand.sum(axis=1)
+        comp_mandates = dhondt(pvotes, remaining_mand, es.dh_power, pmand)
 
         # Return the districts + compensation results
         return np.concatenate([dmandates, comp_mandates[:, None, :]], axis=1)
 
     else:  # Separate election in each district (Croatian system)
         return np.stack(
-            [dhondt(uzsim_t[:, i, :], nmandates[i], dh_power) for i in range(support.shape[1])],
+            [dhondt(uzsim_t[:, i, :], nmandates[i], es.dh_power) for i in range(support.shape[1])],
             axis=1,
         )
 
@@ -179,11 +197,12 @@ def vec_smallest_k(t: np.ndarray, kv: np.ndarray) -> np.ndarray:
     return comp_ident[(np.argsort(t, axis=-1) + 1) * ri].sum(axis=-2)
 
 
-# Czech electoral system based on https://pspen.psp.cz/chamber-members/plenary/elections/#electoralsystem
 def cz_system(
     support: np.ndarray, nmandates: np.ndarray, threshold: float = 0.0, body_size: int | None = None, **kwargs: object
 ) -> np.ndarray:
-    """Simulate Czech electoral system with Imperialis quotas and two-level allocation.
+    """Czech electoral system based on https://pspen.psp.cz/chamber-members/plenary/elections/#electoralsystem.
+
+    Simulate Czech electoral system with Imperialis quotas and two-level allocation.
 
     Args:
         support: Support array of shape (draws, districts, parties).
@@ -229,12 +248,12 @@ def cz_system(
     return np.concatenate([dmandates, slmandates[:, None, :]], axis=1)
 
 
-# Basic wrapper around simulate elections that goes from dataframe to dataframe
 def simulate_election_e2e(
     sdf: pd.DataFrame,
     parties: list[str],
     mandates_dict: dict[str, int],
     ed_col: str = "electoral_district",
+    electoral_system: ElectoralSystem | Mapping[str, object] | None = None,
     **kwargs: object,
 ) -> pd.DataFrame:
     """End-to-end election simulation from DataFrame to DataFrame.
@@ -244,7 +263,8 @@ def simulate_election_e2e(
         parties: List of party column names.
         mandates_dict: Dictionary mapping electoral districts to mandate counts.
         ed_col: Name of electoral district column (default: "electoral_district").
-        **kwargs: Additional arguments passed to simulate_election.
+        electoral_system: ElectoralSystem object. If None, creates one from kwargs.
+        **kwargs: Additional arguments used to create ElectoralSystem if not provided.
 
     Returns:
         DataFrame with columns [draw, electoral_district, party, mandates].
@@ -252,14 +272,22 @@ def simulate_election_e2e(
     # Convert data frame to a numpy tensor for fast vectorized processing
     parties = [p for p in parties if p in sdf.columns]
     ed_df = sdf.groupby(["draw", ed_col])[parties].sum()
-    districts = list(sdf.electoral_district.unique())
+    districts = list(sdf[ed_col].unique())
     support = ed_df.reset_index(drop=True).to_numpy().reshape((-1, len(districts), len(parties)))
-    nmandates = np.array([mandates_dict[d] for d in districts])
 
-    # Translate exclusion list to party indices (and add the proper default)
-    kwargs["exclude"] = [parties.index(p) for p in kwargs.get("exclude", party_aggregate_cat_names) if p in parties]
+    # Create ElectoralSystem from kwargs if not provided
+    if electoral_system is None:
+        # Handle exclude: convert from party names if provided
+        exclude = kwargs.pop("exclude", party_aggregate_cat_names)
+        if exclude and isinstance(exclude, list) and all(isinstance(x, str) for x in exclude):
+            kwargs["exclude"] = exclude
+        else:
+            kwargs.setdefault("exclude", party_aggregate_cat_names)
+        electoral_system = ElectoralSystem.model_validate(kwargs)
+    elif not isinstance(electoral_system, ElectoralSystem):
+        electoral_system = ElectoralSystem.model_validate(electoral_system)
 
-    edt = simulate_election(support, nmandates, **kwargs)
+    edt = simulate_election(support, parties, districts, mandates_dict, electoral_system)
 
     if edt.shape[1] > support.shape[1]:
         districts = districts + ["Compensation"]
@@ -273,8 +301,8 @@ def simulate_election_e2e(
 # Factor = districts, Category = parties
 def simulate_election_pp(
     data: pd.DataFrame,
-    mandates: dict[str, int],
-    electoral_system: dict[str, object],
+    mandates: Mapping[str, int],
+    electoral_system: ElectoralSystem | Mapping[str, object],
     cat_col: str,
     value_col: str,
     factor_col: str,
@@ -308,19 +336,11 @@ def simulate_election_pp(
         .reshape((len(draws), len(factor_order), len(cat_order)))
     )
 
-    if isinstance(electoral_system.get("threshold"), dict):
-        td: dict = electoral_system["threshold"]  # type: ignore[assignment]
-        electoral_system["threshold"] = np.array([td[d] if d in td else td["default"] for d in cat_order])
-        print(td, electoral_system["threshold"])
-
-    # Translate exclusion list to party indices (and add the proper default)
-    electoral_system["exclude"] = [
-        cat_order.index(p) for p in electoral_system.get("exclude", party_aggregate_cat_names) if p in cat_order
-    ]
+    if not isinstance(electoral_system, ElectoralSystem):
+        electoral_system = ElectoralSystem.model_validate(electoral_system)
 
     # Run the actual electoral simulation
-    nmandates = np.array([mandates[d] for d in factor_order])
-    edt = simulate_election(sdata, nmandates, **electoral_system)
+    edt = simulate_election(sdata, cat_order, factor_order, mandates, electoral_system)
     if edt.shape[1] > sdata.shape[1]:
         factor_order = factor_order + ["Compensation"]
 
@@ -340,82 +360,99 @@ def simulate_election_pp(
     agg_fn="sum",
     n_facets=(2, 2),
     requires=[{}, {"mandates": "pass", "electoral_system": "pass"}],
+    args={
+        "mandates": "pass",
+        "electoral_system": "pass",
+        "value_col": "pass",
+        "width": "pass",
+        "alt_properties": "pass",
+        "sim_done": "pass",
+    },
     as_is=True,
     priority=-500,
 )  # , hidden=True)
 def mandate_plot(
-    data: pd.DataFrame,
-    mandates: dict[str, int],
-    electoral_system: str | object,
-    value_col: str = "value",
-    facets: list[dict[str, object]] = [],
+    p: PlotInput,
+    mandates: Mapping[str, int] | None = None,
+    electoral_system: ElectoralSystem | Mapping[str, object] | None = None,
+    value_col: str | None = None,
     width: int | None = None,
-    alt_properties: dict[str, object] = {},
-    outer_factors: list[str] = [],
-    translate: Callable[[str], str] | None = None,
+    alt_properties: Mapping[str, object] | None = None,
     sim_done: bool = False,
 ) -> AltairChart:
     """Create a mandate distribution visualization for election results.
 
     Args:
-        data: Election data with party support by draw and facets.
-        mandates: Dictionary mapping regions to number of mandates to allocate.
-        electoral_system: Name of electoral system or custom function.
-        value_col: Column name containing vote values.
-        facets: List of facet specifications (party, region, etc).
-        width: Chart width in pixels.
-        alt_properties: Additional Altair chart properties.
-        outer_factors: Additional grouping factors.
-        translate: Translation function for labels.
+        p: Plot parameters bundle provided by the plot pipeline.
+        mandates: Mapping between district names and mandate counts.
+        electoral_system: Dictionary describing the electoral system.
+        value_col: Optional override for the value column.
+        width: Optional chart width override.
+        alt_properties: Optional Altair property overrides.
         sim_done: Whether simulation has already been run.
 
     Returns:
         Altair chart showing mandate probability distributions.
     """
-    f0, f1 = facets[0], facets[1]
-    tf = translate if translate else (lambda s: s)
+    data = p.data.copy()
+    if len(p.facets) < 2:
+        raise ValueError("mandate_plot requires at least two facets (party and district)")
+    if p.outer_factors:
+        raise ValueError("mandate_plot does not support outer factors")
 
-    if outer_factors:
-        raise Exception("This plot does not work with extra factors")
+    f0, f1 = p.facets[0], p.facets[1]
+    party_col, district_col = f0.col, f1.col
+    tf = p.translate or (lambda s: s)
+    value_col = value_col or p.value_col
+    width = width or p.width
+    alt_props: dict[str, object] = dict(p.alt_properties)
+    if alt_properties:
+        alt_props.update(dict(alt_properties))
 
     if not sim_done:
-        mandates = {tf(k): v for k, v in mandates.items()}
+        if mandates is None:
+            raise ValueError("mandates must be provided when sim_done=False")
+        translated_mandates = {tf(k): v for k, v in mandates.items()}
+        if electoral_system is None:
+            raise ValueError("electoral_system must be provided when sim_done=False")
+        if not isinstance(electoral_system, ElectoralSystem):
+            electoral_system = ElectoralSystem.model_validate(electoral_system)
         df = simulate_election_pp(
             data,
-            mandates,
+            translated_mandates,
             electoral_system,
-            f0["col"],
+            party_col,
             value_col,
-            f1["col"],
-            f0["order"],
-            f1["order"],
+            district_col,
+            f0.order,
+            f1.order,
         )
     else:
         df = data
 
-    df[f1["col"]] = df[f1["col"]].replace({"Compensation": tf("Compensation")})
+    df[f1.col] = df[f1.col].replace({"Compensation": tf("Compensation")})
 
     # Shape it into % values for each vote count
     maxv = df["mandates"].max()
     tv = np.arange(1, maxv + 1, dtype="int")[None, :]
     dfv = df["mandates"].to_numpy()[:, None]
     dfm = pd.DataFrame((dfv >= tv).astype("int"), columns=tv[0], index=df.index)
-    dfm["draw"], dfm[f0["col"]], dfm[f1["col"]] = (
+    dfm["draw"], dfm[f0.col], dfm[f1.col] = (
         df["draw"],
-        df[f0["col"]],
-        df[f1["col"]],
+        df[f0.col],
+        df[f1.col],
     )
     res = (
-        dfm.groupby([f0["col"], f1["col"]], observed=True)[tv[0]]
+        dfm.groupby([f0.col, f1.col], observed=True)[tv[0]]
         .mean()
         .reset_index()
-        .melt(id_vars=[f0["col"], f1["col"]], var_name="mandates", value_name="percent")
+        .melt(id_vars=[f0.col, f1.col], var_name="mandates", value_name="percent")
     )
 
     # Remove parties who have no chance of even one elector
-    eliminate = res.groupby(f0["col"], observed=True)["percent"].sum() < 0.2
+    eliminate = res.groupby(f0.col, observed=True)["percent"].sum() < 0.2
     el_cols = [i for i, v in eliminate.items() if v]
-    res = res[~res[f0["col"]].isin(el_cols)]
+    res = res[~res[f0.col].isin(el_cols)]
     cat_order = list(eliminate[~eliminate].index)
 
     f_width = max(50, width / len(cat_order)) if width is not None else 50
@@ -426,10 +463,10 @@ def mandate_plot(
         .encode(
             x=alt.X("mandates", title=None),
             y=alt.Y("percent", title=None, axis=alt.Axis(format="%")),
-            color=alt.Color(f"{f0['col']}:N", scale=f0["colors"], legend=None),
+            color=alt.Color(field=f0.col, type="nominal", scale=f0.colors, legend=None),
             tooltip=[
-                alt.Tooltip(f0["col"], title="party"),
-                alt.Tooltip(f1["col"]),
+                alt.Tooltip(field=f0.col, title="party"),
+                alt.Tooltip(field=f1.col),
                 alt.Tooltip("mandates"),
                 alt.Tooltip("percent", format=".1%", title="probability"),
             ],
@@ -437,19 +474,19 @@ def mandate_plot(
         .properties(
             width=f_width,
             height=f_width // 2,
-            **alt_properties,
+            **alt_props,
             # title="Ringkonna- ja kompensatsioonimandaatide tõenäolised jaotused"
         )
         .facet(
             # header=alt.Header(labelAngle=-90),
             row=alt.X(
-                f"{f1['col']}:N",
-                sort=list(f1["order"]) + [tf("Compensation")],
+                f"{f1.col}:N",
+                sort=list(f1.order) + [tf("Compensation")],
                 title=None,
                 header=alt.Header(labelOrient="top"),
             ),
             column=alt.Y(
-                f"{f0['col']}:N",
+                f"{f0.col}:N",
                 sort=cat_order,
                 title=None,
                 header=alt.Header(labelFontWeight="bold"),
@@ -466,72 +503,81 @@ def mandate_plot(
     draws=True,
     requires_factor=True,
     agg_fn="sum",
-    args={"initial_coalition": "list"},
+    args={
+        "mandates": "pass",
+        "electoral_system": "pass",
+        "value_col": "pass",
+        "initial_coalition": "list",
+        "sim_done": "pass",
+    },
     requires=[{}, {"mandates": "pass", "electoral_system": "pass"}],
     as_is=True,
     n_facets=(2, 2),
     priority=-1000,
 )  # , hidden=True)
 def coalition_applet(
-    data: pd.DataFrame,
-    mandates: dict[str, int],
-    electoral_system: str | object,
-    value_col: str = "value",
-    facets: list[dict[str, object]] = [],
-    width: int | None = None,
-    alt_properties: dict[str, object] = {},
-    outer_factors: list[str] = [],
-    translate: object | None = None,
-    initial_coalition: list[str] = [],
+    p: PlotInput,
+    mandates: Mapping[str, int] | None = None,
+    electoral_system: ElectoralSystem | Mapping[str, object] | None = None,
+    value_col: str | None = None,
+    initial_coalition: Sequence[str] | None = None,
     sim_done: bool = False,
 ) -> None:
     """Interactive Streamlit widget for exploring coalition scenarios.
 
     Args:
-        data: Election data with party support by draw and facets.
-        mandates: Dictionary mapping regions to number of mandates to allocate.
-        electoral_system: Name of electoral system or custom function.
-        value_col: Column name containing vote values.
-        facets: List of facet specifications (party, region, etc).
-        width: Chart width in pixels.
-        alt_properties: Additional Altair chart properties.
-        outer_factors: Additional grouping factors.
-        translate: Translation function for labels.
-        initial_coalition: Initial list of parties in coalition.
+        p: Plot parameters with data/metadata supplied by the pipeline.
+        mandates: Mapping of districts to mandate counts (required if sim_done=False).
+        electoral_system: Electoral system definition (ElectoralSystem or dict).
+        value_col: Optional override for vote column.
+        initial_coalition: Sequence of parties pre-selected in the widget.
         sim_done: Whether simulation has already been run.
     """
-    f0, f1 = facets[0], facets[1]
-    tf = translate if translate else (lambda s: s)
+    tf = p.translate or (lambda s: s)
+    initial_coalition = initial_coalition or []
+    value_col = value_col or p.value_col
 
-    if outer_factors:
-        raise Exception("This plot does not work with extra factors")
-
-    mandates = {tf(k): v for k, v in mandates.items()}
+    if p.outer_factors:
+        raise ValueError("coalition_applet does not support outer factors")
+    if len(p.facets) < 2:
+        raise ValueError("coalition_applet expects two facets (party and district)")
+    f0, f1 = p.facets[0], p.facets[1]
+    party_col, district_col = f0.col, f1.col
 
     if not sim_done:
+        if mandates is None or electoral_system is None:
+            raise ValueError("mandates and electoral_system must be provided when sim_done=False")
+        if not isinstance(electoral_system, ElectoralSystem):
+            electoral_system = ElectoralSystem.model_validate(electoral_system)
+        mandates_dict = {tf(k): v for k, v in mandates.items()}
         sdf = simulate_election_pp(
-            data,
-            mandates,
+            p.data,
+            mandates_dict,
             electoral_system,
-            f0["col"],
-            value_col,
-            f1["col"],
-            f0["order"],
-            f1["order"],
+            party_col,
+            value_col or p.value_col,
+            district_col,
+            f0.order,
+            f1.order,
         )
     else:
-        sdf = data
+        sdf = p.data
+        if mandates is None:
+            mandates_meta = getattr(f1.meta, "mandates", None)
+            mandates_dict = dict(mandates_meta or {})
+        else:
+            mandates_dict = {tf(k): v for k, v in mandates.items()}
 
     # Aggregate to total mandate counts
-    odf = sdf.groupby(["draw", f0["col"]])["mandates"].sum().reset_index()
+    odf = sdf.groupby(["draw", party_col])["mandates"].sum().reset_index()
     odf["over_t"] = odf["mandates"] > 0
     adf = odf[odf["mandates"] > 0]
 
-    list(adf[f0["col"]].unique())  # Leave only parties that have mandates
+    list(adf[party_col].unique())  # Leave only parties that have mandates
 
     coalition = st.multiselect(
         tf("Select the coalition:"),
-        f0["order"],
+        f0.order,
         default=initial_coalition,
         help=tf("Choose the parties whose coalition to model"),
     )
@@ -543,18 +589,18 @@ def coalition_applet(
 
     # Individual parties plot
     ddf = (
-        (adf.groupby(f0["col"])["mandates"].value_counts() / odf.groupby(f0["col"]).size())
+        (adf.groupby(party_col)["mandates"].value_counts() / odf.groupby(party_col).size())
         .rename("percent")
         .reset_index()
     )
     ddf = ddf.merge(
-        odf.groupby(f0["col"])["mandates"].median().rename(tf("median")),
-        left_on=f0["col"],
+        odf.groupby(party_col)["mandates"].median().rename(tf("median")),
+        left_on=party_col,
         right_index=True,
     )
     ddf = ddf.merge(
-        odf.groupby(f0["col"])["over_t"].mean().rename(tf("over_threshold")),
-        left_on=f0["col"],
+        odf.groupby(party_col)["over_t"].mean().rename(tf("over_threshold")),
+        left_on=party_col,
         right_index=True,
     )
 
@@ -574,8 +620,8 @@ def coalition_applet(
             ),
             alt.X2("x2:Q"),
             alt.Y("percent:Q", title=None, axis=None),
-            alt.Row(f"{f0['col']}:N", title=None),
-            color=alt.Color(f"{f0['col']}:N", legend=None, scale=f0["colors"]),
+            alt.Row(f"{party_col}:N", title=None),
+            color=alt.Color(f"{party_col}:N", legend=None, scale=f0.colors),
             tooltip=[
                 alt.Tooltip("mandates:Q", title=tf("mandates"), format=",d"),
                 alt.Tooltip("percent:Q", title=tf("percent"), format=".1%"),
@@ -587,7 +633,7 @@ def coalition_applet(
     )
     col1.altair_chart(p_plot, use_container_width=True)
 
-    total_mandates = sum(mandates.values())
+    total_mandates = sum(mandates_dict.values())
 
     col2.markdown(tf("**Coalition simulation**"))
     n = col2.number_input(
@@ -601,7 +647,7 @@ def coalition_applet(
 
     if len(coalition) > 0:
         # Coalition plot
-        acdf = adf[adf[f0["col"]].isin(coalition)]
+        acdf = adf[adf[party_col].isin(coalition)]
         cdf = acdf.groupby("draw")["mandates"].sum().value_counts().rename("count").reset_index()
 
         mi, ma = min(cdf["mandates"].min(), n), max(cdf["mandates"].max(), n)
