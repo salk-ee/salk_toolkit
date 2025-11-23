@@ -430,7 +430,7 @@
       "condition": {
         "field": "hdi",
         "legend": null,
-        "param": "param_5",
+        "param": "param-normalized",
         "scale": {
           "domain": [
             0.5,
@@ -510,7 +510,7 @@
   "params": [
     {
       "bind": "legend",
-      "name": "param_5",
+      "name": "param-normalized",
       "select": {
         "fields": [
           "party_preference"

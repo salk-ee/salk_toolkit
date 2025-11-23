@@ -11,11 +11,15 @@ alwaysApply: false
 - **Location**: `specs/{DEV|TOOL}-{number}-{description}.md`
 - **Discovery**: `ls specs/*.md` or search: `grep -r "feature" specs/`
 
-## When to Create vs Implement
+## Verbs
 
-- **Create new spec**: For new features not covered by existing specs or new tools
-  - When creating a new spec, use `XXX` instead of number. Number will be filled in once PR is created
-- **Implement existing**: If spec already exists, follow it and update progress
+There are four main things user can ask for regarding specs.
+If they do, read the relevant rules for best practices
+
+- **Create** a spec - [spec_create.mdc](mdc:.cursor/rules/spec_verbs/spec_create.mdc)
+- **Review** a spec before implementation - [spec_review.mdc](mdc:.cursor/rules/spec_verbs/spec_review.mdc)
+- **Implement** a feature according to a spec - [spec_implement.mdc](mdc:.cursor/rules/spec_verbs/spec_implement.mdc) 
+- **Validate** that feature has been built to spec - [spec_validate.mdc](mdc:.cursor/rules/spec_verbs/spec_validate.mdc) 
 
 ## Component best practices
 
@@ -26,9 +30,11 @@ Always follow the rules set for the specific domain
 - **Tools**: [tools.mdc](mdc:.cursor/rules/tools.mdc)
   - Specs for tools start with TOOL instead of DEV
 
-## Best practices for spec writing
+## Spec format
 - Prefer short concise bullet-points and sub-points over long winding sentences
 - The more structure, the better. Feel free to add subheadings and sub-subheadings if warranted
+- DO NOT add date/time to individual changes unless a month+ has passed since last update
+  - In that case, create a separate **Changelog** heading to the end
 
 ## Spec Structure Template
 
@@ -106,45 +112,3 @@ What and why in 2-3 sentences.
 
 Track decisions and pattern deviations as you work.
 ```
-
-## AI Workflow
-
-**1. Before Starting:**
-
-- Search for existing specs: `grep -r "relevant-keyword" specs/`
-- If found: Read context. Then proceed with implementing existing spec
-- If none: ask clarifying questions, then create new spec
-
-ALWAYS: Ask clarifying questions. Do not start coding until all questions are answered. Write down Q&A in spec
-
-**2. While Working:**
-
-- Check off **Implementation Plan** items
-- Document decisions in **Implementation Notes**
-
-**3. Pattern Discovery:**
-
-- Search by tag: `grep -r "#multifile" specs/`
-- Read referenced specs: `cat specs/DEV-XXX-*.md`
-
-## Implementation Standards
-
-**Code Style**:
-
-- Python: Follow linter rules
-- Comment prefixes: `CORNER:`, `PERF:`, `WORKAROUND:`
-
-**Pydantic Models**:
-
-- Use descriptive field names and constraints
-
-## Common Tags
-
-- To be filled once best practice emerges
-
-## Implementation Decision Guidelines
-
-**Follow Patterns**: Use established patterns unless there's a compelling reason to deviate
-**Document Deviations**: Always explain why you're departing from standard patterns
-**Maintain Backwards Compatibility**: Ensure existing features continue working
-**Performance Considerations**: Always keep in mind parquets can be millions of rows

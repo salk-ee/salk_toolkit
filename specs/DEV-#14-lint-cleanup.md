@@ -8,9 +8,7 @@
 
 ## Overview
 
-Modernize the core toolkit modules with complete type hints, Google-style docstrings, and lint-compliant patterns so we can remove the current Ruff ignore list and improve maintainability of the code. 
-
-**Status:** Complete - All automated checks pass (ruff, pytest, pdoc, pyright). Enabled 10 Pyright checks fixing 124 real bugs. 7 checks remain intentionally disabled due to architectural trade-offs with JSON handling and third-party library limitations.
+Modernize the core toolkit modules with complete type hints, Google-style docstrings, and lint-compliant patterns so we can remove the current Ruff ignore list and improve maintainability of the code.
 
 ## Problem Context
 
@@ -109,6 +107,7 @@ For each item in the list below:
   - Status 2025-11-20: Added `extend-per-file-ignores = { "tests/**/*": ["ANN"] }` so Ruff focuses on runtime modules; `ruff check --select ANN` now passes.
 - [x] Add explicit type hints to every function/method across `io`, `pp`, `plots`, `dashboard`, `commands`, `utils`, `validation`, and `tools` modules; include overloads where runtime dispatch varies.
   - Note: Type aliases remain duplicated inline where needed. Complex pydantic models in `validation.py` are reused. Shared type alias module (`salk_toolkit/types.py`) not needed at this time.
+  - Status 2025-11-21: `return_meta` overloads implemented with `ProcessedDataReturn` type alias and `@overload` decorators for type-safe return types.
 - [x] Add `TYPE_CHECKING` blocks for optional heavy dependencies to avoid runtime import costs.
 - [x] Add `pyright` to local tooling: configure `pyproject.toml` and ensure version pinning consistent with CI.
   - Status 2025-11-20: `pyproject.toml` already declares `pyright>=1.1` in the dev extra plus a `[tool.pyright]` block; leaving this checked off.
@@ -172,7 +171,6 @@ For each item in the list below:
   - Core checks: `reportMissingTypeStubs`, `reportOperatorIssue` (34 fixes), `reportAssignmentType` (14 fixes), `reportReturnType` (29 fixes + `AltairChart` alias), `reportRedeclaration` (2 fixes)
   - None-safety checks: `reportOptionalIterable` (1 fix), `reportIndexIssue` (16 fixes), `reportOptionalSubscript` (21 fixes), `reportOptionalMemberAccess` (6 fixes), `reportOptionalOperand` (1 fix)
 - **2025-11-20 - Disabled Checks**: 7 checks remain disabled (5204 total errors) due to architectural trade-offs with `dict[str, object]` JSON handling and third-party library limitations. Found and fixed 3 actual bugs from `reportCallIssue` before disabling it.
-- [x] **TODO 2025-11-21**: Capture the new `return_meta` overloads in `io.py` (typed `Literal` flag + tuple guard removal) inside docs/tests so the spec reflects type-system awareness of metadata returns.
 
 ## Q&A
 
