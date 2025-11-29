@@ -34,14 +34,14 @@ def streamlit_fn_factory(relpath: str, curpath: str) -> Callable[[], None]:
         A callable that executes the Streamlit app when called.
     """
 
-    def run_streamlit_fn_fn() -> None:
+    def _run_streamlit_fn_fn() -> None:
         import subprocess
 
         filename = os.path.join(curpath, relpath)
 
         subprocess.run(["streamlit", "run", filename] + sys.argv[1:])
 
-    return run_streamlit_fn_fn
+    return _run_streamlit_fn_fn
 
 
 # | eval: false
@@ -149,7 +149,7 @@ def translate_dashboard_fn(
 
     translator = deepl.Translator(deepl_key)
 
-    def t_func(txt: str) -> str:
+    def _t_func(txt: str) -> str:
         """Translate text using DeepL API.
 
         Args:
@@ -185,7 +185,7 @@ def translate_dashboard_fn(
         slist = [os.path.basename(s) for s in sources]
         print(f"Using {len(sources)} extra sources: {', '.join(slist)}")
 
-    translate_pot(pot_loc, po_loc, t_func, sources)
+    translate_pot(pot_loc, po_loc, _t_func, sources)
 
 
 def translate_dashboard() -> None:

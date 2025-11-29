@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import csv
 from pathlib import Path
-from typing import Any
 
 import altair as alt
 import pandas as pd
@@ -14,6 +13,7 @@ import polars as pl
 import pytest
 
 from salk_toolkit import dashboard
+from salk_toolkit.validation import DataMeta, soft_validate
 
 
 def test_alias_file_redirects_missing(tmp_path: Path) -> None:
@@ -111,9 +111,9 @@ def test_plot_matrix_html_generates_embed_block() -> None:
 
 
 @pytest.fixture
-def sample_meta() -> dict[str, Any]:
+def sample_meta() -> DataMeta:
     """Synthetic dashboard metadata used by filter limit tests."""
-    return {
+    meta = {
         "structure": [
             {
                 "name": "demographics",
@@ -144,9 +144,11 @@ def sample_meta() -> dict[str, Any]:
             },
         ]
     }
+    meta["file"] = "__test__"
+    return soft_validate(meta, DataMeta)
 
 
-def test_get_filter_limits_handles_groups_and_continuous(sample_meta: dict[str, Any]) -> None:
+def test_get_filter_limits_handles_groups_and_continuous(sample_meta: DataMeta) -> None:
     """Filter limit extraction should handle grouped metadata and numeric ranges."""
     frame = pl.DataFrame(
         {
@@ -156,7 +158,9 @@ def test_get_filter_limits_handles_groups_and_continuous(sample_meta: dict[str, 
         }
     ).lazy()
 
-    limits = dashboard.get_filter_limits(frame, dims=["opinions", "gender", "age"], dmeta=sample_meta, uid="demo")
+    limits = dashboard._get_filter_limits.__wrapped__(  # type: ignore[attr-defined]
+        frame, dims=["opinions", "gender", "age"], dmeta=sample_meta, uid="demo"
+    )
 
     assert limits["opinions"]["categories"] == ["support"]
     assert limits["opinions"]["group"] is True

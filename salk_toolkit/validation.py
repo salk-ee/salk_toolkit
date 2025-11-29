@@ -28,23 +28,81 @@ __all__ = [
     "AggFnOption",
     "FileDesc",
     "DataMeta",
+    "ParquetMeta",
     "hard_validate",
     "soft_validate",
     "SingleMergeSpec",
     "smc_ensure_list",
     "PlotDescriptor",
+    "PlotMeta",
+    "FacetMeta",
+    "GroupOrColumnMeta",
+    "ElectoralSystem",
+    "MandatesDict",
+    "cs_dict_to_lst",
+    "cb_dict_to_lst",
 ]
 
 from datetime import date, datetime
-from typing import Annotated, Any, Dict, List, Literal, Optional, Self, Sequence, Tuple, Union
-from pydantic import BaseModel, ConfigDict, model_validator, BeforeValidator
+from typing import (
+    Annotated,
+    Any,
+    Dict,
+    List,
+    Literal,
+    Mapping,
+    Optional,
+    Self,
+    Sequence,
+    Tuple,
+    TypeVar,
+    Union,
+    cast,
+    TypeAlias,
+)
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    model_validator,
+    BeforeValidator,
+    ValidationError,
+    PrivateAttr,
+)
 from pydantic_extra_types.color import Color
+import altair as alt
+from altair.utils.schemapi import UndefinedType
+
 from salk_toolkit.utils import replace_constants
 
+Scalar: TypeAlias = str | int | float | bool | None
 
-# Define a new base that is more strict towards unknown inputs
+
+# Define a new base that ignores extra fields by default (for backward compatibility)
+# Warnings about extra fields are generated via soft_validate
 class PBase(BaseModel):
-    model_config = ConfigDict(extra="forbid", protected_namespaces=(), arbitrary_types_allowed=True)
+    model_config = ConfigDict(extra="ignore", protected_namespaces=(), arbitrary_types_allowed=True)
+
+
+# --------------------------------------------------------
+#          ELECTORAL SYSTEM TYPES
+# --------------------------------------------------------
+
+
+class ElectoralSystem(PBase):
+    """Electoral system parameters for election simulations."""
+
+    quotas: bool = True  # Whether to use quota system
+    threshold: Union[float, Dict[str, float]] = 0.0  # National threshold (float) or per-district (dict with 'default')
+    ed_threshold: float = 0.0  # Electoral district threshold
+    body_size: Optional[int] = None  # Total body size for compensation (default: sum of district mandates)
+    first_quota_coef: float = 1.0  # Coefficient for first quota allocation
+    dh_power: float = 1.0  # Power parameter for d'Hondt divisor
+    exclude: Optional[List[str]] = ["Other"]  # List of party names to exclude from allocation
+    special: Optional[str] = None  # Special system identifier (e.g., "cz" for Czech system)
+
+
+MandatesDict = Dict[str, int]  # Dictionary mapping electoral districts to mandate counts
 
 
 # --------------------------------------------------------
@@ -60,30 +118,33 @@ class ColumnMeta(PBase):
     ordered: bool = False  # If categorical data is ordered
 
     # Transformations
-    translate: Optional[Dict] = None  # Translate dict applied to categories
+    translate: Dict[Scalar, Scalar] = Field(default_factory=dict)  # Translate dict applied to categories
     transform: Optional[str] = None  # Transform function in python code, applied after translate
-    translate_after: Optional[Dict] = None  # Same as translate, but applied after transform
+    translate_after: Dict[str, str] = Field(default_factory=dict)  # Same as translate, but applied after transform
 
     # Model extras
-    modifiers: Optional[List[str]] = (
-        None  # List of columns that are meant to modify the responses on this col -> private_inputs
-    )
-    nonordered: Optional[List] = (
-        None  # List of categories that are outside the order (Like "Don't know") -> nonordered in ordered_outputs
-    )
+    modifiers: List[str] = Field(
+        default_factory=list
+    )  # List of columns that are meant to modify the responses on this col -> private_inputs
+    nonordered: List = Field(
+        default_factory=list
+    )  # List of categories that are outside the order (Like "Don't know") -> nonordered in ordered_outputs
 
     # Plot pipeline extras
     label: Optional[str] = None  # Longer description of the column for tooltips
-    labels: Optional[Dict[str, str]] = None  # Dict matching categories to labels
-    groups: Optional[Dict[str, List[str]]] = (
-        None  # Dict of lists of category values defining groups for easier filtering
-    )
-    colors: Optional[Dict[str, Color]] = None  # Dict matching colors to categories
+    labels: Dict[str, str] = Field(default_factory=dict)  # Dict matching categories to labels
+    groups: Dict[str, List[str]] = Field(
+        default_factory=dict
+    )  # Dict of lists of category values defining groups for easier filtering
+    colors: Dict[str, Color] = Field(default_factory=dict)  # Dict matching colors to categories
     num_values: Optional[List[Union[float, None]]] = None  # For categoricals - how to convert the categories to numbers
     val_format: Optional[str] = None  # Format string for the column values - only used with continuous display
     val_range: Optional[Tuple[float, float]] = (
         None  # Range of possible values for continuous variables - used for filter bounds etc
     )
+    bin_breaks: Optional[Union[int, List[float]]] = None  # Optional manual breaks for discretization
+    bin_labels: Optional[List[str]] = None  # Optional manual labels for discretization buckets
+    question_colors: Dict[str, Color] = Field(default_factory=dict)  # Question-level color overrides
 
     likert: bool = False  # For ordered categoricals - if they are likert-type (i.e. symmetric around center)
     neutral_middle: Optional[str] = (
@@ -91,8 +152,8 @@ class ColumnMeta(PBase):
     )
 
     topo_feature: Optional[Tuple[str, str, str]] = None  # Link to a geojson/topojson [url,type,col_name inside geodata]
-    electoral_system: Optional[Dict] = None  # Information about electoral system (TODO: spec it out)
-    mandates: Optional[Dict] = None  # Mandate count mapping for the electoral system
+    electoral_system: Optional[ElectoralSystem] = None  # Information about electoral system
+    mandates: Optional[MandatesDict] = None  # Mandate count mapping for the electoral system
 
     @model_validator(mode="after")
     def check_categorical(self) -> Self:
@@ -117,11 +178,18 @@ class ColumnMeta(PBase):
         return self
 
 
+class GroupOrColumnMeta(ColumnMeta):
+    """Column metadata that can optionally describe a grouped question."""
+
+    columns: Optional[List[str]] = None
+    col_prefix: Optional[str] = None
+
+
 # This is for the block-level 'scale' group - basically same as ColumnMeta but with a few extras
 class BlockScaleMeta(ColumnMeta):
     # Only useful in 'scale' block
     col_prefix: Optional[str] = None  # If column name should have the prefix added. Usually used in scale block
-    question_colors: Optional[Dict[str, Color]] = None  # Dict mapping columns to different colors
+    question_colors: Dict[str, Color] = Field(default_factory=dict)  # Dict mapping columns to different colors
 
 
 class TopKBlock(BaseModel):
@@ -150,7 +218,7 @@ ParsedColumnSpec = Tuple[str, str, ColumnSpecMeta]
 
 
 # Transform the column tuple to (new name, old name, meta) format
-def cspec(tpl: ColumnSpecInput) -> ParsedColumnSpec:
+def _cspec(tpl: ColumnSpecInput) -> ParsedColumnSpec:
     """Parse column specification tuple/list into [column_name, source_name, metadata].
 
     Args:
@@ -190,20 +258,50 @@ def cspec(tpl: ColumnSpecInput) -> ParsedColumnSpec:
 # Transform list to dict for better error readability
 
 
-def cs_lst_to_dict(lst: Sequence[ColumnSpecInput]) -> dict[str, Tuple[str, ColumnSpecMeta]]:
+def _cs_lst_to_dict(
+    lst: Sequence[ColumnSpecInput] | dict[str, Tuple[str, ColumnSpecMeta]],
+) -> dict[str, Tuple[str, ColumnSpecMeta]]:
     """Transform list of column specs to dictionary format.
 
     Args:
-        lst: List of column specifications.
+        lst: List of column specifications, or already a dict.
 
     Returns:
         Dictionary mapping column names to (source_name, metadata).
     """
-    parsed_specs = [cspec(item) for item in lst]
+    # If already a dict, return as-is
+    if isinstance(lst, dict):
+        return lst
+
+    parsed_specs = [_cspec(item) for item in lst]
     return {cn: (ocn, meta) for cn, ocn, meta in parsed_specs}
 
 
-ColSpec = Annotated[Dict[str, Tuple[str, ColumnMeta]], BeforeValidator(cs_lst_to_dict)]
+ColSpec = Annotated[Dict[str, Tuple[str, ColumnMeta]], BeforeValidator(_cs_lst_to_dict)]
+
+
+def cs_dict_to_lst(d: dict[str, Tuple[str, ColumnSpecMeta]]) -> list[ColumnSpecInput]:
+    """Transform dict of column specs back to list format (inverse of cs_lst_to_dict).
+
+    Args:
+        d: Dictionary mapping column names to (source_name, metadata).
+
+    Returns:
+        List of column specifications in original format.
+    """
+    result: list[ColumnSpecInput] = []
+    for cn, (sn, meta) in d.items():
+        if sn == cn:
+            if meta:
+                result.append([cn, meta])
+            else:
+                result.append(cn)
+        else:
+            if meta:
+                result.append([cn, sn, meta])
+            else:
+                result.append([cn, sn])
+    return result
 
 
 class ColumnBlockMeta(PBase):
@@ -221,16 +319,31 @@ class ColumnBlockMeta(PBase):
     create: Optional[Union[TopKBlock, None]] = None  # TODO: None -> MaxDiff
 
 
+class FacetMeta(PBase):
+    """Facet definition consumed by the plotting pipeline."""
+
+    col: str  # Column name used for faceting within the processed dataframe
+    ocol: str  # Original column (before translations or label tweaks)
+    order: List[str] = Field(default_factory=list)  # Ordered categories for the facet column
+    colors: Optional[Dict[str, Any] | alt.Scale | UndefinedType] = None  # Altair-ready color definition
+    neutrals: List[str] = Field(default_factory=list)  # Likert neutral categories to mute in gradients
+    meta: ColumnMeta  # Full metadata reference for the facet column
+
+
 # Again, convert list to dict for easier debugging in case errors get thrown
-def cb_lst_to_dict(lst: Sequence[dict[str, object]]) -> dict[str, dict[str, object]]:
+def _cb_lst_to_dict(lst: Sequence[dict[str, object]] | dict[str, dict[str, object]]) -> dict[str, dict[str, object]]:
     """Transform list of block specs to dictionary format.
 
     Args:
-        lst: List of block specification dictionaries.
+        lst: List of block specification dictionaries, or already a dict.
 
     Returns:
         Dictionary mapping block names to block specifications.
     """
+    # If already a dict, return as-is
+    if isinstance(lst, dict):
+        return lst
+
     result: dict[str, dict[str, object]] = {}
     for block in lst:
         name = block.get("name")
@@ -240,14 +353,28 @@ def cb_lst_to_dict(lst: Sequence[dict[str, object]]) -> dict[str, dict[str, obje
     return result
 
 
-BlockSpec = Annotated[Dict[str, ColumnBlockMeta], BeforeValidator(cb_lst_to_dict)]
+BlockSpec = Annotated[Dict[str, ColumnBlockMeta], BeforeValidator(_cb_lst_to_dict)]
 
 
-class FileDesc(PBase):
+def cb_dict_to_lst(d: dict[str, dict[str, object]]) -> list[dict[str, object]]:
+    """Transform dict of block specs back to list format (inverse of cb_lst_to_dict).
+
+    Args:
+        d: Dictionary mapping block names to block specifications.
+
+    Returns:
+        List of block specification dictionaries.
+    """
+    return list(d.values())
+
+
+class FileDesc(BaseModel):
     """Descriptor for a single data file in a multi-file data source."""
 
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
     file: str
-    opts: Optional[Dict] = None
+    opts: Dict = Field(default_factory=dict)
     code: Optional[str] = None  # Short code identifier for the file (e.g., 'F1', 'F2' or 'wave1', 'wave2')
 
 
@@ -277,7 +404,7 @@ class DataMeta(PBase):
 
     # Single input file
     file: Optional[str] = None  # Name of the file, with relative path from this json file
-    read_opts: Optional[Dict] = None  # Additional options to pass to reading function
+    read_opts: Dict = Field(default_factory=dict)  # Additional options to pass to reading function
 
     # Multiple files
     files: Optional[List[FileDesc]] = None
@@ -290,7 +417,7 @@ class DataMeta(PBase):
     structure: BlockSpec
 
     # A set of values that can be referenced in the file below
-    constants: Optional[Dict] = None
+    constants: Dict = Field(default_factory=dict)
 
     # Different global processing steps
     preprocessing: Optional[Union[str, List[str]]] = None  # Performed on raw data
@@ -300,6 +427,10 @@ class DataMeta(PBase):
 
     # List of data points that should be excluded in alyses
     excluded: List[Tuple[int, str]] = []  # Index of row + str  reason for exclusion
+    total_size: Optional[float] = None  # Optional total population size override
+    draws_data: Dict[str, Tuple[str, int]] = Field(default_factory=dict)  # Precomputed draws info keyed by column
+
+    _constants_cache: dict[str, object] = PrivateAttr(default_factory=dict)
 
     @model_validator(mode="before")
     @classmethod
@@ -335,28 +466,136 @@ class DataMeta(PBase):
 
 
 def hard_validate(m: dict[str, object] | DataMeta) -> None:
-    """Validate a DataMeta object, raising errors on failure.
+    """Validate a DataMeta object with strict checking, raising errors on failure.
+
+    Uses a strict model (extra='forbid') to ensure no extra fields are allowed.
 
     Args:
         m: Dictionary or DataMeta object to validate.
 
     Raises:
-        ValueError: If validation fails.
+        ValidationError: If validation fails (including extra fields).
     """
-    DataMeta.model_validate(m)
+    StrictDataMeta = _create_strict_model_class(DataMeta)
+    StrictDataMeta.model_validate(m if isinstance(m, dict) else m.model_dump(mode="python"))
 
 
-def soft_validate(m: dict[str, object], model: type[BaseModel]) -> None:
-    """Validate a dictionary against a pydantic model, printing errors instead of raising.
+T = TypeVar("T", bound=BaseModel)
+
+
+def _create_strict_model_class(base_model: type[BaseModel]) -> type[BaseModel]:
+    """Create a strict version of a model class with extra='forbid' for validation warnings.
+
+    If the model is a PBase subclass, creates a new class with extra='forbid'.
+    Otherwise returns the original model class.
 
     Args:
-        m: Dictionary to validate.
-        model: Pydantic model class to validate against.
+        base_model: The model class to make strict.
+
+    Returns:
+        A new model class with extra='forbid' if base_model is a PBase subclass,
+        otherwise returns base_model unchanged.
     """
+    if issubclass(base_model, PBase):
+
+        class StrictModel(base_model):  # type: ignore[valid-type, misc]
+            model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
+
+        return StrictModel
+    return base_model
+
+
+def soft_validate(m: dict[str, object] | BaseModel, model: type[T]) -> T:
+    """Validate dict/model against a pydantic model, printing warnings, then returning validated object.
+
+    First validates with a temporary strict model (extra='forbid') to catch extra fields and print warnings.
+    Then validates with the normal model (extra='ignore') which allows extra fields but runs all validators.
+
+    Args:
+        m: Dictionary or Pydantic model instance to validate.
+        model: Pydantic model class to validate against.
+
+    Returns:
+        Validated Pydantic model instance.
+    """
+    constants_cache: dict[str, object] | None = None
+    if model is DataMeta:
+        if isinstance(m, dict):
+            consts = m.get("constants")
+            if isinstance(consts, dict):
+                constants_cache = dict(consts)
+        elif isinstance(m, DataMeta):
+            constants_cache = getattr(m, "_constants_cache", None)
+
+    # If already a model instance of the correct type, return as-is
+    if isinstance(m, model):
+        return cast(T, m)
+
+    # Convert to dict if needed
+    if isinstance(m, BaseModel):
+        m_dict = m.model_dump(mode="python")
+    else:
+        m_dict = m
+
+    # First, validate with a temporary strict model (extra='forbid') to catch extra fields
+    # This generates warnings but doesn't affect the final result
+    StrictModel = _create_strict_model_class(model)
     try:
-        model.model_validate(m)
-    except ValueError as e:
-        print(e)
+        StrictModel.model_validate(m_dict)
+    except ValidationError as e:
+        # Print warnings for validation errors (mostly extra fields)
+        print(f"Validation warnings for {model.__name__}:")
+        for error in e.errors():
+            loc = " -> ".join(str(x) for x in error["loc"])
+            msg = error["msg"]
+            print(f"  {loc}: {msg}")
+
+    # Now validate with the normal model (extra='ignore') which runs all validators
+    # and allows extra fields at all nesting levels
+    inst = cast(T, model.model_validate(m_dict, strict=False))
+    if constants_cache is not None and isinstance(inst, DataMeta):
+        inst._constants_cache = constants_cache
+    return inst
+
+
+class ParquetMeta(PBase):
+    """Metadata bundle stored inside parquet files (data + model + miscellaneous extras)."""
+
+    data: DataMeta
+    model: Dict[str, Any] = Field(default_factory=dict)
+
+    _extras: dict[str, object] = PrivateAttr(default_factory=dict)
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, object]) -> "ParquetMeta":
+        """Create a ParquetMeta instance from a raw metadata payload."""
+
+        data_payload = payload.get("data")
+        if data_payload is None:
+            raise ValueError("Parquet metadata missing 'data' entry")
+        data_meta = soft_validate(cast(dict[str, object] | DataMeta, data_payload), DataMeta)
+        model_payload = payload.get("model")
+        model_dict = cast(dict[str, Any], model_payload or {})
+        extras = {k: v for k, v in payload.items() if k not in {"data", "model"}}
+        inst = cls(data=data_meta, model=model_dict)
+        inst._extras = extras
+        return inst
+
+    @property
+    def extras(self) -> dict[str, object]:
+        """Access additional metadata fields preserved from the parquet payload."""
+
+        return self._extras
+
+    def set_extra(self, key: str, value: object) -> None:
+        """Set or update an extra metadata field."""
+
+        self._extras[key] = value
+
+    def payload(self) -> dict[str, object]:
+        """Return a dict payload combining core fields and extras."""
+
+        return {**self._extras, "data": self.data, "model": self.model}
 
 
 DataSpec = Union[str, "DataDescription"]
@@ -406,7 +645,7 @@ class DataDescription(BaseModel):
     """
 
     file: Optional[str] = None  # Single file to read
-    files: Optional[List[Union[str, Dict]]] = None  # Multiple files to parse
+    files: Optional[List[FileDesc]] = None  # Multiple files to parse
     data: Optional[Dict[str, Any]] = None  # Alternative to file, files. Dictionary of column {name: values} pairs.
     preprocessing: Optional[Union[str, List[str]]] = None  # String of python code that can reference df
     filter: Optional[str] = None  # String of python code that can reference df and is evaluated as df[filter code]
@@ -483,8 +722,33 @@ class PlotDescriptor(PBase):
     pl_filter: Optional[str] = None  # Polars expression evaluated against the LazyFrame before selection
     sample: Optional[int] = None  # Sample size (with replacement) drawn before aggregation
     res_meta: Optional[ColumnBlockMeta] = None  # Temporary metadata block injected before processing
-    col_meta: Optional[Dict[str, ColumnMeta]] = None  # Column-level metadata overrides
+    col_meta: Dict[str, ColumnMeta] = Field(default_factory=dict)  # Column-level metadata overrides
 
     # Internal / debugging
     calculated_draws: bool = True  # Whether to compute synthetic draws when metadata allows it
     data: Optional[str] = None  # Identifier for the data source (used for caching)
+
+
+class PlotMeta(PBase):
+    """Metadata registered for each plot function via ``@stk_plot``."""
+
+    name: str
+    data_format: Literal["longform", "raw"] = "longform"
+    draws: bool = False
+    continuous: bool = False
+    n_facets: Optional[Tuple[int, int]] = None
+    requires: List[Dict[str, Any]] = Field(default_factory=list)
+    no_question_facet: bool = False
+    agg_fn: Optional[str] = None
+    sample: Optional[int] = None
+    group_sizes: bool = False
+    sort_numeric_first_facet: bool = False
+    no_faceting: bool = False
+    factor_columns: int = 1
+    aspect_ratio: Optional[float] = None
+    as_is: bool = False
+    priority: int = 0
+    args: Dict[str, Any] = Field(default_factory=dict)
+    hidden: bool = False
+    transform_fn: Optional[str] = None
+    nonnegative: bool = False

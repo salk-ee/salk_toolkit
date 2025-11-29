@@ -42,9 +42,9 @@
       },
       {
         "electoral_district": "Kesklinn, Lasnam\u00e4e ja Pirita",
-        "polarisation": -0.005796960240755407,
-        "radicalisation": 0.5836936655154951,
-        "relevance": 0.09208362696734784
+        "polarisation": -0.005796960240754999,
+        "radicalisation": 0.5836936655154958,
+        "relevance": 0.09208362696734795
       },
       {
         "electoral_district": "L\u00e4\u00e4ne-Virumaa",
@@ -56,7 +56,7 @@
         "electoral_district": "Mustam\u00e4e ja N\u00f5mme",
         "polarisation": 1.0763813996255627,
         "radicalisation": -0.2563454176388837,
-        "relevance": 0.011468952734012938
+        "relevance": 0.01146895273401305
       },
       {
         "electoral_district": "P\u00e4rnumaa",
@@ -89,7 +89,7 @@
     },
     "opacity": {
       "condition": {
-        "param": "param_3",
+        "param": "param-normalized",
         "value": 1
       },
       "value": 0.15
@@ -141,7 +141,7 @@
   "params": [
     {
       "bind": "legend",
-      "name": "param_3",
+      "name": "param-normalized",
       "select": {
         "fields": [
           "electoral_district"

@@ -17,7 +17,7 @@ globs: salk_toolkit/commands.py, salk_toolkit/tools/*
 - On calling, they should have a prefix `stk_` to avoid overwriting other commands in an environment
 
 ## Best practice
-- Each larger tool should have a [spec](](mdc:.cursor/rules/specs.mdc)) describing its expected functionality for developers to refer back to as needed.
+- Each larger tool should have a [spec](mdc:.cursor/rules/specs.mdc) describing its expected functionality for developers to refer back to as needed.
   - Specs for tools start with TOOL instead of DEV
   - NB: Always read the spec for the tool before making any changes to it!
   - The spec should be kept up-to-date as the tool is updated and changed

@@ -99,22 +99,28 @@ extend-per-file-ignores = { "tests/**/*" = ["ANN"] }
 [tool.pdoc]
 docformat = "google"
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "basic"
+include = [
+    "salk_toolkit",
+]
 reportUnknownMemberType = false
 reportUnknownArgumentType = false
 reportUnknownVariableType = false
 reportAttributeAccessIssue = false
 reportArgumentType = false
 reportReturnType = true
-reportCallIssue = false
+reportCallIssue = true
 reportOptionalIterable = true
 reportIndexIssue = true
 reportOptionalSubscript = true
 reportOptionalMemberAccess = true
 reportOptionalOperand = true
-reportGeneralTypeIssues = false
+reportGeneralTypeIssues = true
 exclude = [
     "tests",
     "**/__pycache__",
