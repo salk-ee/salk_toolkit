@@ -272,7 +272,7 @@
         },
         "opacity": {
           "condition": {
-            "param": "param_4",
+            "param": "param-normalized",
             "value": 1
           },
           "value": 0.15
@@ -316,14 +316,13 @@
         "opacity": 1,
         "size": 50,
         "type": "point"
-      },
-      "name": "view_3"
+      }
     }
   ],
   "params": [
     {
       "bind": "legend",
-      "name": "param_4",
+      "name": "param-normalized",
       "select": {
         "fields": [
           "party_preference"

@@ -54,12 +54,7 @@ if has_secrets and st.secrets.get("sip", {}).get("input_files"):  # st.secrets.g
     log_path = st.secrets["sip"]["log_path"]
 
     def logger(event: str, uid: str | None = None) -> None:
-        """Log an event to S3.
-
-        Args:
-            event: Event name or description to log.
-            uid: User ID. If None, uses the current user's UID from uam.
-        """
+        """Log an event to S3."""
         user_uid = uam.user.get("uid", "anonymous") if uam and uam.user else "anonymous"
         log_event(event, uid or user_uid, log_path, s3_fs=s3fs)
 
@@ -114,14 +109,11 @@ with st.spinner("Loading libraries.."):
 
     from streamlit_js import st_js, st_js_blocking  # type: ignore[import-untyped]
 
-    from salk_toolkit.io import (
-        read_json,
-        extract_column_meta,
-        read_parquet_with_metadata,
-    )
-    from salk_toolkit.utils import replace_constants
+    from salk_toolkit.io import read_json, extract_column_meta, read_parquet_with_metadata
+    from salk_toolkit.utils import replace_constants, plot_matrix_html
+    from salk_toolkit.validation import DataMeta, PlotDescriptor, soft_validate
     from salk_toolkit.pp import (
-        update_data_meta_with_pp_desc,
+        _update_data_meta_with_pp_desc,
         impute_factor_cols,
         matching_plots,
         get_plot_meta,
@@ -131,7 +123,6 @@ with st.spinner("Loading libraries.."):
     )
     from salk_toolkit.dashboard import (
         draw_plot_matrix,
-        plot_matrix_html,
         facet_ui,
         filter_ui,
         default_translate,
@@ -152,16 +143,10 @@ with st.spinner("Loading libraries.."):
     alt.data_transformers.disable_max_rows()
 
 
-# Override the st_dimensions based version that can cause refresh loops
 def get_plot_width(width_str: str, ncols: int = 1) -> int:
-    """Calculate plot width based on number of columns.
+    """Override the st_dimensions based version that can cause refresh loops.
 
-    Args:
-        width_str: Width string (unused, kept for compatibility).
-        ncols: Number of columns (default: 1).
-
-    Returns:
-        Calculated plot width in pixels.
+    Calculate plot width based on number of columns.
     """
     return min(800, int(1200 / ncols))
 
@@ -191,7 +176,7 @@ if has_secrets and st.secrets.get("sip", {}).get("input_files"):
 else:
     cl_args = sys.argv[1:] if len(sys.argv) > 1 else []
     if cl_args and cl_args[0].endswith(".json") and os.path.isfile(cl_args[0]):
-        global_data_meta = replace_constants(read_json(cl_args[0]))
+        global_data_meta = soft_validate(replace_constants(read_json(cl_args[0])), DataMeta)
         cl_args = cl_args[1:]
     else:
         global_data_meta = None
@@ -239,29 +224,21 @@ if global_data_meta:
 
 @st.cache_resource(show_spinner=False)
 def load_file(input_file: str) -> dict[str, object]:
-    """Load a parquet file with metadata.
-
-    Args:
-        input_file: Name of input file to load.
-
-    Returns:
-        Dictionary with keys: data (LazyFrame), total_size, data_meta, model_meta, columns.
-    """
+    """Load a parquet file with metadata."""
     pl.enable_string_cache()
     ifile = paths[input_file] + input_file
     ldf, full_meta = read_parquet_with_metadata(ifile, lazy=True)
     if full_meta is None:
         raise ValueError(f"Parquet file {ifile} has no metadata")
-    dmeta, mmeta = full_meta["data"], full_meta["model"]
+    data_meta = full_meta.data
+    mmeta = full_meta.model
     columns = ldf.collect_schema().names()
     n0 = ldf.select(pl.len()).collect().item()
-    n = dmeta.get("total_size", n0)  # N0 is count of rows which is a fallback for older versions
-    if dmeta is None:
-        dmeta = {}
+    n = data_meta.total_size or n0  # fallback to row count
     return {
         "data": ldf,
         "total_size": n,
-        "data_meta": dmeta,
+        "data_meta": data_meta,
         "model_meta": mmeta,
         "columns": columns,
     }
@@ -276,7 +253,6 @@ else:
     first_data_meta = first_file["data_meta"] if global_data_meta is None else global_data_meta
     first_data = first_file["data"]
 
-
 ########################################################################
 #                                                                      #
 #                            Sidebar UI                                #
@@ -284,26 +260,22 @@ else:
 ########################################################################
 
 
-def get_dimensions(data_meta: dict[str, object], present_cols: list[str], observations: bool = True) -> list[str]:
-    """Extract dimension names from data metadata.
-
-    Args:
-        data_meta: Data metadata dictionary.
-        present_cols: List of column names present in data.
-        observations: Whether to include observation dimensions (default: True).
-
-    Returns:
-        List of dimension names.
-    """
+def get_dimensions(data_meta: DataMeta, present_cols: list[str], observations: bool = True) -> list[str]:
+    """Extract dimension names from data metadata."""
     c_meta = extract_column_meta(data_meta)
     res = []
-    for g in data_meta["structure"]:
-        if g.get("hidden"):
+    if data_meta.structure is None:
+        return res
+
+    for block in data_meta.structure.values():
+        if block.hidden:
             continue
-        if "scale" in g and observations and (set(c_meta[g["name"]]["columns"]) & set(present_cols)):
-            res.append(g["name"])
+        group_meta = c_meta[block.name]
+        has_columns = group_meta.columns or []
+        if observations and block.scale is not None and has_columns and (set(has_columns) & set(present_cols)):
+            res.append(block.name)
         else:
-            cols = [c for c in c_meta[g["name"]]["columns"]]
+            cols = list(has_columns)
             cols = [c for c in cols if c in present_cols]
             res += cols
     return res
@@ -317,7 +289,17 @@ c_meta = extract_column_meta(first_data_meta)
 if st.session_state.get("override"):
     try:
         pp = eval(st.session_state["override"])
-        c_meta, _ = update_data_meta_with_pp_desc(first_data_meta, pp)
+        # Only validate and update if override has meaningful content
+        # _update_data_meta_with_pp_desc only uses res_meta and col_meta, but PlotDescriptor
+        # requires 'plot' and 'res_col', so we need to provide defaults if missing
+        if isinstance(pp, dict) and pp and ("res_meta" in pp or "col_meta" in pp):
+            # For partial overrides used for data meta updates, provide minimal defaults for required fields
+            if "plot" not in pp:
+                pp["plot"] = "default"
+            if "res_col" not in pp:
+                pp["res_col"] = ""  # Temporary placeholder, will be set later in the UI
+            pp = soft_validate(pp, PlotDescriptor)
+            c_meta, _ = _update_data_meta_with_pp_desc(first_data_meta, pp)
     except Exception as e:
         st.error(f"Error parsing override: {e}")
 
@@ -336,7 +318,10 @@ with st.sidebar:  # .expander("Select dimensions"):
     if st.toggle("Convert to continuous", False):
         args["convert_res"] = "continuous"
 
-    schema = first_data.collect_schema()
+    schema = getattr(first_data, "collect_schema", lambda: None)()
+    if schema is None:
+        st.error("Cannot collect schema from data")
+        st.stop()
     all_cols = list(schema.names())
 
     obs_dims = get_dimensions(first_data_meta, all_cols, show_grouped)
@@ -352,10 +337,11 @@ with st.sidebar:  # .expander("Select dimensions"):
     obs_name = st.selectbox("Observation", obs_dims, key="observation")
     args["res_col"] = obs_name
 
-    res_cont = not c_meta[args["res_col"]].get("categories") or args.get("convert_res") == "continuous"
+    res_meta = c_meta[args["res_col"]]
+    res_cont = (not res_meta.categories) or args.get("convert_res") == "continuous"
 
-    modifiers = c_meta[obs_name].get("modifiers", [])
-    all_dims = list(modifiers) + all_dims if modifiers else all_dims
+    modifiers = c_meta[obs_name].modifiers
+    all_dims = list(modifiers) + all_dims
 
     facet_dims = all_dims
     if len(input_files) > 1:
@@ -393,10 +379,12 @@ with st.sidebar:  # .expander("Select dimensions"):
         args["plot"] = matching[0]
 
     plot_meta = get_plot_meta(args["plot"])
+    assert plot_meta is not None, f"Plot '{args['plot']}' not found in registry"
+    plot_meta_dict = plot_meta.model_dump()
 
     # Plot arguments
     plot_args = {}  # 'n_facet_cols':2 }
-    for k, t in plot_meta.get("args", {}).items():
+    for k, t in plot_meta_dict.get("args", {}).items():
         vt, dv = t if isinstance(t, tuple) else (t, None)
         if vt == "bool":
             plot_args[k] = st.toggle(k, key=k, value=dv)
@@ -421,7 +409,7 @@ with st.sidebar:  # .expander("Select dimensions"):
                 args["agg_fn"] = agg_fn
 
         sortable = args["factor_cols"]
-        if plot_meta.get("sort_numeric_first_facet"):
+        if plot_meta_dict.get("sort_numeric_first_facet"):
             sortable = sortable[1:]
         if sort and len(sortable) > 0:
             stss_safety("sortby", sortable)
@@ -474,7 +462,7 @@ with st.sidebar:  # .expander("Select dimensions"):
         st.code(pprint.pformat(args, indent=0, width=30))
 
 
-if sdb and sdb.uam.admin:
+if sdb and getattr(getattr(sdb, "uam", None), "admin", False):
     with st.sidebar:
         apanel = st.checkbox("Admin panel", value=False, key="admin_panel")
     if apanel:
@@ -517,8 +505,9 @@ elif input_files_facet:
         ifile_cols = list(loaded[ifile]["columns"])  # type: ignore[arg-type]
         fargs["filter"] = {k: v for k, v in fargs["filter"].items() if k in ifile_cols or k in q_groups}
         fargs["factor_cols"] = [f for f in fargs["factor_cols"] if f != "input_file"]
-        pparams = pp_transform_data(df, raw_first_data_meta, fargs)
-        dfs.append(pparams["data"])
+        ppd = soft_validate(fargs, PlotDescriptor)
+        pi = pp_transform_data(df, raw_first_data_meta, ppd)
+        dfs.append(pi.data)
 
     fdf = pd.concat(dfs)
 
@@ -529,10 +518,10 @@ elif input_files_facet:
 
     fdf["input_file"] = pd.Categorical([v for i, f in enumerate(input_files) for v in [f] * len(dfs[i])], input_files)
 
-    pparams["data"] = fdf
+    pi.data = fdf
     plot = create_plot(
-        pparams,
-        args,
+        pi,
+        soft_validate(args, PlotDescriptor),
         translate=translate,
         width=(width or get_plot_width("full", 1)),
         return_matrix_of_plots=matrix_form,
@@ -563,11 +552,12 @@ else:
             # with st.spinner('Filtering data...'):
             fargs = args.copy()
             fargs["filter"] = {k: v for k, v in args["filter"].items() if k in ifile_cols or k in q_groups}
-            pparams = pp_transform_data(loaded[ifile]["data"], data_meta, fargs)
+            ppd = soft_validate(fargs, PlotDescriptor)
+            pi = pp_transform_data(loaded[ifile]["data"], data_meta, ppd)
             cur_width = width or get_plot_width(f"{i}_{ifile}", len(input_files))
             plot = create_plot(
-                pparams,
-                fargs,
+                pi,
+                ppd,
                 translate=translate,
                 width=cur_width,
                 return_matrix_of_plots=matrix_form,
@@ -582,22 +572,30 @@ else:
                     plot_matrix_html(plot, uid=name, width=cur_width, responsive=not custom_width),
                     f"{name}.html",
                 )
-                c2.download_button("Data CSV", pparams["data"].to_csv().encode("utf-8"), f"{name}.csv")
+                c2.download_button("Data CSV", pi.data.to_csv().encode("utf-8"), f"{name}.csv")
 
-            # n_questions = pparams['data']['question'].nunique() if 'question' in pparams['data'] else 1
+            # n_questions = pi['data']['question'].nunique() if 'question' in pi['data'] else 1
             # st.write('Based on %.1f%% of data' %
-            #   (100*pparams['n_datapoints']/(len(loaded[ifile]['data_n'])*n_questions)))
-            st.write("Based on %.1f%% of data" % (100 * pparams["filtered_size"] / loaded[ifile]["total_size"]))
+            #   (100*pi['n_datapoints']/(len(loaded[ifile]['data_n'])*n_questions)))
+            total_size = loaded[ifile]["total_size"]
+            denominator = float(total_size) if total_size is not None else 1.0
+            st.write("Based on %.1f%% of data" % (100 * pi.filtered_size / denominator))
             # st.altair_chart(plot)#, use_container_width=(len(input_files)>1))
             draw_plot_matrix(plot)
 
-            with st.expander("Data Meta"):
-                st.json(loaded[ifile]["data_meta"])
+            print(type(loaded[ifile]["data_meta"]))
 
-            mdl = loaded[ifile]["model_meta"].copy()
+            with st.expander("Data Meta"):
+                st.write("This data is cleaned of extra fields that were not parsed")
+                st.json(loaded[ifile]["data_meta"].model_dump(mode="json"))
+
+            model_meta = loaded[ifile]["model_meta"]
+            mdl_raw = getattr(model_meta, "copy", lambda: model_meta)() if hasattr(model_meta, "copy") else model_meta
+            mdl: dict[str, object] = dict(mdl_raw) if isinstance(mdl_raw, dict) else {}
 
             if "sequence" in mdl:
-                steps = {m["name"]: m for m in mdl["sequence"]}
+                seq = mdl["sequence"]
+                steps = {m["name"]: m for m in seq} if isinstance(seq, list) else {}  # type: ignore[index]
                 del mdl["sequence"]
             else:
                 steps = {}

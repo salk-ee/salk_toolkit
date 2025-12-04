@@ -23,12 +23,6 @@ repos:
       - id: ruff-format
         exclude: '\.ipynb$'
 
-  - repo: https://github.com/hhatto/autopep8
-    rev: v2.3.2
-    hooks:
-      - id: autopep8
-        args: ["--recursive", "--in-place", "--select=W291,W293"]
-
   # Static type checking
   - repo: local
     hooks:

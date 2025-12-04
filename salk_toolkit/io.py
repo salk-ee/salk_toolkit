@@ -14,28 +14,22 @@ This module now contains the functionality that used to be split across
 """
 
 __all__ = [
-    "get_loaded_files",
-    "reset_file_tracking",
-    "get_file_map",
-    "set_file_map",
-    "process_annotated_data",
-    "read_annotated_data",
-    "fix_df_with_meta",
+    # Public IO helpers are limited to what salk_internal_package imports.
     "extract_column_meta",
+    "get_file_map",
+    "get_loaded_files",
     "group_columns_dict",
     "list_aliases",
-    "change_df_to_meta",
-    "update_meta_with_model_fields",
-    "replace_data_meta_in_parquet",
-    "fix_meta_categories",
-    "fix_parquet_categories",
-    "infer_meta",
-    "data_with_inferred_meta",
     "read_and_process_data",
-    "find_type_in_dict",
-    "write_parquet_with_metadata",
-    "read_parquet_metadata",
+    "read_annotated_data",
     "read_parquet_with_metadata",
+    "reset_file_tracking",
+    "set_file_map",
+    "write_parquet_with_metadata",
+    "replace_data_meta_in_parquet",
+    "read_parquet_metadata",
+    "infer_meta",
+    "update_meta_with_model_fields",
 ]
 
 import json
@@ -45,7 +39,7 @@ import re
 from collections import defaultdict
 from collections.abc import Iterable, Iterator
 from copy import deepcopy
-from typing import Callable, Literal, TypeAlias, cast, overload
+from typing import Any, Callable, Literal, Protocol, TypeAlias, cast, overload
 
 import numpy as np
 import pandas as pd
@@ -58,6 +52,7 @@ import pyarrow.parquet as pq  # type: ignore[import-untyped]
 import pyreadstat  # type: ignore[import-untyped]
 
 import salk_toolkit as stk
+from salk_toolkit import utils
 from salk_toolkit.utils import (
     replace_constants,
     is_datetime,
@@ -66,21 +61,24 @@ from salk_toolkit.utils import (
     read_yaml,
     read_json,
 )
-from salk_toolkit.validation import DataMeta, DataDescription, soft_validate
+from salk_toolkit.validation import (
+    DataMeta,
+    DataDescription,
+    ParquetMeta,
+    soft_validate,
+    ColumnBlockMeta,
+    ColumnMeta,
+    FileDesc,
+    GroupOrColumnMeta,
+    SingleMergeSpec,
+)
 
 # Ignore fragmentation warnings
 warnings.filterwarnings("ignore", "DataFrame is highly fragmented.*", pd.errors.PerformanceWarning)
 
 
-def str_from_list(val: list[str] | object) -> str:
-    """Convert a list to a newline-separated string, or return string representation.
-
-    Args:
-        val: Value to convert (list or other object).
-
-    Returns:
-        Newline-separated string if val is a list, otherwise str(val).
-    """
+def _str_from_list(val: list[str] | object) -> str:
+    """Convert a list to a newline-separated string, or return string representation."""
     if isinstance(val, list):
         return "\n".join(val)
     return str(val)
@@ -95,8 +93,7 @@ def str_from_list(val: list[str] | object) -> str:
 #  a global list of files that have been loaded
 stk_loaded_files_set = set()
 
-MetaDict: TypeAlias = dict[str, object]
-ProcessedDataReturn: TypeAlias = tuple[pd.DataFrame, MetaDict | None]
+ProcessedDataReturn: TypeAlias = tuple[pd.DataFrame, DataMeta | None]
 
 
 def get_loaded_files() -> list[str]:
@@ -139,45 +136,102 @@ def set_file_map(file_map: dict[str, str]) -> None:
     stk_file_map = file_map.copy()
 
 
-# Read files listed in meta['file'] or meta['files']
-def read_concatenate_files_list(
-    meta: dict[str, object], data_file: str | None = None, path: str | None = None, **kwargs: object
-) -> tuple[pd.DataFrame, dict[str, object] | None, dict[str, object]]:
-    """Read and concatenate multiple data files listed in metadata.
+# Protocol for file description objects
+class FileDescriptionProtocol(Protocol):
+    """Protocol for objects that describe file sources (DataMeta or DataDescription).
 
-    Args:
-        meta: Metadata dictionary containing file paths and read options.
-        data_file: Optional single data file path (overrides meta['file']).
-        path: Optional base path for relative file paths.
-        **kwargs: Additional arguments passed to file readers.
-
-    Returns:
-        Tuple of (concatenated DataFrame, merged metadata, extra info dictionary).
+    Note: read_opts is optional and only present in DataMeta, accessed via getattr.
     """
+
+    file: str | None
+    files: list[FileDesc] | None
+
+
+def _read_concatenate_files_list(
+    meta: DataMeta,
+    data_file: str | None = None,
+    path: str | None = None,
+    ignore_exclusions: bool = False,
+    only_fix_categories: bool = False,
+    add_original_inds: bool = False,
+) -> tuple[pd.DataFrame, DataMeta | None, dict[str, object]]:
+    """Read and concatenate multiple data files listed in meta['file'] or meta['files']."""
+
     global stk_loaded_files_set, stk_file_map
 
-    opts = meta["read_opts"] if "read_opts" in meta else {}
+    read_opts = meta.read_opts or {}
     if data_file:
-        data_files = [{"file": data_file, "opts": opts}]
-    elif meta.get("file"):
-        data_files = [{"file": meta["file"], "opts": opts}]
-    elif meta.get("files"):
-        data_files = meta["files"]
+        data_files: list[FileDesc] = [FileDesc(file=data_file, opts=read_opts)]
+    elif meta.file:
+        data_files = [FileDesc(file=meta.file, opts=read_opts)]
+    elif meta.files:
+        data_files = meta.files
     else:
         raise Exception("No files provided")
 
-    data_files = [{"opts": opts, **f} if isinstance(f, dict) else {"opts": opts, "file": f} for f in data_files]
+    return _load_data_files(
+        data_files,
+        path,
+        read_opts=read_opts,
+        ignore_exclusions=ignore_exclusions,
+        only_fix_categories=only_fix_categories,
+        add_original_inds=add_original_inds,
+    )
 
-    cat_dtypes = {}
+
+def _read_files_from_description(
+    desc: FileDescriptionProtocol,
+    path: str | None = None,
+    ignore_exclusions: bool = False,
+    only_fix_categories: bool = False,
+    add_original_inds: bool = False,
+) -> tuple[pd.DataFrame, DataMeta | None, dict[str, object]]:
+    """Load and concatenate files defined in a DataDescription or DataMeta object."""
+    read_opts = getattr(desc, "read_opts", None) or {}
+    if desc.file:
+        data_files: list[FileDesc] = [FileDesc(file=desc.file, opts=read_opts)]
+    elif desc.files:
+        data_files = desc.files
+    else:
+        raise Exception("No files provided")
+
+    return _load_data_files(
+        data_files,
+        path,
+        read_opts=read_opts,
+        ignore_exclusions=ignore_exclusions,
+        only_fix_categories=only_fix_categories,
+        add_original_inds=add_original_inds,
+    )
+
+
+def _load_data_files(
+    data_files: list[FileDesc],
+    path: str | None,
+    read_opts: dict[str, Any] | None = None,
+    ignore_exclusions: bool = False,
+    only_fix_categories: bool = False,
+    add_original_inds: bool = False,
+) -> tuple[pd.DataFrame, DataMeta | None, dict[str, object]]:
+    """Internal helper to load and concatenate files defined in metadata or descriptions."""
+
+    global stk_loaded_files_set, stk_file_map
+
+    cat_dtypes: dict[str, pd.CategoricalDtype | None] = {}
     raw_dfs, metas, einfo = [], [], {}
+    if read_opts is None:
+        read_opts = {}
     for fi, fd in enumerate(data_files):
-        data_file, opts = fd["file"], fd["opts"]
-        file_code = fd.get("code", f"F{fi}")  # Default to F0, F1, F2, etc.
+        data_file = fd.file
+        opts = fd.opts or read_opts
+        file_code = fd.code if fd.code is not None else f"F{fi}"  # Default to F0, F1, F2, etc.
         if path:
-            data_file = os.path.join(os.path.dirname(path), data_file)
-        mapped_file = stk_file_map.get(data_file, data_file)
+            # path is guaranteed to be str here due to the if check
+            path_str = cast(str, path)
+            data_file = os.path.join(os.path.dirname(path_str), cast(str, data_file))
+        mapped_file = stk_file_map.get(cast(str, data_file), cast(str, data_file))
 
-        extension = os.path.splitext(data_file)[1][1:].lower()
+        extension = os.path.splitext(cast(str, data_file))[1][1:].lower()
         if extension in [
             "json",
             "parquet",
@@ -186,23 +240,33 @@ def read_concatenate_files_list(
             if extension == "json":
                 warn(f"Processing {data_file}")  # Print this to separate warnings for input jsons from main
             # Pass in orig_data_file here as it might loop back to this function here and we need to preserve paths
-            raw_data, result_meta = read_annotated_data(data_file, infer=False, return_meta=True, **kwargs)
+            raw_data, result_meta = read_annotated_data(
+                cast(str, data_file),
+                infer=False,
+                return_meta=True,
+                ignore_exclusions=ignore_exclusions,
+                only_fix_categories=only_fix_categories,
+                add_original_inds=add_original_inds,
+            )
             if result_meta is not None:
-                metas.append(result_meta)
+                metas.append(soft_validate(result_meta, DataMeta))
         elif extension in ["csv", "gz"]:
-            raw_data = pd.read_csv(mapped_file, low_memory=False, **opts)
+            read_opts = cast(dict[str, Any], opts) if opts else {}
+            raw_data = pd.read_csv(cast(str, mapped_file), low_memory=False, **read_opts)  # type: ignore[call-overload]
         elif extension in ["sav", "dta"]:
             read_fn = getattr(pyreadstat, "read_" + (mapped_file[-3:]).lower())
             with warnings.catch_warnings():  # While pyreadstat has not been updated to pandas 2.2 standards
                 warnings.simplefilter("ignore")
+                read_opts = cast(dict[str, Any], opts) if opts else {}
                 raw_data, fmeta = read_fn(
-                    mapped_file,
+                    cast(str, mapped_file),
                     **{"apply_value_formats": True, "dates_as_pandas_datetime": True},
-                    **opts,
+                    **read_opts,
                 )
                 einfo.update(fmeta.__dict__)  # Allow the fields in meta to be used just like self-defined constants
         elif extension in ["xls", "xlsx", "xlsm", "xlsb", "odf", "ods", "odt"]:
-            raw_data = pd.read_excel(mapped_file, **opts)
+            read_opts = cast(dict[str, Any], opts) if opts else {}
+            raw_data = pd.read_excel(cast(str, mapped_file), **read_opts)  # type: ignore[call-overload]
         else:
             raise Exception(f"Not a known file format for {data_file}: {extension}")
 
@@ -219,10 +283,11 @@ def read_concatenate_files_list(
             raw_data["file_ind"] = fi
             raw_data["file_code"] = file_code
             cat_dtypes["file_code"] = None  # Mark file_code as categorical
-        for k, v in fd.items():
-            if k in ["opts", "code"]:
-                continue  # Skip opts and code (already handled)
-            if len(data_files) <= 1 and k in ["file"]:
+        # Add extra fields from FileDesc (any fields beyond file, opts, code)
+        # In Pydantic v2, extra fields are stored in __pydantic_extra__ when extra="allow"
+        pydantic_extra = getattr(fd, "__pydantic_extra__", None) or {}
+        for k, v in pydantic_extra.items():
+            if len(data_files) <= 1 and k == "file":
                 continue
             raw_data[k] = v
             if isinstance(v, str):
@@ -230,12 +295,18 @@ def read_concatenate_files_list(
 
         # Handle categorical types for more complex situations
         for c in raw_data.columns:
-            if raw_data[c].dtype.name == "object" and not isinstance(raw_data[c].dropna().iloc[0], list):
+            dropped = raw_data[c].dropna()
+            if raw_data[c].dtype.name == "object" and len(dropped) > 0 and not isinstance(dropped.iloc[0], list):
                 cat_dtypes[c] = cat_dtypes.get(c, None)  # Infer a categorical type unless already given
             elif (
                 raw_data[c].dtype.name == "category" and len(data_files) > 1
             ):  # Strip categories when multiple files involved
-                if c not in cat_dtypes or len(cat_dtypes[c].categories) <= len(raw_data[c].dtype.categories):
+                existing_dtype = cat_dtypes.get(c)
+                if (
+                    c not in cat_dtypes
+                    or existing_dtype is None
+                    or len(utils.get_categories(existing_dtype)) <= len(utils.get_categories(raw_data[c].dtype))
+                ):
                     cat_dtypes[c] = raw_data[c].dtype
                 raw_data[c] = raw_data[c].astype("object")
 
@@ -250,117 +321,63 @@ def read_concatenate_files_list(
                 s = fdf[c].dropna()
                 if (
                     s.dtype.name == "object"
+                    and len(s) > 0
                     and not isinstance(s.iloc[0], str)  # Check for string as string is also iterable
                     and isinstance(s.iloc[0], Iterable)
                 ):
                     continue  # Skip if it's a list or tuple or ndarray
                 dtype = pd.Categorical([], list(s.unique())).dtype
             elif not set(fdf[c].dropna().unique()) <= set(
-                dtype.categories
+                utils.get_categories(dtype)
             ):  # If the categories are not the same, create a new dtype
                 # print(set(fdf[c].dropna().unique()), set(dtype.categories))
                 dtype = pd.Categorical([], list(fdf[c].dropna().unique())).dtype
-                warn(f"Categories for {c} are different between files - merging to total {len(dtype.categories)} cats")
+                n_cats = len(utils.get_categories(dtype))
+                warn(f"Categories for {c} are different between files - merging to total {n_cats} cats")
             fdf[c] = pd.Categorical(fdf[c], dtype=dtype)
 
     if metas:  # Do we have any metainfo?
         meta = metas[-1]
         # This will fix categories inside meta too
-        fix_meta_categories(meta, fdf, warnings=False)
+        meta = _fix_meta_categories(meta, fdf, warnings=False)
         # TODO: one should also merge the structures in case the columns don't match
         return fdf, meta, einfo
     else:
         return fdf, None, einfo
 
 
-# convert number series to categorical, avoiding long and unweildy fractions like 24.666666666667
-# This is a practical judgement call right now - round to two digits after comma and remove .00 from integers
-def convert_number_series_to_categorical(s: pd.Series) -> pd.Series:
-    """Convert numeric series to categorical with formatted strings.
+def _convert_number_series_to_categorical(s: pd.Series) -> pd.Series:
+    """Convert number series to categorical, avoiding long and unwieldy fractions like 24.666666666667.
 
-    Args:
-        s: Numeric pandas Series to convert.
-
-    Returns:
-        Series with formatted string values (2 decimal places, .00 removed).
+    This is a practical judgement call right now - round to two digits after comma and remove .00 from integers.
     """
     return s.astype("float").map("{:.2f}".format).str.replace(".00", "").replace({"nan": None})
 
 
-def is_series_of_lists(s: pd.Series) -> bool:
-    """Check if a pandas Series contains lists or arrays as values.
-
-    Args:
-        s: Pandas Series to check.
-
-    Returns:
-        True if the series contains lists or numpy arrays, False otherwise.
-    """
-    s_rep = s.dropna().iloc[0]  # Find a non-na element
+def _is_series_of_lists(s: pd.Series) -> bool:
+    """Check if a pandas Series contains lists or arrays as values."""
+    dropped = s.dropna()
+    if len(dropped) == 0:
+        return False
+    s_rep = dropped.iloc[0]  # Find a non-na element
     return isinstance(s_rep, list) or isinstance(s_rep, np.ndarray)
 
 
-def throw_vals_left(df: pd.DataFrame) -> None:
-    """Move all NaN values to the right in each row (in-place).
-
-    Args:
-        df: DataFrame to modify in-place.
-    """
+def _throw_vals_left(df: pd.DataFrame) -> None:
+    """Move all NaN values to the right in each row (in-place)."""
     # Helper fun to move inplace all nan values to right.
     df.iloc[:, :] = df.apply(lambda row: sorted(row, key=pd.isna), axis=1).to_list()
 
 
-# We want to show docs for this
-def create_topk_metas_and_dfs(
+def _create_topk_metas_and_dfs(
     df: pd.DataFrame,
     dict_with_create: dict[str, object],
 ) -> tuple[list[pd.DataFrame], list[dict[str, object]]]:
-    r"""Create top K aggregations from DataFrame.
-
-    Creates new DataFrames and metadata structures for top-K aggregations
-    based on regex patterns and column transformations.
-
-    Args:
-        df: DataFrame to create top K aggregations from.
-        dict_with_create: Dictionary with create block and meta args.
-
-    Returns:
-        Tuple of (list of DataFrames, list of metadata dictionaries).
-
-    Meta args:
-
-    **Meta args:**
-
-    - `from_columns` (str)
-      Regex template with groups to select df cols from.
-      If more than one group, then separate into subgroups.
-
-    - `res_cols` (str)
-      Regex template with groups to create new cols. Note that new structure is created for each subgroup.
-      Currently res_cols assumes same number of groups in from_columns.
-
-    - `na_vals` (list)
-      List of values to consider as NA.
-
-    - `type` (str)
-      Type of aggregation to create. If `"topk"`, this function is called.
-
-    - `scale` (dict, optional)
-      Scale block to be added to each subgroup.
-
-    - `name` (str, optional)
-      Name of the new columns. Defaults to dict_with_create['name'] + "_topk".
-
-    - `k` (int, optional)
-      Number of new cols to create per subgroup. Defaults to max and selects columns that include other vals than NA.
-
-    - `agg_index` (int, optional)
-      Index of the from_cols group to be aggregated. Note that 1 is first group, defaults to last group.
-    """
-    create = cast(dict[str, object], dict_with_create["create"])
+    """Create top K aggregations from DataFrame."""
+    create = cast(dict[str, Any], dict_with_create["create"])
     name = cast(str, create.get("name", f"{dict_with_create['name']}_{create['type']}"))
     # Compile regex to catch df.columns that we want to apply topk for.
-    regex_from = re.compile(create["from_columns"])
+    regex_from = re.compile(cast(str, create["from_columns"]))  # type: ignore[call-overload]
     from_cols = list(filter(lambda s: regex_from.match(s), df.columns))
     # agg_ind is index of the regex group that we want to aggregate over.
     # All other indeces are unique identifiers for each subgroup
@@ -370,21 +387,27 @@ def create_topk_metas_and_dfs(
     # This means that we need to subtract 1 from agg_ind.
     agg_ind = cast(int, create.get("agg_index", -1))
     agg_ind = agg_ind - 1 if agg_ind > 0 else agg_ind
-    n_groups = len(regex_from.match(from_cols[0]).groups())
+    first_match = regex_from.match(from_cols[0])
+    assert first_match is not None, f"Column {from_cols[0]} should match regex {regex_from.pattern}"
+    n_groups = len(first_match.groups())
     has_subgroups = n_groups >= 2  # Multiple aggregations needed?
     regex_to = create.get("res_cols", "")
     kmax = create.get("k", None)
     na_vals = create.get("na_vals", [])
     if has_subgroups:
         # collect all subgroups, later aggregate each subgroup separately
-        def get_subgroup_id(column: str) -> tuple[str, ...]:
+        def _get_subgroup_id(column: str) -> tuple[str, ...]:
             """Discard the aggregation index and collect the rest as identifier."""
-            subgroup_id = list(regex_from.match(column).groups())
+            match = regex_from.match(column)
+            assert match is not None, f"Column {column} should match regex {regex_from.pattern}"
+            subgroup_id = list(match.groups())
             subgroup_id.pop(agg_ind)
             return tuple(subgroup_id)
 
-        subgroups_ids = dict.fromkeys(map(get_subgroup_id, from_cols))
-        subgroups = [[col for col in from_cols if get_subgroup_id(col) == subgroup_id] for subgroup_id in subgroups_ids]
+        subgroups_ids = dict.fromkeys(map(_get_subgroup_id, from_cols))
+        subgroups = [
+            [col for col in from_cols if _get_subgroup_id(col) == subgroup_id] for subgroup_id in subgroups_ids
+        ]
     else:
         subgroups = [from_cols]
     topk_dfs, subgroup_metas = [], []
@@ -392,32 +415,42 @@ def create_topk_metas_and_dfs(
     # select group at agg_ind in col name to allow translate if spec-d in scale
     # e.g. {A_11: selected} |-> {11: selected}, later by using mask |-> {11: 11}
     # this fun is def-d in current fun, so agg_ind acts as global var
-    def get_regex_group_at_agg_ind(s: str) -> str:
+    def _get_regex_group_at_agg_ind(s: str) -> str:
         """Get regex group at aggregation index."""
-        return regex_from.match(s).groups()[agg_ind]
+        match = regex_from.match(s)
+        assert match is not None, f"Column {s} should match regex {regex_from.pattern}"
+        return match.groups()[agg_ind]
 
     for subgroup in subgroups:
         sdf = df[subgroup].astype("object").replace(na_vals, None)
+
+        def _expand_col(col: str) -> str:
+            match = regex_from.match(col)
+            assert match is not None, f"Column {col} should match regex {regex_from.pattern}"
+            return match.expand(regex_to)
+
         newcols = [
             # from_cols names map to res_cols names
             # note regex groups stay the same: e.g A_11 |-> A_R11
-            regex_from.match(col).expand(regex_to)
+            _expand_col(col)
             for col in sdf.columns
         ]
 
         # Convert one-hot encoded columns into a list-of-selected format
-        sdf.columns = sdf.columns.map(get_regex_group_at_agg_ind)
+        sdf.columns = sdf.columns.map(_get_regex_group_at_agg_ind)
         sdf = sdf.mask(
             ~sdf.isna(), other=pd.Series(sdf.columns, index=sdf.columns), axis=1
         )  # replace cell with column name where not NA
-        throw_vals_left(sdf)  # changes df in place, Nones go to rightmost side
+        _throw_vals_left(sdf)  # changes df in place, Nones go to rightmost side
 
         sdf.columns = newcols  # set column names per the regex_to template
         sdf = sdf.dropna(axis=1, how="all")  # drop rightmost cols that are all NA
-        sdf = sdf.iloc[:, :kmax] if kmax else sdf  # up to kmax columns if spec-d
+        # Handle kmax: if it's "max" or None, don't limit; otherwise limit to that number
+        if kmax and kmax != "max" and isinstance(kmax, int):
+            sdf = sdf.iloc[:, :kmax]  # up to kmax columns if spec-d
         sname = name
         if has_subgroups:
-            sname += "_" + "_".join(map(str, get_subgroup_id(subgroup[0])))
+            sname += "_" + "_".join(map(str, _get_subgroup_id(subgroup[0])))
         meta_subgroup = {
             "name": sname,
             "scale": deepcopy(create.get("scale", {})),
@@ -425,98 +458,40 @@ def create_topk_metas_and_dfs(
         }
         topk_dfs.append(sdf)
         subgroup_metas.append(meta_subgroup)
-    return subgroup_metas, topk_dfs  # note: each df has one meta for zip later
+    return topk_dfs, subgroup_metas  # note: each df has one meta for zip later
 
 
 create_block_type_to_create_fn = {
-    "topk": create_topk_metas_and_dfs,
+    "topk": _create_topk_metas_and_dfs,
     "maxdiff": NotImplementedError("Maxdiff not implemented yet"),
 }
 
 
-def create_new_columns_and_metas(
-    df: pd.DataFrame, group: dict[str, object]
+def _create_new_columns_and_metas(
+    df: pd.DataFrame, group: ColumnBlockMeta
 ) -> Iterator[tuple[pd.DataFrame, dict[str, object]]]:
-    """Create new columns and metadata from a group definition.
+    """Create new columns and metadata from a group definition."""
+    if group.create is None:
+        raise ValueError("Group must have a create block")
 
-    One group can create multiple metas if it has >1 groups spec-d in regex.
-
-    Args:
-        df: DataFrame to add columns to.
-        group: Group definition dictionary with create block.
-
-    Returns:
-        Zip object of (DataFrame, metadata) tuples.
-    """
-    type = cast(dict[str, object], group["create"])["type"]
-    if type not in create_block_type_to_create_fn:
-        raise NotImplementedError(f"Create block {type} not supported")
-    metas, dfs = create_block_type_to_create_fn[type](df, group)
+    # Convert to dict only for the create function which expects dict format
+    group_dict = group.model_dump(mode="python")
+    create_type = cast(dict[str, object], group_dict["create"])["type"]
+    if create_type not in create_block_type_to_create_fn:
+        raise NotImplementedError(f"Create block {create_type} not supported")
+    dfs, metas = create_block_type_to_create_fn[create_type](df, group_dict)
     return zip(dfs, metas)
 
 
-def _apply_categories(s: pd.Series, cd: dict[str, object], cn: str, sn: str, raw_data: pd.DataFrame) -> pd.Series:
-    """Apply category transformations to a series. Isolated to avoid pyright performance issues."""
-    na_sum = s.isna().sum()
-
-    if cd["categories"] == "infer":
-        if s.dtype.name == "category":
-            cd["categories"] = list(s.dtype.categories)
-        elif "translate" in cd and "transform" not in cd and set(cd["translate"].values()) >= set(s.dropna().unique()):
-            cats = [str(c) for c in cd["translate"].values() if c in s.unique()]
-            cd["categories"] = list(dict.fromkeys(cats))
-            s = s.astype("str")
-        else:
-            if cd.get("ordered", False) and not pd.api.types.is_numeric_dtype(s):
-                warn(
-                    f"Ordered category {cn} had category: infer. "
-                    "This only works correctly if you want lexicographic ordering!"
-                )
-            if not pd.api.types.is_numeric_dtype(s):
-                s.loc[~s.isna()] = s[~s.isna()].astype(str)
-            cinds = s.drop_duplicates().sort_values().index
-            if pd.api.types.is_numeric_dtype(s):
-                s = convert_number_series_to_categorical(s)
-            cd["categories"] = [c for c in s[cinds] if pd.notna(c)]
-    elif pd.api.types.is_numeric_dtype(s):
-        try:
-            fcats = np.array(cd["categories"]).astype(float)
-            s_vals, s_idx, s_name = s.values, s.index, s.name
-            nearest_cats = np.array(cd["categories"])[np.abs(s_vals[:, None] - fcats[None, :]).argmin(axis=1)]
-            s = pd.Series(
-                nearest_cats,
-                index=s_idx,
-                name=s_name,
-                dtype=pd.CategoricalDtype(categories=cd["categories"], ordered=cd.get("ordered")),
-            )
-        except (ValueError, TypeError):
-            raise ValueError(f"Categories for {cn} are not numeric: {cd['categories']}")
-
-    cats = cd["categories"]
-    ns = pd.Series(
-        pd.Categorical(s, categories=cats, ordered=cd["ordered"] if "ordered" in cd else False),
-        name=cn,
-        index=raw_data.index,
-    )
-
-    new_nas = ns.isna().sum() - na_sum
-    if new_nas > 0:
-        unlisted_cats = set(s.dropna().unique()) - set(cats)
-        col_info = f"({sn}) " if cn != sn else ""
-        warn(f"Column {cn} {col_info}had unknown categories {unlisted_cats} for {new_nas / len(ns):.1%} entries")
-
-    return ns
-
-
-# Default usage with mature metafile: process_annotated_data(<metafile name>)
-# When figuring out the metafile, it can also be run as: process_annotated_data(meta=<dict>, data_file=<>)
+# Default usage with mature metafile: _process_annotated_data(<metafile name>)
+# When figuring out the metafile, it can also be run as: _process_annotated_data(meta=<dict>, data_file=<>)
 
 
 # Type annotations to know the return type for return_meta=True/False
 @overload
-def process_annotated_data(
+def _process_annotated_data(
     meta_fname: str | None = ...,
-    meta: MetaDict | None = ...,
+    meta: DataMeta | dict[str, object] | None = ...,
     data_file: str | None = ...,
     raw_data: pd.DataFrame | None = ...,
     *,
@@ -529,13 +504,12 @@ def process_annotated_data(
 
 
 @overload
-def process_annotated_data(
+def _process_annotated_data(
     meta_fname: str | None = ...,
-    meta: MetaDict | None = ...,
+    meta: DataMeta | dict[str, object] | None = ...,
     data_file: str | None = ...,
     raw_data: pd.DataFrame | None = ...,
-    *,
-    return_meta: Literal[False] = ...,
+    return_meta: Literal[False] = False,
     ignore_exclusions: bool = ...,
     only_fix_categories: bool = ...,
     return_raw: bool = ...,
@@ -543,9 +517,9 @@ def process_annotated_data(
 ) -> pd.DataFrame: ...
 
 
-def process_annotated_data(
+def _process_annotated_data(
     meta_fname: str | None = None,
-    meta: MetaDict | None = None,
+    meta: DataMeta | dict[str, object] | None = None,
     data_file: str | None = None,
     raw_data: pd.DataFrame | None = None,
     return_meta: bool = False,
@@ -554,24 +528,9 @@ def process_annotated_data(
     return_raw: bool = False,
     add_original_inds: bool = False,
 ) -> pd.DataFrame | ProcessedDataReturn:
-    """Process annotated data according to metadata specifications.
-
-    Args:
-        meta_fname: Path to metadata JSON/YAML file.
-        meta: Metadata dictionary (alternative to meta_fname).
-        data_file: Path to data file (if not in metadata).
-        raw_data: Pre-loaded DataFrame (alternative to data_file).
-        return_meta: Whether to return metadata along with data.
-        ignore_exclusions: Whether to ignore exclusion rules in metadata.
-        only_fix_categories: Whether to only fix categories without other processing.
-        return_raw: Whether to return raw unprocessed data.
-        add_original_inds: Whether to add original index column.
-
-    Returns:
-        Processed DataFrame, or tuple of (DataFrame, metadata) if return_meta=True.
-    """
+    """Process annotated data according to metadata specifications."""
     # Read metafile
-    metafile = stk_file_map.get(meta_fname, meta_fname)
+    metafile = cast(dict[str, str], stk_file_map).get(meta_fname, meta_fname)  # type: ignore[call-overload]
     if meta_fname is not None:
         ext = os.path.splitext(metafile)[1]
         if ext == ".yaml":
@@ -581,29 +540,35 @@ def process_annotated_data(
         else:
             raise Exception(f"Unknown meta file format {ext} for file: {meta_fname}")
         assert isinstance(meta_raw, dict), "Meta file must contain a dict"
-        meta_dict: dict[str, object] = dict(meta_raw)  # Cast to ensure object values
-        meta = meta_dict
+        meta_input: dict[str, object] = dict(meta_raw)  # Cast to ensure object values
+        meta = soft_validate(meta_input, DataMeta)
 
-    # Print any issues with the meta without raising an error - for now
-    soft_validate(meta, DataMeta)
-
-    # Setup constants with a simple replacement mechanic
-    constants = meta.get("constants", {}) if meta else {}
-    meta = dict(replace_constants(meta)) if meta else None  # Cast to ensure object values
-
+    # Soft-validate and work with Pydantic DataMeta object throughout
     if meta is None:
-        raise ValueError("Metadata cannot be None after processing")
+        raise ValueError("Metadata cannot be None")
+    meta_obj = soft_validate(meta, DataMeta)
+    constants: dict[str, object] = dict(meta_obj.constants)
+    # Now meta is guaranteed to be a DataMeta object, not None
 
     # Read datafile(s)
     if raw_data is None:
-        raw_data, inp_meta, einfo = read_concatenate_files_list(meta, data_file, path=meta_fname)
+        raw_data, inp_meta, einfo = _read_concatenate_files_list(
+            meta_obj,
+            data_file,
+            path=meta_fname,
+            ignore_exclusions=ignore_exclusions,
+            only_fix_categories=only_fix_categories,
+            add_original_inds=add_original_inds,
+        )
         if inp_meta is not None:
             warn("Processing main meta file")  # Print this to separate warnings for input jsons from main
     else:
         einfo = {}
 
     if return_raw:
-        return (raw_data, meta) if return_meta else raw_data
+        if return_meta:
+            return (raw_data, meta_obj)
+        return raw_data
 
     globs = {
         "pd": pd,
@@ -615,57 +580,63 @@ def process_annotated_data(
         **constants,
     }
 
-    if "preprocessing" in meta and not only_fix_categories:
-        exec(str_from_list(meta["preprocessing"]), globs)
+    if meta_obj.preprocessing is not None and not only_fix_categories:
+        exec(_str_from_list(meta_obj.preprocessing), globs)
         raw_data = globs["df"]
 
     ndf: pd.DataFrame = pd.DataFrame()
     all_cns = dict()
-    for group in meta["structure"]:
-        if group["name"] in all_cns:
-            raise Exception(f"Group name {group['name']} duplicates a column name in group {all_cns[group['name']]}")
-        all_cns[group["name"]] = group["name"]
+    # Build new structure dict as we process groups (Pydantic models are immutable)
+    new_structure: dict[str, ColumnBlockMeta] = {}
+    for group_name, group in meta_obj.structure.items():
+        if group.name in all_cns:
+            raise Exception(f"Group name {group.name} duplicates a column name in group {all_cns[group.name]}")
+        all_cns[group.name] = group.name
         g_cols = []
-        if "create" in group:
-            for newdf, newmeta in create_new_columns_and_metas(raw_data, group):
+
+        # Handle create blocks - may add new groups to structure
+        if group.create is not None:
+            for newdf, newmeta_dict in _create_new_columns_and_metas(raw_data, group):
                 # If same name cols, we overwrite the old ones
                 raw_data = newdf.combine_first(raw_data)
-                # Note we are appending to the list that we are iterating over
-                meta["structure"].append(newmeta)
-            del group["create"]  # clean up the meta
-        for tpl in group["columns"]:
-            if isinstance(tpl, list):
-                cn = tpl[0]  # column name
-                sn = tpl[1] if len(tpl) > 1 and isinstance(tpl[1], str) else cn  # source column
-                # metadata
-                if len(tpl) == 3:
-                    o_cd = tpl[2]
-                elif len(tpl) == 2 and isinstance(tpl[1], dict):
-                    o_cd = tpl[1]
-                else:
-                    o_cd = {}
-            else:
-                cn = sn = tpl
-                o_cd = {}
+                # Add new group to structure
+                new_group_meta = soft_validate(newmeta_dict, ColumnBlockMeta)
+                new_structure[new_group_meta.name] = new_group_meta
+            # Create a copy of group without the create field
+            group = group.model_copy(update={"create": None})
 
-            cd = {**group.get("scale", {}), **o_cd}
+        # Process columns in this group
+        # group.columns is Dict[str, ColumnMeta]
+        # Note: scale metadata is already merged with column metadata
+        # by ColumnBlockMeta.merge_scale_with_columns validator
+        updated_columns: dict[str, ColumnMeta] = {}
+        for orig_cn, col_meta in group.columns.items():
+            # Work with Pydantic objects directly
+            # Get the merged column metadata (scale already merged in during validation)
+            mcm = col_meta
+            # Extract source from ColumnMeta
+            sn = col_meta.source if col_meta.source is not None else orig_cn
+            scale_meta = group.scale if group.scale is not None else None
 
             # Col prefix is used to avoid name clashes when different groups naturally share same column names
-            if "col_prefix" in cd:
-                cn = cd["col_prefix"] + cn
+            # col_prefix is only in BlockScaleMeta, not ColumnMeta, so get it from scale_meta directly
+            col_prefix = scale_meta.col_prefix if scale_meta is not None and scale_meta.col_prefix is not None else None
+            cn = orig_cn
+            if col_prefix is not None:
+                cn = col_prefix + orig_cn
 
             # Detect duplicate columns in meta - including among those missing or generated
             # Only flag if they are duplicates even after prefix
             if cn in all_cns:
-                raise Exception(f"Duplicate column name found: '{cn}' in {all_cns[cn]} and {group['name']}")
-            all_cns[cn] = group["name"]
+                raise Exception(f"Duplicate column name found: '{cn}' in {all_cns[cn]} and {group.name}")
+            all_cns[cn] = group.name
 
             if only_fix_categories:
                 sn = cn
             g_cols.append(cn)
 
             if raw_data is None or sn not in raw_data:
-                if not group.get("generated"):  # bypass warning for columns marked as being generated later
+                if not group.generated:  # bypass warning for columns marked as being generated later
                     warn(f"Column {sn} not found")
                 continue
 
@@ -674,14 +645,16 @@ def process_annotated_data(
                 continue
 
             s = raw_data[sn]
-            if not only_fix_categories and not is_series_of_lists(s):
-                if s.dtype.name == "category":
+            # Store original dtype info if categorical (before any conversions)
+            original_dtype = s.dtype
+            if not only_fix_categories and not _is_series_of_lists(s):
+                if original_dtype.name == "category":
                     s = s.astype("object")  # This makes it easier to use common ops like replace and fillna
-                if "translate" in cd:
-                    s = s.astype("str").replace(cd["translate"]).replace("nan", None).replace("None", None)
-                if "transform" in cd:
+                if mcm.translate:
+                    s = s.astype("str").replace(mcm.translate).replace("nan", None).replace("None", None)
+                if mcm.transform is not None and isinstance(mcm.transform, str):
                     s = eval(
-                        cd["transform"],
+                        mcm.transform,
                         {
                             "s": s,
                             "df": raw_data,
@@ -692,35 +665,125 @@ def process_annotated_data(
                             **constants,
                         },
                     )
-                if "translate_after" in cd:
+                if mcm.translate_after:
                     s = (
                         pd.Series(s)
                         .astype("str")
-                        .replace(cd["translate_after"])
+                        .replace(mcm.translate_after)
                         .replace("nan", None)
                         .replace("None", None)
                     )
 
-                if cd.get("datetime"):
+                if mcm.datetime:
                     s = pd.to_datetime(s, errors="coerce")
-                elif cd.get("continuous"):
+                elif mcm.continuous:
                     s = pd.to_numeric(s, errors="coerce")
 
             s: pd.Series = pd.Series(s, name=cn)  # In case transformation removes the name or renames it
 
-            if cd.get("categories") and not is_series_of_lists(s):
-                s = _apply_categories(s, cd, cn, sn, raw_data)
+            if mcm.categories and not _is_series_of_lists(s):
+                if mcm.categories == "infer":
+                    # Check for ordered warning before we modify s
+                    should_warn_ordered = mcm.ordered and not pd.api.types.is_numeric_dtype(s)
+                    # Infer categories from the transformed data (s has already gone through
+                    # translate -> transform -> translate_after pipeline at lines 658-680)
+                    # Always use s as the source of truth - it has the final transformed values
+                    if mcm.translate and not mcm.transform and set(mcm.translate.values()) >= set(s.dropna().unique()):
+                        # Infer order from translation dict
+                        # s has already gone through translate -> translate_after pipeline
+                        # Get categories from translate dict values that appear in the transformed data
+                        # Preserve the order from the translate dict (deterministic order)
+                        translate_values = list(mcm.translate.values())
+                        cats = [str(c) for c in translate_values if c in s.dropna().unique()]
+                        # As mapping can be many-to-one, we need to use unique and preserve order
+                        inferred_cats = list(dict.fromkeys(cats))
+                        # Update metadata with inferred categories (preserves translation dict order)
+                        mcm = mcm.model_copy(update={"categories": inferred_cats})
+                    else:
+                        # Just use lexicographic ordering (or numeric for numbers)
+                        if should_warn_ordered:
+                            warn(
+                                f"Ordered category {cn} had category: infer. "
+                                "This only works correctly if you want lexicographic ordering!"
+                            )
+                        if pd.api.types.is_numeric_dtype(s):
+                            # For numeric data, sort numerically first, then convert to categorical strings
+                            # This preserves numeric ordering (e.g., 1, 2, 3 not 1, 10, 2)
+                            cinds = s.drop_duplicates().sort_values().index
+                            # Convert to categorical format (formatted strings)
+                            s_converted = _convert_number_series_to_categorical(s)
+                            # Extract categories in numeric order using original indices
+                            inferred_cats = [s_converted.iloc[i] for i in cinds if pd.notna(s_converted.iloc[i])]
+                        else:
+                            # For non-numeric data, use lexicographic ordering (deterministic)
+                            s.loc[~s.isna()] = s[~s.isna()].astype(
+                                str
+                            )  # convert all to string to avoid type issues in sorting for mixed columns
+                            # Get unique values and sort lexicographically (deterministic)
+                            unique_vals = s.dropna().unique()
+                            inferred_cats = sorted(unique_vals.tolist())  # Ensure deterministic lexicographic order
+                        # Update metadata with inferred categories
+                        mcm = mcm.model_copy(update={"categories": inferred_cats})
+                    # Replace categories with those inferred in the output meta
+                    # Many things in pp and model pipeline assume categories are set so this is a necessity
+                    # o_cd['categories'] = cd['categories'] # Done later in fix_meta_categories
+                    cats = inferred_cats
+                elif pd.api.types.is_numeric_dtype(s):
+                    # Numeric datatype being coerced into categorical - map to nearest category value
+                    cats = mcm.categories
+                    if not isinstance(cats, list):
+                        raise ValueError(f"Categories for {cn} must be a list when series is numeric")
+                    try:
+                        fcats = np.array(cats).astype(float)
+                        s_values = s.values
+                        # Ensure s_values is a numpy array for proper indexing
+                        s_values_arr = np.asarray(s_values)
+                        if s_values_arr.ndim == 0:
+                            s_values_arr = s_values_arr.reshape(-1)
+                        cats_array = np.array(cats)
+                        # Calculate distances and find nearest category indices
+                        # Use explicit reshape for better type checker support
+                        s_values_reshaped = s_values_arr.reshape(-1, 1)
+                        fcats_reshaped = fcats.reshape(1, -1)
+                        distances = np.abs(s_values_reshaped - fcats_reshaped)
+                        indices = distances.argmin(axis=1)
+                        s = pd.Series(
+                            cats_array[indices],
+                            index=s.index,
+                            name=s.name,
+                            dtype=pd.CategoricalDtype(
+                                categories=cats, ordered=mcm.ordered if mcm.ordered is not None else False
+                            ),
+                        )
+                    except (ValueError, TypeError) as e:
+                        raise ValueError(f"Categories for {cn} are not numeric: {cats}") from e
+                else:
+                    cats = mcm.categories
+                    if not isinstance(cats, list):
+                        raise ValueError(f"Categories for {cn} must be a list")
+
+                if isinstance(cats, list):
+                    # Use updated ordered flag if we modified it during inference
+                    final_ordered = mcm.ordered if mcm.ordered is not None else False
+                    s = pd.Series(
+                        pd.Categorical(s, categories=cats, ordered=final_ordered),
+                        name=cn,
+                    )
 
             # Update ndf in real-time so it would be usable in transforms for next columns
             if cn in ndf.columns:
                 ndf = ndf.drop(columns=cn)  # Overwrite existing instead of duplicates
             ndf[cn] = s
 
-        if "subgroup_transform" in group:
-            subgroups = group.get("subgroups", [g_cols])
+            # Store updated column metadata (with inferred categories if applicable)
+            updated_columns[orig_cn] = mcm
+
+        if group.subgroup_transform is not None:
+            # subgroups is not in ColumnBlockMeta, so we'll use g_cols as default
+            subgroups = [g_cols]  # TODO: Add subgroups field to ColumnBlockMeta if needed
             for sg in subgroups:
                 ndf[sg] = eval(
-                    group["subgroup_transform"],
+                    group.subgroup_transform,
                     {
                         "gdf": ndf[sg],
                         "df": raw_data,
@@ -732,53 +795,59 @@ def process_annotated_data(
                     },
                 )
 
-    if "postprocessing" in meta and not only_fix_categories:
+        # Add processed group to structure
+        new_structure[group.name] = group
+
+    if meta_obj.postprocessing is not None and not only_fix_categories:
         globs["df"] = ndf
-        exec(str_from_list(meta["postprocessing"]), globs)
+        exec(_str_from_list(meta_obj.postprocessing), globs)
         ndf = globs["df"]
+
+    # Update meta with new structure (including any groups created during processing)
+    meta_obj = meta_obj.model_copy(update={"structure": new_structure})
 
     # Fix categories after postprocessing
     # Also replaces infer with the actual categories
-    fix_meta_categories(meta, ndf, warnings=True)
+    meta_obj = _fix_meta_categories(meta_obj, ndf, warnings=True)
+    # Ensure we have a DataMeta object
+    if not isinstance(meta_obj, DataMeta):
+        meta_obj = soft_validate(meta_obj, DataMeta)
 
     ndf["original_inds"] = np.arange(len(ndf))
-    if "excluded" in meta and not ignore_exclusions:
-        excl_inds = [i for i, _ in meta["excluded"]]
+    if meta_obj.excluded and not ignore_exclusions:
+        excl_inds = [i for i, _ in meta_obj.excluded]
         ndf = ndf[~ndf["original_inds"].isin(excl_inds)]
     if not add_original_inds:
         ndf.drop(columns=["original_inds"], inplace=True)
 
-    return (ndf, meta) if return_meta else ndf
+    # Return with meta as dict if requested (for backward compatibility)
+    if return_meta:
+        return (ndf, meta_obj)
+    return ndf
 
 
-# Read either a json annotation and process the data, or a processed parquet with the annotation attached
-# Return_raw is here for easier debugging of metafiles and is not meant to be used in production
 @overload
 def read_annotated_data(
-    fname: str, infer: bool = True, return_raw: bool = False, *, return_meta: Literal[True], **kwargs: object
+    fname: str, infer: bool = ..., return_raw: bool = ..., *, return_meta: Literal[True], **kwargs: object
 ) -> ProcessedDataReturn: ...
 
 
 @overload
 def read_annotated_data(
-    fname: str,
-    infer: bool = True,
-    return_raw: bool = False,
-    *,
-    return_meta: Literal[False] = ...,
-    **kwargs: object,
+    fname: str, infer: bool = ..., return_raw: bool = ..., *, return_meta: Literal[False] = False, **kwargs: object
 ) -> pd.DataFrame: ...
 
 
 def read_annotated_data(
     fname: str, infer: bool = True, return_raw: bool = False, return_meta: bool = False, **kwargs: object
 ) -> pd.DataFrame | ProcessedDataReturn:
-    """Read annotated data from JSON/YAML or Parquet file.
+    """Read either a json annotation and process the data, or a processed parquet with the annotation attached.
 
     Args:
         fname: Path to data file (JSON, YAML, or Parquet).
         infer: Whether to infer metadata if not found (default: True).
         return_raw: Whether to return raw unprocessed data (for debugging).
+            Return_raw is here for easier debugging of metafiles and is not meant to be used in production.
         return_meta: Whether to return metadata along with data.
         **kwargs: Additional arguments passed to processing functions.
 
@@ -786,28 +855,65 @@ def read_annotated_data(
         DataFrame, or tuple of (DataFrame, metadata) if return_meta=True.
     """
     _, ext = os.path.splitext(fname)
-    meta = None
-    if ext == ".json" or ext == ".yaml":
-        data, meta = process_annotated_data(fname, return_meta=True, return_raw=return_raw, **kwargs)
+    data: pd.DataFrame | None = None
+    meta_obj: DataMeta | None = None
+    if ext in {".json", ".yaml"}:
+        # Extract parameters from kwargs that are valid for _process_annotated_data
+        ignore_exclusions = bool(kwargs.get("ignore_exclusions", False))
+        only_fix_categories = bool(kwargs.get("only_fix_categories", False))
+        add_original_inds = bool(kwargs.get("add_original_inds", False))
+        # Pass all parameters explicitly to match overloads - return_meta=True means ProcessedDataReturn
+        data, meta_obj = _process_annotated_data(
+            meta_fname=fname,
+            return_meta=True,
+            return_raw=return_raw,
+            ignore_exclusions=ignore_exclusions,
+            only_fix_categories=only_fix_categories,
+            add_original_inds=add_original_inds,
+        )
     elif ext == ".parquet":
         data, full_meta = read_parquet_with_metadata(fname)
-        meta = (full_meta or {}).get("data")
+        if full_meta is not None:
+            meta_obj = full_meta.data
 
-    if meta is not None or not infer:
+    if meta_obj is not None or not infer:
         assert isinstance(data, pd.DataFrame), "Expected data to be DataFrame"
-        assert meta is None or isinstance(meta, dict), "Expected meta to be dict or None"
-        return (data, meta) if return_meta else data
+        if return_meta:
+            return (data, meta_obj)
+        return data
+
+    warn(f"Warning: using inferred meta for {fname}")
+    inferred_meta = infer_meta(fname, meta_file=False)
+    # Extract parameters from kwargs that are valid for _process_annotated_data
+    ignore_exclusions = bool(kwargs.get("ignore_exclusions", False))
+    only_fix_categories = bool(kwargs.get("only_fix_categories", False))
+    add_original_inds = bool(kwargs.get("add_original_inds", False))
+    # Use conditional to match overloads based on return_meta value
+    # Pass return_meta first (after *) to help Pyright match overloads
+    if return_meta:
+        return _process_annotated_data(
+            data_file=fname,
+            meta=inferred_meta,
+            return_meta=True,
+            return_raw=return_raw,
+            ignore_exclusions=ignore_exclusions,
+            only_fix_categories=only_fix_categories,
+            add_original_inds=add_original_inds,
+        )
     else:
-        warn(f"Warning: using inferred meta for {fname}")
-        meta = infer_meta(fname, meta_file=False)
-        return process_annotated_data(data_file=fname, meta=meta, return_meta=return_meta)
+        return _process_annotated_data(
+            data_file=fname,
+            meta=inferred_meta,
+            return_meta=False,
+            return_raw=return_raw,
+            ignore_exclusions=ignore_exclusions,
+            only_fix_categories=only_fix_categories,
+            add_original_inds=add_original_inds,
+        )
 
 
-# Fix df dtypes etc using meta - needed after a lazy load
-
-
-def fix_df_with_meta(df: pd.DataFrame, dmeta: dict[str, object]) -> pd.DataFrame:
-    """Fix DataFrame dtypes and categories using metadata.
+def fix_df_with_meta(df: pd.DataFrame, dmeta: DataMeta) -> pd.DataFrame:
+    """Fix df dtypes etc using meta - needed after a lazy load.
 
     Args:
         df: DataFrame to fix.
@@ -821,37 +927,49 @@ def fix_df_with_meta(df: pd.DataFrame, dmeta: dict[str, object]) -> pd.DataFrame
         if c not in cmeta:
             continue
         cd = cmeta[c]
-        if cd.get("categories"):
-            cats = list(df[c].unique()) if cd["categories"] == "infer" else cd["categories"]
-            df[c] = pd.Categorical(df[c], categories=cats, ordered=cd.get("ordered", False))
+        if cd.categories:
+            cats = list(df[c].unique()) if cd.categories == "infer" else cd.categories
+            df[c] = pd.Categorical(df[c], categories=cats, ordered=cd.ordered)
     return df
 
 
 # Helper functions designed to be used with the annotations
 
 
-# Convert data_meta into a dict where each group and column maps to their metadata dict
-def extract_column_meta(data_meta: dict[str, object]) -> dict[str, dict[str, object]]:
-    """Extract column metadata from data_meta structure.
+def extract_column_meta(data_meta: DataMeta) -> dict[str, GroupOrColumnMeta]:
+    """Convert data_meta into a dict where each group and column maps to their metadata dict."""
 
-    Args:
-        data_meta: Data metadata dictionary with structure field.
+    if data_meta.structure is None:
+        return {}
 
-    Returns:
-        Dictionary mapping column/group names to their metadata.
-    """
-    res = defaultdict(lambda: {})
-    for g in data_meta["structure"]:
-        base = g["scale"].copy() if "scale" in g else {}
-        res[g["name"]] = {
-            **base,
-            "columns": [base.get("col_prefix", "") + (t[0] if isinstance(t, list) else t) for t in g["columns"]],
-        }
-        base["label"] = None  # Don't let that be carried over to individual columns
-        for cd in g["columns"]:
-            if isinstance(cd, str):
-                cd = [cd]
-            res[base.get("col_prefix", "") + cd[0]] = {**base, **cd[-1]} if isinstance(cd[-1], dict) else base.copy()
+    res: dict[str, GroupOrColumnMeta] = {}
+    for block in data_meta.structure.values():
+        scale_meta = block.scale
+        col_prefix = scale_meta.col_prefix if scale_meta and scale_meta.col_prefix else ""
+
+        # Create group metadata
+        group_columns = [f"{col_prefix}{cn}" for cn in block.columns.keys()]
+        if scale_meta is not None:
+            # Convert BlockScaleMeta to GroupOrColumnMeta by dumping and adding columns field
+            group_dict = scale_meta.model_dump(mode="python")
+            group_dict["columns"] = group_columns
+            res[block.name] = GroupOrColumnMeta.model_validate(group_dict)
+        else:
+            # No scale, create empty GroupOrColumnMeta with just columns
+            res[block.name] = GroupOrColumnMeta(columns=group_columns)
+
+        for cn, col_meta in block.columns.items():
+            # Note: scale metadata is already merged with column metadata by
+            # ColumnBlockMeta.merge_scale_with_columns validator
+            col_name = f"{col_prefix}{cn}"
+            # Convert ColumnMeta to GroupOrColumnMeta
+            # If scale exists and col_meta.label is None, ensure label is None
+            update_dict: dict[str, object] = {}
+            if scale_meta is not None and col_meta.label is None:
+                update_dict["label"] = None
+            col_dict = col_meta.model_dump(mode="python")
+            col_dict.update(update_dict)
+            res[col_name] = GroupOrColumnMeta.model_validate(col_dict)
     return res
 
 
@@ -859,25 +977,18 @@ def extract_column_meta(data_meta: dict[str, object]) -> dict[str, dict[str, obj
 # TODO: deprecate - info available in extract_column_meta
 
 
-def group_columns_dict(data_meta: dict[str, object]) -> dict[str, list[str]]:
-    """Get dictionary mapping group names to their column lists.
+def group_columns_dict(data_meta: DataMeta) -> dict[str, list[str]]:
+    """Get dictionary mapping group names to their column lists."""
 
-    Args:
-        data_meta: Data metadata dictionary.
-
-    Returns:
-        Dictionary mapping group names to lists of column names.
-    """
-    return {k: list(d["columns"]) for k, d in extract_column_meta(data_meta).items() if "columns" in d}  # type: ignore[misc]
+    return {name: list(meta.columns) for name, meta in extract_column_meta(data_meta).items() if meta.columns}
 
     # return { g['name'] : [(t[0] if type(t)!=str else t) for t in g['columns']] for g in data_meta['structure'] }
 
 
-# Take a list and a dict and replace all dict keys in list with their corresponding lists in-place
-
-
 def list_aliases(lst: list[str], da: dict[str, list[str]]) -> list[str]:
-    """Expand aliases in a list using a dictionary mapping.
+    """Take a list and a dict and replace all dict keys in list with their corresponding lists in-place.
+
+    Expand aliases in a list using a dictionary mapping.
 
     Args:
         lst: List of strings that may contain aliases.
@@ -889,47 +1000,25 @@ def list_aliases(lst: list[str], da: dict[str, list[str]]) -> list[str]:
     return [fv for v in lst for fv in (da[v] if isinstance(v, str) and v in da else [v])]
 
 
-# Creates a mapping old -> new
-def get_original_column_names(dmeta: dict[str, object]) -> dict[str, str]:
-    """Get mapping of original column names (before any transformations).
+def _get_original_column_names(dmeta: DataMeta) -> dict[str, str]:
+    """Get mapping of original column names (before any transformations)."""
+    if dmeta.structure is None:
+        return {}
 
-    Args:
-        dmeta: Data metadata dictionary.
-
-    Returns:
-        Dictionary mapping current column names to original names.
-    """
-    res = {}
-    for g in dmeta["structure"]:
-        for c in g["columns"]:
-            if isinstance(c, str):
-                res[c] = c
-            elif isinstance(c, list):
-                if len(c) == 1:
-                    res[c[0]] = c[0]
-                elif len(c) >= 2 and isinstance(c[1], str):
-                    res[c[1]] = c[0]  # This is a rename: [new_name, old_name, ...]
-                elif len(c) >= 1:
-                    res[c[0]] = c[0]  # This is a regular column with metadata: [name, {...}]
+    res: dict[str, str] = {}
+    for block in dmeta.structure.values():
+        col_prefix = block.scale.col_prefix if block.scale and block.scale.col_prefix else ""
+        for cn, col_meta in block.columns.items():
+            sn = col_meta.source if col_meta.source is not None else cn
+            col_name = f"{col_prefix}{cn}"
+            res[col_name] = sn
     return res
 
 
-# Map ot backwards and nt forwards to move from one to the other
+def _change_mapping(ot: dict[str, str], nt: dict[str, str], only_matches: bool = False) -> dict[str, str]:
+    """Map ot backwards and nt forwards to move from one to the other.
 
-
-def change_mapping(ot: dict[str, str], nt: dict[str, str], only_matches: bool = False) -> dict[str, str]:
-    """Create mapping from old translation to new translation.
-
-    Args:
-        ot: Old translation dictionary.
-        nt: New translation dictionary.
-        only_matches: Whether to only include keys present in both dictionaries.
-
-    Returns:
-        Dictionary mapping old values to new values.
-
-    Note:
-        TODO: warn about non-bijective mappings.
+    Create mapping from old translation to new translation.
     """
     # Todo: warn about non-bijective mappings
     matches = {v: nt[k] for k, v in ot.items() if k in nt and v != nt[k]}  # change those that are shared
@@ -943,36 +1032,30 @@ def change_mapping(ot: dict[str, str], nt: dict[str, str], only_matches: bool = 
         }
 
 
-# Change an existing dataset to correspond better to a new meta_data
-# This is intended to allow making small improvements in the meta even after a model has been run
-# It is by no means perfect, but is nevertheless a useful tool to avoid re-running long pymc models
-# for simple column/translation changes
-def change_df_to_meta(df: pd.DataFrame, old_dmeta: dict[str, object], new_dmeta: dict[str, object]) -> pd.DataFrame:
-    """Update DataFrame to match new metadata structure.
+def _change_df_to_meta(
+    df: pd.DataFrame,
+    old_dmeta: DataMeta,
+    new_dmeta: DataMeta,
+) -> pd.DataFrame:
+    """Change an existing dataset to correspond better to a new meta_data.
 
-    Args:
-        df: DataFrame to update.
-        old_dmeta: Old data metadata dictionary.
-        new_dmeta: New data metadata dictionary.
-
-    Returns:
-        Updated DataFrame matching new metadata structure.
-
-    Note:
-        This tool handles only simple cases of column name, translation and category order changes.
+    This is intended to allow making small improvements in the meta even after a model has been run.
+    It is by no means perfect, but is nevertheless a useful tool to avoid re-running long pymc models
+    for simple column/translation changes.
     """
     warn("This tool handles only simple cases of column name, translation and category order changes.")
 
-    # Ready the metafiles for parsing
-    old_dmeta = dict(replace_constants(old_dmeta))
-    new_dmeta = dict(replace_constants(new_dmeta))
-
     # Rename columns
-    ocn, ncn = (
-        get_original_column_names(old_dmeta),
-        get_original_column_names(new_dmeta),
-    )
-    name_changes = change_mapping(ocn, ncn, only_matches=True)
+    ocn = _get_original_column_names(old_dmeta)
+    ncn = _get_original_column_names(new_dmeta)
+    shared_sources = set(ocn.values()) & set(ncn.values())
+    old_source_map = {source: name for name, source in ocn.items()}
+    new_source_map = {source: name for name, source in ncn.items()}
+    name_changes = {
+        old_source_map[source]: new_source_map[source]
+        for source in shared_sources
+        if old_source_map[source] != new_source_map[source]
+    }
     if name_changes != {}:
         print(f"Renaming columns: {name_changes}")
     df.rename(columns=name_changes, inplace=True)
@@ -983,47 +1066,60 @@ def change_df_to_meta(df: pd.DataFrame, old_dmeta: dict[str, object], new_dmeta:
     ocm = extract_column_meta(old_dmeta)
     ncm = extract_column_meta(new_dmeta)
 
-    for c in ncm.keys():
+    for c, ncd in ncm.items():
+        if ncd.columns is not None:
+            continue  # skip group entries
         if c not in df.columns:
             continue  # probably group
-        if c not in ocm.keys():
+        lookup_key = rev_name_changes[c] if c in rev_name_changes else c
+        if lookup_key not in ocm:
             continue  # new column
-
-        ncd, ocd = ncm[c], ocm[rev_name_changes[c] if c in rev_name_changes else c]
+        ocd = ocm[lookup_key]
+        if ocd.columns is not None:
+            continue
 
         # Warn about transformations and don't touch columns where those change
-        if ocd.get("transform") != ncd.get("transform"):
+        if ocd.transform != ncd.transform:
             warn(f"Column {c} has a different transformation. Leaving it unchanged")
             continue
 
         # Handle translation changes
-        ot, nt = ocd.get("translate", {}), ncd.get("translate", {})
-        remap = change_mapping(ot, nt)
+        ot = ocd.translate or {}
+        nt = ncd.translate or {}
+        remap = _change_mapping(ot, nt)
         if remap != {}:
             # Validate that mapping keys exist in current categories
-            invalid_keys = set(remap.keys()) - set(df[c].cat.categories)
+            cat_categories = utils.get_categories(df[c].dtype)
+            invalid_keys = set(remap.keys()) - {str(c) for c in cat_categories}
             if invalid_keys:
                 raise ValueError(
                     f"Translation mapping keys {invalid_keys} not found in current categories "
-                    f"{list(df[c].cat.categories)} for column {c}"
+                    f"{cat_categories} for column {c}"
                 )
             print(f"Remapping {c} with {remap}")
             df[c] = df[c].cat.rename_categories(remap)
 
         # Reorder categories and/or change ordered status
+        ncd_categories = ncd.categories
+        dtype = df[c].dtype
+        dtype_categories = utils.get_categories(dtype)
+        dtype_ordered = utils.get_ordered(dtype)
         if (
-            ncd.get("categories", "infer") != "infer" and list(df[c].dtype.categories) != ncd.get("categories")
-        ) or ocd.get("ordered") != ncd.get("ordered"):
-            cats = ncd.get("categories") if ncd.get("categories", "infer") != "infer" else df[c].dtype.categories
+            ncd_categories not in (None, "infer") and dtype_categories and list(dtype_categories) != ncd_categories
+        ) or dtype_ordered != ncd.ordered:
+            cats = ncd_categories if ncd_categories not in (None, "infer") else dtype_categories
             if isinstance(cats, list):
-                print(f"Changing {c} to Cat({cats},ordered={ncd.get('ordered')})")
-                df[c] = pd.Categorical(df[c], categories=cats, ordered=ncd.get("ordered"))
+                print(f"Changing {c} to Cat({cats},ordered={ncd.ordered})")
+                df[c] = pd.Categorical(df[c], categories=cats, ordered=ncd.ordered)
 
     # Column order changes
     gcdict = group_columns_dict(new_dmeta)
 
-    cols = ["draw", "obs_idx", "training_subsample"] + [c for g in new_dmeta["structure"] for c in gcdict[g["name"]]]
-    cols.append(new_dmeta["weight_col"] if new_dmeta.get("weight_col") else "N")
+    cols = ["draw", "obs_idx", "training_subsample"]
+    if new_dmeta.structure:
+        for block in new_dmeta.structure.values():
+            cols.extend(gcdict.get(block.name, []))
+    cols.append(new_dmeta.weight_col if new_dmeta.weight_col else "N")
     cols = [c for c in cols if c in df.columns]
 
     if len(set(df.columns) - set(cols)) > 0:
@@ -1032,36 +1128,7 @@ def change_df_to_meta(df: pd.DataFrame, old_dmeta: dict[str, object], new_dmeta:
     return df[cols]
 
 
-def update_meta_with_model_fields(meta: dict[str, object], donor: dict[str, object]) -> dict[str, object]:
-    """Update metadata with fields from a donor metadata (e.g., from a model).
-
-    Args:
-        meta: Target metadata dictionary to update.
-        donor: Source metadata dictionary with additional fields.
-
-    Returns:
-        Updated metadata dictionary.
-    """
-    # Add the groups added by the model before to data_meta
-    meta_structure = list(meta.get("structure", []))
-    donor_structure = list(donor.get("structure", []))
-    existing_grps = {g["name"] for g in meta_structure}
-    meta_structure += [grp for grp in donor_structure if grp.get("generated") and grp["name"] not in existing_grps]
-    meta["structure"] = meta_structure
-
-    # Add back the fields added/changed by the model in sampling
-    meta["draws_data"] = donor.get("draws_data", [])
-    if "total_size" in donor:
-        meta["total_size"] = donor["total_size"]
-    if "weight_col" in donor:
-        meta["weight_col"] = donor["weight_col"]
-
-    return meta
-
-
-def replace_data_meta_in_parquet(
-    parquet_name: str, metafile_name: str, advanced: bool = True
-) -> tuple[pd.DataFrame, dict[str, object]]:
+def replace_data_meta_in_parquet(parquet_name: str, metafile_name: str, advanced: bool = True) -> pd.DataFrame:
     """Replace metadata in a Parquet file with metadata from a JSON file.
 
     Args:
@@ -1072,121 +1139,166 @@ def replace_data_meta_in_parquet(
     Returns:
         Tuple of (DataFrame, updated metadata).
     """
-    df, meta_opt = read_parquet_with_metadata(parquet_name)
-    assert meta_opt is not None, "Expected metadata to be present"
-    meta = meta_opt
+    df, meta = read_parquet_with_metadata(parquet_name)
+    assert meta is not None, "Expected metadata to be present"
 
-    ometa = meta["data"]
-    nmeta = read_json(metafile_name)
-    nmeta = replace_constants(nmeta)
+    ometa = meta.data
+    nmeta_dict = replace_constants(read_json(metafile_name))
+    nmeta = soft_validate(nmeta_dict, DataMeta)
     nmeta = update_meta_with_model_fields(nmeta, ometa)
 
     # Perform the column name changes and category translations
     # Do this before inferring meta as categories might change in this step
     if advanced:
-        df = change_df_to_meta(df, ometa, nmeta)
+        df = _change_df_to_meta(df, ometa, nmeta)
 
-    nmeta = fix_meta_categories(nmeta, df)  # replace infer with values
+    nmeta = _fix_meta_categories(nmeta, df)  # replace infer with values
 
-    meta["original_data"] = meta.get("original_data", meta["data"])
-    meta["data"] = nmeta
+    # Set original_data extra field if not already present
+    if meta.model_extra is None or "original_data" not in meta.model_extra:
+        if meta.model_extra is None:
+            meta.model_extra = {}
+        meta.model_extra["original_data"] = ometa.model_dump(mode="json")
+    meta.data = nmeta
 
     write_parquet_with_metadata(df, meta, parquet_name)
 
-    return df, meta
+    return df
 
 
-# A function to infer categories (and validate the ones already present)
-# Works in-place
-def fix_meta_categories(
-    data_meta: dict[str, object], df: pd.DataFrame, infers_only: bool = False, warnings: bool = True
-) -> dict[str, object]:
-    """Fix and infer categories in metadata based on DataFrame (modifies metadata in-place and returns it).
+def update_meta_with_model_fields(meta: DataMeta, donor: DataMeta) -> DataMeta:
+    """Local helper to update metadata with fields from a donor metadata.
 
-    Args:
-        data_meta: Data metadata dictionary to update.
-        df: DataFrame to extract categories from.
-        infers_only: Whether to only fix "infer" categories, not validate existing ones.
-        warnings: Whether to emit warnings for missing categories.
+    This is a local copy of the function that lives in salk_internal_package.sampling.
+    We keep it here to avoid circular dependencies since io.py is used by salk_internal_package.
     """
-    if "structure" not in data_meta:
+    structure = dict(meta.structure or {})
+    if donor.structure:
+        for name, block in donor.structure.items():
+            if block.generated and name not in structure:
+                structure[name] = block
+
+    updates: dict[str, object] = {"structure": structure}
+    updates["draws_data"] = donor.draws_data or meta.draws_data or {}
+    if donor.total_size is not None:
+        updates["total_size"] = donor.total_size
+    if donor.weight_col is not None:
+        updates["weight_col"] = donor.weight_col
+
+    return meta.model_copy(update=updates)
+
+
+def _fix_meta_categories(
+    data_meta: DataMeta,
+    df: pd.DataFrame,
+    infers_only: bool = False,
+    warnings: bool = True,
+) -> DataMeta:
+    """Infer categories (and validate the ones already present) in metadata based on DataFrame, working in-place."""
+    if data_meta.structure is None:
         return data_meta
 
-    for g in data_meta["structure"]:
+    # Work with Pydantic structure (dict of ColumnBlockMeta objects)
+    structure = data_meta.structure
+    # Build new structure dict with updated blocks
+    new_structure: dict[str, ColumnBlockMeta] = {}
+
+    for g in structure.values():
         all_cats = set()
-        prefix = g.get("scale", {}).get("col_prefix", "")
-        for c in g.get("columns", []):
-            if isinstance(c, str):
-                c = [c]
-            if prefix + c[0] in df.columns and df[prefix + c[0]].dtype.name == "category":
-                cats, cm = list(df[prefix + c[0]].dtype.categories), c[-1]
-                if isinstance(cm, dict) and cm.get("categories") == "infer":
-                    cm["categories"] = cats
+        # Work with Pydantic object directly
+        scale_meta = g.scale
+        prefix = scale_meta.col_prefix if scale_meta is not None and scale_meta.col_prefix is not None else ""
+        columns_raw = g.columns
+
+        # Ensure prefix is a string
+        prefix = prefix if prefix is not None else ""
+
+        # Update column metadata in Pydantic objects
+        updated_columns: dict[str, ColumnMeta] = {}
+        for cn, col_meta in columns_raw.items():
+            updated_col_meta = col_meta
+            full_col_name = prefix + cn
+            if full_col_name in df.columns and df[full_col_name].dtype.name == "category":
+                dtype = df[full_col_name].dtype
+                cats = utils.get_categories(dtype)
+                if col_meta.categories == "infer":
+                    # Categories were already inferred in lexicographic/numeric order during processing
+                    # Use the order from the DataFrame's categorical dtype (which should be deterministic)
+                    # This preserves the lexicographic/numeric order that was set during inference
+                    updated_col_meta = col_meta.model_copy(update={"categories": cats})
                 elif (
                     (not infers_only)
-                    and isinstance(cm, dict)
-                    and cm.get("categories")
-                    and not set(cm["categories"]) >= set(cats)
+                    and col_meta.categories is not None
+                    and isinstance(col_meta.categories, list)
+                    and not set(col_meta.categories) >= set(cats)
                 ):
-                    diff = set(cats) - set(cm["categories"])
+                    # Missing categories - add them while preserving the original order
+                    diff = set(cats) - set(col_meta.categories)
                     if warnings:
-                        warn(f"Fixing missing categories for {c[0]}: {diff}")
-                    cm["categories"] = cats
+                        warn(f"Fixing missing categories for {cn}: {diff}")
+                    # Preserve original order and append missing categories at the end
+                    existing_cats = list(col_meta.categories)
+                    missing_cats = sorted([c for c in cats if c not in existing_cats])
+                    updated_col_meta = col_meta.model_copy(update={"categories": existing_cats + missing_cats})
                 all_cats |= set(cats)
+            updated_columns[cn] = updated_col_meta
 
-        if g.get("scale") and g["scale"].get("categories") == "infer":
+        # Get scale for category inference - work with Pydantic object directly
+        scale_meta = g.scale
+        updated_scale = scale_meta
+        if scale_meta is not None and scale_meta.categories == "infer":
             # IF they all share same categories, keep the category order
-            tr = g["scale"].get("translate", {})
+            tr = scale_meta.translate or {}
             if all_cats == set(tr.values()):  # First prefer translate order
                 scats = list(dict.fromkeys(tr.values()))
             elif all_cats == set(cats):  # Then prefer order from single col
                 scats = list(cats)
             else:  # Otherwise, sort categories
                 scats = sorted(list(all_cats))
-            g["scale"]["categories"] = scats
+            # Update scale categories using model_copy
+            updated_scale = scale_meta.model_copy(update={"categories": scats})
         elif (
             (not infers_only)
-            and g.get("scale")
-            and g["scale"].get("categories")
-            and not set(g["scale"]["categories"]) >= all_cats
+            and scale_meta is not None
+            and scale_meta.categories is not None
+            and isinstance(scale_meta.categories, list)
+            and not set(scale_meta.categories) >= all_cats
         ):
-            diff = all_cats - set(g["scale"]["categories"])
+            diff = all_cats - set(scale_meta.categories)
             if warnings:
-                warn(f"Fixing missing categories for group {g['name']}: {diff}")
-            g["scale"]["categories"] = list(all_cats)
+                warn(f"Fixing missing categories for group {g.name}: {diff}")
+            updated_scale = scale_meta.model_copy(update={"categories": list(all_cats)})
 
-    return data_meta
+        # Update the block with new scale and columns if they changed
+        update_dict: dict[str, object] = {}
+        if updated_scale != scale_meta:
+            update_dict["scale"] = updated_scale
+        if updated_columns != columns_raw:
+            update_dict["columns"] = updated_columns
+        if update_dict:
+            g = g.model_copy(update=update_dict)
+
+        new_structure[g.name] = g
+
+    # Return updated DataMeta with new structure
+    return data_meta.model_copy(update={"structure": new_structure})
 
 
-def fix_parquet_categories(parquet_name: str) -> None:
-    """Fix categories in a Parquet file by reading, fixing, and rewriting.
-
-    Args:
-        parquet_name: Path to Parquet file.
-    """
+def _fix_parquet_categories(parquet_name: str) -> None:
+    """Fix categories in a Parquet file by reading, fixing, and rewriting."""
     df, meta = read_parquet_with_metadata(parquet_name)
     if meta is None:
         raise ValueError(f"Parquet file {parquet_name} has no metadata")
-    meta["data"] = fix_meta_categories(meta["data"], df, infers_only=False)
+    meta.data = _fix_meta_categories(meta.data, df, infers_only=False)
     write_parquet_with_metadata(df, meta, parquet_name)
 
 
-def is_categorical(col: pd.Series) -> bool:
-    """Check if a pandas Series is categorical.
-
-    Args:
-        col: Pandas Series to check.
-
-    Returns:
-        True if the series is categorical, False otherwise.
-    """
+def _is_categorical(col: pd.Series) -> bool:
+    """Check if a pandas Series is categorical."""
     return col.dtype.name in ["object", "str", "category"] and not is_datetime(col)
 
 
 max_cats = 50
-
-# Create a very basic metafile for a dataset based on it's contents
-# This is not meant to be directly used, rather to speed up the annotation process
 
 
 def infer_meta(
@@ -1197,8 +1309,9 @@ def infer_meta(
     translate_fn: Callable[[str], str] | None = None,
     translation_blacklist: list[str] | None = None,
 ) -> dict[str, object]:
-    """Infer metadata structure from a data file.
+    """Create a very basic metafile for a dataset based on its contents.
 
+    This is not meant to be directly used, rather to speed up the annotation process.
     Creates a basic metadata file based on data contents to speed up annotation.
 
     Args:
@@ -1231,7 +1344,7 @@ def infer_meta(
         ext = os.path.splitext(fname)[1].lower()[1:]
         meta["file"] = fname
         if ext in ["csv", "gz"]:
-            df = pd.read_csv(data_file, low_memory=False, **read_opts)
+            df = pd.read_csv(data_file, low_memory=False, **read_opts)  # type: ignore[call-overload]
         elif ext in ["sav", "dta"]:
             read_fn = getattr(pyreadstat, "read_" + ext)
             df, sav_meta = read_fn(
@@ -1247,7 +1360,7 @@ def infer_meta(
         elif ext == "parquet":
             df = pd.read_parquet(data_file, **read_opts)
         elif ext in ["xls", "xlsx", "xlsm", "xlsb", "odf", "ods", "odt"]:
-            df = pd.read_excel(data_file, **read_opts)
+            df = pd.read_excel(data_file, **read_opts)  # type: ignore[call-overload]
         else:
             raise Exception(f"Not a known file format {data_file}")
 
@@ -1268,11 +1381,11 @@ def infer_meta(
 
     # Determine category lists for all categories
     for cn in cols:
-        if not is_categorical(df[cn]):
+        if not _is_categorical(df[cn]):
             continue
-        cats[cn] = (
-            sorted(list(df[cn].dropna().unique())) if df[cn].dtype.name != "category" else list(df[cn].dtype.categories)
-        )
+        dtype = df[cn].dtype
+        dtype_categories = utils.get_categories(dtype)
+        cats[cn] = sorted(list(df[cn].dropna().unique())) if df[cn].dtype.name != "category" else dtype_categories
 
         for cs in grps:
             # if cn.startswith('Q2_'): print(len(set(cats[cn]) & cs)/len(cs),set(cats[cn]),cs)
@@ -1288,20 +1401,14 @@ def infer_meta(
             grps[frozenset(cats[cn])].append(cn)
 
     # Fn to create the meta for a categorical column
-    def cat_meta(cn: str) -> dict[str, object]:
-        """Create metadata for a categorical column.
-
-        Args:
-            cn: Column name.
-
-        Returns:
-            Metadata dictionary for the categorical column.
-        """
+    def _cat_meta(cn: str) -> dict[str, object]:
+        """Create metadata for a categorical column."""
         m: dict[str, object] = {"categories": cats[cn] if len(cats[cn]) <= max_cats else "infer"}
         if cn in df.columns and df[cn].dtype.name == "category" and df[cn].dtype.ordered:
             m["ordered"] = True
         if translate_fn is not None and cn not in translation_blacklist and len(cats[cn]) <= max_cats:
-            tdict = {c: translate_fn(c) for c in m["categories"]}
+            categories = cast(list[str], m["categories"])
+            tdict = {c: translate_fn(c) for c in categories}
             m["categories"] = "infer"  # [ tdict[c] for c in m['categories'] ]
             m["translate"] = tdict
         return m
@@ -1325,7 +1432,7 @@ def infer_meta(
         kl = [str(c) for c in k]
         cats[str(kl)] = kl  # so cat_meta would use the full list
 
-        grp = {"name": ";".join(kl), "scale": cat_meta(str(kl)), "columns": m_cols}
+        grp = {"name": ";".join(kl), "scale": _cat_meta(str(kl)), "columns": m_cols}
 
         meta["structure"].append(grp)
         handled_cols.update(g_cols)
@@ -1334,7 +1441,7 @@ def infer_meta(
     main_cols = [c for c in cols if c not in handled_cols]
     for cn in main_cols:
         if cn in cats:
-            cdesc = cat_meta(cn)
+            cdesc = _cat_meta(cn)
         else:
             if is_datetime(df[cn]):
                 cdesc = {"datetime": True}
@@ -1360,51 +1467,36 @@ def infer_meta(
     return meta
 
 
-# Small convenience function to have a meta available for any dataset
-
-
-def data_with_inferred_meta(data_file: str, **kwargs: object) -> tuple[pd.DataFrame, dict[str, object]]:
-    """Read data file and infer metadata if not present.
-
-    Args:
-        data_file: Path to data file.
-        **kwargs: Additional arguments passed to processing functions.
-
-    Returns:
-        Tuple of (DataFrame, inferred metadata).
-    """
+def _data_with_inferred_meta(data_file: str, **kwargs: object) -> tuple[pd.DataFrame, DataMeta]:
+    """Read data file and infer metadata if not present."""
     meta = infer_meta(data_file, meta_file=False, **kwargs)
-    df, meta_result = process_annotated_data(meta=meta, data_file=data_file, return_meta=True)
+    df, meta_result = _process_annotated_data(meta=meta, data_file=data_file, return_meta=True)  # type: ignore[call-overload]
     assert meta_result is not None, "Expected metadata to be present"
     return df, meta_result
 
 
-def perform_merges(
-    df: pd.DataFrame, merges: dict[str, object] | list[dict[str, object]], constants: dict[str, object] | None = None
+def _perform_merges(
+    df: pd.DataFrame, merges: SingleMergeSpec | list[SingleMergeSpec], constants: dict[str, object] | None = None
 ) -> pd.DataFrame:
-    """Perform merge operations on a DataFrame.
-
-    Args:
-        df: DataFrame to merge into.
-        merges: Single merge specification or list of merge specifications.
-        constants: Dictionary of constants to pass to merge operations.
-
-    Returns:
-        DataFrame with merges applied.
-    """
+    """Perform merge operations on a DataFrame."""
     if constants is None:
         constants = {}
     if not isinstance(merges, list):
         merges = [merges]
     for ms in merges:
-        ndf = read_and_process_data(ms["file"], constants=constants)
-        on = ms["on"] if isinstance(ms["on"], list) else [ms["on"]]
-        if ms.get("add"):
+        # ms is always a SingleMergeSpec Pydantic model
+        file = ms.file
+        on = ms.on if isinstance(ms.on, list) else [ms.on]
+        add = ms.add
+        how = ms.how
+
+        ndf = read_and_process_data(file, constants=constants)
+        if add:
             ms_on = on
-            ms_add = list(ms["add"]) if isinstance(ms["add"], list) else [ms["add"]]
+            ms_add = list(add) if isinstance(add, list) else [add]
             ndf = ndf[ms_on + ms_add]
-        # print(df.columns,ndf.columns,ms['on'])
-        mdf = pd.merge(df, ndf, on=on, how=ms.get("how", "inner"))
+        # print(df.columns,ndf.columns,ms.on)
+        mdf = pd.merge(df, ndf, on=on, how=how)
 
         for c in on:
             mdf[c] = mdf[c].astype(df[c].dtype)
@@ -1412,44 +1504,43 @@ def perform_merges(
             missing = set(list(df[on].drop_duplicates().itertuples(index=False, name=None))) - set(
                 list(ndf[on].drop_duplicates().itertuples(index=False, name=None))
             )
-            warn(f"Merge with {ms['file']} removes {1 - len(mdf) / len(df):.1%} rows with missing merges on: {missing}")
+            file_str = file if isinstance(file, str) else str(file)
+            warn(f"Merge with {file_str} removes {1 - len(mdf) / len(df):.1%} rows with missing merges on: {missing}")
         df = mdf
     return df
 
 
 @overload
 def read_and_process_data(
-    desc: str | dict[str, object],
-    *,
-    return_meta: Literal[True],
-    constants: dict[str, object] | None = ...,
-    skip_postprocessing: bool = ...,
-    **kwargs: object,
-) -> tuple[pd.DataFrame, MetaDict]: ...
-
-
-@overload
-def read_and_process_data(
-    desc: str | dict[str, object],
-    *,
-    return_meta: Literal[False] = ...,
+    desc: str | FileDescriptionProtocol,
+    return_meta: Literal[False] = False,
     constants: dict[str, object] | None = ...,
     skip_postprocessing: bool = ...,
     **kwargs: object,
 ) -> pd.DataFrame: ...
 
 
+@overload
 def read_and_process_data(
-    desc: str | dict[str, object],
+    desc: str | FileDescriptionProtocol,
+    return_meta: Literal[True],
+    constants: dict[str, object] | None = ...,
+    skip_postprocessing: bool = ...,
+    **kwargs: object,
+) -> tuple[pd.DataFrame, DataMeta]: ...
+
+
+def read_and_process_data(
+    desc: str | FileDescriptionProtocol,
     return_meta: bool = False,
     constants: dict[str, object] | None = None,
     skip_postprocessing: bool = False,
-    **kwargs: object,
-) -> pd.DataFrame | tuple[pd.DataFrame, MetaDict]:
-    """Read and process data according to a description dictionary.
+    **kwargs: Any,
+) -> pd.DataFrame | tuple[pd.DataFrame, DataMeta]:
+    """Read and process data according to a description object.
 
     Args:
-        desc: Data description (string file path or dictionary).
+        desc: Data description (string file path, DataDescription, or DataMeta object).
         return_meta: Whether to return metadata along with data.
         constants: Dictionary of constants for preprocessing/postprocessing.
         skip_postprocessing: Whether to skip postprocessing step.
@@ -1461,58 +1552,66 @@ def read_and_process_data(
     if constants is None:
         constants = {}
     if isinstance(desc, str):
-        desc = {"file": desc}  # Allow easy shorthand for simple cases
-
-    # Validate the data desc format
-    desc = DataDescription.model_validate(desc).model_dump(mode="json")
-
-    if desc.get("data") is not None:
-        df, meta, einfo = pd.DataFrame(data=desc["data"]), None, {}
+        desc_obj = DataDescription(file=desc)  # Allow easy shorthand for simple cases
+    elif isinstance(desc, dict):
+        desc_obj = soft_validate(desc, DataDescription)  # Convert dict to DataDescription
     else:
-        df, meta, einfo = read_concatenate_files_list(desc, **kwargs)
+        desc_obj = desc
 
-    if meta is None and return_meta:
+    meta_obj: DataMeta | None
+    # Check if desc_obj is DataDescription with inline data
+    if isinstance(desc_obj, DataDescription) and desc_obj.data is not None:
+        df, meta_obj, einfo = pd.DataFrame(data=desc_obj.data), None, {}
+    else:
+        # Extract parameters from kwargs that are valid for _read_files_from_description
+        ignore_exclusions = kwargs.get("ignore_exclusions", False)
+        only_fix_categories = kwargs.get("only_fix_categories", False)
+        add_original_inds = kwargs.get("add_original_inds", False)
+        df, meta_raw, einfo = _read_files_from_description(
+            desc_obj,
+            ignore_exclusions=ignore_exclusions,
+            only_fix_categories=only_fix_categories,
+            add_original_inds=add_original_inds,
+        )
+        if meta_raw is None:
+            meta_obj = None
+        elif isinstance(meta_raw, DataMeta):
+            meta_obj = meta_raw
+        else:
+            meta_obj = soft_validate(meta_raw, DataMeta)
+
+    if meta_obj is None and return_meta:
         raise Exception("No meta found on any of the files")
 
-    # Perform transformation and filtering
-    globs = {"pd": pd, "np": np, "sp": sp, "stk": stk, "df": df, **einfo, **constants}
-    if desc.get("preprocessing"):
-        exec(str_from_list(desc["preprocessing"]), globs)
+    # Perform transformation and filtering (only for DataDescription)
+    if isinstance(desc_obj, DataDescription):
+        globs = {"pd": pd, "np": np, "sp": sp, "stk": stk, "df": df, **einfo, **constants}
+        if desc_obj.preprocessing:
+            exec(_str_from_list(desc_obj.preprocessing), globs)
 
-    if desc.get("filter"):
-        globs["df"] = globs["df"][eval(desc["filter"], globs)]
-    if desc.get("merge"):
-        globs["df"] = perform_merges(globs["df"], desc.get("merge"), constants)
-    if desc.get("postprocessing") and not skip_postprocessing:
-        exec(str_from_list(desc["postprocessing"]), globs)
-    df = globs["df"]
+        if desc_obj.filter:
+            globs["df"] = globs["df"][eval(desc_obj.filter, globs)]
+        if desc_obj.merge:
+            globs["df"] = _perform_merges(globs["df"], desc_obj.merge, constants)
+        if desc_obj.postprocessing and not skip_postprocessing:
+            exec(_str_from_list(desc_obj.postprocessing), globs)
+        df = globs["df"]
 
     if return_meta:
-        assert meta is not None, "Meta should not be None when return_meta=True"
-        return df, meta
-    else:
-        return df
+        assert meta_obj is not None, "Meta should not be None when return_meta=True"
+        return df, meta_obj
+    return df
 
 
-# Small debug tool to help find where jsons become non-serializable
-def find_type_in_dict(d: object, dtype: type, path: str = "") -> None:
-    """Debug function to find values of a specific type in a nested dictionary.
-
-    Args:
-        d: Dictionary or value to search.
-        dtype: Type to search for.
-        path: Current path string for error reporting.
-
-    Raises:
-        Exception: If a value of the specified type is found.
-    """
+def _find_type_in_dict(d: object, dtype: type, path: str = "") -> None:
+    """Find values of a specific type in a nested dictionary to debug non-serializable JSONs."""
     print(d, path)
     if isinstance(d, dict):
         for k, v in d.items():
-            find_type_in_dict(v, dtype, path + f"{k}:")
+            _find_type_in_dict(v, dtype, path + f"{k}:")
     if isinstance(d, list):
         for i, v in enumerate(d):
-            find_type_in_dict(v, dtype, path + f"[{i}]")
+            _find_type_in_dict(v, dtype, path + f"[{i}]")
     elif isinstance(d, dtype):
         raise Exception(f"Value {d} of type {dtype} found at {path}")
 
@@ -1522,7 +1621,7 @@ def find_type_in_dict(d: object, dtype: type, path: str = "") -> None:
 custom_meta_key = "salk-toolkit-meta"
 
 
-def write_parquet_with_metadata(df: pd.DataFrame, meta: dict[str, object], file_name: str) -> None:
+def write_parquet_with_metadata(df: pd.DataFrame, meta: dict[str, object] | ParquetMeta, file_name: str) -> None:
     """Write DataFrame to Parquet file with embedded metadata.
 
     Args:
@@ -1532,9 +1631,16 @@ def write_parquet_with_metadata(df: pd.DataFrame, meta: dict[str, object], file_
     """
     table = pa.Table.from_pandas(df)
 
-    # find_type_in_dict(meta,np.int64)
+    # Convert meta to dict and ensure DataMeta objects are serialized
+    if isinstance(meta, ParquetMeta):
+        meta_payload = deepcopy(meta.model_dump(mode="json"))
+    else:
+        meta_payload = deepcopy(meta)
+    data_meta = meta_payload.get("data")
+    if isinstance(data_meta, DataMeta):
+        meta_payload["data"] = data_meta.model_dump(mode="json")
 
-    custom_meta_json = json.dumps(meta)
+    custom_meta_json = json.dumps(meta_payload)
     existing_meta = table.schema.metadata
     combined_meta = {
         custom_meta_key.encode(): custom_meta_json.encode(),
@@ -1545,46 +1651,39 @@ def write_parquet_with_metadata(df: pd.DataFrame, meta: dict[str, object], file_
     pq.write_table(table, file_name, compression="ZSTD")
 
 
-# Just load the metadata from the parquet file
-
-
-def read_parquet_metadata(file_name: str) -> dict[str, object] | None:
-    """Read metadata from a Parquet file.
+def read_parquet_metadata(file_name: str) -> ParquetMeta | None:
+    """Just load the metadata from the parquet file.
 
     Args:
         file_name: Path to Parquet file.
 
     Returns:
-        Metadata dictionary, or None if no metadata found.
+        ParquetMeta bundle, or None if no metadata found.
     """
     schema = pq.read_schema(file_name)
     if custom_meta_key.encode() in schema.metadata:
         restored_meta_json = schema.metadata[custom_meta_key.encode()]
-        restored_meta = json.loads(restored_meta_json)
-    else:
-        restored_meta = None
-    return restored_meta
-
-
-# Load parquet with metadata
+        restored_meta = cast(dict[str, object], json.loads(restored_meta_json))
+        return soft_validate(restored_meta, ParquetMeta)
+    return None
 
 
 @overload
 def read_parquet_with_metadata(
     file_name: str, lazy: Literal[True], **kwargs: object
-) -> tuple[pl.LazyFrame, dict[str, object] | None]: ...
+) -> tuple[pl.LazyFrame, ParquetMeta | None]: ...
 
 
 @overload
 def read_parquet_with_metadata(
     file_name: str, lazy: Literal[False] = False, **kwargs: object
-) -> tuple[pd.DataFrame, dict[str, object] | None]: ...
+) -> tuple[pd.DataFrame, ParquetMeta | None]: ...
 
 
 def read_parquet_with_metadata(
     file_name: str, lazy: bool = False, **kwargs: object
-) -> tuple[pd.DataFrame | pl.LazyFrame, dict[str, object] | None]:
-    """Read Parquet file with embedded metadata.
+) -> tuple[pd.DataFrame | pl.LazyFrame, ParquetMeta | None]:
+    """Load parquet with metadata.
 
     Args:
         file_name: Path to Parquet file.
@@ -1592,7 +1691,7 @@ def read_parquet_with_metadata(
         **kwargs: Additional arguments passed to Parquet reader.
 
     Returns:
-        Tuple of (DataFrame/LazyFrame, metadata dictionary).
+        Tuple of (DataFrame/LazyFrame, ParquetMeta bundle).
     """
     if lazy:  # Load it as a polars lazy dataframe
         meta = read_parquet_metadata(file_name)
@@ -1604,7 +1703,8 @@ def read_parquet_with_metadata(
     restored_df = restored_table.to_pandas()
     if custom_meta_key.encode() in restored_table.schema.metadata:
         restored_meta_json = restored_table.schema.metadata[custom_meta_key.encode()]
-        restored_meta = json.loads(restored_meta_json)
+        restored_meta_payload = cast(dict[str, object], json.loads(restored_meta_json))
+        restored_meta = soft_validate(restored_meta_payload, ParquetMeta)
     else:
         restored_meta = None
 

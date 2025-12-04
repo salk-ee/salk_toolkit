@@ -16,55 +16,55 @@ version elsewhere.
 from __future__ import annotations
 
 __all__ = [
-    "warn",
-    "default_color",
-    "default_bidirectional_gradient",
-    "redblue_gradient",
-    "greyscale_gradient",
-    "factorize_w_codes",
-    "batch",
-    "loc2iloc",
-    "match_sum_round",
-    "min_diff",
-    "continify",
-    "replace_cat_with_dummies",
-    "match_data",
-    "replace_constants",
+    "aggregate_multiselect",
     "approx_str_match",
-    "index_encoder",
-    "to_alt_scale",
-    "multicol_to_vals_cats",
-    "gradient_to_discrete_color_scale",
-    "gradient_subrange",
-    "gradient_from_color",
-    "gradient_from_color_alt",
-    "split_to_neg_neutral_pos",
-    "is_datetime",
-    "rel_wave_times",
-    "stable_rng",
-    "stable_draws",
-    "deterministic_draws",
-    "clean_kwargs",
+    "batch",
+    "cached_fn",
     "call_kwsafe",
     "censor_dict",
-    "cut_nice_labels",
+    "clean_kwargs",
+    "continify",
     "cut_nice",
-    "rename_cats",
-    "str_replace",
-    "merge_series",
-    "aggregate_multiselect",
+    "cut_nice_labels",
     "deaggregate_multiselect",
+    "deterministic_draws",
+    "dict_cache",
+    "escape_vega_label",
+    "factorize_w_codes",
     "gb_in",
     "gb_in_apply",
-    "stk_defaultdict",
-    "cached_fn",
-    "scores_to_ordinal_rankings",
-    "dict_cache",
+    "get_categories",
+    "get_ordered",
     "get_size",
-    "escape_vega_label",
-    "unescape_vega_label",
+    "gradient_from_color",
+    "gradient_from_color_alt",
+    "gradient_subrange",
+    "gradient_to_discrete_color_scale",
+    "index_encoder",
+    "is_datetime",
+    "loc2iloc",
+    "match_data",
+    "match_sum_round",
+    "merge_pydantic_models",
+    "merge_series",
+    "min_diff",
+    "multicol_to_vals_cats",
     "read_json",
     "read_yaml",
+    "rel_wave_times",
+    "rename_cats",
+    "replace_cat_with_dummies",
+    "replace_constants",
+    "scores_to_ordinal_rankings",
+    "split_to_neg_neutral_pos",
+    "stable_draws",
+    "stable_rng",
+    "stk_defaultdict",
+    "str_replace",
+    "to_alt_scale",
+    "unescape_vega_label",
+    "warn",
+    "plot_matrix_html",
 ]
 
 import json
@@ -77,11 +77,13 @@ from collections import defaultdict, OrderedDict
 from copy import deepcopy
 from hashlib import sha256
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
     Iterable,
     Iterator,
+    cast,
     List,
     Mapping,
     MutableSequence,
@@ -89,6 +91,9 @@ from typing import (
     TypeAlias,
     TypeVar,
 )
+
+if TYPE_CHECKING:
+    from salk_toolkit.pp import AltairChart
 
 
 import numpy as np
@@ -102,6 +107,7 @@ import matplotlib.colors as mpc
 import hsluv  # type: ignore[import-untyped]
 
 import Levenshtein
+from pydantic import BaseModel
 
 pd.set_option("future.no_silent_downcasting", True)
 
@@ -110,6 +116,21 @@ JSONScalar: TypeAlias = str | int | float | bool | None
 JSONValue: TypeAlias = JSONScalar | dict[str, "JSONValue"] | list["JSONValue"]
 JSONObject: TypeAlias = dict[str, JSONValue]
 JSONArray: TypeAlias = list[JSONValue]
+
+
+ModelT = TypeVar("ModelT", bound=BaseModel)
+
+
+def merge_pydantic_models(defaults: ModelT | None, overrides: ModelT) -> ModelT:
+    """Merge two BaseModel instances, similar to ``{**defaults, **overrides}``."""
+
+    if defaults is None:
+        return overrides
+
+    defaults_dict = defaults.model_dump(mode="python")
+    overrides_dict = overrides.model_dump(mode="python", exclude_unset=True, exclude_none=True)
+    merged_dict = {**defaults_dict, **overrides_dict}
+    return overrides.__class__.model_validate(merged_dict)
 
 
 # convenience for warnings that gives a more useful stack frame (fn calling the warning, not warning fn itself)
@@ -275,16 +296,23 @@ def match_data(
 
     ccols = [c for c in cols if d1[c].dtype.name == "category"]
     for c in ccols:
-        if d1[c].dtype.ordered:  # replace categories with their index
-            s1, s2 = set(d1[c].dtype.categories), set(d2[c].dtype.categories)
+        d1_dtype = d1[c].dtype
+        d2_dtype = d2[c].dtype
+        d1_ordered = get_ordered(d1_dtype)
+        d1_categories = get_categories(d1_dtype)
+        d2_categories = get_categories(d2_dtype)
+        if d1_ordered:  # replace categories with their index
+            s1, s2 = set(d1_categories), set(d2_categories)
             if s1 - s2 and s2 - s1:  # one-way imbalance is fine
                 raise Exception(f"Ordered categorical columns differ in their categories on: {s1 - s2} vs {s2 - s1}")
 
             md = d1 if len(s2 - s1) == 0 else d2
+            md_dtype = md[c].dtype
+            md_categories = get_categories(md_dtype)
             mdict = dict(
                 zip(
-                    md[c].dtype.categories,
-                    np.linspace(0, 2, len(md[c].dtype.categories)),
+                    md_categories,
+                    np.linspace(0, 2, len(md_categories)),
                 )
             )
             d1[c] = d1[c].astype("object").replace(mdict)
@@ -313,6 +341,7 @@ def replace_constants(
     d: JSONStructure,
     constants: Mapping[str, JSONValue] | None = None,
     inplace: bool = False,
+    keep: bool = False,
 ) -> JSONStructure:
     """Recursively expand ``"constants"`` references inside annotation dicts.
 
@@ -320,6 +349,7 @@ def replace_constants(
         d: Arbitrary nested structure containing optional ``"constants"`` blocks.
         constants: Pre-existing constant definitions to seed recursion with.
         inplace: Whether to mutate the provided structure.
+        keep: Whether to preserve the constants key (for DataMeta).
 
     Returns:
         Structure with string references swapped for their constant values.
@@ -332,21 +362,22 @@ def replace_constants(
 
     # Handle dict case
     if isinstance(d, dict):
-        if "constants" in d:
+        if "constants" in d and d["constants"] is not None:
             constants_map.update(d["constants"])  # type: ignore[arg-type]
-            del d["constants"]
+            if not keep:
+                del d["constants"]
         for k, v in d.items():
             if isinstance(v, str) and v in constants_map:
                 d[k] = constants_map[v]
             elif isinstance(v, (dict, list)):
-                d[k] = replace_constants(v, constants_map, inplace=True)
+                d[k] = replace_constants(v, constants_map, inplace=True, keep=keep)
     # Handle list case
     elif isinstance(d, list):
         for i, v in enumerate(d):
             if isinstance(v, str) and v in constants_map:
                 d[i] = constants_map[v]
             elif isinstance(v, (dict, list)):
-                d[i] = replace_constants(v, constants_map, inplace=True)
+                d[i] = replace_constants(v, constants_map, inplace=True, keep=keep)
 
     return d
 
@@ -406,15 +437,15 @@ def index_encoder(z: object) -> list[Any]:
 
 default_color = "lightgrey"  # Something that stands out so it is easy to notice a missing color
 
-# Helper function to turn a dictionary into an Altair scale (or None into alt.Undefined)
-# Also: preserving order matters because scale order overrides sort argument
-
 
 def to_alt_scale(
     scale: Mapping[str, str] | alt.Scale | None,
     order: Sequence[str] | None = None,
 ) -> alt.Scale | alt.utils.schemapi.UndefinedType:
-    """Convert a mapping into an Altair scale while preserving category order."""
+    """Convert a mapping into an Altair scale (or None into alt.Undefined) while preserving category order.
+
+    Preserving order matters because scale order overrides sort argument.
+    """
 
     if scale is None:
         scale = alt.Undefined  # type: ignore[assignment]
@@ -530,7 +561,7 @@ def gradient_from_color_alt(
     n_points: int = 7,
     range: Sequence[float] = (0, 1),
 ) -> list[str]:
-    """Variant of ``gradient_from_color`` tuned for lighter palettes."""
+    """Variant of ``_gradient_from_color`` tuned for lighter palettes."""
 
     # Get hue and saturation for color (ignoring luminosity to make scales uniform on that)
     ch, cs, cl = hsluv.hex_to_hsluv(mpc.to_hex(color))
@@ -701,9 +732,6 @@ def cut_nice_labels(
     return obreaks, labels
 
 
-# A nicer behaving wrapper around pd.cut
-
-
 def cut_nice(
     s: Sequence[float],
     breaks: MutableSequence[float],
@@ -768,7 +796,7 @@ def aggregate_multiselect(
     dfc = df[cols].astype("object").replace(dict(zip(na_vals, [None] * len(na_vals))))
 
     if dfc.isna().sum().sum() == 0:
-        raise ValueError(f"No na_vals found by aggregate_multiselect in {prefix}")
+        raise ValueError(f"No na_vals found by _aggregate_multiselect in {prefix}")
 
     # Turn column names into the values - this is sometimes necessary
     # as values in col might be "mentioned"/"not mentioned"
@@ -807,10 +835,8 @@ def deaggregate_multiselect(df: pd.DataFrame, prefix: str, out_prefix: str = "")
 def gb_in(df: pd.DataFrame, gb_cols: Sequence[str]) -> pd.core.groupby.generic.DataFrameGroupBy | pd.DataFrame:
     """Return ``df.groupby`` when ``gb_cols`` not empty; otherwise return ``df``."""
 
-    return df.groupby(gb_cols, observed=False) if len(gb_cols) > 0 else df
-
-
-# Groupby apply if needed - similar to gb_in but for apply
+    # Convert to list for pandas groupby overload matching
+    return df.groupby(list(gb_cols), observed=False) if len(gb_cols) > 0 else df  # type: ignore[call-overload]
 
 
 def gb_in_apply(
@@ -820,7 +846,10 @@ def gb_in_apply(
     cols: Sequence[str] | None = None,
     **kwargs: object,
 ) -> pd.DataFrame:
-    """Apply ``fn`` either to the whole frame or grouped subsets."""
+    """Groupby apply if needed - similar to gb_in but for apply.
+
+    Apply ``fn`` either to the whole frame or grouped subsets.
+    """
 
     if cols is None:
         cols = list(df.columns)
@@ -829,7 +858,8 @@ def gb_in_apply(
         if isinstance(res, pd.Series):
             res = pd.DataFrame(res).T
     else:
-        res = df.groupby(gb_cols, observed=False)[cols].apply(fn, **kwargs)
+        # Convert to list for pandas groupby overload matching
+        res = df.groupby(list(gb_cols), observed=False)[cols].apply(fn, **kwargs)  # type: ignore[call-overload]
     return res
 
 
@@ -846,12 +876,12 @@ def cached_fn(fn: Callable[[Any], T]) -> Callable[[Any], T]:
 
     cache: Dict[Any, T] = {}
 
-    def cf(x: object) -> T:
+    def _cf(x: object) -> T:
         if x not in cache:
             cache[x] = fn(x)
         return cache[x]
 
-    return cf
+    return _cf
 
 
 def scores_to_ordinal_rankings(
@@ -928,8 +958,38 @@ def get_size(obj: object, seen: set[int] | None = None) -> int:
     elif hasattr(obj, "__dict__"):
         size += get_size(obj.__dict__, seen)
     elif hasattr(obj, "__iter__") and not isinstance(obj, (str, bytes, bytearray)):
-        size += sum([get_size(i, seen) for i in obj])
+        size += sum([get_size(i, seen) for i in cast(Iterable[Any], obj)])
     return size
+
+
+def get_categories(dtype: object) -> list[object]:
+    """Safely get categories from a pandas dtype.
+
+    Args:
+        dtype: A pandas dtype object (may be CategoricalDtype or other).
+
+    Returns:
+        List of categories if dtype has categories attribute, empty list otherwise.
+    """
+    if hasattr(dtype, "categories"):
+        categories = dtype.categories
+        if categories is not None:
+            return list(categories)
+    return []
+
+
+def get_ordered(dtype: object) -> bool:
+    """Safely get ordered status from a pandas dtype.
+
+    Args:
+        dtype: A pandas dtype object (may be CategoricalDtype or other).
+
+    Returns:
+        True if dtype is ordered, False otherwise.
+    """
+    if hasattr(dtype, "ordered"):
+        return bool(dtype.ordered)
+    return False
 
 
 def escape_vega_label(label: str) -> str:
@@ -965,3 +1025,231 @@ def read_yaml(model_desc_file: str) -> JSONValue:
         except yaml.YAMLError as exc:
             print(exc)
     return yaml_desc
+
+
+# Altair default configuration for plot styling
+altair_default_config = {
+    "font": '"Source Sans Pro", sans-serif',
+    "background": "#ffffff",
+    "fieldTitle": "verbal",
+    "autosize": {"type": "fit", "contains": "padding"},
+    "title": {
+        "align": "left",
+        "anchor": "start",
+        "color": "#31333F",
+        "titleFontStyle": "normal",
+        "fontWeight": 600,
+        "fontSize": 16,
+        "orient": "top",
+        "offset": 26,
+    },
+    "header": {
+        "titleFontWeight": 400,
+        "titleFontSize": 16,
+        "titleColor": "#808495",
+        "titleFontStyle": "normal",
+        "labelFontSize": 12,
+        "labelFontWeight": 400,
+        "labelColor": "#808495",
+        "labelFontStyle": "normal",
+    },
+    "axis": {
+        "labelFontSize": 12,
+        "labelFontWeight": 400,
+        "labelColor": "#808495",
+        "labelFontStyle": "normal",
+        "titleFontWeight": 400,
+        "titleFontSize": 14,
+        "titleColor": "#808495",
+        "titleFontStyle": "normal",
+        "ticks": False,
+        "gridColor": "#e6eaf1",
+        "domain": False,
+        "domainWidth": 1,
+        "domainColor": "#e6eaf1",
+        "labelFlush": True,
+        "labelFlushOffset": 1,
+        "labelBound": False,
+        "labelLimit": 100,
+        "titlePadding": 16,
+        "labelPadding": 16,
+        "labelSeparation": 4,
+        "labelOverlap": True,
+    },
+    "legend": {
+        "labelFontSize": 14,
+        "labelFontWeight": 400,
+        "labelColor": "#808495",
+        "titleFontSize": 14,
+        "titleFontWeight": 400,
+        "titleFontStyle": "normal",
+        "titleColor": "#808495",
+        "titlePadding": 5,
+        "labelPadding": 16,
+        "columnPadding": 8,
+        "rowPadding": 4,
+        "padding": 7,
+        "symbolStrokeWidth": 4,
+    },
+    "range": {
+        "category": [
+            "#0068c9",
+            "#83c9ff",
+            "#ff2b2b",
+            "#ffabab",
+            "#29b09d",
+            "#7defa1",
+            "#ff8700",
+            "#ffd16a",
+            "#6d3fc0",
+            "#d5dae5",
+        ],
+        "diverging": [
+            "#7d353b",
+            "#bd4043",
+            "#ff4b4b",
+            "#ff8c8c",
+            "#ffc7c7",
+            "#a6dcff",
+            "#60b4ff",
+            "#1c83e1",
+            "#0054a3",
+            "#004280",
+        ],
+        "ramp": [
+            "#e4f5ff",
+            "#c7ebff",
+            "#a6dcff",
+            "#83c9ff",
+            "#60b4ff",
+            "#3d9df3",
+            "#1c83e1",
+            "#0068c9",
+            "#0054a3",
+            "#004280",
+        ],
+        "heatmap": [
+            "#e4f5ff",
+            "#c7ebff",
+            "#a6dcff",
+            "#83c9ff",
+            "#60b4ff",
+            "#3d9df3",
+            "#1c83e1",
+            "#0068c9",
+            "#0054a3",
+            "#004280",
+        ],
+    },
+    "view": {
+        "columns": 1,
+        "strokeWidth": 0,
+        "stroke": "transparent",
+        "continuousHeight": 350,
+        "continuousWidth": 400,
+        "discreteHeight": {"step": 20},
+    },
+    "concat": {"columns": 1},
+    "facet": {"columns": 1},
+    "mark": {"tooltip": True, "color": "#0068c9"},
+    "bar": {"binSpacing": 4, "discreteBandSize": {"band": 0.85}},
+    "axisDiscrete": {"grid": False},
+    "axisXPoint": {"grid": False},
+    "axisTemporal": {"grid": False},
+    "axisXBand": {"grid": False},
+}
+
+# HTML template for embedding Altair plots
+html_template = """
+<!DOCTYPE html>
+<html>
+<head></head>
+<body>
+  <div id="UID">SUBDIVS</div>
+  <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+  <script type="text/javascript">
+    UID_delta = 0
+    function draw_plot() {
+        width = document.getElementById("UID").parentElement.clientWidth;
+        var specs = %s;
+        var opt = {"renderer": "canvas", "actions": false};
+        specs.forEach(function(spec,i){ vegaEmbed("#UID-"+i, spec, opt); });
+    };
+    draw_plot();
+    // This is a hack to fix facet plot width issues
+    setTimeout(function() {
+        wc = %s;
+        wp = document.getElementById("UID").offsetWidth;
+        UID_delta = wp-wc;
+        if (UID_delta!=0) draw_plot();
+    }, 5);
+    %s
+   </script>
+</body>
+</html>
+"""
+
+
+def plot_matrix_html(
+    pmat: AltairChart | list[list[AltairChart]] | None,
+    uid: str = "viz",
+    width: int | None = None,
+    responsive: bool = True,
+) -> str | None:
+    """Generate HTML for a matrix of Altair plots.
+
+    Args:
+        pmat: Matrix of plots (list of lists) or single plot, or None.
+        uid: Unique identifier for HTML elements.
+        width: Optional plot width in pixels.
+        responsive: Whether plots should be responsive to container width.
+
+    Returns:
+        HTML string containing the plots, or None if pmat is None.
+    """
+    if not pmat:
+        return None
+    if not isinstance(pmat, list):
+        pmat = [[pmat]]
+
+    template = html_template.replace("UID", uid)
+
+    rstring = "XYZresponsiveXZY"  # Something we can replace easy
+    specs, ncols = [], len(pmat[0])
+    for i, p in enumerate(pmat):
+        for j, pp in enumerate(p):
+            pdict = json.loads(pp.to_json())
+            pdict["autosize"] = {"type": "fit-x", "contains": "padding"}
+            pdict["config"] = altair_default_config
+
+            if responsive:
+                cwidth = pdict["spec"]["width"] if "spec" in pdict else pdict["width"]
+                repl = f"(width-{uid}_delta/{ncols})/{width / cwidth}"
+                if "spec" in pdict:
+                    pdict["spec"]["width"] = rstring
+                else:
+                    pdict["width"] = rstring
+                pjson = json.dumps(pdict).replace(f'"{rstring}"', repl)
+            else:
+                pjson = json.dumps(pdict)
+            specs.append(pjson)
+
+    if responsive:
+        goal_width = f'document.getElementById("{uid}").parentElement.clientWidth'
+        resp_code = 'window.addEventListener("resize", draw_plot);'
+    else:
+        goal_width, resp_code = str(width), ""
+
+    html = template % (f"[{','.join(specs)}]", goal_width, resp_code)
+
+    # Add subdivs after the plots - otherwise width% needs complex escaping
+    subdivs = "".join(
+        [f'<div id="{uid}-{i}" style="width: {0.99 / ncols:.3%}"></div>' for i in range(sum(map(len, pmat)))]
+    )
+    html = html.replace("SUBDIVS", subdivs)
+
+    if responsive:
+        html = html.replace(f'"{rstring}"', repl)
+    return html

@@ -49,7 +49,7 @@ __all__ = [
 
 import itertools as it
 import math
-from typing import Any, Callable, Dict, Mapping, Sequence
+from typing import Any, Dict, Sequence
 
 import altair as alt
 import arviz as az
@@ -64,7 +64,8 @@ from PIL import ImageFont
 from scipy.cluster import hierarchy
 
 from salk_toolkit import utils as utils
-from salk_toolkit.pp import AltairChart, stk_plot
+from salk_toolkit.pp import AltairChart, PlotInput, stk_plot
+from salk_toolkit.validation import FacetMeta
 
 
 # --------------------------------------------------------
@@ -73,7 +74,7 @@ from salk_toolkit.pp import AltairChart, stk_plot
 
 
 # Helper function to clean unnecessary index columns created by groupbyfrom a dataframe
-def clean_levels(df: pd.DataFrame) -> pd.DataFrame:
+def _clean_levels(df: pd.DataFrame) -> pd.DataFrame:
     """Drop auto-added `level_*` columns that pandas often emits after groupby."""
 
     df.drop(columns=[c for c in df.columns if c.startswith("level_")], inplace=True)
@@ -86,10 +87,12 @@ font_file = font_manager.findfont(font)
 legend_font = ImageFont.truetype(font_file, 10)
 
 
-# Legends are not wrapped, nor is there a good way of doing accurately it in vega/altair
-# This attempts to estimate a reasonable value for columns which induces wrapping
 def estimate_legend_columns_horiz_naive(cats: Sequence[str], width: int) -> int:
-    """Heuristic that balances legend columns purely by string length."""
+    """Legends are not wrapped, nor is there a good way of doing accurately it in vega/altair.
+
+    This attempts to estimate a reasonable value for columns which induces wrapping.
+    Heuristic that balances legend columns purely by string length.
+    """
 
     max_str_len = max(map(len, cats))
     n_cols = max(1, width // (15 + 5 * max_str_len))
@@ -135,9 +138,11 @@ def estimate_legend_columns_horiz(
     return int(math.ceil(len(cats) / n_rows))
 
 
-# Regular boxplot with quantiles and Tukey whiskers
 def boxplot_vals(s: pd.Series, extent: float = 1.5, delta: float = 1e-4) -> pd.DataFrame:
-    """Return Tukey-style summary statistics for a series."""
+    """Regular boxplot with quantiles and Tukey whiskers.
+
+    Return Tukey-style summary statistics for a series.
+    """
 
     q1, q3 = s.quantile(0.25), s.quantile(0.75)
     if q3 - q1 > 2 * delta:
@@ -186,61 +191,59 @@ def boxplot_vals(s: pd.Series, extent: float = 1.5, delta: float = 1e-4) -> pd.D
     priority=50,
     group_sizes=True,
 )
-def boxplot_manual(
-    data: pd.DataFrame,
-    value_col: str = "value",
-    facets: list[Dict[str, Any]] | None = None,
-    val_format: str = "%",
-    width: int = 800,
-    tooltip: Sequence[str] | None = None,
-    outer_factors: Sequence[str] | None = None,
-) -> AltairChart:
+def boxplot_manual(p: PlotInput) -> AltairChart:
     """Manual boxplot implementation using Tukey whiskers."""
 
-    facets = facets or []
-    tooltip = list(tooltip or [])
-    outer_factors = list(outer_factors or [])
-    f0, f1 = facets[0], facets[1] if len(facets) > 1 else None
+    data = p.data.copy()
+    if not p.facets:
+        raise ValueError("boxplots requires at least one facet dimension")
 
-    if (
-        val_format[-1] == "%"
-    ):  # Boxplots being a compound plot, this workaround is needed for axis & tooltips to be proper
-        data[value_col] *= 100
-        val_format = val_format[:-1] + "f"
+    f0 = p.facets[0]
+    f1 = p.facets[1] if len(p.facets) > 1 else None
+    fmt = p.val_format
 
-    minv, maxv = data[value_col].min(), data[value_col].max()
-    if val_format[-1] == "%":
+    if fmt.endswith("%"):
+        data[p.value_col] = data[p.value_col] * 100
+        fmt = fmt[:-1] + "f"
+
+    minv = float(data[p.value_col].min())
+    maxv = float(data[p.value_col].max())
+    if fmt.endswith("%"):
         minv = 0.0
     if minv == maxv:
-        minv, maxv = minv - 0.01, maxv + 0.01
+        minv -= 0.01
+        maxv += 0.01
 
-    f_cols = outer_factors + [f["col"] for f in facets[:2] if f is not None]
-    df = data.groupby(f_cols, observed=True)[value_col].apply(boxplot_vals, delta=(maxv - minv) / 400).reset_index()
-    clean_levels(df)  # For test consistency
+    group_cols = p.outer_factors + [facet.col for facet in p.facets[:2] if facet is not None]
+    df = (
+        data.groupby(group_cols, observed=True)[p.value_col]
+        .apply(boxplot_vals, delta=(maxv - minv) / 400)
+        .reset_index()
+    )
+    _clean_levels(df)
 
     shared = {
-        "y": alt.Y(field=f0["col"], type="nominal", title=None, sort=f0["order"]),
-        **({"yOffset": alt.YOffset(field=f1["col"], type="nominal", title=None, sort=f1["order"])} if f1 else {}),
+        "y": alt.Y(field=f0.col, type="nominal", title=None, sort=f0.order),
+        **({"yOffset": alt.YOffset(field=f1.col, type="nominal", title=None, sort=f1.order)} if f1 else {}),
         "tooltip": [
             alt.Tooltip(
                 field=vn,
                 type="quantitative",
-                format=val_format,
-                title=f"{vn[0].upper() + vn[1:]} of {value_col}",
+                format=fmt,
+                title=f"{vn[0].upper() + vn[1:]} of {p.value_col}",
             )
             for vn in ["min", "q1", "mean", "q2 (median)", "q3", "max"]
         ]
-        + tooltip[1:],
+        + p.tooltip[1:],
     }
 
     root = alt.Chart(df).encode(**shared)
     size = 12
 
-    # Compose each layer individually
     lower_plot = root.mark_rule().encode(
         x=alt.X(
             "tmin:Q",
-            axis=alt.Axis(title=value_col, format=val_format),
+            axis=alt.Axis(title=p.value_col, format=fmt),
             scale=alt.Scale(domain=[minv, maxv]),
         ),
         x2=alt.X2("q1:Q"),
@@ -250,16 +253,16 @@ def boxplot_manual(
         x=alt.X("q1p:Q"),
         x2=alt.X2("q3p:Q"),
         **(
-            {"color": alt.Color(field=f0["col"], type="nominal", scale=f0["colors"], legend=None)}
+            {"color": alt.Color(field=f0.col, type="nominal", scale=f0.colors, legend=None)}
             if not f1
             else {
                 "color": alt.Color(
-                    field=f1["col"],
+                    field=f1.col,
                     type="nominal",
-                    scale=f1["colors"],
+                    scale=f1.colors,
                     legend=alt.Legend(
                         orient="top",
-                        columns=estimate_legend_columns_horiz(f1["order"], width),
+                        columns=estimate_legend_columns_horiz(f1.order, p.width),
                     ),
                 )
             }
@@ -267,10 +270,7 @@ def boxplot_manual(
     )
 
     upper_plot = root.mark_rule().encode(x=alt.X("q3:Q"), x2=alt.X2("tmax:Q"))
-
-    middle_tick = root.mark_tick(color="white", size=size).encode(
-        x="mean:Q",
-    )
+    middle_tick = root.mark_tick(color="white", size=size).encode(x="mean:Q")
 
     return lower_plot + middle_plot + upper_plot + middle_tick
 
@@ -288,48 +288,38 @@ stk_plot("boxplots-raw", data_format="raw", n_facets=(1, 2), priority=0)(boxplot
     n_facets=(1, 2),
     group_sizes=True,
 )
-def maxdiff_manual(
-    data: pd.DataFrame,
-    value_col: str = "value",
-    facets: list[Dict[str, Any]] | None = None,
-    val_format: str = "%",
-    width: int = 800,
-    tooltip: Sequence[str] | None = None,
-    outer_factors: Sequence[str] | None = None,
-) -> AltairChart:
+def maxdiff_manual(p: PlotInput) -> AltairChart:
     """Render MaxDiff results as categorical columns."""
 
-    facets = facets or []
-    tooltip = list(tooltip or [])
-    outer_factors = list(outer_factors or [])
-    r"""
-    Only meant to be used with highest_lowest_ranked custom_row_transform.
-    """
-    f0, f1 = facets[0], facets[1] if len(facets) > 1 else None
+    data = p.data.copy()
+    if not p.facets:
+        raise ValueError("maxdiff plot requires at least one facet dimension")
+
+    f0 = p.facets[0]
+    f1 = p.facets[1] if len(p.facets) > 1 else None
+    fmt = p.val_format
+
     reverse_val_col = next(
         filter(
-            lambda s: value_col.lower() in s.lower() and "reverse" in s.lower(),
+            lambda s: p.value_col.lower() in s.lower() and "reverse" in s.lower(),
             data.columns,
         )
     )
 
-    if (
-        val_format[-1] == "%"
-    ):  # Boxplots being a compound plot, this workaround is needed for axis & tooltips to be proper
-        data[value_col] *= 100
+    if fmt.endswith("%"):
+        data[p.value_col] *= 100
         if reverse_val_col in data.columns:
             data[reverse_val_col] *= 100
-        val_format = val_format[:-1] + "f"
+        fmt = fmt[:-1] + "f"
 
-    minv, maxv = data[value_col].min(), data[value_col].max()
-    if val_format[-1] == "%":
+    minv, maxv = data[p.value_col].min(), data[p.value_col].max()
+    if fmt.endswith("%"):
         minv = 0.0
     if minv == maxv:
         minv, maxv = minv - 0.01, maxv + 0.01
 
-    f_cols = outer_factors + [f["col"] for f in facets[:2] if f is not None]
-    # data.to_csv("tmp_data.csv",index=False)
-    df = data.groupby(f_cols, observed=True)[value_col].apply(boxplot_vals, delta=(maxv - minv) / 400).reset_index()
+    f_cols = p.outer_factors + [facet.col for facet in p.facets[:2] if facet is not None]
+    df = data.groupby(f_cols, observed=True)[p.value_col].apply(boxplot_vals, delta=(maxv - minv) / 400).reset_index()
     df_reverse = (
         data.groupby(f_cols, observed=True)[reverse_val_col]
         .apply(boxplot_vals, delta=(maxv - minv) / 400)
@@ -341,18 +331,18 @@ def maxdiff_manual(
     df["kind"] = "Most important"
 
     shared = {
-        "y": alt.Y(field=f0["col"], type="nominal", title=None, sort=f0["order"]),
-        **({"yOffset": alt.YOffset(field=f1["col"], type="nominal", title=None, sort=f1["order"])} if f1 else {}),
+        "y": alt.Y(field=f0.col, type="nominal", title=None, sort=f0.order),
+        **({"yOffset": alt.YOffset(field=f1.col, type="nominal", title=None, sort=f1.order)} if f1 else {}),
         "tooltip": [
             alt.Tooltip(
                 field=vn,
                 type="quantitative",
-                format=val_format,
-                title=f"{vn[0].upper() + vn[1:]} of {value_col}",
+                format=fmt,
+                title=f"{vn[0].upper() + vn[1:]} of {p.value_col}",
             )
             for vn in ["mean"]
         ]
-        + tooltip[1:],
+        + p.tooltip[1:],
     }
 
     df = pd.concat(
@@ -360,7 +350,7 @@ def maxdiff_manual(
         ignore_index=True,
         sort=False,
     )
-    clean_levels(df)  # For test consistency
+    _clean_levels(df)  # For test consistency
     root = alt.Chart(df).encode(**shared)
     size = 12
     red, blue = utils.redblue_gradient[1], utils.redblue_gradient[-2]
@@ -374,8 +364,8 @@ def maxdiff_manual(
             legend=None,
             scale=alt.Scale(domain=["Most important", "Least important"], range=[blue, red]),
         )
-        if f1 is None or f1["colors"] is None
-        else alt.Color(field=f1["col"], type="nominal", scale=f1["colors"], legend=None),
+        if f1 is None or not f1.colors
+        else alt.Color(field=f1.col, type="nominal", scale=f1.colors, legend=None),
         opacity=alt.Opacity(
             field="kind",
             type="nominal",
@@ -388,43 +378,40 @@ def maxdiff_manual(
 
 
 @stk_plot("columns", data_format="longform", draws=False, n_facets=(1, 2))
-def columns(
-    data: pd.DataFrame,
-    value_col: str = "value",
-    facets: list[Dict[str, Any]] | None = None,
-    val_format: str = "%",
-    width: int = 800,
-    tooltip: Sequence[str] | None = None,
-) -> AltairChart:
+def columns(p: PlotInput) -> AltairChart:
     """Simple column chart for categorical comparisons."""
 
-    facets = facets or []
-    tooltip = list(tooltip or [])
-    f0, f1 = facets[0], facets[1] if len(facets) > 1 else None
+    data = p.data
+    if not p.facets:
+        raise ValueError("columns plot requires at least one facet dimension")
+
+    f0 = p.facets[0]
+    f1 = p.facets[1] if len(p.facets) > 1 else None
+
     plot = (
         alt.Chart(data)
         .mark_bar()
         .encode(
             x=alt.X(
-                field=value_col,
+                field=p.value_col,
                 type="quantitative",
-                title=value_col,
-                axis=alt.Axis(format=val_format),
+                title=p.value_col,
+                axis=alt.Axis(format=p.val_format),
             ),
-            y=alt.Y(field=f0["col"], type="nominal", title=None, sort=f0["order"]),
-            tooltip=tooltip,
+            y=alt.Y(field=f0.col, type="nominal", title=None, sort=f0.order),
+            tooltip=p.tooltip,
             **(
-                {"color": alt.Color(field=f0["col"], type="nominal", scale=f0["colors"], legend=None)}
+                {"color": alt.Color(field=f0.col, type="nominal", scale=f0.colors, legend=None)}
                 if not f1
                 else {
-                    "yOffset": alt.YOffset(field=f1["col"], type="nominal", title=None, sort=f1["order"]),
+                    "yOffset": alt.YOffset(field=f1.col, type="nominal", title=None, sort=f1.order),
                     "color": alt.Color(
-                        field=f1["col"],
+                        field=f1.col,
                         type="nominal",
-                        scale=f1["colors"],
+                        scale=f1.colors,
                         legend=alt.Legend(
                             orient="top",
-                            columns=estimate_legend_columns_horiz(f1["order"], width),
+                            columns=estimate_legend_columns_horiz(f1.order, p.width),
                         ),
                     ),
                 }
@@ -443,53 +430,46 @@ def columns(
     agg_fn="sum",
     args={"normalized": "bool"},
 )
-def stacked_columns(
-    data: pd.DataFrame,
-    value_col: str = "value",
-    facets: list[Dict[str, Any]] | None = None,
-    filtered_size: int = 1,
-    val_format: str = "%",
-    width: int = 800,
-    normalized: bool = False,
-    tooltip: Sequence[str] | None = None,
-) -> AltairChart:
+def stacked_columns(p: PlotInput, normalized: bool = False) -> AltairChart:
     """Stacked columns with optional normalization."""
 
-    facets = facets or []
-    tooltip = list(tooltip or [])
-    f0, f1 = facets[0], facets[1]
+    data = p.data
+    if len(p.facets) < 2:
+        raise ValueError("stacked_columns plot requires two facet dimensions")
 
-    data[value_col] = data[value_col] / filtered_size
+    f0, f1 = p.facets[0], p.facets[1]
 
-    ldict = dict(zip(f1["order"], range(len(f1["order"]))))
-    data["f_order"] = data[f1["col"]].astype("object").replace(ldict).astype("int")
+    data[p.value_col] = data[p.value_col] / p.filtered_size
+
+    ldict = {category: idx for idx, category in enumerate(f1.order)}
+    data["f_order"] = data[f1.col].astype("object").replace(ldict).astype("int")
 
     plot = (
         alt.Chart(round(data, 3), width="container")
         .mark_bar()
         .encode(
             x=alt.X(
-                field=value_col,
+                field=p.value_col,
                 type="quantitative",
-                title=value_col,
-                axis=alt.Axis(format=val_format),
+                title=p.value_col,
+                axis=alt.Axis(format=p.val_format),
                 **({"stack": "normalize"} if normalized else {}),
                 # scale=alt.Scale(domain=[0,30]) #see lõikab mõnedes jaotustes parema ääre ära
             ),
-            y=alt.Y(field=f0["col"], type="nominal", title=None, sort=f0["order"]),
-            tooltip=tooltip,
+            y=alt.Y(field=f0.col, type="nominal", title=None, sort=f0.order),
+            tooltip=p.tooltip,
             **(
-                {"color": alt.Color(field=f0["col"], type="nominal", scale=f0["colors"], legend=None)}
-                if len(facets) <= 1
+                {"color": alt.Color(field=f0.col, type="nominal", scale=f0.colors, legend=None)}
+                if len(p.facets) <= 1
                 else {
                     "order": alt.Order("f_order:O"),
                     "color": alt.Color(
-                        field=f1["col"],
+                        field=f1.col,
                         type="nominal",
-                        scale=f1["colors"],
+                        scale=f1.colors,
                         legend=alt.Legend(
                             orient="top",
-                            columns=estimate_legend_columns_horiz(f1["order"], width),
+                            columns=estimate_legend_columns_horiz(f1.order, p.width),
                         ),
                     ),
                 }
@@ -506,51 +486,48 @@ def stacked_columns(
     n_facets=(2, 2),
     args={"sort_descending": "bool"},
 )
-def diff_columns(
-    data: pd.DataFrame,
-    value_col: str = "value",
-    facets: list[Dict[str, Any]] | None = None,
-    val_format: str = "%",
-    sort_descending: bool = False,
-    tooltip: Sequence[str] | None = None,
-) -> AltairChart:
+def diff_columns(p: PlotInput, sort_descending: bool = False) -> AltairChart:
     """Difference columns chart (two categories per row with delta)."""
 
-    facets = facets or []
-    tooltip = list(tooltip or [])
-    f0, f1 = facets[0], facets[1]
+    data = p.data
+    if len(p.facets) < 2:
+        raise ValueError("diff_columns requires two facet dimensions")
 
-    ind_cols = list(set(data.columns) - {value_col, f1["col"]})
-    factors = [c for c in f1["order"] if c in data[f1["col"]].unique()]  # sort factors for deterministic order
+    f0, f1 = p.facets[0], p.facets[1]
+    fmt = p.val_format
+
+    ind_cols = list(set(data.columns) - {p.value_col, f1.col})
+    factors = [c for c in f1.order if c in data[f1.col].unique()]
 
     idf = data.set_index(ind_cols)
-    diff = (idf[idf[f1["col"]] == factors[1]][value_col] - idf[idf[f1["col"]] == factors[0]][value_col]).reset_index()
+    diff = (idf[idf[f1.col] == factors[1]][p.value_col] - idf[idf[f1.col] == factors[0]][p.value_col]).reset_index()
 
     if sort_descending:
-        f0["order"] = list(diff.sort_values(value_col, ascending=False)[f0["col"]])
+        f0.order = list(diff.sort_values(p.value_col, ascending=False)[f0.col])
+
+    encoded_tooltip = [
+        alt.Tooltip(field=f0.col, type="nominal"),
+        alt.Tooltip(
+            field=p.value_col,
+            type="quantitative",
+            format=fmt,
+            title=f"{p.value_col} difference",
+        ),
+    ]
 
     plot = (
         alt.Chart(round(diff, 3), width="container")
         .mark_bar()
         .encode(
-            y=alt.Y(field=f0["col"], type="nominal", title=None, sort=f0["order"]),
+            y=alt.Y(field=f0.col, type="nominal", title=None, sort=f0.order),
             x=alt.X(
-                field=value_col,
+                field=p.value_col,
                 type="quantitative",
                 title=f"{factors[1]} - {factors[0]}",
-                axis=alt.Axis(format=val_format, title=f"{factors[0]} <> {factors[1]}"),
-                # scale=alt.Scale(domain=[0,30]) #see lõikab mõnedes jaotustes parema ääre ära
+                axis=alt.Axis(format=fmt, title=f"{factors[0]} <> {factors[1]}"),
             ),
-            tooltip=[
-                alt.Tooltip(field=f0["col"], type="nominal"),
-                alt.Tooltip(
-                    field=value_col,
-                    type="quantitative",
-                    format=val_format,
-                    title=f"{value_col} difference",
-                ),
-            ],
-            color=alt.Color(field=f0["col"], type="nominal", scale=f0["colors"], legend=None),
+            tooltip=encoded_tooltip,
+            color=alt.Color(field=f0.col, type="nominal", scale=f0.colors, legend=None),
         )
     )
     return plot
@@ -565,51 +542,46 @@ def diff_columns(
     n_facets=(1, 2),
     hidden=True,
 )
-def massplot(
-    data: pd.DataFrame,
-    value_col: str = "value",
-    facets: list[Dict[str, Any]] | None = None,
-    filtered_size: int = 1,
-    val_format: str = "%",
-    width: int = 800,
-    tooltip: Sequence[str] | None = None,
-) -> AltairChart:
+def massplot(p: PlotInput) -> AltairChart:
     """Mass plot showing distributions vs. categorical facets."""
 
-    facets = facets or []
-    tooltip = list(tooltip or [])
-    f0, f1 = facets[0], facets[1] if len(facets) > 1 else None
+    data = p.data.copy()
+    if not p.facets:
+        raise ValueError("massplot requires at least one facet dimension")
 
-    data["group_size"] = data["group_size"] / filtered_size  # .round(2)
+    f0 = p.facets[0]
+    f1 = p.facets[1] if len(p.facets) > 1 else None
+
+    data["group_size"] = data["group_size"] / p.filtered_size
 
     plot = (
         alt.Chart(round(data, 3), width="container")
         .mark_circle()
         .encode(
-            y=alt.Y(field=f0["col"], type="nominal", title=None, sort=f0["order"]),
+            y=alt.Y(field=f0.col, type="nominal", title=None, sort=f0.order),
             x=alt.X(
-                field=value_col,
+                field=p.value_col,
                 type="quantitative",
-                title=value_col,
-                axis=alt.Axis(format=val_format),
+                title=p.value_col,
+                axis=alt.Axis(format=p.val_format),
                 # scale=alt.Scale(domain=[0,30]) #see lõikab mõnedes jaotustes parema ääre ära
             ),
             size=alt.Size("group_size:Q", legend=None, scale=alt.Scale(range=[100, 500])),
             opacity=alt.value(1.0),
             stroke=alt.value("#777"),
-            tooltip=tooltip + [alt.Tooltip("group_size:N", format=".1%", title="Group size")],
+            tooltip=p.tooltip + [alt.Tooltip("group_size:N", format=".1%", title="Group size")],
             **(
-                {"color": alt.Color(field=f0["col"], type="nominal", scale=f0["colors"], legend=None)}
+                {"color": alt.Color(field=f0.col, type="nominal", scale=f0.colors, legend=None)}
                 if not f1
                 else {
-                    "yOffset": alt.YOffset(field=f1["col"], type="nominal", title=None, sort=f1["order"]),
+                    "yOffset": alt.YOffset(field=f1.col, type="nominal", title=None, sort=f1.order),
                     "color": alt.Color(
-                        field=f1["col"],
+                        field=f1.col,
                         type="nominal",
-                        scale=f1["colors"],
+                        scale=f1.colors,
                         legend=alt.Legend(
                             orient="top",
-                            columns=estimate_legend_columns_horiz(f1["order"], width),
+                            columns=estimate_legend_columns_horiz(f1.order, p.width),
                         ),
                     ),
                 }
@@ -619,7 +591,6 @@ def massplot(
     return plot
 
 
-# Make the likert bar pieces
 def make_start_end(
     x: pd.DataFrame,
     value_col: str,
@@ -645,8 +616,9 @@ def make_start_end(
         nonmid = [i for i in range(len(x)) if i not in mids]
 
         scale_start = -1.0
-        x_mid = x.iloc[mids, :].copy()
-        x_other = x.iloc[nonmid, :].copy()
+        # Use tuple for iloc indexing to match pandas stubs
+        x_mid = x.iloc[tuple([mids, slice(None)])].copy()  # type: ignore[call-overload]
+        x_other = x.iloc[tuple([nonmid, slice(None)])].copy()  # type: ignore[call-overload]
 
         # Compute the positions of the neutrals
         x_mid.loc[:, "end"] = scale_start + x_mid[value_col].cumsum()
@@ -670,42 +642,41 @@ def make_start_end(
     priority=50,
 )
 def likert_bars(
-    data: pd.DataFrame,
-    value_col: str = "value",
-    facets: list[Dict[str, Any]] | None = None,
-    tooltip: Sequence[str] | None = None,
-    outer_factors: Sequence[str] | None = None,
-    width: int = 800,
+    p: PlotInput,
 ) -> AltairChart:
     """Display likert responses as diverging stacked bars."""
 
-    facets = facets or []
-    tooltip = list(tooltip or [])
-    outer_factors = list(outer_factors or [])
-    # First facet is likert, second is labeled question, third is offset.
-    # Second is better for question which usually goes last, hence reorder
-    if len(facets) == 1:  # Create a dummy second facet
-        facets.append({"col": "question", "order": [facets[0]["col"]], "colors": alt.Undefined})
-        data["question"] = facets[0]["col"]
+    data = p.data.copy()
+    facets = p.facets
+    if not facets:
+        raise ValueError("likert_bars requires at least one facet dimension")
+
+    if len(facets) == 1:
+        data["question"] = facets[0].col
+        synthetic = FacetMeta(
+            col="question",
+            ocol="question",
+            order=[facets[0].col],
+            colors=alt.Undefined,
+            neutrals=[],
+            meta=facets[0].meta,
+        )
+        facets = [facets[0], synthetic]
+
     if len(facets) >= 3:
         f0, f1, f2 = facets[0], facets[2], facets[1]
-    elif len(facets) == 2:
+    else:
         f0, f1, f2 = facets[0], facets[1], None
 
-    # Split the categories into negative, neutral, positive same way that colors were allocated
-    neg, neutral, pos = utils.split_to_neg_neutral_pos(f0["order"], f0.get("neutrals", []))
-    ninds = [f0["order"].index(c) for c in neutral]
+    neg, neutral, pos = utils.split_to_neg_neutral_pos(f0.order, f0.neutrals)
+    ninds = [f0.order.index(c) for c in neutral]
 
-    gb_cols = outer_factors + [
-        f["col"] for f in facets[1:]
-    ]  # There can be other extra cols (like labels) that should be ignored
-    list(data[f0["col"]].dtype.categories)  # Get likert scale names
+    gb_cols = p.outer_factors + [facet.col for facet in facets[1:]]
     bar_data = data.groupby(gb_cols, group_keys=False, observed=False)[data.columns].apply(
         make_start_end,
-        value_col=value_col,
-        cat_col=f0["col"],
-        cat_order=f0["order"],
-        include_groups=False,
+        value_col=p.value_col,
+        cat_col=f0.col,
+        cat_order=f0.order,
         neutral=ninds,
         n_negative=len(neg),
     )
@@ -717,23 +688,23 @@ def likert_bars(
             x=alt.X("start:Q", axis=alt.Axis(title=None, format="%")),
             x2=alt.X2("end:Q"),
             y=alt.Y(
-                field=f1["col"],
+                field=f1.col,
                 type="nominal",
                 axis=alt.Axis(title=None, offset=5, ticks=False, minExtent=60, domain=False),
-                sort=f1["order"],
+                sort=f1.order,
             ),
-            tooltip=tooltip,
+            tooltip=p.tooltip,
             color=alt.Color(
-                field=f0["col"],
+                field=f0.col,
                 type="nominal",
                 legend=alt.Legend(
-                    title=None,  # f0["col"],
+                    title=None,
                     orient="bottom",
-                    columns=estimate_legend_columns_horiz(f0["order"], width, extra_text=f1["order"]),
+                    columns=estimate_legend_columns_horiz(f0.order, p.width, extra_text=f1.order),
                 ),
-                scale=f0["colors"],
+                scale=f0.colors,
             ),
-            **({"yOffset": alt.YOffset(field=f2["col"], type="nominal", title=None, sort=f2["order"])} if f2 else {}),
+            **({"yOffset": alt.YOffset(field=f2.col, type="nominal", title=None, sort=f2.order)} if f2 else {}),
         )
     )
     return plot
@@ -775,111 +746,102 @@ def kde_1d(
     n_facets=(0, 1),
     args={"stacked": "bool", "bw": "float"},
     no_question_facet=True,
+    continuous=True,
 )
 def density(
-    data: pd.DataFrame,
-    value_col: str = "value",
-    facets: list[Dict[str, Any]] | None = None,
-    tooltip: Sequence[str] | None = None,
-    outer_factors: Sequence[str] | None = None,
+    p: PlotInput,
     stacked: bool = False,
     bw: float | None = None,
-    width: int = 800,
 ) -> AltairChart:
     """Stacked (or overlapped) density plot for continuous responses."""
 
-    facets = facets or []
-    tooltip = list(tooltip or [])
-    outer_factors = list(outer_factors or [])
-    f0 = facets[0] if len(facets) > 0 else None
-    gb_cols = [
-        c for c in outer_factors + [f["col"] for f in facets] if c is not None
-    ]  # There can be other extra cols (like labels) that should be ignored
+    data = p.data.copy()
+    f0 = p.facets[0] if p.facets else None
+    gb_cols = [c for c in p.outer_factors + [f.col for f in p.facets] if c is not None]
 
-    # Filter out extreme outliers (one thousandth on each side).
-    # Because at 100k+, these get very extreme even for normal distributions
-    lims = list(data[value_col].quantile([0.005, 0.995]))
-    data = data[(data[value_col] >= lims[0]) & (data[value_col] <= lims[1])]
+    lims = list(data[p.value_col].quantile([0.005, 0.995]))
+    data = data[(data[p.value_col] >= lims[0]) & (data[p.value_col] <= lims[1])]
 
-    ls = np.linspace(data[value_col].min() - 1e-10, data[value_col].max() + 1e-10, 101)
+    ls = np.linspace(data[p.value_col].min() - 1e-10, data[p.value_col].max() + 1e-10, 101)
     if bw is None:
-        bw = kde_bw(data[[value_col]].sample(10000, replace=True).to_numpy())  # Can get slow for large data otherwise
+        bw = kde_bw(data[[p.value_col]].sample(10000, replace=True).to_numpy())
     ndata = utils.gb_in_apply(
         data,
         gb_cols,
-        cols=[value_col],
+        cols=[p.value_col],
         fn=kde_1d,
-        value_col=value_col,
+        value_col=p.value_col,
         ls=ls,
         scale=stacked,
         bw=bw,
     ).reset_index()
-    clean_levels(ndata)
+    _clean_levels(ndata)
 
+    selection = None
     if f0:
-        selection = alt.selection_point(fields=[f0["col"]], bind="legend")
+        selection = alt.selection_point(name="param_1", fields=[f0.col], bind="legend")
 
     if stacked:
         if f0:
-            ldict = dict(zip(f0["order"], reversed(range(len(f0["order"])))))
-            ndata.loc[:, "order"] = ndata[f0["col"]].astype("object").replace(ldict).astype("int")
+            ldict = dict(zip(f0.order, reversed(range(len(f0.order)))))
+            ndata.loc[:, "order"] = ndata[f0.col].astype("object").replace(ldict).astype("int")
 
         ndata["density"] /= len(data)
+        enc_kwargs: Dict[str, Any] = {}
+        if f0:
+            enc_kwargs = {
+                "fill": alt.Fill(
+                    field=f0.col,
+                    type="nominal",
+                    scale=f0.colors,
+                    legend=alt.Legend(
+                        orient="top",
+                        columns=estimate_legend_columns_horiz(f0.order, p.width),
+                    ),
+                ),
+                "order": alt.Order("order:O"),
+                "opacity": alt.condition(selection, alt.value(1), alt.value(0.15)),  # type: ignore[call-overload]
+            }
+
         plot = (
             alt.Chart(ndata)
             .mark_area(interpolate="natural")
             .encode(
-                x=alt.X(field=value_col, type="quantitative"),
+                x=alt.X(field=p.value_col, type="quantitative"),
                 y=alt.Y("density:Q", axis=alt.Axis(title=None, format="%"), stack="zero"),
-                tooltip=tooltip[1:],
-                **(
-                    {
-                        "fill": alt.Fill(
-                            field=f0["col"],
-                            type="nominal",
-                            scale=f0["colors"],
-                            legend=alt.Legend(
-                                orient="top",
-                                columns=estimate_legend_columns_horiz(f0["order"], width),
-                            ),
-                        ),
-                        "order": alt.Order("order:O"),
-                        "opacity": alt.condition(selection, alt.value(1), alt.value(0.15)),
-                    }
-                    if f0
-                    else {}
-                ),
+                tooltip=p.tooltip[1:],
+                **enc_kwargs,
             )
         )
     else:
+        enc_kwargs = {}
+        if f0:
+            enc_kwargs = {
+                "color": alt.Color(
+                    field=f0.col,
+                    type="nominal",
+                    scale=f0.colors,
+                    legend=alt.Legend(
+                        orient="top",
+                        columns=estimate_legend_columns_horiz(f0.order, p.width),
+                    ),
+                ),
+                "order": alt.Order("order:O"),
+                "opacity": alt.condition(selection, alt.value(1), alt.value(0.15)),  # type: ignore[call-overload]
+            }
+
         plot = (
             alt.Chart(ndata)
             .mark_line()
             .encode(
-                x=alt.X(field=value_col, type="quantitative"),
+                x=alt.X(field=p.value_col, type="quantitative"),
                 y=alt.Y("density:Q", axis=alt.Axis(title=None, format="%")),
-                tooltip=tooltip[1:],
-                **(
-                    {
-                        "color": alt.Color(
-                            field=f0["col"],
-                            type="nominal",
-                            scale=f0["colors"],
-                            legend=alt.Legend(
-                                orient="top",
-                                columns=estimate_legend_columns_horiz(f0["order"], width),
-                            ),
-                        ),
-                        "order": alt.Order("order:O"),
-                        "opacity": alt.condition(selection, alt.value(1), alt.value(0.15)),
-                    }
-                    if f0
-                    else {}
-                ),
+                tooltip=p.tooltip[1:],
+                **enc_kwargs,
             )
         )
 
-    if f0:
+    if selection is not None:
         plot = plot.add_params(selection)
 
     return plot
@@ -900,81 +862,76 @@ stk_plot(
 
 @stk_plot("violin", n_facets=(1, 2), draws=True, as_is=True, args={"bw": "float"})
 def violin(
-    data: pd.DataFrame,
-    value_col: str = "value",
-    facets: list[Dict[str, Any]] | None = None,
-    tooltip: Sequence[str] | None = None,
-    outer_factors: Sequence[str] | None = None,
+    p: PlotInput,
     bw: float | None = None,
-    width: int = 800,
 ) -> AltairChart:
     """Violin plot drawing densities per facet."""
 
-    facets = facets or []
-    tooltip = list(tooltip or [])
-    outer_factors = list(outer_factors or [])
-    f0, f1 = facets[0], facets[1] if len(facets) > 1 else None
-    gb_cols = outer_factors + [
-        f["col"] for f in facets
-    ]  # There can be other extra cols (like labels) that should be ignored
+    data = p.data.copy()
+    if not p.facets:
+        raise ValueError("violin plot requires at least one facet dimension")
 
-    ls = np.linspace(data[value_col].min() - 1e-10, data[value_col].max() + 1e-10, 101)
+    f0 = p.facets[0]
+    f1 = p.facets[1] if len(p.facets) > 1 else None
+    gb_cols = p.outer_factors + [f.col for f in p.facets]
+
+    ls = np.linspace(data[p.value_col].min() - 1e-10, data[p.value_col].max() + 1e-10, 101)
     if bw is None:
-        bw = kde_bw(data[[value_col]].sample(10000, replace=True).to_numpy())
+        bw = kde_bw(data[[p.value_col]].sample(10000, replace=True).to_numpy())
     ndata = utils.gb_in_apply(
         data,
         gb_cols,
-        cols=[value_col],
+        cols=[p.value_col],
         fn=kde_1d,
-        value_col=value_col,
+        value_col=p.value_col,
         ls=ls,
         scale=True,
         bw=bw,
     ).reset_index()
-    clean_levels(ndata)
+    _clean_levels(ndata)
 
     if f1:
-        ldict = dict(zip(f1["order"], reversed(range(len(f1["order"])))))
-        ndata.loc[:, "order"] = ndata[f1["col"]].astype("object").replace(ldict).astype("int")
+        ldict = dict(zip(f1.order, reversed(range(len(f1.order)))))
+        ndata.loc[:, "order"] = ndata[f1.col].astype("object").replace(ldict).astype("int")
 
     ndata["density"] /= len(data)
     plot = (
         alt.Chart(ndata)
         .mark_area(interpolate="natural")
         .encode(
-            x=alt.X(field=value_col, type="quantitative"),
+            x=alt.X(field=p.value_col, type="quantitative"),
             y=alt.Y(
                 "density:Q",
                 axis=alt.Axis(title=None, labels=False, values=[0], grid=False),
                 stack="center",
             ),
             row=alt.Row(
-                field=f0["col"],
+                field=f0.col,
                 type="nominal",
                 header=alt.Header(orient="top", title=None),
                 spacing=5,
-                sort=f0["order"],
+                sort=f0.order,
             ),
-            tooltip=tooltip[1:],
+            tooltip=p.tooltip[1:],
             # color=alt.Color(f'{question_col}:N'),
             **(
                 {
                     "color": alt.Color(
-                        field=f1["col"],
+                        field=f1.col,
                         type="nominal",
-                        scale=f1["colors"],
+                        scale=f1.colors,
                         legend=alt.Legend(
                             orient="top",
-                            columns=estimate_legend_columns_horiz(f1["order"], width),
+                            columns=estimate_legend_columns_horiz(f1.order, p.width),
                         ),
                     ),
                     "order": alt.Order("order:O"),
                 }
                 if f1
-                else {"color": alt.Color(field=f0["col"], type="nominal", scale=f0["colors"], legend=None)}
+                else {"color": alt.Color(field=f0.col, type="nominal", scale=f0.colors, legend=None)}
             ),
         )
-        .properties(width=width, height=70)
+        .properties(width=p.width, height=70)
     )
 
     return plot
@@ -1001,32 +958,31 @@ def cluster_based_reorder(X: np.ndarray) -> np.ndarray:
     priority=55,
 )
 def matrix(
-    data: pd.DataFrame,
-    value_col: str = "value",
-    facets: list[Dict[str, Any]] | None = None,
-    val_format: str = "%",
+    p: PlotInput,
     reorder: bool = False,
     log_colors: bool = False,
-    tooltip: Sequence[str] | None = None,
 ) -> AltairChart:
     """Heatmap-style matrix plot (optionally reorder rows/cols via clustering)."""
 
-    facets = facets or []
-    tooltip = list(tooltip or [])
-    f0, f1 = facets[0], facets[1]
+    data = p.data.copy()
+    if len(p.facets) < 2:
+        raise ValueError("matrix plot requires two facet dimensions")
 
-    fcols = [c for c in data.columns if c not in [value_col, f0["col"]]]
+    f0, f1 = p.facets[0], p.facets[1]
+    fmt = p.val_format
+
+    fcols = [c for c in data.columns if c not in [p.value_col, f0.col]]
     if len(fcols) == 1 and reorder:  # Reordering only works if no external facets
-        X = data.pivot(columns=f1["col"], index=f0["col"]).to_numpy()
-        f0["order"] = np.array(f0["order"])[cluster_based_reorder(X)]
-        f1["order"] = np.array(f1["order"])[cluster_based_reorder(X.T)]
+        X = data.pivot(columns=f1.col, index=f0.col).to_numpy()
+        f0.order = np.array(f0.order)[cluster_based_reorder(X)].tolist()
+        f1.order = np.array(f1.order)[cluster_based_reorder(X.T)].tolist()
 
     if log_colors:
-        data["val_log"] = np.log(data[value_col])
+        data["val_log"] = np.log(data[p.value_col])
         data["val_log"] -= data["val_log"].min()  # Keep it all positive
         scale_v = "val_log"
     else:
-        scale_v = value_col
+        scale_v = p.value_col
 
     # Find max absolute value to keep color scale symmetric
     mi, ma = data[scale_v].min(), data[scale_v].max()
@@ -1055,110 +1011,133 @@ def matrix(
         alt.Chart(data)
         .mark_rect()
         .encode(
-            x=alt.X(field=f1["col"], type="nominal", title=None, sort=f1["order"]),
-            y=alt.Y(field=f0["col"], type="nominal", title=None, sort=f0["order"]),
+            x=alt.X(field=f1.col, type="nominal", title=None, sort=f1.order),
+            y=alt.Y(field=f0.col, type="nominal", title=None, sort=f0.order),
             color=alt.Color(
                 field=scale_v,
                 type="quantitative",
                 scale=alt.Scale(**scale),
                 legend=(alt.Legend(title=None) if not log_colors else None),
             ),
-            tooltip=tooltip,
+            tooltip=p.tooltip,
         )
     )
 
     # Add in numerical values
-    if len(f1["order"]) < 20:  # only if we have less than 20 columns
+    if len(f1.order) < 20:  # only if we have less than 20 columns
         threshold = round((0.25 * swidth) ** 2, 3)  # Rounding needed for tests to be stable
         text = plot.mark_text().encode(
-            text=alt.Text(field=value_col, type="quantitative", format=val_format),
+            text=alt.Text(field=p.value_col, type="quantitative", format=fmt),
             color=alt.condition(
                 (alt.datum[scale_v] - smid) ** 2 > threshold,
                 alt.value("white"),
                 alt.value("black"),
             ),
-            tooltip=tooltip,
+            tooltip=p.tooltip,
         )
         plot += text
 
     return plot
 
 
-@stk_plot("corr_matrix", data_format="raw", aspect_ratio=(1 / 0.8), n_facets=(1, 1))
+@stk_plot(
+    "corr_matrix",
+    data_format="raw",
+    aspect_ratio=(1 / 0.8),
+    n_facets=(1, 1),
+    args={"reorder": "bool"},
+)
 def corr_matrix(
-    data: pd.DataFrame,
-    value_col: str = "value",
-    facets: list[Dict[str, Any]] | None = None,
-    val_format: str = "%",
+    p: PlotInput,
     reorder: bool = False,
-    tooltip: Sequence[str] | None = None,
 ) -> AltairChart:
     """Correlation matrix for raw grouped data."""
 
-    facets = facets or []
-    tooltip = list(tooltip or [])
+    data = p.data.copy()
+    if not p.facets:
+        raise ValueError("corr_matrix requires at least one facet dimension")
     if "id" not in data.columns:
         raise Exception("Corr_matrix only works for groups of continuous variables")
 
+    fmt = p.val_format
+
     # id is required to match the rows for correllations
     cm = (
-        data.pivot_table(index="id", columns=facets[0]["col"], values=value_col, observed=False)
+        data.pivot_table(index="id", columns=p.facets[0].col, values=p.value_col, observed=False)
         .corr()
         .reset_index(names="index")
     )
     cm_long = cm.melt(
         id_vars=["index"],
         value_vars=cm.columns,
-        var_name=facets[0]["col"],
-        value_name=value_col,
+        var_name=p.facets[0].col,
+        value_name=p.value_col,
     )
 
-    order = facets[0]["order"]
-    lower_tri = cm_long["index"].map(lambda x: order.index(x)).astype(int) > cm_long[facets[0]["col"]].map(
+    order = p.facets[0].order
+    lower_tri = cm_long["index"].map(lambda x: order.index(x)).astype(int) > cm_long[p.facets[0].col].map(
         lambda x: order.index(x)
     ).astype(int)
     cm_long = cm_long[lower_tri]
 
-    return matrix(
-        cm_long,
-        value_col=value_col,
-        facets=[
-            {"col": "index", "order": facets[0]["order"]},
-            {"col": facets[0]["col"], "order": facets[0]["order"]},
-        ],
-        val_format=val_format,
-        tooltip=[
-            alt.Tooltip(field=value_col, type="quantitative"),
-            alt.Tooltip("index:N"),
-            alt.Tooltip(field=facets[0]["col"], type="nominal"),
-        ],
-    )
+    matrix_params = p.model_copy(deep=True)
+    matrix_params.data = cm_long
+    matrix_params.value_col = p.value_col
+    matrix_params.val_format = fmt
+    matrix_params.tooltip = [
+        alt.Tooltip(field=p.value_col, type="quantitative"),
+        alt.Tooltip("index:N"),
+        alt.Tooltip(field=p.facets[0].col, type="nominal"),
+    ]
+    matrix_params.facets = [
+        FacetMeta(
+            col="index",
+            ocol="index",
+            order=order,
+            colors=alt.Undefined,
+            neutrals=[],
+            meta=p.facets[0].meta,
+        ),
+        FacetMeta(
+            col=p.facets[0].col,
+            ocol=p.facets[0].ocol,
+            order=order,
+            colors=p.facets[0].colors,
+            neutrals=p.facets[0].neutrals,
+            meta=p.facets[0].meta,
+        ),
+    ]
+
+    return matrix(matrix_params, reorder=reorder, log_colors=False)  # type: ignore[return-value]
 
 
 # Convert a categorical fx facet into a continous value and axis if the categories are numeric.
-def cat_to_cont_axis(
+def _cat_to_cont_axis(
     data: pd.DataFrame,
-    fx: Dict[str, Any],
+    fx: FacetMeta | Dict[str, Any],
 ) -> tuple[alt.X, pd.DataFrame]:
     """Convert categorical axis to numeric when labels are numeric strings."""
 
+    col = fx.col if isinstance(fx, FacetMeta) else fx["col"]
+    order = fx.order if isinstance(fx, FacetMeta) else fx.get("order", [])
     x_cont = pd.to_numeric(
-        data[fx["col"]].apply(utils.unescape_vega_label), errors="coerce"
+        data[col].apply(utils.unescape_vega_label),
+        errors="coerce",
     )  # Unescape required as . gets escaped
     if x_cont.notna().all():
-        data[fx["col"]] = x_cont.astype("float")
+        data[col] = x_cont.astype("float")
         x_axis = alt.X(
-            field=fx["col"],
+            field=col,
             type="quantitative",
             title=None,
-            axis=alt.Axis(labelAngle=0, values=list(data[fx["col"]].unique())),
+            axis=alt.Axis(labelAngle=0, values=list(data[col].unique())),
         )
     else:
         x_axis = alt.X(
-            field=fx["col"],
+            field=col,
             type="nominal",
             title=None,
-            sort=fx["order"],
+            sort=order,
             axis=alt.Axis(labelAngle=0),
         )
     return x_axis, data
@@ -1183,22 +1162,22 @@ def cat_to_cont_axis(
     priority=10,
 )
 def lines(
-    data: pd.DataFrame,
-    value_col: str = "value",
-    facets: list[Dict[str, Any]] | None = None,
+    p: PlotInput,
     smooth: bool = False,
-    width: int = 800,
-    tooltip: Sequence[str] | None = None,
-    val_format: str = ".2f",
 ) -> AltairChart:
     """Line chart with optional smoothing and categorical faceting."""
 
-    facets = facets or []
-    tooltip = list(tooltip or [])
-    if len(facets) == 1:
-        fx = facets[0]
+    data = p.data.copy()
+    if not p.facets:
+        raise ValueError("lines plot requires at least one facet dimension")
+
+    fmt = p.val_format or ".2f"
+    chart_width = p.width
+    if len(p.facets) == 1:
+        fx = p.facets[0]
+        fy = None
     else:
-        fy, fx = facets[0], facets[1]
+        fy, fx = p.facets[0], p.facets[1]
     if smooth:
         smoothing = "basis"
         points = "transparent"
@@ -1207,7 +1186,7 @@ def lines(
         points = True
 
     # See if we should use a continous axis (if categoricals are actually numbers)
-    x_axis, data = cat_to_cont_axis(data, fx)
+    x_axis, data = _cat_to_cont_axis(data, fx)
 
     plot = (
         alt.Chart(data)
@@ -1215,26 +1194,26 @@ def lines(
         .encode(
             x=x_axis,
             y=alt.Y(
-                field=value_col,
+                field=p.value_col,
                 type="quantitative",
-                title=(value_col if len(value_col) < 20 else None),
-                axis=alt.Axis(format=val_format),
+                title=(p.value_col if len(p.value_col) < 20 else None),
+                axis=alt.Axis(format=fmt),
             ),
-            tooltip=tooltip,
+            tooltip=p.tooltip,
             **(
                 {
                     "color": alt.Color(
-                        field=fy["col"],
+                        field=fy.col,
                         type="nominal",
-                        scale=fy["colors"],
-                        sort=fy["order"],
+                        scale=fy.colors,
+                        sort=fy.order,
                         legend=alt.Legend(
                             orient="top",
-                            columns=estimate_legend_columns_horiz(fy["order"], width),
+                            columns=estimate_legend_columns_horiz(fy.order, chart_width),
                         ),
                     )
                 }
-                if len(facets) == 2
+                if fy is not None
                 else {}
             ),
         )
@@ -1281,34 +1260,56 @@ def draws_to_hdis(
     args={"hdi1": "float", "hdi2": "float"},
 )
 def lines_hdi(
-    data: pd.DataFrame,
-    value_col: str = "value",
-    facets: list[Dict[str, Any]] | None = None,
-    width: int = 800,
-    tooltip: Sequence[str] | None = None,
-    val_format: str = ".2f",
+    p: PlotInput,
     hdi1: float = 0.94,
     hdi2: float = 0.5,
 ) -> AltairChart:
     """Line chart showing central tendency plus HDI ribbons."""
 
-    facets = facets or []
-    tooltip = list(tooltip or [])
-    if len(facets) == 1:
-        fx = facets[0]
+    data = p.data.copy()
+    if not p.facets:
+        raise ValueError("lines_hdi plot requires at least one facet dimension")
+
+    fmt = p.val_format or ".2f"
+
+    if len(p.facets) == 1:
+        fx = p.facets[0]
+        fy = None
     else:
-        fy, fx = facets[0], facets[1]
+        fy, fx = p.facets[0], p.facets[1]
 
-    hdf = draws_to_hdis(data, value_col, [hdi1, hdi2])
+    hdf = draws_to_hdis(data, p.value_col, [hdi1, hdi2])
 
-    if len(facets) > 1:
+    selection = None
+    if fy is not None:
         # Draw them in reverse order so the things that are first (i.e. most important)
         # are drawn last (i.e. on top of others). Also draw wider hdi before the narrower
-        hdf.sort_values([fy["col"], "hdi"], ascending=[False, False], inplace=True)
-        selection = alt.selection_point(fields=[fy["col"]], bind="legend")
+        hdf.sort_values([fy.col, "hdi"], ascending=[False, False], inplace=True)
+        selection = alt.selection_point(name="param_5", fields=[fy.col], bind="legend")
 
     # See if we should use a continous axis (if categoricals are actually numbers)
-    x_axis, hdf = cat_to_cont_axis(hdf, fx)
+    x_axis, hdf = _cat_to_cont_axis(hdf, fx)
+
+    color_kwargs: Dict[str, Any] = {}
+    if fy is not None:
+        color_kwargs = {
+            "fill": alt.Fill(
+                field=fy.col,
+                type="nominal",
+                sort=fy.order,
+                scale=fy.colors,
+                legend=alt.Legend(symbolOpacity=1),
+            ),
+            "opacity": alt.condition(  # type: ignore[call-overload]
+                selection,
+                alt.Opacity(
+                    "hdi:N",
+                    legend=None,
+                    scale=utils.to_alt_scale({0.5: 0.75, 0.94: 0.25}),
+                ),
+                alt.value(0.1),
+            ),
+        }
 
     plot = (
         alt.Chart(hdf)
@@ -1318,45 +1319,24 @@ def lines_hdi(
             y=alt.Y(
                 "lo:Q",
                 axis=alt.Axis(
-                    format=val_format,
-                    title=(value_col if len(value_col) < 20 else None),
+                    format=fmt,
+                    title=(p.value_col if len(p.value_col) < 20 else None),
                 ),
-                title=value_col,
+                title=p.value_col,
             ),
             y2=alt.Y2("hi:Q"),
             tooltip=[
                 alt.Tooltip("hdi:N", title="HDI", format=".0%"),
-                alt.Tooltip("lo:Q", title="HDI lower", format=val_format),
-                alt.Tooltip("hi:Q", title="HDI upper", format=val_format),
+                alt.Tooltip("lo:Q", title="HDI lower", format=fmt),
+                alt.Tooltip("hi:Q", title="HDI upper", format=fmt),
             ]
-            + tooltip[1:],
-            **(
-                {
-                    "fill": alt.Fill(
-                        field=fy["col"],
-                        type="nominal",
-                        sort=fy["order"],
-                        scale=fy["colors"],
-                        legend=alt.Legend(symbolOpacity=1),
-                    ),
-                    "opacity": alt.condition(
-                        selection,
-                        alt.Opacity(
-                            "hdi:N",
-                            legend=None,
-                            scale=utils.to_alt_scale({0.5: 0.75, 0.94: 0.25}),
-                        ),
-                        alt.value(0.1),
-                    ),
-                }
-                if len(facets) > 1
-                else {}
-            ),
+            + p.tooltip[1:],
+            **color_kwargs,
         )
     )
 
-    if len(facets) > 1:
-        plot = plot.add_params(selection)
+    if selection is not None:
+        plot = plot.add_params(selection).properties(name="view_2")
     return plot
 
 
@@ -1369,21 +1349,21 @@ def lines_hdi(
     n_facets=(2, 2),
 )
 def area_smooth(
-    data: pd.DataFrame,
-    value_col: str = "value",
-    facets: list[Dict[str, Any]] | None = None,
-    width: int = 800,
-    tooltip: Sequence[str] | None = None,
+    p: PlotInput,
 ) -> AltairChart:
     """Area chart with smoothing for cumulative comparisons."""
 
-    facets = facets or []
-    tooltip = list(tooltip or [])
-    fy, fx = facets[0], facets[1]
-    ldict = dict(zip(fy["order"], range(len(fy["order"]))))
-    data.loc[:, "order"] = data[fy["col"]].astype("object").replace(ldict).astype("int")
+    data = p.data.copy()
+    if len(p.facets) < 2:
+        raise ValueError("area_smooth plot requires two facet dimensions")
 
-    x_axis, data = cat_to_cont_axis(data, fx)
+    fy, fx = p.facets[0], p.facets[1]
+    chart_width = p.width
+
+    ldict = dict(zip(fy.order, range(len(fy.order))))
+    data.loc[:, "order"] = data[fy.col].astype("object").replace(ldict).astype("int")
+
+    x_axis, data = _cat_to_cont_axis(data, fx)
 
     plot = (
         alt.Chart(data)
@@ -1391,7 +1371,7 @@ def area_smooth(
         .encode(
             x=x_axis,
             y=alt.Y(
-                field=value_col,
+                field=p.value_col,
                 type="quantitative",
                 title=None,
                 stack="normalize",
@@ -1400,16 +1380,16 @@ def area_smooth(
             ),
             order=alt.Order("order:O"),
             color=alt.Color(
-                field=fy["col"],
+                field=fy.col,
                 type="nominal",
                 legend=alt.Legend(
                     orient="top",
-                    columns=estimate_legend_columns_horiz(fy["order"], width),
+                    columns=estimate_legend_columns_horiz(fy.order, chart_width),
                 ),
-                sort=fy["order"],
-                scale=fy["colors"],
+                sort=fy.order,
+                scale=fy.colors,
             ),
-            tooltip=tooltip,
+            tooltip=p.tooltip,
         )
     )
     return plot
@@ -1447,32 +1427,31 @@ def likert_aggregate(
     n_facets=(1, 2),
 )
 def likert_rad_pol(
-    data: pd.DataFrame,
-    value_col: str = "value",
-    facets: list[Dict[str, Any]] | None = None,
+    p: PlotInput,
     normalized: bool = True,
-    width: int = 800,
-    outer_factors: Sequence[str] | None = None,
-    tooltip: Sequence[str] | None = None,
 ) -> AltairChart:
     """Radial likert plot showing positive/negative split per question."""
 
-    facets = facets or []
-    outer_factors = list(outer_factors or [])
-    tooltip = list(tooltip or [])
-    f0, f1 = facets[0], facets[1] if len(facets) > 1 else None
+    data = p.data.copy()
+    if not p.facets:
+        raise ValueError("likert_rad_pol requires at least one facet dimension")
+
+    f0 = p.facets[0]
+    f1 = p.facets[1] if len(p.facets) > 1 else None
+    chart_width = p.width
+
     # gb_cols = list(set(data.columns)-{ f0["col"], value_col })
     # Assume all other cols still in data will be used for factoring
-    gb_cols = outer_factors + [
-        f["col"] for f in facets[1:]
+    gb_cols = p.outer_factors + [
+        f.col for f in p.facets[1:]
     ]  # There can be other extra cols (like labels) that should be ignored
     likert_indices = utils.gb_in_apply(
         data,
         gb_cols,
         likert_aggregate,
-        cat_col=f0["col"],
-        cat_order=f0["order"],
-        value_col=value_col,
+        cat_col=f0.col,
+        cat_order=f0.order,
+        value_col=p.value_col,
     ).reset_index()
 
     if normalized and len(likert_indices) > 1:
@@ -1481,7 +1460,7 @@ def likert_rad_pol(
         ].apply(sps.zscore)
 
     if f1:
-        selection = alt.selection_point(fields=[f1["col"]], bind="legend")
+        selection = alt.selection_point(name="param_3", fields=[f1.col], bind="legend")
 
     plot = (
         alt.Chart(likert_indices)
@@ -1496,16 +1475,16 @@ def likert_rad_pol(
                 alt.Tooltip("polarisation:Q", format=".2"),
                 alt.Tooltip("relevance:Q", format=".2"),
             ]
-            + tooltip[2:],
+            + p.tooltip[2:],
             **(
                 {
                     "color": alt.Color(
-                        field=f1["col"],
+                        field=f1.col,
                         type="nominal",
-                        scale=f1["colors"],
+                        scale=f1.colors,
                         legend=alt.Legend(
                             orient="top",
-                            columns=estimate_legend_columns_horiz(f1["order"], width),
+                            columns=estimate_legend_columns_horiz(f1.order, chart_width),
                         ),
                     ),
                     "opacity": alt.condition(selection, alt.value(1), alt.value(0.15)),
@@ -1523,52 +1502,51 @@ def likert_rad_pol(
 
 @stk_plot("barbell", data_format="longform", draws=False, n_facets=(2, 2))
 def barbell(
-    data: pd.DataFrame,
-    value_col: str = "value",
-    facets: list[Dict[str, Any]] | None = None,
-    filtered_size: int = 1,
-    val_format: str = "%",
-    width: int = 800,
-    tooltip: Sequence[str] | None = None,
+    p: PlotInput,
 ) -> AltairChart:
     """Draw barbell-style comparison between two categories per question."""
 
-    facets = facets or []
-    tooltip = list(tooltip or [])
-    f0, f1 = facets[0], facets[1]
+    data = p.data.copy()
+    if len(p.facets) < 2:
+        raise ValueError("barbell plot requires two facet dimensions")
+
+    f0, f1 = p.facets[0], p.facets[1]
+    fmt = p.val_format
+    chart_width = p.width
 
     chart_base = alt.Chart(data).encode(
         x=alt.X(
-            field=value_col,
+            field=p.value_col,
             type="quantitative",
             title=None,
-            axis=alt.Axis(format=val_format),
+            axis=alt.Axis(format=fmt),
         ),
-        y=alt.Y(field=f0["col"], type="nominal", title=None, sort=f0["order"]),
-        tooltip=tooltip,
+        y=alt.Y(field=f0.col, type="nominal", title=None, sort=f0.order),
+        tooltip=p.tooltip,
     )
 
     chart = chart_base.mark_line(color="lightgrey", size=1, opacity=1.0).encode(
-        detail=alt.Detail(field=f0["col"], type="nominal")
+        detail=alt.Detail(field=f0.col, type="nominal")
     )
-    selection = alt.selection_point(fields=[f1["col"]], bind="legend")
+    selection = alt.selection_point(name="param_4", fields=[f1.col], bind="legend")
 
     chart += (
         chart_base.mark_point(size=50, opacity=1, filled=True)
         .encode(
             color=alt.Color(
-                field=f1["col"],
+                field=f1.col,
                 type="nominal",
                 # legend=alt.Legend(orient='right', title=None),
                 legend=alt.Legend(
                     orient="top",
-                    columns=estimate_legend_columns_horiz(f1["order"], width),
+                    columns=estimate_legend_columns_horiz(f1.order, chart_width),
                 ),
-                scale=f1["colors"],
-                sort=f1["order"],
+                scale=f1.colors,
+                sort=f1.order,
             ),
             opacity=alt.condition(selection, alt.value(1), alt.value(0.15)),
         )
+        .properties(name="view_3")
         .add_params(selection)
     )  # .interactive()
 
@@ -1587,24 +1565,20 @@ def barbell(
     args={"separate_axes": "bool"},
 )
 def geoplot(
-    data: pd.DataFrame,
+    p: PlotInput,
     topo_feature: tuple[str, str, str],
-    value_col: str = "value",
-    facets: list[Dict[str, Any]] | None = None,
-    val_format: str = ".2f",
-    tooltip: Sequence[str] | None = None,
     separate_axes: bool = False,
-    outer_factors: Sequence[str] | None = None,
-    outer_colors: Mapping[str, Sequence[str]] | None = None,
-    value_range: tuple[float, float] | None = None,
 ) -> AltairChart:
     """Render a choropleth map based on annotated topojson metadata."""
 
-    facets = facets or []
-    tooltip = list(tooltip or [])
-    outer_factors = list(outer_factors or [])
-    outer_colors = dict(outer_colors or {})
-    f0 = facets[0]
+    data = p.data.copy()
+    if not p.facets:
+        raise ValueError("geoplot requires at least one facet dimension")
+
+    outer_colors = dict(p.outer_colors or {})
+    fmt = p.val_format or ".2f"
+    f0 = p.facets[0]
+    vr = p.value_range
 
     json_url, json_meta, json_col = topo_feature
     if json_meta == "geojson":
@@ -1615,18 +1589,19 @@ def geoplot(
     # Unescape Vega labels for the column on which we merge with the geojson
     # This is a bit of a hack, but should be the only place where we need to do this due to external data
     data = data.copy()
-    data[f0["col"]] = data[f0["col"]].apply(utils.unescape_vega_label)
+    data[f0.col] = data[f0.col].apply(utils.unescape_vega_label)
 
-    lmi, lma = data[value_col].min(), data[value_col].max()
-    mi, ma = value_range if value_range and not separate_axes else (lmi, lma)
+    lmi, lma = data[p.value_col].min(), data[p.value_col].max()
+    mi, ma = vr if vr and not separate_axes else (lmi, lma)
 
     # Only show maximum on legend if min and max too close together
     [lmi, lma] if (lma - lmi) / (ma - mi) > 0.5 else [lma]
     rel_range = [(lmi - mi) / (ma - mi), (lma - mi) / (ma - mi)]
 
-    ofv = data[outer_factors[0]].iloc[0] if outer_factors else None
+    outer0 = p.outer_factors[0] if p.outer_factors else None
+    ofv = data[outer0].iloc[0] if outer0 else None
     # If colors provided, create a gradient based on that
-    if outer_factors and outer_colors and data[outer_factors[0]].nunique() == 1 and ofv in outer_colors:
+    if p.outer_factors and outer_colors and data[p.outer_factors[0]].nunique() == 1 and ofv in outer_colors:
         grad = utils.gradient_from_color(outer_colors[ofv], range=rel_range)
         scale = {"domain": [lmi, lma], "range": grad}
     else:  # Blues for pos, reds for neg, redblue for both
@@ -1653,17 +1628,17 @@ def geoplot(
         .mark_geoshape(stroke="white", strokeWidth=0.1)
         .transform_lookup(
             lookup=f"properties.{json_col}",
-            from_=alt.LookupData(data=data, key=f0["col"], fields=list(data.columns)),
+            from_=alt.LookupData(data=data, key=f0.col, fields=list(data.columns)),
         )
         .encode(
-            tooltip=tooltip,  # [alt.Tooltip(f'properties.{json_col}:N', title=f1["col"]),
-            # alt.Tooltip(f'{value_col}:Q', title=value_col, format=val_format)],
+            tooltip=p.tooltip,  # [alt.Tooltip(f'properties.{json_col}:N', title=f1["col"]),
+            # alt.Tooltip(f'{p.value_col}:Q', title=p.value_col, format=p.val_format)],
             color=alt.Color(
-                field=value_col,
+                field=p.value_col,
                 type="quantitative",
                 scale=alt.Scale(**scale),  # To use color scale, consider switching to opacity for value
                 legend=alt.Legend(
-                    format=val_format,
+                    format=fmt,
                     title=None,
                     orient="top-left",
                     gradientThickness=6,
@@ -1686,23 +1661,21 @@ def geoplot(
     aspect_ratio=(4.0 / 3.0),
 )
 def geobest(
-    data: pd.DataFrame,
+    p: PlotInput,
     topo_feature: tuple[str, str, str],
-    value_col: str = "value",
-    facets: list[Dict[str, Any]] | None = None,
-    val_format: str = ".2f",
-    tooltip: Sequence[str] | None = None,
-    width: int = 800,
 ) -> AltairChart:
     """Display the top-N winning regions for each facet."""
 
-    facets = facets or []
-    tooltip = list(tooltip or [])
-    f0, f1 = facets[0], facets[1]
+    data = p.data.copy()
+    if len(p.facets) < 2:
+        raise ValueError("geobest plot requires two facet dimensions")
+
+    f0, f1 = p.facets[0], p.facets[1]
+    chart_width = p.width
 
     # Same hack as geoplot - required for periods (.) in county names
     data = data.copy()
-    data[f1["col"]] = data[f1["col"]].apply(utils.unescape_vega_label)
+    data[f1.col] = data[f1.col].apply(utils.unescape_vega_label)
 
     json_url, json_meta, json_col = topo_feature
     if json_meta == "geojson":
@@ -1710,26 +1683,25 @@ def geobest(
     else:
         source = alt.topo_feature(json_url, json_meta)
 
-    data = data.sort_values(value_col, ascending=False).drop_duplicates([f1["col"]])
-    f0["colors"]
+    data = data.sort_values(p.value_col, ascending=False).drop_duplicates([f1.col])
 
     plot = (
         alt.Chart(source)
         .mark_geoshape(stroke="white", strokeWidth=0.1)
         .transform_lookup(
             lookup=f"properties.{json_col}",
-            from_=alt.LookupData(data=data, key=f1["col"], fields=list(data.columns)),
+            from_=alt.LookupData(data=data, key=f1.col, fields=list(data.columns)),
         )
         .encode(
-            tooltip=tooltip,  # [alt.Tooltip(f'properties.{json_col}:N', title=f1["col"]),
-            # alt.Tooltip(f'{value_col}:Q', title=value_col, format=val_format)],
+            tooltip=p.tooltip,  # [alt.Tooltip(f'properties.{json_col}:N', title=f1["col"]),
+            # alt.Tooltip(f'{p.value_col}:Q', title=p.value_col, format=p.val_format)],
             color=alt.Color(
-                field=f0["col"],
+                field=f0.col,
                 type="nominal",
-                scale=f0["colors"],
+                scale=f0.colors,
                 legend=alt.Legend(
                     orient="top",
-                    columns=estimate_legend_columns_horiz(f0["order"], width),
+                    columns=estimate_legend_columns_horiz(f0.order, chart_width),
                 ),
             ),
         )
@@ -1739,7 +1711,7 @@ def geobest(
 
 
 # Assuming ns is ordered by unique row values, find the split points
-def split_ordered(cvs: np.ndarray) -> np.ndarray:
+def _split_ordered(cvs: np.ndarray) -> np.ndarray:
     """Split ordered category-value pairs into positive/negative halves."""
 
     if len(cvs.shape) == 1:
@@ -1749,16 +1721,15 @@ def split_ordered(cvs: np.ndarray) -> np.ndarray:
     return np.arange(len(unique_idxs))[unique_idxs]
 
 
-# Split a series of weights into groups of roughly equal sum
-# This algorithm is greedy and does not split values but it is fast and should be good enough for most uses
+def _split_even_weight(ws: np.ndarray, n: int) -> np.ndarray:
+    """Split cumulative weights into ``n`` roughly equal buckets.
 
-
-def split_even_weight(ws: np.ndarray, n: int) -> np.ndarray:
-    """Split cumulative weights into ``n`` roughly equal buckets."""
+    This algorithm is greedy and does not split values but it is fast and should be good enough for most uses.
+    """
 
     cws = np.cumsum(ws)
     cws = np.round(cws / (cws[-1] / n)).astype("int")
-    return (split_ordered(cws) + 1)[:-1]
+    return (_split_ordered(cws) + 1)[:-1]
 
 
 def fd_mangle(
@@ -1772,7 +1743,7 @@ def fd_mangle(
     vc = vc.sort_values(value_col)
 
     ws = np.ones(len(vc))
-    splits = split_even_weight(ws, n_points)
+    splits = _split_even_weight(ws, n_points)
 
     ccodes, cats = vc[factor_col].factorize()
 
@@ -1798,38 +1769,35 @@ def fd_mangle(
     no_question_facet=True,
 )
 def facet_dist(
-    data: pd.DataFrame,
-    value_col: str = "value",
-    facets: list[Dict[str, Any]] | None = None,
-    tooltip: Sequence[str] | None = None,
-    outer_factors: Sequence[str] | None = None,
+    p: PlotInput,
 ) -> AltairChart:
     """Facet of distributions (hist/density) across outer factors."""
 
-    facets = facets or []
-    tooltip = list(tooltip or [])
-    outer_factors = list(outer_factors or [])
-    f0 = facets[0]
+    data = p.data.copy()
+    if not p.facets:
+        raise ValueError("facet_dist requires at least one facet dimension")
+
+    f0 = p.facets[0]
     gb_cols = [
-        c for c in outer_factors if c is not None
+        c for c in p.outer_factors if c is not None
     ]  # There can be other extra cols (like labels) that should be ignored
     ndata = utils.gb_in_apply(
         data,
         gb_cols,
-        cols=[value_col, f0["col"]],
+        cols=[p.value_col, f0.col],
         fn=fd_mangle,
-        value_col=value_col,
-        factor_col=f0["col"],
+        value_col=p.value_col,
+        factor_col=f0.col,
     ).reset_index()
-    clean_levels(ndata)
+    _clean_levels(ndata)
     plot = (
         alt.Chart(ndata)
         .mark_area(interpolate="natural")
         .encode(
             x=alt.X("percentile:Q", axis=alt.Axis(format="%")),
             y=alt.Y("density:Q", axis=alt.Axis(title=None, format="%"), stack="normalize"),
-            tooltip=tooltip[1:],
-            color=alt.Color(f"{f0['col']}:N", scale=f0["colors"], legend=alt.Legend(orient="top")),
+            tooltip=p.tooltip[1:],
+            color=alt.Color(field=f0.col, type="nominal", scale=f0.colors, legend=alt.Legend(orient="top")),
             # order=alt.Order('order:O')
         )
     )
@@ -1838,7 +1806,7 @@ def facet_dist(
 
 
 # Vectorized multinomial sampling. Should be slightly faster
-def vectorized_mn(prob_matrix: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+def _vectorized_mn(prob_matrix: np.ndarray, rng: np.random.Generator) -> np.ndarray:
     """Sample multinomial draws for each row of ``prob_matrix``."""
     s = prob_matrix.cumsum(axis=1)
     s = s / s[:, -1][:, None]
@@ -1846,7 +1814,7 @@ def vectorized_mn(prob_matrix: np.ndarray, rng: np.random.Generator) -> np.ndarr
     return (s < r).sum(axis=1)
 
 
-def linevals(
+def _linevals(
     vals: pd.DataFrame,
     value_col: str,
     n_points: int,
@@ -1862,18 +1830,24 @@ def linevals(
     ws = weights if weights is not None else np.ones(len(vals))
 
     order = np.lexsort((vals, ccodes)) if dim and gc else np.argsort(vals)
-    splits = split_even_weight(ws[order], n_points)
-    aer = np.array([g.mean() for g in np.split(vals[order], splits)])
+    # Cast to ndarray for indexing to match numpy stubs
+    ws_arr = np.asarray(ws)
+    vals_arr = np.asarray(vals)
+    splits = _split_even_weight(ws_arr[order], n_points)  # type: ignore[call-overload]
+    aer = np.array([g.mean() for g in np.split(vals_arr[order], splits)])  # type: ignore[call-overload]
     pdf = pd.DataFrame(aer, columns=[value_col])
 
     if dim:
         if ccodes is None:
             raise ValueError("ccodes must be provided when dim is specified")
         # Find the frequency of each category in ccodes
+        # Cast to ndarray for indexing to match numpy stubs
+        ccodes_arr = np.asarray(ccodes)
+        ws_arr = np.asarray(ws)
         osignal = np.stack(
             [
                 np.bincount(g, weights=gw, minlength=len(cats)) / gw.sum()
-                for g, gw in zip(np.split(ccodes[order], splits), np.split(ws[order], splits))
+                for g, gw in zip(np.split(ccodes_arr[order], splits), np.split(ws_arr[order], splits))  # type: ignore[call-overload]
             ],
             axis=0,
         )
@@ -1890,7 +1864,7 @@ def linevals(
 
         rng = utils.stable_rng(42)
         # pdf[dim] = cats[signal.apply(lambda r: rng.multinomial(1,r/r.sum()).argmax() if r.sum()>0.0 else 0,axis=1)]
-        cat_inds = vectorized_mn(signal, rng)
+        cat_inds = _vectorized_mn(signal, rng)
         pdf[dim] = np.array(cats)[cat_inds]
         pdf["probability"] = osignal[np.arange(len(cat_inds)), cat_inds]
 
@@ -1900,8 +1874,13 @@ def linevals(
     pdf["pos"] = np.arange(0, 1, 1.0 / len(pdf))
 
     if ocols is not None:
-        for iv in ocols.index:
-            pdf[iv] = ocols[iv]
+        # ocols can be a pandas Series (with .index) or a dict-like object
+        if isinstance(ocols, pd.Series):
+            for iv in ocols.index:  # type: ignore[attr-defined]
+                pdf[iv] = ocols[iv]
+        else:
+            for iv in ocols:  # type: ignore[call-overload]
+                pdf[iv] = ocols[iv]  # type: ignore[call-overload]
 
     return pdf
 
@@ -1916,20 +1895,15 @@ def linevals(
     no_question_facet=True,
 )
 def ordered_population(
-    data: pd.DataFrame,
-    value_col: str = "value",
-    facets: list[Dict[str, Any]] | None = None,
-    tooltip: Sequence[str] | None = None,
-    outer_factors: Sequence[str] | None = None,
+    p: PlotInput,
     group_categories: bool = False,
     full_data: bool = False,
 ) -> AltairChart:
     """Plot ordered categorical distributions with optional grouping."""
 
-    facets = facets or []
-    tooltip = list(tooltip or [])
-    outer_factors = list(outer_factors or [])
-    f0 = facets[0] if len(facets) > 0 else None
+    data = p.data.copy()
+    outer_cols = list(p.outer_factors)
+    f0 = p.facets[0] if p.facets else None
 
     n_points, maxn = 200, 1000000
 
@@ -1940,34 +1914,34 @@ def ordered_population(
     if not full_data and len(data) > maxn:
         data = data.sample(maxn, replace=False, random_state=42)
 
-    data = data.sort_values(outer_factors + [value_col])  # Value col is here to ensure consistent order for tests
-    vals = data[value_col].to_numpy()
+    data = data.sort_values(outer_cols + [p.value_col])  # Value col ensures consistent order for tests
+    vals = data[p.value_col].to_numpy()
 
     if f0 is not None:
-        fcol = f0["col"]
-        cat_idx, cats = pd.factorize(data[f0["col"]])
+        fcol = f0.col
+        cat_idx, cats = pd.factorize(data[f0.col])
         cats = list(cats)
     else:
         fcol = None
         cat_idx, cats = None, []
 
-    if outer_factors:
+    if outer_cols:
         # This is optimized to not use pandas.groupby as it makes it about 2x faster
         # which is 2+ seconds with big datasets
 
         # Assume data is sorted by outer_factors, split vals into groups by them
-        ofids = np.stack([data[f].cat.codes.values for f in outer_factors], axis=1)
-        splits = split_ordered(ofids)
-        groups = np.split(vals, splits)
-        cgroups = np.split(cat_idx, splits) if len(facets) >= 1 else groups
+        ofids = np.stack([data[f].cat.codes.values for f in outer_cols], axis=1)  # type: ignore[call-overload]
+        splits = _split_ordered(ofids)
+        groups = np.split(vals, splits)  # type: ignore[call-overload]
+        cgroups = np.split(cat_idx, splits) if p.facets else groups  # type: ignore[call-overload]
 
         # Perform the equivalent of groupby
-        ocols = data.iloc[[0] + list(splits)][outer_factors]
+        ocols = data.iloc[[0] + list(splits)][outer_cols]
         tdf = pd.concat(
             [
-                linevals(
+                _linevals(
                     g,
-                    value_col=value_col,
+                    value_col=p.value_col,
                     dim=fcol,
                     ccodes=gc,
                     cats=cats,
@@ -1983,9 +1957,9 @@ def ordered_population(
         #   linevals,value_col=value_col,dim=fcol,cats=cats,n_points=n_points,
         #   gc=group_categories,include_groups=False).reset_index()
     else:
-        tdf = linevals(
+        tdf = _linevals(
             vals,
-            value_col=value_col,
+            value_col=p.value_col,
             dim=fcol,
             ccodes=cat_idx,
             cats=cats,
@@ -2010,20 +1984,19 @@ def ordered_population(
     )
     # selection = alt.selection_multi(fields=[dim], bind='legend')
     line = base.mark_circle(size=10).encode(
-        y=alt.Y(f"{value_col}:Q", impute={"value": None}, title="", axis=alt.Axis(grid=True)),
+        y=alt.Y(f"{p.value_col}:Q", impute={"value": None}, title="", axis=alt.Axis(grid=True)),
         # opacity=alt.condition(selection, alt.Opacity("matches:Q",scale=None), alt.value(0.1)),
-        color=alt.Color(field=f0["col"], type="nominal", sort=f0["order"], scale=f0["colors"])
+        color=alt.Color(field=f0.col, type="nominal", sort=f0.order, scale=f0.colors)
         if f0 is not None
         else alt.value("red"),
-        tooltip=tooltip
-        + ([alt.Tooltip("probability:Q", format=".1%", title="category prob.")] if len(facets) >= 1 else []),
+        tooltip=p.tooltip + ([alt.Tooltip("probability:Q", format=".1%", title="category prob.")] if p.facets else []),
     )  # .add_selection(selection)
 
     rule = (
         alt.Chart()
         .mark_rule(color="red", strokeDash=[2, 3])
         .encode(y=alt.Y("mv:Q"))
-        .transform_joinaggregate(mv=f"mean({value_col}):Q", groupby=outer_factors)
+        .transform_joinaggregate(mv=f"mean({p.value_col}):Q", groupby=outer_cols)
     )
 
     plot = alt.layer(
@@ -2045,55 +2018,51 @@ def ordered_population(
     priority=60,
 )
 def marimekko(
-    data: pd.DataFrame,
-    value_col: str = "value",
-    facets: list[Dict[str, Any]] | None = None,
-    val_format: str = "%",
-    width: int = 800,
-    tooltip: Sequence[str] | None = None,
-    outer_factors: Sequence[str] | None = None,
+    p: PlotInput,
     separate: bool = False,
-    translate: Callable[[str], str] | None = None,
 ) -> AltairChart:
     """Build a Marimekko (mosaic) chart showing joint distributions."""
 
-    facets = facets or []
-    tooltip = list(tooltip or [])
-    outer_factors = list(outer_factors or [])
-    f0, f1 = facets[0], facets[1]
-    tf = translate if translate else (lambda s: s)
+    data = p.data.copy()
+    if len(p.facets) < 2:
+        raise ValueError("marimekko plot requires two facet dimensions")
+
+    outer_cols = list(p.outer_factors)
+    f0, f1 = p.facets[0], p.facets[1]
+    tf = p.translate or (lambda s: s)
+    chart_width = p.width
 
     xcol, ycol, ycol_scale, yorder = (
-        f1["col"],
-        f0["col"],
-        f0["colors"],
-        list(reversed(f0["order"])),
+        f1.col,
+        f0.col,
+        f0.colors,
+        list(reversed(f0.order)),
     )
 
     # Fill in missing values with zero
     mdf = pd.DataFrame(
-        it.product(f1["order"], f0["order"], *[data[c].unique() for c in outer_factors]),
-        columns=[xcol, ycol] + outer_factors,
+        it.product(f1.order, f0.order, *[data[c].unique() for c in outer_cols]),
+        columns=[xcol, ycol] + outer_cols,
     )
-    data = mdf.merge(data, on=[xcol, ycol] + outer_factors, how="left").fillna({value_col: 0, "group_size": 1})
-    data[xcol] = pd.Categorical(data[xcol], f1["order"], ordered=True)
+    data = mdf.merge(data, on=[xcol, ycol] + outer_cols, how="left").fillna({p.value_col: 0, "group_size": 1})
+    data[xcol] = pd.Categorical(data[xcol], f1.order, ordered=True)
     data[ycol] = pd.Categorical(data[ycol], yorder, ordered=True)
 
-    data["w"] = data["group_size"] * data[value_col]
+    data["w"] = data["group_size"] * data[p.value_col]
     data.sort_values([ycol, xcol], ascending=[True, False], inplace=True)
 
     if separate:  # Split and center each ycol group so dynamics can be better tracked for all of them
         ndata = (
-            data.groupby(outer_factors + [xcol], observed=False)[[ycol, value_col, "w"]]
+            data.groupby(outer_cols + [xcol], observed=False)[[ycol, p.value_col, "w"]]
             .apply(lambda df: pd.DataFrame({ycol: df[ycol], "yv": df["w"] / df["w"].sum(), "w": df["w"]}))
             .reset_index()
         )
         ndata = ndata.merge(
-            ndata.groupby(outer_factors + [ycol], observed=True)["yv"].max().rename("ym").reset_index(),
-            on=outer_factors + [ycol],
+            ndata.groupby(outer_cols + [ycol], observed=True)["yv"].max().rename("ym").reset_index(),
+            on=outer_cols + [ycol],
         ).fillna({"ym": 0.0})
         ndata = (
-            ndata.groupby(outer_factors + [xcol], observed=False)[[ycol, "w", "yv", "ym"]]
+            ndata.groupby(outer_cols + [xcol], observed=False)[[ycol, "w", "yv", "ym"]]
             .apply(
                 lambda df: pd.DataFrame(
                     {
@@ -2109,7 +2078,7 @@ def marimekko(
         )
     else:  # Regular marimekko
         ndata = (
-            data.groupby(outer_factors + [xcol], observed=False)[[ycol, value_col, "w"]]
+            data.groupby(outer_cols + [xcol], observed=False)[[ycol, p.value_col, "w"]]
             .apply(
                 lambda df: pd.DataFrame(
                     {
@@ -2125,7 +2094,7 @@ def marimekko(
         ndata["y1"] = ndata["y2"] - ndata["yv"]
 
     ndata = (
-        ndata.groupby(outer_factors + [ycol], observed=False)[[xcol, "yv", "y1", "y2", "w"]]
+        ndata.groupby(outer_cols + [ycol], observed=False)[[xcol, "yv", "y1", "y2", "w"]]
         .apply(
             lambda df: pd.DataFrame(
                 {
@@ -2153,7 +2122,7 @@ def marimekko(
     ndata["text2"] = ""
     ndata.iloc[0, -1] = xcol
 
-    clean_levels(ndata)
+    _clean_levels(ndata)
 
     # selection = alt.selection_point(fields=[yvar], bind="legend"
 
@@ -2180,15 +2149,16 @@ def marimekko(
         ),
         y2=alt.Y2("y2:Q"),
         color=alt.Color(
-            f"{ycol}:N",
+            field=ycol,
+            type="nominal",
             legend=(
                 alt.Legend(
                     orient="top",
                     titleAlign="center",
                     titleOrient="left",
-                    columns=estimate_legend_columns_horiz(f0["order"], width, f0["col"]),
+                    columns=estimate_legend_columns_horiz(f0.order, chart_width, f0.col),
                 )
-                if len(f0["order"]) <= 5
+                if len(f0.order) <= 5
                 else alt.Legend(orient="right")
             ),  # This plot needs the vertical space to be useful for 5+ cats
             # legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f0['order'],width)),
@@ -2201,7 +2171,7 @@ def marimekko(
             alt.Tooltip("yv:Q", title=tf("Of column"), format=".1%"),
             alt.Tooltip("tprop:Q", title=tf("Of population"), format=".1%"),
         ]
-        + tooltip[3:],
+        + p.tooltip[3:],
         # opacity=alt.condition(selection, alt.value(1), alt.value(0.3)),
     )
     text = base.mark_text(

@@ -62240,7 +62240,7 @@
   "params": [
     {
       "bind": "legend",
-      "name": "param_1",
+      "name": "param-normalized",
       "select": {
         "fields": [
           "party_preference"
@@ -62292,7 +62292,7 @@
       },
       "opacity": {
         "condition": {
-          "param": "param_1",
+          "param": "param-normalized",
           "value": 1
         },
         "value": 0.15
@@ -62326,7 +62326,6 @@
       "interpolate": "natural",
       "type": "area"
     },
-    "name": "view_1",
     "width": 166
   }
 }

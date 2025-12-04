@@ -1910,7 +1910,7 @@
   "params": [
     {
       "bind": "legend",
-      "name": "param_2",
+      "name": "param-normalized",
       "select": {
         "fields": [
           "party_preference"
@@ -1976,7 +1976,7 @@
         "condition": {
           "field": "hdi",
           "legend": null,
-          "param": "param_2",
+          "param": "param-normalized",
           "scale": {
             "domain": [
               0.5,
@@ -2053,7 +2053,6 @@
       "interpolate": "basis",
       "type": "area"
     },
-    "name": "view_2",
     "width": 400
   }
 }

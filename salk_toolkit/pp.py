@@ -6,7 +6,7 @@ It maps annotated survey data to Altair charts by:
 
 - discovering eligible plots via the registry metadata in `salk_toolkit.plots`
 - lazily transforming data with Polars, including filters, melts, draws, and
-  aggregation helpers such as `pp_transform_data` / `wrangle_data`
+  aggregation helpers such as `pp_transform_data` / `_wrangle_data`
 - enriching metadata (`update_data_meta_with_pp_desc`, `impute_factor_cols`,
   `matching_plots`) so dashboards and CLI tools can reason about aliases,
   ordering, draws, and group scales
@@ -16,52 +16,110 @@ It maps annotated survey data to Altair charts by:
 
 from __future__ import annotations
 
-__all__ = [
-    "AltairChart",
-    "special_columns",
-    "registry",
-    "registry_meta",
-    "stk_plot_defaults",
-    "n_a",
-    "priority_weights",
-    "cont_transform_options",
-    "get_cat_num_vals",
-    "stk_plot",
-    "stk_deregister",
-    "get_plot_fn",
-    "get_plot_meta",
-    "get_all_plots",
-    "calculate_priority",
-    "update_data_meta_with_pp_desc",
-    "matching_plots",
-    "pp_transform_data",
-    "create_plot",
-    "impute_factor_cols",
-    "e2e_plot",
-    "test_new_plot",
-]
+# These are the only functions that should be exposed to the public
+__all__ = ["e2e_plot", "matching_plots", "test_new_plot", "cont_transform_options", "create_plot"]
 
 import gc
+import inspect
 import itertools as it
 import json
-from copy import deepcopy
 from math import ceil
-from typing import Any, Callable, Dict, List, Mapping, MutableMapping, Sequence
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Literal,
+    Mapping,
+    MutableMapping,
+    Optional,
+    Sequence,
+    Tuple,
+    cast,
+    overload,
+)
 
 import altair as alt
 import numpy as np
 import pandas as pd
 import polars as pl
+from pydantic import BaseModel
 
 from salk_toolkit import utils as utils
+from salk_toolkit.validation import DF
 from salk_toolkit.io import (
     extract_column_meta,
     group_columns_dict,
     list_aliases,
     read_parquet_with_metadata,
 )
-from salk_toolkit.utils import batch, clean_kwargs
-from salk_toolkit.validation import PlotDescriptor, soft_validate
+from salk_toolkit.utils import batch, clean_kwargs, merge_pydantic_models
+from pydantic_extra_types.color import Color
+
+from salk_toolkit.validation import (
+    BlockScaleMeta,
+    ColumnBlockMeta,
+    ColumnMeta,
+    DataMeta,
+    FacetMeta,
+    GroupOrColumnMeta,
+    PlotDescriptor,
+    PBase,
+    soft_validate,
+)
+
+
+def _meta_to_plain(meta: ColumnMeta) -> Dict[str, Any]:
+    """Return a plain dict copy of column metadata."""
+
+    return meta.model_dump(mode="python")
+
+
+def _question_meta_clone(base_meta: GroupOrColumnMeta, categories: Sequence[str] | None = None) -> GroupOrColumnMeta:
+    """Produce a categorical copy of ``base_meta`` for the synthetic ``question`` column."""
+
+    clone = base_meta.model_copy(deep=True)
+    clone.continuous = False
+    if categories is not None:
+        clone.categories = list(categories)
+    return clone
+
+
+class PlotInput(PBase):
+    """Structured container passed to individual plot functions."""
+
+    data: pd.DataFrame
+    col_meta: Dict[str, GroupOrColumnMeta]
+    value_col: str
+    cat_col: Optional[str] = None
+    val_format: str = "%"
+    val_range: Optional[Tuple[Optional[float], Optional[float]]] = None
+    filtered_size: float = 0.0
+    facets: List[FacetMeta] = DF(list)
+    translate: Optional[Callable[[str], str]] = None
+    tooltip: List[Any] = DF(list)
+    value_range: Optional[Tuple[float, float]] = None
+    outer_colors: Dict[str, Any] = DF(dict)
+    width: int = 800
+    alt_properties: Dict[str, Any] = DF(dict)
+    outer_factors: List[str] = DF(list)
+    plot_args: Dict[str, Any] = DF(dict)
+
+
+def _normalize_color_dict(scale: Dict[str, Color | str] | None) -> Dict[str, str] | None:
+    """Convert Color objects to hex strings so Altair accepts the scale."""
+
+    if not scale:
+        return None
+    normalized: Dict[str, str] = {}
+    for key, value in scale.items():
+        if isinstance(value, Color):
+            original = value.original()
+            normalized[key] = original if isinstance(original, str) else value.as_hex().upper()
+        else:
+            normalized[key] = value
+    return normalized
+
 
 # Type alias for all Altair chart types that plot functions may return
 AltairChart = alt.Chart | alt.LayerChart | alt.FacetChart | alt.VConcatChart | alt.HConcatChart | alt.ConcatChart
@@ -72,14 +130,16 @@ AltairChart = alt.Chart | alt.LayerChart | alt.FacetChart | alt.VConcatChart | a
 # --------------------------------------------------------
 
 
-# Augment each draw with bootstrap data from across whole population to make sure there are at least <threshold> samples
-def augment_draws(
+def _augment_draws(
     data: pd.DataFrame,
     factors: Sequence[str] | None = None,
     n_draws: int | None = None,
     threshold: int = 50,
 ) -> pd.DataFrame:
-    """Bootstrap draws so every bucket has at least ``threshold`` rows."""
+    """Augment each draw with bootstrap data from across whole population.
+
+    Ensures at least ``threshold`` samples per bucket.
+    """
 
     if n_draws is None:
         n_draws = data.draw.max() + 1
@@ -87,11 +147,12 @@ def augment_draws(
     assert n_draws is not None, "n_draws must be set"
 
     if factors:  # Run recursively on each factor separately and concatenate results
-        if data[["draw"] + list(factors)].value_counts().min() >= threshold:
+        factors_list = list(factors)
+        if data[["draw"] + factors_list].value_counts().min() >= threshold:
             return data  # This takes care of large datasets fast
         return (
-            data.groupby(factors, observed=False)
-            .apply(augment_draws, n_draws=n_draws, threshold=threshold)
+            data.groupby(factors_list, observed=False)
+            .apply(_augment_draws, n_draws=n_draws, threshold=threshold)
             .reset_index(drop=True)
         )  # Slow-ish, but only needed on small data now
 
@@ -114,22 +175,57 @@ def augment_draws(
     return pd.concat([data, new_rows])
 
 
-# Get the numerical values to map categories to
-def get_cat_num_vals(res_meta: Mapping[str, Any], pp_desc: Mapping[str, Any]) -> Sequence[float | int]:
-    """Convert categorical codes to numeric values for ordered plots."""
+def _get_cat_num_vals(
+    res_meta: GroupOrColumnMeta,
+    pp_desc: PlotDescriptor,
+) -> Sequence[float | int]:
+    """Get the numerical values to map categories to for ordered plots."""
 
-    try:  # First try to convert categories themselves to numbers. Because they might be in some use cases ;)
-        nvals = [float(x) for x in res_meta["categories"]]
-    except ValueError:  # Instead default to 0,1,2,3... scale
-        nvals = res_meta.get("num_values", range(len(res_meta["categories"])))
-    if "num_values" in pp_desc:
-        nvals = pp_desc["num_values"]
-    return nvals
+    categories = res_meta.categories
+    if not categories:
+        return []
+    try:
+        nvals = [float(x) for x in cast(Sequence[Any], categories)]
+    except ValueError:
+        # For string categories, create numeric mapping
+        nvals = res_meta.num_values
+        if nvals is None:
+            nvals = list(range(len(categories)))
+    num_values = pp_desc.num_values
+    if num_values is not None:
+        nvals = num_values  # type: ignore[assignment]
+    return nvals  # type: ignore[return-value]
 
 
 # --------------------------------------------------------
 #          PLOT REGISTRY FUNCTIONS
 # --------------------------------------------------------
+
+
+class PlotMeta(PBase):
+    """Metadata registered for each plot function via ``@stk_plot``."""
+
+    name: str
+    data_format: Literal["longform", "raw"] = "longform"
+    draws: bool = False
+    continuous: bool = False
+    n_facets: Optional[Tuple[int, int]] = None
+    requires: List[Dict[str, Any]] = DF(list)
+    no_question_facet: bool = False
+    agg_fn: Optional[str] = None
+    sample: Optional[int] = None
+    group_sizes: bool = False
+    sort_numeric_first_facet: bool = False
+    no_faceting: bool = False
+    factor_columns: int = 1
+    aspect_ratio: Optional[float] = None
+    as_is: bool = False
+    priority: int = 0
+    args: Dict[str, Any] = DF(dict)
+    hidden: bool = False
+    transform_fn: Optional[str] = None
+    nonnegative: bool = False
+
 
 special_columns: List[str] = [
     "id",
@@ -142,13 +238,13 @@ special_columns: List[str] = [
 ]
 
 registry: Dict[str, Callable[..., Any]] = {}
-registry_meta: Dict[str, Dict[str, Any]] = {}
+registry_meta: Dict[str, PlotMeta] = {}
 _registry_bootstrapped = False
 
 stk_plot_defaults = {"data_format": "longform"}
 
 
-def ensure_plot_registry_loaded() -> None:
+def _ensure_plot_registry_loaded() -> None:
     """Import the plots module lazily to populate the registry."""
     global _registry_bootstrapped
     if _registry_bootstrapped:
@@ -161,50 +257,72 @@ def ensure_plot_registry_loaded() -> None:
         _registry_bootstrapped = True
 
 
-# Decorator for registering a plot type with metadata
-def stk_plot(plot_name: str, **r_kwargs: object) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+def _ensure_plot_args_sync(func: Callable[..., Any], decorator_kwargs: Dict[str, Any]) -> None:
+    """Verify that declared args (including pass-through requirements) match the function signature.
+
+    Used as part of the decorator for registering a plot type with metadata.
+    """
+
+    args_dict = decorator_kwargs.get("args")
+    declared_args = set(cast(dict[str, object], args_dict if args_dict is not None else {}).keys())
+    requires = cast(list[dict[str, object]], decorator_kwargs.get("requires") or [])
+    pass_args = {k for req in requires for k, v in cast(dict[str, object], req).items() if v == "pass"}
+
+    expected = declared_args | pass_args
+    if not expected:
+        return
+
+    sig = inspect.signature(func)
+    params = list(sig.parameters.values())
+    extra_params = [p for p in params[1:] if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD, p.KEYWORD_ONLY)]
+    seen = {p.name for p in extra_params}
+    if seen != expected:
+        raise ValueError(
+            f"Plot '{func.__name__}' signature args {sorted(seen)} do not match declared args {sorted(expected)}"
+        )
+
+
+def stk_plot(plot_name: str, **r_kwargs: object) -> Callable[[Callable[..., object]], Callable[..., object]]:
     """Register a plotting function inside the global plot registry."""
 
-    def decorator(gfunc: Callable[..., Any]) -> Callable[..., Any]:
-        # In theory, we could do transformations in wrapper
-        # In practice, it would only obfuscate already complicated code
-        # def wrapper(*args,**kwargs) :
-        #    return gfunc(*args,**kwargs)
-
-        # Register the function
+    def _decorator(gfunc: Callable[..., object]) -> Callable[..., object]:
+        _ensure_plot_args_sync(gfunc, r_kwargs)
         registry[plot_name] = gfunc
-        registry_meta[plot_name] = {"name": plot_name, **stk_plot_defaults, **r_kwargs}
+        meta_payload = {"name": plot_name, **stk_plot_defaults, **r_kwargs}
+        registry_meta[plot_name] = PlotMeta.model_validate(meta_payload)
 
         return gfunc
 
-    return decorator
+    return _decorator
 
 
-def stk_deregister(plot_name: str) -> None:
+def _stk_deregister(plot_name: str) -> None:
     """Remove a plot from the registry (used in tests)."""
 
     del registry[plot_name]
     del registry_meta[plot_name]
 
 
-def get_plot_fn(plot_name: str) -> Callable[..., Any]:
+def _get_plot_fn(plot_name: str) -> Callable[..., Any]:
     """Retrieve a registered plot function by name."""
 
-    ensure_plot_registry_loaded()
+    _ensure_plot_registry_loaded()
     return registry[plot_name]
 
 
-def get_plot_meta(plot_name: str) -> Dict[str, Any]:
+def get_plot_meta(plot_name: str) -> PlotMeta | None:
     """Return the registry metadata entry for ``plot_name``."""
 
-    ensure_plot_registry_loaded()
-    return registry_meta[plot_name].copy()
+    _ensure_plot_registry_loaded()
+    if plot_name not in registry_meta:
+        return None
+    return registry_meta[plot_name].model_copy(deep=True)
 
 
-def get_all_plots() -> List[str]:
+def _get_all_plots() -> List[str]:
     """List registered plot names in alphabetical order."""
 
-    ensure_plot_registry_loaded()
+    _ensure_plot_registry_loaded()
     return sorted(list(registry.keys()))
 
 
@@ -234,47 +352,54 @@ priority_weights = {
 # Method for choosing a sensible default plot based on the data and plot metadata
 
 
-def calculate_priority(plot_meta: Mapping[str, Any], match: Mapping[str, Any]) -> tuple[int, List[str]]:
-    """Score how well a plot definition matches the requested descriptor.
-
-    Args:
-        plot_meta: Registry metadata for the plot.
-        match: Capabilities inferred from the descriptor (draws, facets, etc.).
-
-    Returns:
-        Tuple of (priority score, list of failing requirement keys).
-    """
-
-    priority, reasons = int(plot_meta.get("priority", 0)), []
+def _calculate_priority(plot_meta: PlotMeta, match: Mapping[str, Any]) -> tuple[int, List[str]]:
+    """Score how well a plot definition matches the requested descriptor."""
+    priority, reasons = int(plot_meta.priority or 0), []
 
     facet_metas = match["facet_metas"]
-    if plot_meta.get("no_question_facet"):
+    if plot_meta.no_question_facet:
         facet_metas = [f for f in facet_metas if f["name"] not in ["question", match["res_col"]]]
 
     # Plots with raw data assume numerical values so remove them as options
-    if match["categorical"] and plot_meta.get("data_format") == "raw":
+    if match["categorical"] and plot_meta.data_format == "raw":
         return n_a, ["raw_data"]
 
-    if len(facet_metas) < plot_meta.get("n_facets", (0, 0))[0]:
+    # Plots marked as continuous-only should not match categorical data
+    if match["categorical"] and plot_meta.continuous:
+        return n_a, ["continuous_only"]
+
+    n_min_facets, n_rec_facets = plot_meta.n_facets or (0, 0)
+    if len(facet_metas) < n_min_facets:
         return n_a, ["n_facets"]  # Not enough factors
     else:  # Prioritize plots that have the right number of factors
-        priority += 10 * abs(len(facet_metas) - plot_meta.get("n_facets", (0, 0))[1])
+        priority += 10 * abs(len(facet_metas) - n_rec_facets)
 
-    for k in ["draws", "nonnegative", "hidden"]:
-        if plot_meta.get(k):
-            val = priority_weights[k][1 if match.get(k) else 0]
-            if val < 0:
-                reasons.append(k)
-            priority += val
+    # Check plot requirements
+    if plot_meta.draws:
+        val = priority_weights["draws"][1 if match.get("draws") else 0]
+        if val < 0:
+            reasons.append("draws")
+        priority += val
 
-    for i, d in enumerate(plot_meta.get("requires", [])):
+    if plot_meta.nonnegative:
+        val = priority_weights["nonnegative"][1 if match.get("nonnegative") else 0]
+        if val < 0:
+            reasons.append("nonnegative")
+        priority += val
+
+    if plot_meta.hidden:
+        val = priority_weights["hidden"][1 if match.get("hidden") else 0]
+        if val < 0:
+            reasons.append("hidden")
+        priority += val
+    for i, d in enumerate(plot_meta.requires):
         md = facet_metas[i]
         for k, v in d.items():
             if v != "pass":
                 val = priority_weights[k][1 if md.get(k) == v else 0]
             else:
                 val = priority_weights["required_meta"][
-                    1 if k in md else 0
+                    1 if md.get(k) is not None else 0
                 ]  # Use these weights for things plots require from metadata
 
             if k == "ordered" and md.get("continuous"):
@@ -291,61 +416,105 @@ def calculate_priority(plot_meta: Mapping[str, Any], match: Mapping[str, Any]) -
 # --------------------------------------------------------
 
 
-# Allow pp_desc to modify data meta
-def update_data_meta_with_pp_desc(
-    data_meta: Dict[str, Any],
-    pp_desc: Mapping[str, Any],
-) -> tuple[Dict[str, Dict[str, Any]], Dict[str, List[str]]]:
-    """Merge plot-descriptor overrides into the canonical data metadata."""
+def _update_data_meta_with_pp_desc(
+    data_meta: DataMeta,
+    pp_desc: PlotDescriptor,
+) -> tuple[Dict[str, GroupOrColumnMeta], Dict[str, List[str]]]:
+    """Allow pp_desc to modify data meta by merging plot-descriptor overrides into the canonical data metadata."""
 
-    # Allow creating a new meta group for res_col
-    if pp_desc.get("res_meta"):
-        data_meta, rmeta = deepcopy(data_meta), deepcopy(pp_desc["res_meta"])
+    # Ensure data_meta is a DataMeta object (handle legacy dict inputs from tests)
+    if not isinstance(data_meta, DataMeta):
+        meta_obj = soft_validate(data_meta, DataMeta)
+    else:
+        meta_obj = data_meta
+    desc_obj = pp_desc
 
-        # Shortcut - if no group scale meta is provided, borrow it from the first column
-        if "scale" not in rmeta:
-            col_meta = extract_column_meta(data_meta)
-            rmeta["scale"] = col_meta[rmeta["columns"][0]].copy()
-            rmeta["scale"]["col_prefix"] = ""  # This will cause confusion with column names
+    working_meta = meta_obj
+    structure = dict(meta_obj.structure or {})
 
-        sdict = {d["name"]: d for d in data_meta["structure"]}
-        # Overwrite existing group if it exists
-        if rmeta["name"] in sdict:
-            data_meta["structure"].remove(sdict[rmeta["name"]])
-        data_meta["structure"].append(rmeta)
+    res_meta_raw = desc_obj.res_meta
+    if res_meta_raw:
+        if isinstance(res_meta_raw, dict):
+            res_meta = ColumnBlockMeta.model_validate(res_meta_raw)
+        else:
+            # Already a ColumnBlockMeta object
+            res_meta = res_meta_raw
 
-    # Do the constants replacement after the res_meta is added
-    data_meta_replaced = utils.replace_constants(data_meta, data_meta.get("constants", {}))
-    assert isinstance(data_meta_replaced, dict), "data_meta must remain a dict after replace_constants"
-    data_meta = data_meta_replaced
+        if res_meta.scale is None and res_meta.columns:
+            base_col_name = next(iter(res_meta.columns.keys()), None)
+            base_col_meta = extract_column_meta(data_meta).get(base_col_name)
+            if base_col_meta is not None:
+                scale_payload = base_col_meta.model_dump(mode="python")
+                scale_payload["col_prefix"] = ""
+                res_meta = res_meta.model_copy(update={"scale": BlockScaleMeta.model_validate(scale_payload)})
 
-    # Reshape the meta into a more usable format
-    col_meta = extract_column_meta(data_meta)
-    gc_dict = group_columns_dict(data_meta)
+        structure[res_meta.name] = res_meta
+        working_meta = working_meta.model_copy(update={"structure": structure})
 
-    # Allow overriding parts of existing metas for specific columns
-    for k, v in pp_desc.get("col_meta", {}).items():
-        if k in col_meta:
-            col_meta[k].update(v)
+    col_meta = extract_column_meta(working_meta)
+    gc_dict = group_columns_dict(working_meta)
+
+    col_meta_override = desc_obj.col_meta or {}
+    if col_meta_override:
+        assert isinstance(col_meta_override, dict), "col_meta must be a dict"
+        for key, update in col_meta_override.items():
+            if key in col_meta:
+                # Ensure update is a dict (convert ColumnMeta to dict if needed)
+                if isinstance(update, BaseModel):
+                    update = update.model_dump(mode="python", exclude_unset=True)
+                elif not isinstance(update, dict):
+                    update = dict(update)
+                col_meta[key] = col_meta[key].model_copy(update=update)
 
     return col_meta, gc_dict
 
 
-# Get a list of plot types matching required spec
+@overload
+def matching_plots(
+    pp_desc: PlotDescriptor | Dict[str, Any],
+    df: pl.LazyFrame | pd.DataFrame,
+    data_meta: DataMeta,
+    details: Literal[False] = False,
+    list_hidden: bool = ...,
+    impute: bool = ...,
+) -> List[str]: ...
+
+
+@overload
+def matching_plots(
+    pp_desc: PlotDescriptor | Dict[str, Any],
+    df: pl.LazyFrame | pd.DataFrame,
+    data_meta: DataMeta,
+    details: Literal[True],
+    list_hidden: bool = ...,
+    impute: bool = ...,
+) -> Dict[str, tuple[int, List[str]]]: ...
 
 
 def matching_plots(
-    pp_desc: Dict[str, Any],
+    pp_desc: PlotDescriptor | Dict[str, Any],
     df: pl.LazyFrame | pd.DataFrame,
-    data_meta: Dict[str, Any],
+    data_meta: DataMeta,
     details: bool = False,
     list_hidden: bool = False,
+    impute: bool = True,
 ) -> Dict[str, tuple[int, List[str]]] | List[str]:
-    """Return plots compatible with ``pp_desc`` sorted by suitability."""
+    """Get a list of plot types matching required spec, sorted by suitability."""
 
-    col_meta, _ = update_data_meta_with_pp_desc(data_meta, pp_desc)
+    # This is meant to find suitable plot types, so we forgive plot being missing
+    if isinstance(pp_desc, dict) and "plot" not in pp_desc:
+        pp_desc["plot"] = "default"
 
-    rc = pp_desc["res_col"]
+    # Ensure pp_desc is a PlotDescriptor object
+    pp_desc = soft_validate(pp_desc, PlotDescriptor)
+
+    if impute:
+        factor_cols = impute_factor_cols(pp_desc, extract_column_meta(data_meta), get_plot_meta(pp_desc.plot))
+        pp_desc = pp_desc.model_copy(update={"factor_cols": factor_cols})
+
+    col_meta, _ = _update_data_meta_with_pp_desc(data_meta, pp_desc)
+
+    rc = pp_desc.res_col
     rcm = col_meta[rc]
 
     lazy = isinstance(df, pl.LazyFrame)
@@ -355,31 +524,43 @@ def matching_plots(
         df_cols = df.columns
 
     # Determine if values are non-negative
-    ocols = rcm["columns"] if "columns" in rcm else [rc]
+    ocols = list(rcm.columns) if rcm.columns else [rc]
     cols = [c for c in ocols if c in df_cols]
     if not cols:
         raise ValueError(f"Columns {ocols} not found in data")
 
-    nonneg = ("categories" in rcm) or (
+    nonneg = (rcm.categories is not None) or (
         df[cols].min(axis=None) >= 0
         if not lazy
         else df.select(pl.min_horizontal(pl.col(cols).min())).collect().item() >= 0
     )
 
-    if pp_desc.get("convert_res") == "continuous" and ("categories" in rcm):
-        nonneg = min([v for v in get_cat_num_vals(rcm, pp_desc) if v is not None]) >= 0
+    convert_res = pp_desc.convert_res
+    if convert_res == "continuous" and (rcm.categories is not None):
+        cat_vals_seq = _get_cat_num_vals(rcm, pp_desc)
+        cat_vals = [v for v in (cat_vals_seq or []) if v is not None]
+        if cat_vals:
+            nonneg = min(cat_vals) >= 0
 
+    factor_cols = pp_desc.factor_cols
+    facet_metas = []
+    for cn in factor_cols:
+        meta = col_meta.get(cn, GroupOrColumnMeta())
+        facet_metas.append({"name": cn, **meta.model_dump(mode="python")})
+    # Determine if data is categorical
+    # Data is categorical if it has categories AND is not being converted to continuous
+    # AND is not explicitly marked as continuous
+    is_categorical = (rcm.categories is not None) and not rcm.continuous and convert_res != "continuous"
     match = {
         "draws": ("draw" in df_cols),
         "nonnegative": nonneg,
         "hidden": list_hidden,
         "res_col": rc,
-        "categorical": ("categories" in rcm) and pp_desc.get("convert_res") != "continuous",
-        "facet_metas": [{"name": cn, **col_meta[cn]} for cn in pp_desc["factor_cols"]],
+        "categorical": is_categorical,
+        "facet_metas": facet_metas,
     }
 
-    res = [(pn, *calculate_priority(get_plot_meta(pn), match)) for pn in registry.keys()]
-
+    res = [(pn, *_calculate_priority(get_plot_meta(pn), match)) for pn in registry.keys()]
     if details:
         return {n: (p, i) for (n, p, i) in res}  # Return dict with priorities and failure reasons
     else:
@@ -393,7 +574,7 @@ def matching_plots(
 custom_row_transforms: Dict[str, tuple[Callable[[np.ndarray], np.ndarray], str]] = {}
 
 
-def apply_npf_on_pl_df(
+def _apply_npf_on_pl_df(
     df: pl.DataFrame,
     cols: Sequence[str],
     npf: Callable[[np.ndarray], np.ndarray],
@@ -407,7 +588,7 @@ def apply_npf_on_pl_df(
 # Polars is annoyingly verbose for these but it is fast enough to be worth it
 
 
-def transform_cont(
+def _transform_cont(
     data: pl.LazyFrame,
     cols: Sequence[str],
     transform: str | None,
@@ -448,9 +629,9 @@ def transform_cont(
             (0.0, 1.0 * mult),
         )
     elif transform in custom_row_transforms:
-        tfunc, fmt = custom_row_transforms[transform]
+        _tfunc, fmt = custom_row_transforms[transform]
         data = data.map_batches(
-            lambda bdf: apply_npf_on_pl_df(bdf, cols, tfunc),
+            lambda bdf: _apply_npf_on_pl_df(bdf, cols, _tfunc),
             streamable=True,
             validate_output_schema=False,
         )  # NB! Set validate to true if debugging this
@@ -460,10 +641,11 @@ def transform_cont(
         raise Exception(f"Unknown transform '{transform}'")
 
 
-# Expected rank given Plackett-luce (softmax) log-odds
-# Relies on the fact that sum of probs of pairwise comparisons is average rank
-def softmax_expected_ranks(p: np.ndarray) -> np.ndarray:
-    """Compute expected ranks under a Plackett-Luce (softmax) model."""
+def _softmax_expected_ranks(p: np.ndarray) -> np.ndarray:
+    """Compute expected rank given Plackett-Luce (softmax) log-odds.
+
+    Relies on the fact that sum of probs of pairwise comparisons is average rank.
+    """
 
     # Convert from log-odds to proportions, but reverse probabilities
     p = np.exp(-p)
@@ -480,57 +662,55 @@ def softmax_expected_ranks(p: np.ndarray) -> np.ndarray:
     return expected_ranks
 
 
-custom_row_transforms["softmax-avgrank"] = softmax_expected_ranks, ".1f"
-
-# Average rank order
+custom_row_transforms["softmax-avgrank"] = _softmax_expected_ranks, ".1f"
 
 
-def avg_rank(ovs: np.ndarray) -> np.ndarray:
-    """Return 1-indexed average ranks for each row."""
+def _avg_rank(ovs: np.ndarray) -> np.ndarray:
+    """Return 1-indexed average ranks for each row (average rank order)."""
 
     return 1 + np.argsort(np.argsort(ovs, axis=1), axis=1)
     # Rankdata is insanely slow for some reason
     # return sps.rankdata(ovs, axis=1, method='average')
 
 
-def highest_ranked(ovs: np.ndarray) -> np.ndarray:
+def _highest_ranked(ovs: np.ndarray) -> np.ndarray:
     """Indicator matrix for the maximum value per row."""
 
     return (ovs == np.max(ovs, axis=1)[:, None]).astype("int")
 
 
-def lowest_ranked(ovs: np.ndarray) -> np.ndarray:
+def _lowest_ranked(ovs: np.ndarray) -> np.ndarray:
     """Indicator matrix for the minimum value per row."""
 
     return (ovs == np.min(ovs, axis=1)[:, None]).astype("int")
 
 
-def highest_lowest_ranked(ovs: np.ndarray) -> np.ndarray:
+def _highest_lowest_ranked(ovs: np.ndarray) -> np.ndarray:
     """Encode top choice as +1 and bottom choice as -1."""
 
-    return highest_ranked(ovs) - lowest_ranked(ovs)
+    return _highest_ranked(ovs) - _lowest_ranked(ovs)
 
 
-def topk_ranked(ovs: np.ndarray, k: int = 3) -> np.ndarray:
+def _topk_ranked(ovs: np.ndarray, k: int = 3) -> np.ndarray:
     """Return a mask marking the top-k ranked options per row."""
 
     return np.argsort(np.argsort(ovs, axis=1), axis=1) >= ovs.shape[1] - k
 
 
-def win_against_random_field(ovs: np.ndarray, opponents: int = 12) -> np.ndarray:
+def _win_against_random_field(ovs: np.ndarray, opponents: int = 12) -> np.ndarray:
     """Estimate win probability vs. a random opponent pool."""
 
     p = np.argsort(np.argsort(ovs, axis=1), axis=1) / ovs.shape[1]
     return np.power(p, opponents)
 
 
-custom_row_transforms["ordered-avgrank"] = avg_rank, ".1f"
-custom_row_transforms["ordered-warf"] = win_against_random_field, ".1%"
-custom_row_transforms["ordered-top1"] = highest_ranked, ".1%"
-custom_row_transforms["ordered-bot1"] = lowest_ranked, ".1%"
-custom_row_transforms["ordered-topbot1"] = highest_lowest_ranked, ".1%"
-custom_row_transforms["ordered-top2"] = lambda ovs: topk_ranked(ovs, 2), ".1%"
-custom_row_transforms["ordered-top3"] = lambda ovs: topk_ranked(ovs, 3), ".1%"
+custom_row_transforms["ordered-avgrank"] = _avg_rank, ".1f"
+custom_row_transforms["ordered-warf"] = _win_against_random_field, ".1%"
+custom_row_transforms["ordered-top1"] = _highest_ranked, ".1%"
+custom_row_transforms["ordered-bot1"] = _lowest_ranked, ".1%"
+custom_row_transforms["ordered-topbot1"] = _highest_lowest_ranked, ".1%"
+custom_row_transforms["ordered-top2"] = lambda ovs: _topk_ranked(ovs, 2), ".1%"
+custom_row_transforms["ordered-top3"] = lambda ovs: _topk_ranked(ovs, 3), ".1%"
 
 cont_transform_options = [
     "center",
@@ -542,32 +722,35 @@ cont_transform_options = [
 ] + list(custom_row_transforms.keys())
 
 
-# Get categories from a lazy frame.
-def ensure_ldf_categories(
-    col_meta: MutableMapping[str, Dict[str, Any]],
+def _ensure_ldf_categories(
+    col_meta: MutableMapping[str, GroupOrColumnMeta],
     col: str,
     ldf: pl.LazyFrame,
-) -> Dict[str, Any]:
-    """Resolve (and cache) category ordering for ``col`` inside ``col_meta``."""
+) -> GroupOrColumnMeta:
+    """Get categories from a lazy frame, resolving (and caching) category ordering for ``col`` inside ``col_meta``."""
 
-    cats = col_meta[col]["categories"]
+    meta = col_meta[col]
+    cats = meta.categories
     if cats == "infer":
-        # This is slow and is intended as a fallback as categories should be available in the data_meta
-        cats = np.sort(ldf.select(pl.col(col).unique()).collect().to_pandas()[col].values)
-        col_meta[col]["categories"] = cats
-    return col_meta[col]
+        # Cast to ndarray explicitly for np.sort overload matching
+        values = ldf.select(pl.col(col).unique()).collect().to_pandas()[col].values
+        resolved = np.sort(np.asarray(values))  # type: ignore[call-overload]
+        meta = meta.model_copy(update={"categories": list(resolved)})
+        col_meta[col] = meta
+    return meta
 
 
-def pp_filter_data_lz(
+def _pp_filter_data_lz(
     df: pl.LazyFrame,
     filter_dict: Mapping[str, Any],
-    c_meta: MutableMapping[str, Dict[str, Any]],
+    c_meta: MutableMapping[str, GroupOrColumnMeta],
     gc_dict: Mapping[str, Sequence[str]] | None = None,
 ) -> tuple[pl.LazyFrame, List[str]]:
     """Apply pp-style filters on a Polars ``LazyFrame``."""
 
     gc_dict = dict(gc_dict or {})
-    colnames = df.collect_schema().names()
+    schema = df.collect_schema()
+    colnames = schema.names()
 
     inds = True
 
@@ -575,10 +758,12 @@ def pp_filter_data_lz(
         # Filter on question i.e. filter a subset of res_cols
         if k in gc_dict:
             # Map short names to full column names w prefix
-            cnmap = {
-                (c.removeprefix(c_meta[c]["col_prefix"]) if c in c_meta and "col_prefix" in c_meta[c] else c): c
-                for c in colnames
-            }
+            cnmap = {}
+            for c in colnames:
+                meta = c_meta.get(c)
+                prefix = meta.col_prefix if meta and meta.col_prefix else ""
+                short = c.removeprefix(prefix) if prefix else c
+                cnmap[short] = c
             # Find columns to remove
             remove_cols = set(gc_dict[k]) - {cnmap[c] for c in v}
 
@@ -589,11 +774,13 @@ def pp_filter_data_lz(
             continue
 
         # Range filters have form [None,start,end]
-        is_range = isinstance(v, list) and v[0] is None and len(v) == 3
+        is_range = isinstance(v, (list, tuple)) and v[0] is None and len(v) == 3
 
         # Handle continuous variables separately
         if is_range and (
-            not isinstance(v[1], str) or c_meta[k].get("continuous") or c_meta[k].get("datetime")
+            not isinstance(v[1], str)
+            or c_meta.get(k, GroupOrColumnMeta()).continuous
+            or c_meta.get(k, GroupOrColumnMeta()).datetime
         ):  # Only special case where we actually need a range
             if v[1] is not None:
                 inds = (pl.col(k) >= v[1]) & inds
@@ -605,45 +792,54 @@ def pp_filter_data_lz(
 
         # Handle categoricals
         if is_range:  # Range of values over ordered categorical
-            cats = ensure_ldf_categories(c_meta, k, df)["categories"]
+            cats = _ensure_ldf_categories(c_meta, k, df).categories or []
             if set(v[1:]) & set(cats) != set(v[1:]):
                 utils.warn(f"Column {k} values {v} not found in {cats}, not filtering")
                 flst = cats
             else:
                 bi, ei = cats.index(v[1]), cats.index(v[2])
                 flst = cats[bi : ei + 1]  #
-        elif isinstance(v, list):
-            flst = v  # List indicates a set of values
-        elif "groups" in c_meta[k] and v in c_meta[k]["groups"]:
-            flst = c_meta[k]["groups"][v]
+        elif isinstance(v, (list, tuple)):
+            flst = list(v)  # Iterable indicates a set of values
         else:
-            flst = [v]  # Just filter on single value
+            groups = c_meta.get(k, GroupOrColumnMeta()).groups
+            if groups and v in groups:
+                flst = groups[v]
+            else:
+                flst = [v]  # Just filter on single value
 
-        inds &= pl.col(k).is_in(flst) & ~pl.col(k).is_null()
+        col_expr = pl.col(k)
+        dtype = schema.get(k) if k in schema else None
+        if dtype == pl.Categorical or dtype == pl.Enum:
+            col_expr = col_expr.cast(pl.Utf8)
+        values = flst if isinstance(flst, (list, tuple)) else [flst]
+        value_expr = None
+        for val in values:
+            cond = col_expr == val
+            value_expr = cond if value_expr is None else (value_expr | cond)
+        if value_expr is None:
+            continue
+        inds &= value_expr & ~col_expr.is_null()
 
     filtered_df = df.filter(inds)
 
     return filtered_df, colnames
 
 
-# This is a wrapper that allows the filter to work on pandas DataFrames
-
-
-def pp_filter_data(
+def _pp_filter_data(
     df: pd.DataFrame,
     filter_dict: Mapping[str, Any],
-    c_meta: MutableMapping[str, Dict[str, Any]],
+    c_meta: MutableMapping[str, GroupOrColumnMeta],
     gc_dict: Mapping[str, Sequence[str]] | None = None,
 ) -> pd.DataFrame:
-    """Convenience wrapper to apply filters on pandas DataFrames."""
+    """Wrapper that allows the filter to work on pandas DataFrames."""
 
-    ldf, _ = pp_filter_data_lz(pl.DataFrame(df).lazy(), filter_dict, c_meta, gc_dict)
+    ldf, _ = _pp_filter_data_lz(pl.DataFrame(df).lazy(), filter_dict, c_meta, gc_dict)
     return ldf.collect().to_pandas()
 
 
-# Efficient way to calculate multiple quantiles at once with polars
-def pl_quantiles(ldf: pl.LazyFrame, cname: str, qs: Sequence[float]) -> np.ndarray:
-    """Compute multiple quantiles in one pass on a Polars ``LazyFrame``."""
+def _pl_quantiles(ldf: pl.LazyFrame, cname: str, qs: Sequence[float]) -> np.ndarray:
+    """Efficient way to calculate multiple quantiles at once with polars in one pass."""
 
     return ldf.select([pl.col(cname).quantile(q).alias(str(q)) for q in qs]).collect().to_numpy()[0]
 
@@ -653,17 +849,16 @@ def pl_quantiles(ldf: pl.LazyFrame, cname: str, qs: Sequence[float]) -> np.ndarr
 # In practice, this is probably not worth it because this is not used very often
 
 
-def discretize_continuous(
+def _discretize_continuous(
     ldf: pl.LazyFrame,
     col: str,
-    col_meta: MutableMapping[str, Any] | None = None,
+    col_meta: GroupOrColumnMeta | None = None,
 ) -> tuple[pl.LazyFrame, Sequence[str]]:
     """Bucket a continuous column into categorical bins with nice labels."""
 
-    col_meta = col_meta or {}
-    breaks = col_meta.get("bin_breaks", 5)
-    labels = col_meta.get("bin_labels")
-    fmt = col_meta.get("val_format", ".1f")
+    breaks = col_meta.bin_breaks if col_meta and col_meta.bin_breaks is not None else 5
+    labels = list(col_meta.bin_labels) if col_meta and col_meta.bin_labels is not None else None
+    fmt = col_meta.val_format or ".1f" if col_meta else ".1f"
     schema = ldf.collect_schema()
     isint = schema[col].is_integer()
 
@@ -676,7 +871,7 @@ def discretize_continuous(
                 )
             )
         bpoints = np.linspace(0, 1, breaks + 1)
-        breaks = list(pl_quantiles(ldf, col, bpoints))
+        breaks = list(_pl_quantiles(ldf, col, bpoints))
         span = breaks[-1] - breaks[0]
         if isint and ceil(span) < len(breaks) - 1:  # Fewer categories than breaks - just show the categories
             breaks = list(np.linspace(breaks[0], breaks[-1], int(ceil(span)) + 1))
@@ -686,7 +881,7 @@ def discretize_continuous(
             labels = [f"{bpoints[i]:.0%} - {bpoints[i + 1]:.0%}" for i in range(len(bpoints) - 1)]
             labels[0], labels[-1] = f"Bottom {bpoints[1]:.0%}", f"Top {bpoints[1]:.0%}"
     else:  # Given breaks
-        mi, ma = tuple(pl_quantiles(ldf, col, [0, 1]))  # Determine range of values
+        mi, ma = tuple(_pl_quantiles(ldf, col, [0, 1]))  # Determine range of values
         breaks, labs = utils.cut_nice_labels(breaks, mi, ma, isint, fmt)  # Adds mi/ma to breaks if not in range
         if labels is None:
             labels = labs
@@ -696,23 +891,23 @@ def discretize_continuous(
     return ldf, labels
 
 
-# Get all data required for a given graph
-# Only return columns and rows that are needed, aggregated to the format plot requires
-# Internally works with polars LazyDataFrame for large data set performance
-
-
 def pp_transform_data(
     full_df: pl.LazyFrame | pd.DataFrame,
-    data_meta: Dict[str, Any],
-    pp_desc: Dict[str, Any],
+    data_meta: DataMeta,
+    pp_desc: PlotDescriptor,
     columns: Sequence[str] | None = None,
-) -> Dict[str, Any]:
-    """Filter, aggregate, and annotate data prior to plotting."""
+) -> PlotInput:
+    """Get all data required for a given graph.
+
+    Only returns columns and rows that are needed, aggregated to the format plot requires.
+    Internally works with polars LazyDataFrame for large data set performance.
+    """
 
     pl.enable_string_cache()  # So we can work on categorical columns
 
-    plot_meta = get_plot_meta(pp_desc["plot"])
-    c_meta, gc_dict = update_data_meta_with_pp_desc(data_meta, pp_desc)
+    plot_meta = get_plot_meta(pp_desc.plot)
+    assert plot_meta is not None, f"Plot '{pp_desc.plot}' not found in registry"
+    c_meta, gc_dict = _update_data_meta_with_pp_desc(data_meta, pp_desc)
 
     # Setup lazy frame if not already:
     if not isinstance(full_df, pl.LazyFrame):
@@ -722,8 +917,8 @@ def pp_transform_data(
     all_col_names = schema.names()
 
     # Figure out which columns we actually need
-    weight_col = data_meta.get("weight_col", "row_weights")
-    factor_cols = pp_desc.get("factor_cols", []).copy()
+    weight_col = data_meta.weight_col or "row_weights"
+    factor_cols = list(pp_desc.factor_cols).copy()
 
     # Ensure weight column is present (fill with 1.0 if not)
     if weight_col not in all_col_names:
@@ -734,19 +929,19 @@ def pp_transform_data(
 
     # For transforming purposest, res_col is not a factor.
     # It will be made one for categorical plots for plotting part, but for pp_transform_data, remove it
-    if pp_desc["res_col"] in factor_cols:
-        factor_cols.remove(pp_desc["res_col"])
+    if pp_desc.res_col in factor_cols:
+        factor_cols.remove(pp_desc.res_col)
     base_cols = list(columns) if columns is not None else []
-    extra_cols = base_cols + ([weight_col] + (["draw"] if plot_meta.get("draws") else []))
-    cols = [pp_desc["res_col"]] + factor_cols + list(pp_desc.get("filter", {}).keys())
+    extra_cols = base_cols + ([weight_col] + (["draw"] if plot_meta.draws else []))
+    cols = [pp_desc.res_col] + factor_cols + list(pp_desc.filter.keys() if pp_desc.filter else [])
     cols += [c for c in extra_cols if c in all_col_names and c not in cols]
 
     # If any aliases are used, cconvert them to column names according to the data_meta
     cols = [c for c in np.unique(list_aliases(cols, gc_dict)) if c in all_col_names]
 
     # Remove draws_data if calcualted_draws is disabled
-    draws_data = data_meta.get("draws_data", {})
-    if not pp_desc.get("calculated_draws", True):
+    draws_data = data_meta.draws_data or {}
+    if not pp_desc.calculated_draws:
         draws_data = {}
 
     # Add row id-s and find count - both need to happen before filtering
@@ -755,89 +950,110 @@ def pp_transform_data(
 
     # For more customized filtering in dashboards
     # Has to be done before downselecting to only needed columns
-    if pp_desc.get("pl_filter"):
-        full_df = full_df.filter(eval(pp_desc["pl_filter"], {"pl": pl}))
+    if pp_desc.pl_filter:
+        full_df = full_df.filter(eval(pp_desc.pl_filter, {"pl": pl}))
 
     cols += ["id"]
     df = full_df.select(cols)  # Select only the columns we need
 
     # Filter the data with given filters
-    if pp_desc.get("filter"):
-        filtered_df, cols = pp_filter_data_lz(df, pp_desc.get("filter", {}), c_meta, gc_dict)
+    if pp_desc.filter:
+        filtered_df, cols = _pp_filter_data_lz(df, pp_desc.filter, c_meta, gc_dict)
     else:
         filtered_df = df
 
     # Discretize factor columns that are numeric
     for c in factor_cols:
         if c in cols and schema[c].is_numeric():
-            filtered_df, labels = discretize_continuous(filtered_df, c, c_meta.get(c, {}))
-            # Make sure it gets restored to pandas properly
-            c_meta[c].update({"categories": labels, "ordered": True, "continuous": False})
+            current_meta = c_meta.get(c)
+            filtered_df, labels = _discretize_continuous(filtered_df, c, current_meta)
+            merge_payload = GroupOrColumnMeta.model_validate(
+                {"categories": list(labels), "ordered": True, "continuous": False}
+            )
+            c_meta[c] = merge_pydantic_models(c_meta.get(c, GroupOrColumnMeta()), merge_payload)
 
     # Sample from filtered data
-    if "sample" in pp_desc:
-        filtered_df = filtered_df.sample(n=pp_desc["sample"], with_replacement=True)
+    if pp_desc.sample:
+        sample_method = getattr(filtered_df, "sample", None)
+        if sample_method is not None:
+            filtered_df = sample_method(n=pp_desc.sample, with_replacement=True)
+
+    original_question_meta = c_meta.get(pp_desc.res_col, GroupOrColumnMeta()).model_copy(deep=True)
+    original_question_colors = original_question_meta.question_colors
 
     # Convert ordered categorical to continuous if we can
-    rcl = gc_dict.get(pp_desc["res_col"], [pp_desc["res_col"]])
+    rcl = gc_dict.get(pp_desc.res_col, [pp_desc.res_col])
     rcl = [c for c in rcl if c in cols]
     for rc in rcl:
         res_meta = c_meta[rc]
-        if pp_desc.get("convert_res") == "continuous":
-            res_meta = ensure_ldf_categories(c_meta, rc, filtered_df)
-            nvals = get_cat_num_vals(res_meta, pp_desc)
+        if pp_desc.convert_res == "continuous":
+            res_meta = _ensure_ldf_categories(c_meta, rc, filtered_df)
+            nvals = _get_cat_num_vals(res_meta, pp_desc)
 
             # Conversion only makes sense for ordered (or binary) data
-            if len(nvals) > 2 and not res_meta.get("ordered"):
+            if nvals is not None and len(nvals) > 2 and not res_meta.ordered:
                 raise Exception(
                     f"Cannot convert {rc} to continuous because it has more than 2 values and is not ordered"
                 )
 
-            cmap = dict(zip(res_meta["categories"], nvals))
+            categories = res_meta.categories or []
+            nvals = nvals or []
+            cmap = dict(zip(categories, nvals))
             filtered_df = filtered_df.with_columns(
                 pl.col(rc).cast(pl.String).replace(cmap).cast(pl.Float32).fill_nan(None)
             )
             nvals = np.array(nvals, dtype="float")  # To handle null as nan
-            update = {
-                "continuous": True,
-                "categories": None,
-                "val_range": (np.nanmin(nvals), np.nanmax(nvals)),
-            }
-            c_meta[rc].update(update)
-            c_meta[pp_desc["res_col"]].update(update)
+            val_range = (np.nanmin(nvals), np.nanmax(nvals)) if len(nvals) > 0 else (0.0, 1.0)
+            update_model = GroupOrColumnMeta.model_validate(
+                {
+                    "continuous": True,
+                    "categories": None,
+                    "val_range": val_range,
+                }
+            )
+            c_meta[rc] = merge_pydantic_models(c_meta.get(rc, GroupOrColumnMeta()), update_model)
+            c_meta[pp_desc.res_col] = merge_pydantic_models(
+                c_meta.get(pp_desc.res_col, GroupOrColumnMeta()), update_model
+            )
 
     # Apply continuous transformation - needs to happen when data still in table form
-    if c_meta[rcl[0]].get("continuous"):
-        val_format, val_range = c_meta[rcl[0]].get("val_format") or ".1f", None
-        transform_fn = plot_meta.get("transform_fn", None)
+    if c_meta[rcl[0]].continuous:
+        val_format = c_meta[rcl[0]].val_format or ".1f"
+        val_range = c_meta[rcl[0]].val_range
+        transform_fn = plot_meta.transform_fn
         if transform_fn:
-            pp_desc["cont_transform"] = transform_fn
-        if "cont_transform" in pp_desc:
-            filtered_df, val_format, val_range = transform_cont(
+            pp_desc = pp_desc.model_copy(update={"cont_transform": transform_fn})
+        if pp_desc.cont_transform:
+            filtered_df, val_format, val_range = _transform_cont(
                 filtered_df,
                 rcl,
-                transform=pp_desc["cont_transform"],
+                transform=pp_desc.cont_transform,
                 val_format=val_format,
-                val_range=c_meta[rcl[0]].get("val_range"),
+                val_range=val_range,
             )
     else:
         val_format, val_range = ".1%", None  # Categoricals report %
-    val_format = pp_desc.get("val_format") or val_format  # Plot can override the default
-    val_range = pp_desc.get("val_range") or val_range
+    val_format = pp_desc.val_format or val_format  # Plot can override the default
+    val_range = pp_desc.val_range or val_range
 
     # Compute draws if needed - Nb: also applies if the draws are shared for the group of questions
-    if "draw" in cols and pp_desc["res_col"] in draws_data:
-        uid, ndraws = draws_data[pp_desc["res_col"]]
+    if "draw" in cols and pp_desc.res_col in draws_data:
+        uid, ndraws = draws_data[pp_desc.res_col]
         draws = utils.stable_draws(total_n, ndraws, uid)
         draw_df = pl.DataFrame({"draw": draws, "id": np.arange(0, total_n)})
         filtered_df = filtered_df.drop("draw").join(draw_df.lazy(), on=["id"], how="left")
 
     # If res_col is a group of questions, melt i.e. unpivot the questions and handle draws if needed
-    if pp_desc["res_col"] in gc_dict:
-        value_vars = [c for c in gc_dict[pp_desc["res_col"]] if c in cols]
+    if pp_desc.res_col in gc_dict:
+        value_vars = [c for c in gc_dict[pp_desc.res_col] if c in cols]
         n_questions = len(value_vars)  # Only cols that exist in the data
         id_vars = [c for c in cols if (c not in value_vars or c in factor_cols)]
-        c_meta["question"] = c_meta[pp_desc["res_col"]]
+        prefix = original_question_meta.col_prefix or ""
+        categories = [v.removeprefix(prefix) for v in value_vars]
+        question_meta = _question_meta_clone(original_question_meta, categories)
+        if original_question_colors:
+            question_meta.colors = original_question_colors
+        c_meta["question"] = question_meta
 
         if "draw" in cols and draws_data:
             draw_dfs, ddf_cache = [], {}
@@ -861,7 +1077,7 @@ def pp_transform_data(
         # Melt i.e. unpivot the questions
         filtered_df = filtered_df.unpivot(
             variable_name="question",
-            value_name=pp_desc["res_col"],
+            value_name=pp_desc.res_col,
             index=id_vars,
             on=value_vars,
         )
@@ -880,45 +1096,53 @@ def pp_transform_data(
     else:
         n_questions = 1
         if "question" in factor_cols:
-            filtered_df = filtered_df.with_columns(pl.lit(pp_desc["res_col"]).alias("question").cast(pl.Categorical))
+            filtered_df = filtered_df.with_columns(pl.lit(pp_desc.res_col).alias("question").cast(pl.Categorical))
+            question_meta = _question_meta_clone(original_question_meta, categories=[pp_desc.res_col])
+            if original_question_colors:
+                question_meta.colors = original_question_colors
+            c_meta["question"] = question_meta
 
     # Aggregate the data into right shape
-    pparams = wrangle_data(filtered_df, c_meta, factor_cols, weight_col, pp_desc, n_questions)
+    pi = _wrangle_data(filtered_df, c_meta, factor_cols, weight_col, pp_desc, n_questions)
 
-    pparams["val_format"] = val_format
-    pparams["val_range"] = val_range  # Currently not used
+    pi.val_format = val_format
+    pi.val_range = val_range  # Currently not used
 
     # Remove prefix from question names in plots
-    if "col_prefix" in c_meta[pp_desc["res_col"]] and "question" in pparams["data"].columns:
-        prefix = c_meta[pp_desc["res_col"]]["col_prefix"]
-        cmap = {c: c.replace(prefix, "") for c in pparams["data"]["question"].dtype.categories}
-        pparams["data"]["question"] = pparams["data"]["question"].cat.rename_categories(cmap)
+    res_col_meta = c_meta[pp_desc.res_col]
+    if res_col_meta.col_prefix and "question" in pi.data.columns:
+        prefix = res_col_meta.col_prefix
+        question_dtype = pi.data["question"].dtype
+        question_categories = utils.get_categories(question_dtype)
+        cmap = {c: c.replace(prefix, "") for c in question_categories}
+        pi.data["question"] = pi.data["question"].cat.rename_categories(cmap)
 
-    return pparams
+    return pi
 
 
-# Helper function that handles reformating data for create_plot
-def wrangle_data(
+def _wrangle_data(
     raw_df: pl.LazyFrame,
-    col_meta: MutableMapping[str, Dict[str, Any]],
+    col_meta: MutableMapping[str, GroupOrColumnMeta],
     factor_cols: List[str],
     weight_col: str,
-    pp_desc: Dict[str, Any],
+    pp_desc: PlotDescriptor,
     n_questions: int,
-) -> Dict[str, Any]:
-    """Aggregate filtered data into the shape expected by `create_plot`."""
+) -> PlotInput:
+    """Aggregate filtered data into a structured ``PlotInput`` model for create_plot."""
 
-    plot_meta = get_plot_meta(pp_desc["plot"])
+    plot_meta = get_plot_meta(pp_desc.plot)
+    assert plot_meta is not None, f"Plot '{pp_desc.plot}' not found in registry"
     schema = raw_df.collect_schema()
-    res_col = pp_desc.get("res_col")
+    res_col = pp_desc.res_col
     assert res_col is not None, "res_col is required"
 
-    draws, continuous, data_format = (plot_meta.get(vn, False) for vn in ["draws", "continuous", "data_format"])
+    draws = plot_meta.draws
+    data_format = plot_meta.data_format
 
     # if pp_desc['res_col'] in factor_cols: factor_cols.remove(pp_desc['res_col']) # Res cannot also be a factor
 
     # Determine the groupby dimensions
-    gb_dims = factor_cols + (["draw"] if draws else []) + (["id"] if plot_meta.get("data_format") == "raw" else [])
+    gb_dims = factor_cols + (["draw"] if draws else []) + (["id"] if plot_meta.data_format == "raw" else [])
 
     # If we have no groupby dimensions, add a dummy one so we don't have to handle the empty case
     if len(gb_dims) == 0:
@@ -927,31 +1151,33 @@ def wrangle_data(
 
     # if draws and 'draw' in schema.names() and 'augment_to' in pp_desc:
     #     # Should we try to bootstrap the data to always have augment_to points. Note this is relatively slow
-    #     raw_df = augment_draws(raw_df,gb_dims[1:],threshold=pp_desc['augment_to'])
+    #     raw_df = _augment_draws(raw_df,gb_dims[1:],threshold=pp_desc['augment_to'])
 
-    pparams = {"value_col": "value"}
+    pi_payload: Dict[str, Any] = {"value_col": "value"}
 
     if data_format == "raw":
-        pparams["value_col"] = res_col
-        if plot_meta.get("sample"):
-            data = (
-                raw_df.select(gb_dims + [res_col]).groupby(gb_dims).sample(n=plot_meta["sample"], with_replacement=True)
-            )
+        pi_payload["value_col"] = res_col
+        if plot_meta.sample:
+            selected = raw_df.select(gb_dims + [res_col])
+            grouped = getattr(selected, "groupby", lambda *args: selected)(gb_dims)
+            sample_method = getattr(grouped, "sample", None)
+            if sample_method is not None:
+                data = sample_method(n=plot_meta.sample, with_replacement=True)
+            else:
+                data = grouped
         else:
             data = raw_df.select(gb_dims + [res_col])
 
     elif data_format == "longform":
-        col_meta.get(res_col, {})
-
-        agg_fn = pp_desc.get("agg_fn", "mean")
-        agg_fn = plot_meta.get("agg_fn", agg_fn)
+        agg_fn = pp_desc.agg_fn or "mean"
+        agg_fn = plot_meta.agg_fn or agg_fn
         # Check if categorical by looking at schema
         is_categorical = isinstance(schema[res_col], (pl.Categorical, pl.Enum, pl.String))
-        # Check if highest_lowest_ranked is called before wrangle_data
+        # Check if _highest_lowest_ranked is called before _wrangle_data
 
         if is_categorical:
-            pparams["cat_col"] = res_col
-            pparams["value_col"] = "percent"
+            pi_payload["cat_col"] = res_col
+            pi_payload["value_col"] = "percent"
 
             # Aggregate the data
             data = raw_df.group_by(gb_dims + [res_col]).agg(pl.col(weight_col).sum().alias("percent"))
@@ -1003,9 +1229,9 @@ def wrangle_data(
                     ]
                 )
 
-            pparams["value_col"] = res_col
+            pi_payload["value_col"] = res_col
 
-        if plot_meta.get("group_sizes"):
+        if plot_meta.group_sizes:
             data = data.rename({weight_col: "group_size"})
         else:
             data = data.drop(weight_col)
@@ -1021,61 +1247,64 @@ def wrangle_data(
     # TODO: Check back here when they fix unpivot in streaming!
     # print("final\n",data.explain(streaming=True))
     # data = data.collect(engine='streaming').to_pandas() # New streaming - does not stream unpivot and is slow
-    data = data.collect(streaming=True).to_pandas()
+    # Polars collect with streaming parameter - type stubs may not include this
+    data = data.collect(streaming=True).to_pandas()  # type: ignore[call-overload]
     # Force immediate garbage collection
     gc.collect()  # Does not help much, but unlikely to hurt either
 
     # How many datapoints the plot is based on. This is useful metainfo to display sometimes
-    pparams["filtered_size"] = raw_df.select(pl.col(weight_col).sum()).collect().item() / n_questions
+    pi_payload["filtered_size"] = raw_df.select(pl.col(weight_col).sum()).collect().item() / n_questions
+
+    # Ensure derived columns have placeholder metadata so later lookups succeed
+    for key in [pi_payload["value_col"], pi_payload.get("cat_col")]:
+        if key and key not in col_meta:
+            col_meta[key] = GroupOrColumnMeta()
 
     # Fix categorical types that polars does not read properly from parquet
     # Also filter out unused categories so plots are cleaner
     for c in data.columns:
-        if col_meta.get(c, {}).get("categories"):
-            m_cats = (
-                col_meta[c]["categories"]
-                if col_meta[c].get("categories", "infer") != "infer"
-                else sorted(list(data[c].unique()))
-            )
-            if len(set(data[c].dtype.categories) - set(m_cats)) > 0:
-                m_cats = data[c].dtype.categories
+        meta = col_meta.get(c)
+        col_dtype = data[c].dtype
+        if meta and meta.categories and isinstance(col_dtype, pd.CategoricalDtype):
+            m_cats = meta.categories if meta.categories != "infer" else sorted(list(data[c].unique()))
+            dtype_cats = utils.get_categories(col_dtype)
+            if dtype_cats and len(set(dtype_cats) - set(m_cats)) > 0:
+                m_cats = dtype_cats
 
             # Get the categories that are in use
-            if c != pp_desc["res_col"] or not col_meta[c].get("likert"):
+            if c != pp_desc.res_col or not meta.likert:
                 u_cats = [cv for cv in m_cats if cv in data[c].unique()]
             else:
                 u_cats = m_cats
 
-            data[c] = pd.Categorical(data[c], u_cats, ordered=col_meta[c].get("ordered", False))
+            data[c] = pd.Categorical(data[c], u_cats, ordered=meta.ordered)
 
-    pparams["col_meta"] = col_meta  # As this has been adjusted for discretization etc
-    pparams["data"] = data
+    pi_payload["col_meta"] = col_meta  # As this has been adjusted for discretization etc
+    pi_payload["data"] = data
 
-    return pparams
+    return PlotInput.model_validate(pi_payload)
 
 
-def get_neutral_cats(cmeta: Mapping[str, Any]) -> List[str]:
+def _get_neutral_cats(cmeta: ColumnMeta) -> List[str]:
     """Return the list of neutral Likert categories defined in metadata."""
 
-    neutrals = cmeta.get("nonordered", []).copy()
-    if cmeta.get("neutral_middle"):
-        neutrals.append(cmeta["neutral_middle"])
+    neutrals = list(cmeta.nonordered).copy()
+    neutral_middle = cmeta.neutral_middle
+    if neutral_middle:
+        neutrals.append(neutral_middle)
     return neutrals
 
 
-# Create a color scale
-
-
-def meta_color_scale(
-    cmeta: Mapping[str, Any],
+def _meta_color_scale(
+    cmeta: ColumnMeta,
     column: pd.Series | pd.Categorical | None = None,
     translate: Callable[[str], str] | None = None,
-) -> Dict[str, Any] | alt.Scale | alt.UndefinedType:
-    """Convert metadata colors (or defaults) into an Altair scale definition."""
+) -> Dict[str, object] | object | alt.UndefinedType:  # type: ignore[return-value]
+    """Create a color scale by converting metadata colors (or defaults) into an Altair scale definition."""
 
-    scale, neutrals = cmeta.get("colors", None), get_neutral_cats(cmeta)
-    cats = column.dtype.categories if column is not None and column.dtype.name == "category" else None
-    if scale is None and column is not None and column.dtype.name == "category" and column.dtype.ordered:
+    scale, neutrals = _normalize_color_dict(cmeta.colors), _get_neutral_cats(cmeta)
+    cats = utils.get_categories(column.dtype) if column is not None and column.dtype.name == "category" else None
+    if scale is None and column is not None and column.dtype.name == "category" and utils.get_ordered(column.dtype):
         # Split the values into negative, neutral, positive
         neg, neut, pos = utils.split_to_neg_neutral_pos(cats, neutrals)
 
@@ -1103,22 +1332,22 @@ def meta_color_scale(
     return utils.to_alt_scale(scale, cats)
 
 
-def translate_df(df: pd.DataFrame, translate: Callable[[str], str]) -> pd.DataFrame:
+def _translate_df(df: pd.DataFrame, translate: Callable[[str], str]) -> pd.DataFrame:
     """Translate column names and categorical levels for display."""
 
     df.columns = [(translate(c) if c not in special_columns and not c.endswith("_label") else c) for c in df.columns]
     for c in df.columns:
         if df[c].dtype.name == "category":
-            cats = df[c].dtype.categories
+            cats = utils.get_categories(df[c].dtype)
             remap = dict(zip(cats, [translate(c) for c in cats]))
             df[c] = df[c].cat.rename_categories(remap)
     return df
 
 
-def create_tooltip(
-    pparams: Dict[str, Any],
+def _create_tooltip(
+    pi: PlotInput,
     data: pd.DataFrame,
-    c_meta: Mapping[str, Any],
+    c_meta: Mapping[str, GroupOrColumnMeta],
     tfn: Callable[[str], str],
 ) -> tuple[list[alt.Tooltip], pd.DataFrame]:
     """Build tooltip metadata (labels + formatted values) for plots and return with modified data."""
@@ -1126,31 +1355,33 @@ def create_tooltip(
     label_dict = {}
 
     # Determine the columns we need tooltips for:
-    tcols = [f["col"] for f in pparams["facets"] if f["col"] in data.columns]
+    tcols = [f.col for f in pi.facets if f.col in data.columns]
 
     # Find labels mappings for regular columns
     for cn in tcols:
-        if cn in c_meta and c_meta[cn].get("labels"):
-            label_dict[cn] = c_meta[cn]["labels"]
+        meta = c_meta.get(cn)
+        if meta and meta.labels:
+            label_dict[cn] = dict(meta.labels)
 
     # Find a mapping for multi-column questions
 
-    if "question" in data.columns:
-        prefix = c_meta["question"].get("col_prefix", "")
+    if "question" in data.columns and "question" in c_meta:
+        prefix = c_meta["question"].col_prefix or ""
         qvals = [prefix + c for c in data["question"].unique()]
-        if any([c_meta[c].get("label") for c in qvals if c in c_meta]):
-            label_dict["question"] = {
-                c.removeprefix(prefix): c_meta[c].get("label") or ""
-                for c in qvals
-                if c in c_meta and c_meta[c].get("label")
-            }
+        q_labels = {}
+        for c in qvals:
+            meta = c_meta.get(c)
+            if meta and meta.label:
+                q_labels[c.removeprefix(prefix)] = meta.label
+        if q_labels:
+            label_dict["question"] = q_labels
 
     # Create the tooltips
     tooltips = [
         alt.Tooltip(
-            field=tfn(pparams["value_col"]),
+            field=tfn(pi.value_col),
             type="quantitative",
-            format=pparams["val_format"],
+            format=pi.val_format,
         )
     ]
     for cn in tcols:
@@ -1165,8 +1396,7 @@ def create_tooltip(
     return tooltips, data
 
 
-# Small helper function to move columns from internal to external columns
-def remove_from_internal_fcols(cname: str, factor_cols: List[str], n_inner: int) -> int:
+def _remove_from_internal_fcols(cname: str, factor_cols: List[str], n_inner: int) -> int:
     """Shift ``cname`` out of the inner facet slice while preserving order."""
 
     if cname not in factor_cols[:n_inner]:
@@ -1178,24 +1408,25 @@ def remove_from_internal_fcols(cname: str, factor_cols: List[str], n_inner: int)
     return n_inner
 
 
-def inner_outer_factors(
+def _inner_outer_factors(
     factor_cols: List[str],
-    pp_desc: Mapping[str, Any],
-    plot_meta: Mapping[str, Any],
+    pp_desc: PlotDescriptor,
+    plot_meta: PlotMeta,
 ) -> tuple[List[str], int]:
     """Return `(factor_cols, n_inner)` after respecting descriptor overrides."""
 
     # Determine how many factors to use as inner facets
-    in_f = pp_desc.get("internal_facet", False)
-    n_min_f, n_rec_f = plot_meta.get("n_facets", (0, 0))
-    n_inner = (n_rec_f if in_f else n_min_f) if isinstance(in_f, bool) else in_f
+    in_f = pp_desc.internal_facet if pp_desc.internal_facet is not None else False
+    res_col = pp_desc.res_col
+    n_min_f, n_rec_f = plot_meta.n_facets or (0, 0)
+    n_inner: int = (n_rec_f if in_f else n_min_f) if isinstance(in_f, bool) else int(in_f)  # type: ignore[arg-type]
     if n_inner > len(factor_cols):
         n_inner = len(factor_cols)
 
     # If question facet as inner facet for a no_question_facet plot, just move it out
-    if plot_meta.get("no_question_facet"):
-        n_inner = remove_from_internal_fcols("question", factor_cols, n_inner)
-        n_inner = remove_from_internal_fcols(pp_desc["res_col"], factor_cols, n_inner)
+    if plot_meta.no_question_facet:
+        n_inner = _remove_from_internal_fcols("question", factor_cols, n_inner)
+        n_inner = _remove_from_internal_fcols(res_col, factor_cols, n_inner)
 
     return factor_cols, n_inner
 
@@ -1205,11 +1436,9 @@ def inner_outer_factors(
 # --------------------------------------------------------
 
 
-# Function that takes filtered raw data and plot information and outputs the plot
-# Handles all of the data wrangling and parameter formatting
 def create_plot(
-    pparams: Dict[str, Any],
-    pp_desc: Dict[str, Any],
+    pi: PlotInput,
+    pp_desc: PlotDescriptor,
     alt_properties: Mapping[str, Any] | None = None,
     alt_wrapper: Callable[[AltairChart], AltairChart] | None = None,
     dry_run: bool = False,
@@ -1217,103 +1446,126 @@ def create_plot(
     height: int | None = None,
     return_matrix_of_plots: bool = False,
     translate: Callable[[str], str] | None = None,
-) -> AltairChart | List[List[AltairChart]] | Dict[str, Any]:
-    """Produce an Altair plot (or matrix of plots) from prepared parameters."""
+) -> AltairChart | List[List[AltairChart]] | PlotInput:
+    """Produce an Altair plot (or matrix of plots) from prepared parameters.
+
+    Handles all of the data wrangling and parameter formatting.
+    """
 
     # Make a shallow copy so we don't mess with the original object. Important for caching
-    pparams = {**pparams}
+    pi = pi.model_copy(deep=False)
+    pi.facets = list(pi.facets or [])
+    pi.tooltip = list(pi.tooltip or [])
+    pi.outer_factors = list(pi.outer_factors or [])
     alt_properties = dict(alt_properties or {})
 
     # Get most commonly needed things in usable forms
-    data, col_meta = pparams["data"].copy(), pparams["col_meta"]
-    plot_meta = get_plot_meta(pp_desc["plot"])
+    data, col_meta = pi.data.copy(), pi.col_meta
+    plot_meta = get_plot_meta(pp_desc.plot)
+    assert plot_meta is not None, f"Plot '{pp_desc.plot}' not found in registry"
 
-    if (
-        "question" in data.columns and pp_desc["res_col"] not in pp_desc["factor_cols"]
-    ):  # Dont override the colors if displaying a categorical
-        col_meta["question"]["colors"] = col_meta[pp_desc["res_col"]].get("question_colors", None)
+    if "question" in data.columns:
+        if "question" not in col_meta:
+            col_meta["question"] = GroupOrColumnMeta()
 
-    plot_args = pp_desc.get("plot_args", {})
-    pparams.update(plot_args)
+    raw_plot_args = pp_desc.plot_args or {}
+    plot_param_fields = PlotInput.model_fields.keys()
+    extra_plot_args = dict(pi.plot_args)
+
+    for key, value in raw_plot_args.items():
+        if key in plot_param_fields:
+            setattr(pi, key, value)
+        else:
+            extra_plot_args[key] = value
+
+    pi.plot_args = extra_plot_args
 
     # Get list of factor columns (adding question and category if needed)
-    factor_cols, n_inner = inner_outer_factors(pp_desc["factor_cols"], pp_desc, plot_meta)
+    factor_cols_input = list(pp_desc.factor_cols or [])
+    factor_cols, n_inner = _inner_outer_factors(factor_cols_input, pp_desc, plot_meta)
 
     # Reorder categories if required
-    if pp_desc.get("sort"):
-        for cn in pp_desc["sort"]:
-            ascending = pp_desc["sort"][cn] if isinstance(pp_desc["sort"], dict) else False
-            if cn not in data.columns or cn == pparams["value_col"]:
+    if pp_desc.sort:
+        sort_spec = pp_desc.sort if isinstance(pp_desc.sort, dict) else {}
+        for cn in pp_desc.sort.keys() if isinstance(pp_desc.sort, dict) else pp_desc.sort:
+            ascending = sort_spec.get(cn, False) if isinstance(sort_spec, dict) else False
+            if cn not in data.columns or cn == pi.value_col:
                 raise Exception(f"Sort column {cn} not found")
 
             # Some plots (like likert_bars) need a more complex sort
             # This converts the categorical into numeric values and then sorts by the mean of the value
-            if plot_meta.get("sort_numeric_first_facet"):
+            if plot_meta.sort_numeric_first_facet:
                 f0 = factor_cols[0]
-                nvals = get_cat_num_vals(col_meta[f0], pp_desc)
-                cats = col_meta[f0]["categories"]
+                nvals = _get_cat_num_vals(col_meta[f0], pp_desc)
+                cats = col_meta[f0].categories or []
                 cmap = dict(zip(cats, nvals))
-                sdf = data[[cn, f0, pparams["value_col"]]]
-                sdf["sort_val"] = sdf[pparams["value_col"]] * sdf[f0].astype("object").replace(cmap)
+                sdf = data[[cn, f0, pi.value_col]]
+                sdf["sort_val"] = sdf[pi.value_col] * sdf[f0].astype("object").replace(cmap)
                 ordervals = sdf.groupby(cn, observed=True)["sort_val"].mean()
 
             # Otherwise, do not sort ordered categories as categories.
             # Only creates confusion if left on by accident
-            elif cn in col_meta and col_meta[cn].get("ordered"):
+            elif cn in col_meta and col_meta[cn].ordered:
                 continue
 
             # Otherwise, we are good to sort, simply by value_col
             else:
-                ordervals = data.groupby(cn, observed=True)[pparams["value_col"]].mean()
+                ordervals = data.groupby(cn, observed=True)[pi.value_col].mean()
             order = ordervals.sort_values(ascending=ascending).index
             data[cn] = pd.Categorical(data[cn], list(order))
-    elif "ordering_value" in data.columns and pp_desc.get("plot") == "maxdiff":
-        if pp_desc.get("factor_cols"):
-            q = pp_desc["factor_cols"][0]
+    elif "ordering_value" in data.columns and pp_desc.plot == "maxdiff":
+        if pp_desc.factor_cols:
+            q = pp_desc.factor_cols[0]
             order = data.groupby(q, observed=True)["ordering_value"].mean().sort_values(ascending=False).index
             data[q] = pd.Categorical(data[q], list(order))
 
     # Handle internal facets (and translate as needed)
-    pparams["facets"] = []
+    pi.facets = []
 
     if n_inner > 0:
         for cn in factor_cols[:n_inner]:
-            fd = {
-                "col": cn,
-                "ocol": cn,
-                "order": list(data[cn].dtype.categories),
-                "colors": meta_color_scale(col_meta[cn], data[cn]),
-                "neutrals": get_neutral_cats(col_meta[cn]),
-                "meta": col_meta[cn],
-            }
+            base_meta = col_meta.get(cn, GroupOrColumnMeta())
+            fd = FacetMeta(
+                col=cn,
+                ocol=cn,
+                order=utils.get_categories(data[cn].dtype),
+                colors=_meta_color_scale(base_meta, data[cn]),
+                neutrals=_get_neutral_cats(base_meta),
+                meta=ColumnMeta.model_validate(base_meta.model_dump(mode="python")),
+            )
 
-            pparams["facets"].append(fd)
+            pi.facets.append(fd)
 
         # Pass on data from facet column meta if specified by plot
-        for i, d in enumerate(plot_meta.get("requires", [])):
+        for i, d in enumerate(plot_meta.requires):
             for k, v in d.items():
                 if v == "pass":
-                    pparams[k] = col_meta[pparams["facets"][i]["ocol"]].get(k)
+                    facet_meta = col_meta.get(pi.facets[i].ocol)
+                    if facet_meta:
+                        extra_plot_args[k] = _meta_to_plain(facet_meta).get(k)
 
         factor_cols = factor_cols[n_inner:]  # Leave rest for external faceting
 
-    if plot_meta.get("no_faceting") and len(factor_cols) > 0:
+    if plot_meta.no_faceting and len(factor_cols) > 0:
         return_matrix_of_plots = True
 
-    pparams["value_range"] = tuple(data[pparams["value_col"]].agg(["min", "max"]))
+    pi.value_range = tuple(data[pi.value_col].agg(["min", "max"]))
 
-    pparams["outer_colors"] = col_meta[factor_cols[0]].get("colors", {}) if factor_cols else {}
+    pi.outer_colors = (
+        _normalize_color_dict(col_meta.get(factor_cols[0], GroupOrColumnMeta()).colors or {}) if factor_cols else {}
+    )
 
     # Rename res_col if label provided (or remove prefix if present)
-    if col_meta[pparams["value_col"]].get("label") or col_meta[pparams["value_col"]].get("col_prefix"):
-        label = col_meta[pparams["value_col"]].get("label")
+    value_meta = col_meta.get(pi.value_col)
+    if value_meta and (value_meta.label or value_meta.col_prefix):
+        label = value_meta.label
         if not label:
-            prefix = col_meta[pparams["value_col"]]["col_prefix"]
-            label = pparams["value_col"]
+            prefix = value_meta.col_prefix or ""
+            label = pi.value_col
             if label.startswith(prefix) and label != prefix:
-                label = pparams["value_col"][len(prefix) :]
-        data = data.rename(columns={pparams["value_col"]: label})
-        pparams["value_col"] = label
+                label = pi.value_col[len(prefix) :]
+        data = data.rename(columns={pi.value_col: label})
+        pi.value_col = label
 
     # Handle translation funcion
     if translate is None:
@@ -1321,31 +1573,34 @@ def create_plot(
 
     # Add escaping as Vega Lite goes crazy for symbols like ".[]"
     # It would be enough to do it just for column names, but it's easier to do it for all
-    def tfunc(s: str) -> str:
+    def _tfunc(s: str) -> str:
         return utils.escape_vega_label(translate(s))
 
-    pparams["translate"] = tfunc
+    pi.translate = _tfunc
 
     # Handle tooltips (handles translation inside)
-    pparams["tooltip"], data = create_tooltip(pparams, data, col_meta, tfunc)
+    pi.tooltip, data = _create_tooltip(pi, data, col_meta, _tfunc)
 
     # Translate everything
-    for f in pparams["facets"]:
-        f["col"] = tfunc(f["col"])
-        f["order"] = [tfunc(c) for c in f["order"]]
-        f["colors"] = meta_color_scale(f["meta"], data[f["ocol"]], translate=tfunc)
-        f["neutrals"] = [tfunc(c) for c in f["neutrals"]]
+    for f in pi.facets:
+        f.col = _tfunc(f.col)
+        f.order = [_tfunc(c) for c in f.order]
+        updated_colors = _meta_color_scale(f.meta, data[f.ocol], translate=_tfunc)
+        if updated_colors is not alt.Undefined:
+            f.colors = updated_colors
+        f.neutrals = [_tfunc(c) for c in f.neutrals]
 
-    data = translate_df(data, tfunc)
-    pparams["value_col"] = tfunc(pparams["value_col"])
-    factor_cols = [tfunc(c) for c in factor_cols]
+    data = _translate_df(data, _tfunc)
+    pi.value_col = _tfunc(pi.value_col)
+    factor_cols = [_tfunc(c) for c in factor_cols]
 
     # If we still have more than 1 factor left, merge the rest into one so we have a 2d facet
     if len(factor_cols) > 1:
-        n_facet_cols = len(data[factor_cols[-1]].dtype.categories)
+        n_facet_cols = len(utils.get_categories(data[factor_cols[-1]].dtype))
         if not return_matrix_of_plots and len(factor_cols) > 2:
             # Preserve ordering of categories we combine
-            nf_order = [", ".join(t) for t in it.product(*[list(data[c].dtype.categories) for c in factor_cols[1:]])]
+            cat_lists = [utils.get_categories(data[c].dtype) for c in factor_cols[1:]]
+            nf_order = [", ".join(str(x) for x in t) for t in it.product(*cat_lists)]
             factor_col = ", ".join(factor_cols[1:])
             jfs = data[factor_cols[1:]].agg(", ".join, axis=1)
             data.loc[:, factor_col] = pd.Categorical(jfs, nf_order)
@@ -1353,56 +1608,63 @@ def create_plot(
 
         if len(factor_cols) >= 2:
             factor_cols = list(reversed(factor_cols))
-            n_facet_cols = len(data[factor_cols[1]].dtype.categories)
+            n_facet_cols = len(utils.get_categories(data[factor_cols[1]].dtype))
     else:
-        n_facet_cols = plot_meta.get("factor_columns", 1)
+        n_facet_cols = plot_meta.factor_columns or 1
 
     # Allow value col name to be changed. This can be useful in distinguishing different
     # aggregation options for a column
-    if "val_name" in pp_desc:
-        data = data.rename(columns={pparams["value_col"]: pp_desc["val_name"]})
-        pparams["value_col"] = pp_desc["val_name"]
+    if pp_desc.val_name:
+        data = data.rename(columns={pi.value_col: pp_desc.val_name})
+        pi.value_col = pp_desc.val_name
 
-    # We consistenly used (and mutated) data and now put it back into pparams
-    pparams["data"] = data
+    # We consistenly used (and mutated) data and now put it back into pi
+    pi.data = data
 
     # Do width/height calculations
     if factor_cols:
-        n_facet_cols = pp_desc.get("n_facet_cols", n_facet_cols)  # Allow pp_desc to override col nr
+        n_facet_cols = pp_desc.n_facet_cols or n_facet_cols  # Allow pp_desc to override col nr
     dims = {"width": width // n_facet_cols if factor_cols else width}
 
     if height is not None:
         dims["height"] = int(height)
-    elif "aspect_ratio" in plot_meta:
-        dims["height"] = int(dims["width"] / plot_meta["aspect_ratio"])
+    elif plot_meta.aspect_ratio:
+        dims["height"] = int(dims["width"] / plot_meta.aspect_ratio)
 
     # Make plot properties available to plot function (mostly useful for as_is plots)
-    pparams.update({"width": width})
-    pparams["alt_properties"] = alt_properties
-    pparams["outer_factors"] = factor_cols
+    pi.width = width
+    pi.alt_properties = alt_properties
+    pi.outer_factors = factor_cols
 
     # Create the plot using it's function
     if dry_run:
-        return pparams
+        return pi
 
-    # Trim down parameters list if needed
-    plot_fn = get_plot_fn(pp_desc["plot"])
-    pparams = clean_kwargs(plot_fn, pparams)
+    plot_fn = _get_plot_fn(pp_desc.plot)
     if alt_wrapper is None:
         alt_wrapper = lambda p: p
 
-    if plot_meta.get("as_is"):  # if as_is set, just return the plot as-is
-        return plot_fn(**pparams)
+    plot_arg_payload = clean_kwargs(plot_fn, extra_plot_args)
+
+    def _call_plot_fn(
+        data_override: pd.DataFrame | None = None,
+    ) -> AltairChart | List[List[AltairChart]] | PlotInput:
+        payload = pi if data_override is None else pi.model_copy(deep=True)
+        if data_override is not None:
+            payload.data = data_override
+        return plot_fn(payload, **plot_arg_payload)
+
+    if plot_meta.as_is:  # if as_is set, just return the plot as-is
+        return _call_plot_fn()
     elif factor_cols:
         if return_matrix_of_plots:  # return a 2d list of plots which can be rendeed one plot at a time
-            del pparams["data"]
-            combs = it.product(*[data[fc].dtype.categories for fc in factor_cols])
+            combs = it.product(*[utils.get_categories(data[fc].dtype) for fc in factor_cols])
             return [
                 list(batch_item)
                 for batch_item in batch(
                     [
                         alt_wrapper(
-                            plot_fn(data[(data[factor_cols] == c).all(axis=1)], **pparams)
+                            _call_plot_fn(data[(data[factor_cols] == c).all(axis=1)])
                             .properties(title="-".join(map(str, c)), **dims, **alt_properties)
                             .configure_view(discreteHeight={"step": 20})
                         )
@@ -1414,44 +1676,44 @@ def create_plot(
         else:  # Use faceting
             if n_facet_cols == 1:
                 plot = alt_wrapper(
-                    plot_fn(**pparams)
+                    _call_plot_fn()
                     .properties(**dims, **alt_properties)
                     .facet(
                         row=alt.Row(
                             field=factor_cols[0],
                             type="ordinal",
-                            sort=list(data[factor_cols[0]].dtype.categories),
+                            sort=utils.get_categories(data[factor_cols[0]].dtype),
                             header=alt.Header(labelOrient="top"),
                         )
                     )
                 )
             elif len(factor_cols) > 1:
                 plot = alt_wrapper(
-                    plot_fn(**pparams)
+                    _call_plot_fn()
                     .properties(**dims, **alt_properties)
                     .facet(
                         column=alt.Column(
                             field=factor_cols[1],
                             type="ordinal",
-                            sort=list(data[factor_cols[1]].dtype.categories),
+                            sort=utils.get_categories(data[factor_cols[1]].dtype),
                         ),
                         row=alt.Row(
                             field=factor_cols[0],
                             type="ordinal",
-                            sort=list(data[factor_cols[0]].dtype.categories),
+                            sort=utils.get_categories(data[factor_cols[0]].dtype),
                             header=alt.Header(labelOrient="top"),
                         ),
                     )
                 )
             else:  # n_facet_cols!=1 but just one facet
                 plot = alt_wrapper(
-                    plot_fn(**pparams)
+                    _call_plot_fn()
                     .properties(**dims, **alt_properties)
                     .facet(
                         alt.Facet(
                             field=factor_cols[0],
                             type="ordinal",
-                            sort=list(data[factor_cols[0]].dtype.categories),
+                            sort=utils.get_categories(data[factor_cols[0]].dtype),
                         ),
                         columns=n_facet_cols,
                     )
@@ -1459,7 +1721,7 @@ def create_plot(
             plot = plot.configure_view(discreteHeight={"step": 20})
     else:
         plot = alt_wrapper(
-            plot_fn(**pparams).properties(**dims, **alt_properties).configure_view(discreteHeight={"step": 20})
+            _call_plot_fn().properties(**dims, **alt_properties).configure_view(discreteHeight={"step": 20})
         )
 
         if return_matrix_of_plots:
@@ -1468,25 +1730,35 @@ def create_plot(
     return plot
 
 
-# Compute the full factor_cols list, including question and res_col as needed
 def impute_factor_cols(
-    pp_desc: Dict[str, Any],
-    col_meta: Mapping[str, Dict[str, Any]],
-    plot_meta: Mapping[str, Any] | None = None,
+    pp_desc: PlotDescriptor | Dict[str, Any],
+    col_meta: Mapping[str, GroupOrColumnMeta],
+    plot_meta: PlotMeta | None = None,
 ) -> List[str]:
-    """Ensure descriptor has sensible defaults for `factor_cols`."""
+    """Compute the full factor_cols list, including question and res_col as needed.
 
-    factor_cols = pp_desc.get("factor_cols", []).copy()
+    Ensures descriptor has sensible defaults for `factor_cols`.
+    """
+
+    if isinstance(pp_desc, dict) and "plot" not in pp_desc:
+        pp_desc["plot"] = "default"
+
+    # Ensure pp_desc is a PlotDescriptor object
+    pp_desc = soft_validate(pp_desc, PlotDescriptor)
+
+    factor_cols = list(pp_desc.factor_cols or [])
 
     # Determine if res is categorical
-    cat_res = "categories" in col_meta[pp_desc["res_col"]] and pp_desc.get("convert_res") != "continuous"
+    res_col = pp_desc.res_col
+    convert_res = pp_desc.convert_res
+    res_col_meta = col_meta[res_col]
+    has_categories = res_col_meta.categories is not None
+    has_q = res_col_meta.columns is not None
+    cat_res = has_categories and convert_res != "continuous"
 
     # Add res_col if we are working with a categorical input (and not converting it to continuous)
-    if cat_res and pp_desc["res_col"] not in factor_cols:
-        factor_cols.insert(0, pp_desc["res_col"])
-
-    # Determine if we have 'question' as a column
-    has_q = "columns" in col_meta[pp_desc["res_col"]]  # Check if res_col is a group of questions
+    if cat_res and res_col not in factor_cols:
+        factor_cols.insert(0, res_col)
     if len(factor_cols) < 1 and not has_q:
         # Create 'question' as a dummy dimension so we have at least one factor
         # (generally required for plotting)
@@ -1503,74 +1775,77 @@ def impute_factor_cols(
 
     # Pass the factor_cols through the same changes done inside plot pipeline to make more explicit what happens
     if plot_meta:
-        factor_cols, _ = inner_outer_factors(factor_cols, pp_desc, plot_meta)
+        factor_cols, _ = _inner_outer_factors(factor_cols, pp_desc, plot_meta)
 
     return factor_cols
 
 
-# A convenience function to draw a plot straight from a dataset
 def e2e_plot(
-    pp_desc: Dict[str, Any],
+    pp_desc: Dict[str, Any] | PlotDescriptor,
     data_file: str | None = None,
     full_df: pl.LazyFrame | pd.DataFrame | None = None,
-    data_meta: Dict[str, Any] | None = None,
+    data_meta: DataMeta | None = None,
     width: int = 800,
     height: int | None = None,
     check_match: bool = True,
     impute: bool = True,
-    plot_cache: MutableMapping[str, Dict[str, Any]] | None = None,
+    plot_cache: MutableMapping[str, PlotInput] | None = None,
     return_data: bool = False,
     **kwargs: object,
 ) -> AltairChart | List[List[AltairChart]] | pd.DataFrame:
-    """High-level helper that loads data, transforms, and renders a plot."""
+    """A convenience function to draw a plot straight from a dataset.
+
+    High-level helper that loads data, transforms, and renders a plot.
+    """
 
     if data_file is None and full_df is None:
         raise Exception("Data must be provided either as data_file or full_df")
     if data_file is None and data_meta is None:
         raise Exception("If data provided as full_df then data_meta must also be given")
 
-    # Validate the plot descriptor
-    soft_validate(pp_desc, PlotDescriptor)
+    # Validate the plot descriptor and convert to Pydantic object
+    pp_desc = soft_validate(pp_desc, PlotDescriptor)
 
     if full_df is None:
-        full_df, full_meta = read_parquet_with_metadata(data_file, lazy=True)
+        data_file_str = cast(str, data_file)
+        full_df, full_meta = read_parquet_with_metadata(data_file_str, lazy=True)
         if full_meta is None:
             raise ValueError(f"Parquet file {data_file} has no metadata")
-        dm = full_meta["data"]
         if data_meta is None:
-            assert dm is None or isinstance(dm, dict), "data metadata must be dict or None"
-            data_meta = dm  # type: ignore[assignment]
+            data_meta = full_meta.data
 
-    pp_desc = pp_desc.copy()
+    if data_meta is None:
+        raise ValueError(f"Parquet file {data_file} has no data metadata")
+
     if impute:
-        pp_desc["factor_cols"] = impute_factor_cols(
-            pp_desc, extract_column_meta(data_meta), get_plot_meta(pp_desc["plot"])
-        )
+        factor_cols = impute_factor_cols(pp_desc, extract_column_meta(data_meta), get_plot_meta(pp_desc.plot))
+        pp_desc = pp_desc.model_copy(update={"factor_cols": factor_cols})
 
     if check_match:
         matches = matching_plots(pp_desc, full_df, data_meta, details=True, list_hidden=True)
-        if pp_desc["plot"] not in matches:
-            raise Exception(f"Plot not registered: {pp_desc['plot']}")
+        if isinstance(matches, list) or pp_desc.plot not in matches:
+            raise Exception(f"Plot not registered: {pp_desc.plot}")
 
-        fit, imp = matches[pp_desc["plot"]]
+        matches_dict = cast(dict[str, tuple[int, List[str]]], matches)
+        fit, imp = matches_dict[pp_desc.plot]
         if fit < 0:
-            raise Exception(f"Plot {pp_desc['plot']} not applicable in this situation because of flags {imp}")
+            raise Exception(f"Plot {pp_desc.plot} not applicable in this situation because of flags {imp}")
 
     if plot_cache is not None:
-        key = json.dumps(pp_desc, sort_keys=True)
+        key = json.dumps(pp_desc.model_dump(mode="python"), sort_keys=True)
         if key in plot_cache:
-            pparams = deepcopy(plot_cache[key])
+            pi = plot_cache[key].model_copy(deep=True)
         else:
-            pparams = pp_transform_data(full_df, data_meta, pp_desc)
-            plot_cache[key] = pparams
+            pi = pp_transform_data(full_df, data_meta, pp_desc)
+            plot_cache[key] = pi.model_copy(deep=True)
     else:  # No caching
-        pparams = pp_transform_data(full_df, data_meta, pp_desc)
+        pi = pp_transform_data(full_df, data_meta, pp_desc)
 
     if return_data:
-        return pparams["data"]
+        return pi.data
     # dry_run=True can cause create_plot to return Dict[str, Any], but we don't support that here
     assert not kwargs.get("dry_run", False), "dry_run not supported in e2e_plot"
-    return create_plot(pparams, pp_desc, width=width, height=height, **kwargs)  # type: ignore[return-value]
+    return create_plot(pi, pp_desc, width=width, height=height, **kwargs)  # type: ignore[return-value]
 
 
 # Another convenience function to simplify testing new plots
@@ -1583,17 +1858,25 @@ def e2e_plot(
 
 def test_new_plot(
     fn: Callable[..., AltairChart],
-    pp_desc: Dict[str, Any],
+    pp_desc: PlotDescriptor | Dict[str, Any],
     *args: object,
-    plot_meta: Mapping[str, Any] | None = None,
+    plot_meta: Mapping[str, Any] | PlotMeta | None = None,
     **kwargs: object,
 ) -> AltairChart | List[List[AltairChart]] | pd.DataFrame:
     """Temporarily register a plot for interactive testing."""
 
-    plot_meta = dict(plot_meta or {})
-    stk_plot(**{**plot_meta, "plot_name": "test"})(fn)  # Register the plot under name 'test'
+    # Ensure pp_desc is a PlotDescriptor object
+    pp_desc = soft_validate(pp_desc, PlotDescriptor)
+
+    if isinstance(plot_meta, PlotMeta):
+        meta_payload = plot_meta.model_dump(mode="python")
+    else:
+        meta_payload = dict(plot_meta or {})
+    meta_payload.pop("name", None)
+
+    stk_plot(**{**meta_payload, "plot_name": "test"})(fn)  # Register the plot under name 'test'
     try:
-        pp_desc = {**pp_desc, "plot": "test"}
+        pp_desc = pp_desc.model_copy(update={"plot": "test"})
         return e2e_plot(pp_desc, *args, **kwargs)
     finally:
-        stk_deregister("test")  # And de-register it again
+        _stk_deregister("test")  # And de-register it again

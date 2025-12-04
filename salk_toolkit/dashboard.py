@@ -11,6 +11,11 @@ module exposes:
   on
 """
 
+# Wrapping streamlit objects with translation is funky from a type-system perspective
+# For now, disabling the two type checks this affects the most
+# pyright: reportCallIssue=false
+# pyright: reportAttributeAccessIssue=false
+
 __all__ = [
     "get_plot_width",
     "open_fn",
@@ -65,6 +70,7 @@ import __main__  # to get name of py file
 
 
 from salk_toolkit import utils
+from salk_toolkit.utils import plot_matrix_html
 from salk_toolkit.io import (
     read_parquet_with_metadata,
     fix_df_with_meta,
@@ -73,16 +79,25 @@ from salk_toolkit.io import (
     list_aliases,
 )
 from salk_toolkit.pp import e2e_plot
+from salk_toolkit.validation import DataMeta, GroupOrColumnMeta, FilterSpec
 
 import streamlit as st
 from streamlit_option_menu import option_menu  # type: ignore[import-untyped]
 from streamlit_dimensions import st_dimensions  # type: ignore[import-untyped]
 import streamlit_authenticator as stauth  # type: ignore[import-untyped]
 import libsql_client  # type: ignore[import-untyped]
-from typing import Callable, Any, cast
+from typing import Callable, Any, cast, IO, ContextManager, Protocol
 
 # Type alias for JSON data
 JsonDict = dict[str, Any]
+
+
+class TranslationObject(Protocol):
+    """Protocol for objects that provide translation functionality."""
+
+    def tf(self, s: str, **kwargs: object) -> str:
+        """Translate a string."""
+        ...
 
 
 def get_plot_width(key: str) -> int:
@@ -98,7 +113,7 @@ def get_plot_width(key: str) -> int:
     return min(800, int(0.8 * wobj["width"]))  # Needs to be adjusted down  to leave margin for plots
 
 
-def update_manifest(fname: str) -> None:
+def _update_manifest(fname: str) -> None:
     """Update the manifest JSON file with a new file entry.
 
     Args:
@@ -132,7 +147,9 @@ def update_manifest(fname: str) -> None:
 
 
 # Open either a local or an s3 file
-def open_fn(fname: str, *args: object, s3_fs: object | None = None, **kwargs: object) -> object:
+def open_fn(
+    fname: str, *args: object, s3_fs: s3fs.S3FileSystem | None = None, **kwargs: object
+) -> ContextManager[IO[bytes]]:
     """Open a file from local filesystem or S3.
 
     Args:
@@ -144,16 +161,16 @@ def open_fn(fname: str, *args: object, s3_fs: object | None = None, **kwargs: ob
     Returns:
         File-like object opened from local filesystem or S3.
     """
-    # update_manifest(fname) # Actually these tend to be the files we want to be in S3
+    # _update_manifest(fname) # Actually these tend to be the files we want to be in S3
     if fname[:3] == "s3:":
         if s3_fs is None:
             s3_fs = s3fs.S3FileSystem(anon=False)
-        return s3_fs.open(fname, *args, **kwargs)
+        return cast(ContextManager[IO[bytes]], s3_fs.open(fname, *args, **kwargs))
     else:
-        return open(fname, *args, **kwargs)
+        return cast(ContextManager[IO[bytes]], open(fname, *args, **kwargs))
 
 
-def exists_fn(fname: str, *args: object, s3_fs: object | None = None, **kwargs: object) -> bool:
+def exists_fn(fname: str, *args: object, s3_fs: s3fs.S3FileSystem | None = None, **kwargs: object) -> bool:
     """Check if a file exists in local filesystem or S3.
 
     Args:
@@ -175,7 +192,7 @@ def exists_fn(fname: str, *args: object, s3_fs: object | None = None, **kwargs: 
 
 # ttl=None - never expire. Makes sense for potentially big data files
 @st.cache_resource(show_spinner=False, ttl=None)
-def read_parquet_with_data_meta_lazy_cached(data_source: str, **kwargs: object) -> tuple[object, dict[str, object]]:
+def read_parquet_with_data_meta_lazy_cached(data_source: str, **kwargs: object) -> tuple[object, DataMeta]:
     """Load parquet file with metadata using lazy Polars loading (cached).
 
     Args:
@@ -183,20 +200,19 @@ def read_parquet_with_data_meta_lazy_cached(data_source: str, **kwargs: object) 
         **kwargs: Additional arguments passed to read_parquet_with_metadata.
 
     Returns:
-        Tuple of (lazy Polars DataFrame, data metadata dictionary).
+        Tuple of (lazy Polars DataFrame, DataMeta).
     """
     print(f"Reading lazy data from {data_source}")
     df, full_meta = read_parquet_with_metadata(data_source, lazy=True, **kwargs)
     assert full_meta is not None, "Expected metadata to be present"
-    data_meta = full_meta["data"]
-    assert isinstance(data_meta, dict), "Expected data metadata to be a dict"
+    data_meta = full_meta.data
     return df, data_meta
 
 
 # Load json uncached - useful for admin pages
 
 
-def load_json(fname: str, _s3_fs: object | None = None, **kwargs: object) -> JsonDict:
+def load_json(fname: str, _s3_fs: s3fs.S3FileSystem | None = None, **kwargs: object) -> JsonDict:
     """Load JSON file from local filesystem or S3 (uncached).
 
     Args:
@@ -217,7 +233,7 @@ def load_json(fname: str, _s3_fs: object | None = None, **kwargs: object) -> Jso
 
 
 @st.cache_data(show_spinner=False, ttl=60)
-def load_json_cached(fname: str, _s3_fs: object | None = None, **kwargs: object) -> JsonDict:
+def load_json_cached(fname: str, _s3_fs: s3fs.S3FileSystem | None = None, **kwargs: object) -> JsonDict:
     """Load JSON file from local filesystem or S3 (cached for 60 seconds).
 
     Args:
@@ -234,7 +250,7 @@ def load_json_cached(fname: str, _s3_fs: object | None = None, **kwargs: object)
 # For saving json back
 
 
-def save_json(d: object, fname: str, _s3_fs: object | None = None, **kwargs: object) -> None:
+def save_json(d: object, fname: str, _s3_fs: s3fs.S3FileSystem | None = None, **kwargs: object) -> None:
     """Save JSON object to local filesystem or S3.
 
     Args:
@@ -264,7 +280,7 @@ def alias_file(fname: str, file_map: dict[str, str]) -> str:
         return fname
 
 
-def log_event(event: str, uid: str, path: str, s3_fs: object | None = None) -> None:
+def log_event(event: str, uid: str, path: str, s3_fs: s3fs.S3FileSystem | None = None) -> None:
     """Log an event to a CSV file (local or S3).
 
     Args:
@@ -277,7 +293,8 @@ def log_event(event: str, uid: str, path: str, s3_fs: object | None = None) -> N
 
     if not exists_fn(path, s3_fs=s3_fs):  # If file not present, create it
         print(f"Log file {path} not found, creating it")
-        open_fn(path, "w", s3_fs=s3_fs).close()
+        with open_fn(path, "w", s3_fs=s3_fs):
+            pass  # Just create the file
 
     # Just append the row to the file
     with open_fn(path, "a", s3_fs=s3_fs) as f:
@@ -338,7 +355,7 @@ st_wrap_list = [
 # Some keyword arguments can be translated
 
 
-def transform_kws(kws: dict[str, object], tfo: object) -> dict[str, object]:
+def _transform_kws(kws: dict[str, object], tfo: TranslationObject) -> dict[str, object]:
     """Transform keyword arguments for Streamlit functions with translation.
 
     Args:
@@ -351,18 +368,18 @@ def transform_kws(kws: dict[str, object], tfo: object) -> dict[str, object]:
     if "context" in kws:
         del kws["context"]
     if "format_func" in kws:
-        ff = kws["format_func"]
+        ff = cast(Callable[[str], str], kws["format_func"])
         kws["format_func"] = lambda s: tfo.tf(ff(s))
     if "placeholder" in kws:
         kws["placeholder"] = tfo.tf(kws["placeholder"])
     return kws
 
 
-# wrap the first parameter of streamlit function with self.translate
+# wrap the first parameter of streamlit function with self._translate
 # has to be a separate function instead of in a for loop for scoping reasons
 
 
-def wrap_st_with_translate(base: object, fd: str | dict[str, object], tfo: object) -> Callable[..., object]:
+def _wrap_st_with_translate(base: object, fd: str | dict[str, object], tfo: TranslationObject) -> Callable[..., object]:
     """Wrap a Streamlit function to automatically translate its first argument.
 
     Args:
@@ -388,7 +405,7 @@ def wrap_st_with_translate(base: object, fd: str | dict[str, object], tfo: objec
         lambda *args, **kwargs: func(  # debugf(func,
             *[tfs[tt](kwargs.get("context"))(args[i]) for i, tt in enumerate(fd["args"])],
             *args[len(fd["args"]) :],
-            **{**kw_defaults, **transform_kws(kwargs, tfo)},
+            **{**kw_defaults, **_transform_kws(kwargs, tfo)},
         )
     )
 
@@ -416,7 +433,7 @@ class ContextManagerWrapper(AbstractContextManager):
         self.obj.__exit__(*args)
 
 
-def wrap_all_st_functions(base: object, tfo: object, to: object | None = None) -> object:
+def _wrap_all_st_functions(base: object, tfo: TranslationObject, to: object | None = None) -> object:
     """Wrap all Streamlit functions in st_wrap_list with translation support.
 
     Args:
@@ -434,34 +451,34 @@ def wrap_all_st_functions(base: object, tfo: object, to: object | None = None) -
         fn = fd["name"] if isinstance(fd, dict) else fd
         if not hasattr(st, fn):
             continue
-        setattr(to, fn, wrap_st_with_translate(base, fd, tfo))
+        setattr(to, fn, _wrap_st_with_translate(base, fd, tfo))
 
     # Container creators need to be wrapped recursively
     setattr(
         to,
         "tabs",
         lambda *args, **kwargs: tuple(
-            wrap_all_st_functions(c, tfo)
-            for c in wrap_st_with_translate(base, {"name": "tabs", "args": ["list"]}, tfo)(*args, **kwargs)
+            _wrap_all_st_functions(c, tfo)
+            for c in cast(Any, _wrap_st_with_translate(base, {"name": "tabs", "args": ["list"]}, tfo)(*args, **kwargs))
         ),
     )
     setattr(
         to,
         "columns",
-        lambda *args, **kwargs: tuple(wrap_all_st_functions(c, tfo) for c in base.columns(*args, **kwargs)),
+        lambda *args, **kwargs: tuple(_wrap_all_st_functions(c, tfo) for c in base.columns(*args, **kwargs)),
     )
 
     setattr(
         to,
         "expander",
-        lambda *args, **kwargs: wrap_all_st_functions(
-            wrap_st_with_translate(base, "expander", tfo)(*args, **kwargs), tfo
+        lambda *args, **kwargs: _wrap_all_st_functions(
+            _wrap_st_with_translate(base, "expander", tfo)(*args, **kwargs), tfo
         ),
     )
     setattr(
         to,
         "container",
-        lambda *args, **kwargs: wrap_all_st_functions(base.container(*args, **kwargs), tfo),
+        lambda *args, **kwargs: _wrap_all_st_functions(base.container(*args, **kwargs), tfo),
     )
 
     return to
@@ -471,7 +488,7 @@ def default_translate(s: str, **kwargs: object) -> str:
     """Default translation function that capitalizes and replaces underscores.
 
     Args:
-        s: String to translate.
+        s: String to _translate.
         **kwargs: Additional arguments (unused).
 
     Returns:
@@ -481,7 +498,7 @@ def default_translate(s: str, **kwargs: object) -> str:
 
 
 # A function that automatically updates the pot file with untranslated strings
-def po_template_updater(pot_file: str | None = None) -> Callable[[str], str]:
+def _po_template_updater(pot_file: str | None = None) -> Callable[[str], str]:
     """Create a translation function that auto-updates .pot files.
 
     Args:
@@ -510,13 +527,13 @@ def po_template_updater(pot_file: str | None = None) -> Callable[[str], str]:
             "Content-Transfer-Encoding": "8bit",
         }
         tdc = defaultdict(set)
-    update_manifest(pot_file)
+    _update_manifest(pot_file)
 
-    def translate(s: str, **kwargs: object) -> str:
+    def _translate(s: str, **kwargs: object) -> str:
         """Translate a string using the current translation function.
 
         Args:
-            s: String to translate.
+            s: String to _translate.
             **kwargs: Additional arguments passed to translation function.
 
         Returns:
@@ -538,10 +555,10 @@ def po_template_updater(pot_file: str | None = None) -> Callable[[str], str]:
             tdc[ctx].add(s)
         return s
 
-    return translate
+    return _translate
 
 
-def translate_fn_from_po(po_file: str) -> Callable[[str], str]:
+def _translate_fn_from_po(po_file: str) -> Callable[[str], str]:
     """Load translations from a .po file and return a translation function.
 
     Args:
@@ -555,14 +572,14 @@ def translate_fn_from_po(po_file: str) -> Callable[[str], str]:
     return lambda s, **kwargs: td.get(s, s)
 
 
-def load_translate(
+def _load_translate(
     translate: str | dict[str, str] | Callable[[str], str] | None,
     cc_translations: dict[str, Callable[[str], str] | None] | None = None,
 ) -> Callable[[str], str]:
     """Load a translation function from various sources.
 
     Args:
-        translate: Translation source (function, dict, file path, or language code).
+        _translate: Translation source (function, dict, file path, or language code).
         cc_translations: Dictionary mapping language codes to translation functions.
 
     Returns:
@@ -585,7 +602,7 @@ def load_translate(
         if os.path.exists(translate):
             ext = os.path.splitext(translate)[1]
             if ext == ".po" or ext == ".pot":
-                return translate_fn_from_po(translate)
+                return _translate_fn_from_po(translate)
             elif ext == ".json":
                 td = load_json_cached(translate)
                 return lambda s, **kwargs: td.get(s, s)
@@ -600,7 +617,7 @@ def load_translate(
 
 
 @st.cache_resource(show_spinner=False, ttl=3600)
-def load_po_translations() -> dict[str, Callable[[str], str] | None]:
+def _load_po_translations() -> dict[str, Callable[[str], str] | None]:
     """Load all .po translation files from locale directory (cached for 1 hour).
 
     Returns:
@@ -615,8 +632,8 @@ def load_po_translations() -> dict[str, Callable[[str], str] | None]:
         for country_code in os.listdir("locale"):
             po_path = f"locale/{country_code}/{bname}.po"
             if os.path.exists(po_path):
-                update_manifest(po_path)
-                translations[country_code] = translate_fn_from_po(po_path)
+                _update_manifest(po_path)
+                translations[country_code] = _translate_fn_from_po(po_path)
 
     return translations
 
@@ -688,8 +705,8 @@ class SalkDashboardBuilder:
         self.page_name = None
 
         # Set up translation
-        self.pot_updater = po_template_updater()
-        self.cc_translations = load_po_translations()
+        self.pot_updater = _po_template_updater()
+        self.cc_translations = _load_po_translations()
         self.default_lang = default_lang
         login_lang_choice = st.sidebar.empty()
 
@@ -714,7 +731,7 @@ class SalkDashboardBuilder:
                 clang = st.session_state.get("chosen_lang") or self.default_lang
                 self.set_translate(clang)
 
-                def set_login_lang() -> None:
+                def _set_login_lang() -> None:
                     st.session_state["chosen_lang"] = st.session_state["login_lang"]
 
                 ind = opts.index(st.session_state.get("login_lang", self.default_lang))  # FIXES lang not updating
@@ -722,7 +739,7 @@ class SalkDashboardBuilder:
                     self.tf("Language:", context="ui"),
                     opts,
                     index=ind,
-                    on_change=set_login_lang,
+                    on_change=_set_login_lang,
                     key="login_lang",
                 )
                 if lang != clang:
@@ -779,8 +796,8 @@ class SalkDashboardBuilder:
         else:
             self.set_translate(self.user.get("lang"), remember=True)
 
-        wrap_all_st_functions(st, self, to=self)
-        self.sidebar = wrap_all_st_functions(st.sidebar, self)
+        _wrap_all_st_functions(st, self, to=self)
+        self.sidebar = cast(AbstractContextManager, _wrap_all_st_functions(st.sidebar, self))
 
     def set_translate(self, lang: str | None, remember: bool = False) -> None:
         """Set the translation language for the dashboard.
@@ -791,7 +808,7 @@ class SalkDashboardBuilder:
         """
         if lang is None or lang not in self.cc_translations:
             lang = self.default_lang
-        translate = load_translate(lang, self.cc_translations)
+        translate = _load_translate(lang, self.cc_translations)
         self.tf = lambda s, **kwargs: translate(self.pot_updater(s, **kwargs))
         if remember:
             st.session_state["lang"] = lang
@@ -810,8 +827,10 @@ class SalkDashboardBuilder:
         if columns is None:
             q = self.ldf
         else:
-            q = self.ldf.select(columns)
-        return fix_df_with_meta(q.collect().to_pandas(), self.meta)
+            ldf = cast(pl.LazyFrame, self.ldf)
+            q = ldf.select(columns)
+        ldf_q = cast(pl.LazyFrame, q)
+        return fix_df_with_meta(ldf_q.collect().to_pandas(), self.meta)
 
     # For backwards compatibility - this is very inefficient
     @property
@@ -897,12 +916,12 @@ class SalkDashboardBuilder:
     def filter_ui(
         self,
         dims: list[str],
-        flt: dict[str, object] | None = None,
+        flt: FilterSpec | None = None,
         detailed: bool = False,
         raw: bool = False,
         force_choice: bool = False,
         key: str = "",
-    ) -> dict[str, object]:
+    ) -> FilterSpec:
         """Display filter UI and return filter specification.
 
         Args:
@@ -973,7 +992,7 @@ class SalkDashboardBuilder:
             Decorator function that registers the page.
         """
 
-        def decorator(pfunc: Callable[..., dict[str, object] | None]) -> None:
+        def _decorator(pfunc: Callable[..., dict[str, object] | None]) -> None:
             # If we have a whitelist of organizations, and the user is not in it, don't show any pages
             # This is the second line of defense as whitelist is also checked in build()
             if self.uam.org_whitelist and self.user.get("organization") not in self.uam.org_whitelist:
@@ -999,7 +1018,7 @@ class SalkDashboardBuilder:
             if can_access:
                 self.pages.append((name, pfunc, kwargs))
 
-        return decorator
+        return _decorator
 
     def build(self) -> None:
         """Build and render the dashboard with navigation and selected page."""
@@ -1032,7 +1051,7 @@ class SalkDashboardBuilder:
 
         # Add user settings page if logged in
         if self.authenticated:
-            self.pages.append(("Settings", user_settings_page, {"icon": "sliders"}))
+            self.pages.append(("Settings", _user_settings_page, {"icon": "sliders"}))
 
         # Add admin page for admins
         if self.admin:
@@ -1070,7 +1089,7 @@ class SalkDashboardBuilder:
         # Load data
         self.data_source = meta.get("data_source", self.data_source)
         with st.spinner(self.tf("Loading data...", context="ui")):
-            update_manifest(self.data_source)
+            _update_manifest(self.data_source)
 
             # Download the data if it's not already locally present
             # This is done because lazy loading over s3 is very painfully slow as data files are big
@@ -1278,7 +1297,7 @@ class UserAuthenticationManager:
 
 
 @st.cache_resource
-def sqlite_client(url: str, token: str) -> object:
+def sqlite_client(url: str, token: str) -> libsql_client.ClientSync:
     """Create a cached SQLite client connection.
 
     Args:
@@ -1326,7 +1345,7 @@ class StreamlitAuthenticationManager(UserAuthenticationManager):
         super().__init__(groups, info, org_whitelist, logger, languages, translate_func)
         self.s3fs = s3_fs
         self.stuser: JsonDict = {}
-        self.client = None
+        self.client: libsql_client.ClientSync | None = None
         self.conf_file = auth_conf_file
         self.conf: JsonDict = {}
         self.load_conf()
@@ -1399,7 +1418,7 @@ class StreamlitAuthenticationManager(UserAuthenticationManager):
 
     def login_screen(self) -> None:
         """Display login screen using Streamlit Authenticator."""
-        tf = self.tf
+        tf: Callable[[str], str] = self.tf
         _, _, username = self.auth.login(
             "sidebar",
             fields={
@@ -1628,9 +1647,10 @@ class FronteggAuthenticationManager(UserAuthenticationManager):
         Returns:
             Reformatted user dictionary.
         """
-        meta = user.get("metadata") or {}
-        if isinstance(meta, str):
-            meta = json.loads(meta)
+        meta_raw = user.get("metadata") or {}
+        if isinstance(meta_raw, str):
+            meta_raw = json.loads(meta_raw)
+        meta = cast(dict[str, Any], meta_raw)
         return {
             "uid": user["email"],
             "name": user.get("name", ""),
@@ -1816,7 +1836,7 @@ class FronteggAuthenticationManager(UserAuthenticationManager):
 
 
 # Password reset
-def user_settings_page(sdb: SalkDashboardBuilder) -> None:
+def _user_settings_page(sdb: SalkDashboardBuilder) -> None:
     """Display user settings page with language selection and password reset.
 
     Args:
@@ -1860,7 +1880,7 @@ def user_settings_page(sdb: SalkDashboardBuilder) -> None:
 
 
 # Helper function to highlight log rows
-def highlight_cells(val: str) -> str:
+def _highlight_cells(val: str) -> str:
     """Return CSS color style for log event cells based on event type.
 
     Args:
@@ -1915,7 +1935,7 @@ def admin_page(sdb: SalkDashboardBuilder) -> None:
     if menu_choice == "Log management":
         log_data = pd.read_csv(alias_file(sdb.log_path, sdb.filemap), names=["timestamp", "event", "uid"])
         st.dataframe(
-            log_data.sort_index(ascending=False).style.map(highlight_cells, subset=["event"]),
+            log_data.sort_index(ascending=False).style.map(_highlight_cells, subset=["event"]),
             width=1200,
         )  # use_container_width=True
 
@@ -2038,7 +2058,6 @@ def admin_page(sdb: SalkDashboardBuilder) -> None:
 # See https://github.com/altair-viz/altair/issues/2369 -> https://github.com/vega/vega-lite/issues/3729
 
 
-# Draw a matrix of plots using separate plots and st columns
 def draw_plot_matrix(pmat: list[list[object]] | object | None) -> None:
     """Draw a matrix of Altair plots in Streamlit columns.
 
@@ -2058,9 +2077,6 @@ def draw_plot_matrix(pmat: list[list[object]] | object | None) -> None:
                 continue
             # print(pmat[i][j].to_json()) # to debug json
             c.altair_chart(pmat[i][j], use_container_width=ucw)  # ,theme=None)
-
-
-# Draw the plot described by pp_desc
 
 
 def st_plot(pp_desc: dict[str, object], **kwargs: object) -> None:
@@ -2087,9 +2103,10 @@ def plot_cache() -> object:
     return utils.dict_cache(size=100)
 
 
-# Streamlit session state safety - check and clear session state if it has an unfit value
 def stss_safety(key: str, opts: list[object]) -> None:
-    """Clear session state key if its value is not in the allowed options.
+    """Streamlit session state safety - check and clear session state if it has an unfit value.
+
+    Clear session state key if its value is not in the allowed options.
 
     Args:
         key: Session state key to check.
@@ -2115,7 +2132,7 @@ def facet_ui(
         two: Whether to allow selecting two facets.
         uid: Unique identifier for widget state.
         raw: Whether to use raw column names (skip aliases).
-        translate: Optional translation function.
+        _translate: Optional translation function.
         force_choice: Whether to require user to make a selection.
         label: Label for the facet selector.
 
@@ -2152,8 +2169,7 @@ def facet_ui(
     return [r_map[d] for d in fcols]
 
 
-# Function that creates reset functions for multiselects in filter
-def ms_reset(cn: str, all_vals: list[object], uid: str) -> Callable[[], None]:
+def _ms_reset(cn: str, all_vals: list[object], uid: str) -> Callable[[], None]:
     """Create a reset function for a multiselect filter.
 
     Args:
@@ -2165,17 +2181,20 @@ def ms_reset(cn: str, all_vals: list[object], uid: str) -> Callable[[], None]:
         Function that resets the multiselect to all values.
     """
 
-    def reset_ms() -> None:
+    def _reset_ms() -> None:
         st.session_state[f"filter_{uid}_{cn}_multiselect"] = all_vals
 
-    return reset_ms
+    return _reset_ms
 
 
-@st.cache_data(show_spinner=False)
-def get_filter_limits(
+@st.cache_data(
+    show_spinner=False,
+    hash_funcs={DataMeta: lambda x: hash(x.model_dump_json()) if x is not None else None},
+)
+def _get_filter_limits(
     _ldf: pl.LazyFrame | pd.DataFrame,
     dims: list[str] | None,
-    dmeta: dict[str, object] | None,
+    dmeta: DataMeta | None,
     uid: str,
 ) -> dict[str, dict[str, object]]:
     """Get filter limits (min/max for continuous, categories for categorical) for dimensions.
@@ -2205,47 +2224,50 @@ def get_filter_limits(
 
     limits = {}
     for d in dims:
-        if d in gcols:
-            prefix = c_meta[d]["col_prefix"] if "col_prefix" in c_meta[d] else ""
+        if d in gcols:  # Block group
+            meta_d = c_meta[d]
+            prefix = meta_d.col_prefix or ""
             limits[d] = {
                 "categories": [c.removeprefix(prefix) for c in gcols[d]],
                 "group": True,
             }
-        elif c_meta[d].get("continuous") and schema[d].is_numeric():
-            if c_meta[d].get("val_range"):
-                val_range = cast(list[int | float], c_meta[d]["val_range"])
-                limits[d] = {
-                    "min": val_range[0],
-                    "max": val_range[1],
-                }
-            else:
-                limits[d] = ldf.select([pl.min(d).alias("min"), pl.max(d).alias("max")]).collect().to_dicts()[0]
-            limits[d]["continuous"] = True
-        elif c_meta[d].get("categories"):
-            if c_meta[d].get("categories") == "infer":
-                if schema[d].is_numeric():
-                    utils.warn(
-                        f"Column {d} is numeric but marked as categorical. "
-                        "Skipping in filter as inferring categories is not possible."
-                    )
-                    continue
+        elif d in c_meta:  # Individual column
+            meta_d = c_meta[d]
+            if meta_d.continuous and schema[d].is_numeric():
+                if meta_d.val_range:
+                    val_range = cast(list[int | float], list(meta_d.val_range))
+                    limits[d] = {
+                        "min": val_range[0],
+                        "max": val_range[1],
+                    }
                 else:
-                    limits[d] = {"categories": ldf.select(pl.all()).unique(d).collect().to_series().sort().to_list()}
-            else:
-                limits[d] = {"categories": c_meta[d]["categories"]}
+                    limits[d] = ldf.select([pl.min(d).alias("min"), pl.max(d).alias("max")]).collect().to_dicts()[0]
+                limits[d]["continuous"] = True
+            elif meta_d.categories:
+                if meta_d.categories == "infer":
+                    if schema[d].is_numeric():
+                        utils.warn(
+                            f"Column {d} is numeric but marked as categorical. "
+                            "Skipping in filter as inferring categories is not possible."
+                        )
+                        continue
+                    else:
+                        categories = ldf.select(pl.all()).unique(d).collect().to_series().sort().to_list()
+                        limits[d] = {"categories": categories}
+                else:
+                    limits[d] = {"categories": meta_d.categories}
 
-            limits[d]["ordered"] = c_meta[d].get("ordered", False)
-        else:
-            utils.warn(f"Skipping {d}: {c_meta[d]} in filter")
+                limits[d]["ordered"] = meta_d.ordered
+            else:
+                utils.warn(f"Skipping {d}: {meta_d} in filter")
     return limits
 
 
-# User interface that outputs a filter for the pp_desc
 def filter_ui(
     data: pl.LazyFrame | pd.DataFrame,
-    dmeta: dict[str, object] | None = None,
+    dmeta: DataMeta | None = None,
     dims: list[str] | None = None,
-    flt: dict[str, object] | None = None,
+    flt: FilterSpec | None = None,
     uid: str = "base",
     detailed: bool = False,
     raw: bool = False,
@@ -2253,8 +2275,8 @@ def filter_ui(
     force_choice: bool = False,
     grouped: bool = False,
     obs_dim: str | None = None,
-) -> dict[str, object]:
-    """Display filter UI and return filter specification.
+) -> FilterSpec:
+    """Display filter UI and return filter specification for the pp_desc.
 
     Args:
         data: LazyFrame or DataFrame to filter.
@@ -2264,7 +2286,7 @@ def filter_ui(
         uid: Unique identifier for widget state.
         detailed: Whether to show detailed filter options.
         raw: Whether to use raw column names (skip aliases).
-        translate: Optional translation function.
+        _translate: Optional translation function.
         force_choice: Whether to require user to make a selection.
         grouped: Whether to group filters by metadata groups.
         obs_dim: Optional observation dimension name.
@@ -2278,7 +2300,7 @@ def filter_ui(
 
     tf = lambda s: tfc(s, context="data")
 
-    limits = get_filter_limits(data, dims, dmeta, uid)
+    limits = _get_filter_limits(data, dims, dmeta, uid)
     dims = list(limits.keys())
 
     if dmeta is not None:
@@ -2287,7 +2309,7 @@ def filter_ui(
             dims = list_aliases(dims, gcols)  # Replace aliases like 'demographics'
         c_meta = extract_column_meta(dmeta)  # mainly for groups defined in meta
     else:
-        c_meta = defaultdict(lambda: {})
+        c_meta = defaultdict(lambda: GroupOrColumnMeta())
 
     if not force_choice:
         f_info = st.sidebar.container()
@@ -2332,7 +2354,8 @@ def filter_ui(
                 # Do some prep for translations
                 r_map = dict(zip([tf(c) for c in cats], cats))
                 all_vals = list(r_map.keys())  # translated categories
-                grp_names = c_meta[cn].get("groups", {}).keys()
+                grp_groups = c_meta[cn].groups or {}
+                grp_names = list(grp_groups.keys()) if isinstance(grp_groups, dict) else []
                 r_map.update(dict(zip([tf(c) for c in grp_names], grp_names)))
 
             # Multiselect
@@ -2347,9 +2370,9 @@ def filter_ui(
                     stc.button(
                         tf("Reset"),
                         key=f"filter_{uid}_{cn}_ms_reset",
-                        on_click=ms_reset(cn, all_vals, uid),
+                        on_click=_ms_reset(cn, all_vals, uid),
                     )
-                    filters[cn] = [r_map[c] for c in filters[cn]]
+                    filters[cn] = [r_map[c] for c in cast(list[str], filters[cn])]
 
             # Unordered categorical - selectbox
             elif limits[cn].get("categories") and not limits[cn].get("ordered"):
@@ -2437,13 +2460,13 @@ def log_missing_translations(tf: Callable[[str], str], nonchanged_dict: dict[str
         Wrapped translation function that logs missing translations.
     """
 
-    def ntf(s: str) -> str:
+    def _ntf(s: str) -> str:
         ns = tf(s)
         if ns == s:
             nonchanged_dict[s] = None
         return ns
 
-    return ntf
+    return _ntf
 
 
 def clean_missing_translations(
@@ -2542,235 +2565,3 @@ def translate_pot(template: str, dest: str, tfunc: Callable[[str], str], sources
     progress.close()
 
     po.save(dest)
-
-
-# This is the default theme for Streamlit (v1.42.1)
-# We want to match it in our exports
-altair_default_config = {
-    "font": '"Source Sans Pro", sans-serif',
-    "background": "#ffffff",
-    "fieldTitle": "verbal",
-    "autosize": {"type": "fit", "contains": "padding"},
-    "title": {
-        "align": "left",
-        "anchor": "start",
-        "color": "#31333F",
-        "titleFontStyle": "normal",
-        "fontWeight": 600,
-        "fontSize": 16,
-        "orient": "top",
-        "offset": 26,
-    },
-    "header": {
-        "titleFontWeight": 400,
-        "titleFontSize": 16,
-        "titleColor": "#808495",
-        "titleFontStyle": "normal",
-        "labelFontSize": 12,
-        "labelFontWeight": 400,
-        "labelColor": "#808495",
-        "labelFontStyle": "normal",
-    },
-    "axis": {
-        "labelFontSize": 12,
-        "labelFontWeight": 400,
-        "labelColor": "#808495",
-        "labelFontStyle": "normal",
-        "titleFontWeight": 400,
-        "titleFontSize": 14,
-        "titleColor": "#808495",
-        "titleFontStyle": "normal",
-        "ticks": False,
-        "gridColor": "#e6eaf1",
-        "domain": False,
-        "domainWidth": 1,
-        "domainColor": "#e6eaf1",
-        "labelFlush": True,
-        "labelFlushOffset": 1,
-        "labelBound": False,
-        "labelLimit": 100,
-        "titlePadding": 16,
-        "labelPadding": 16,
-        "labelSeparation": 4,
-        "labelOverlap": True,
-    },
-    "legend": {
-        "labelFontSize": 14,
-        "labelFontWeight": 400,
-        "labelColor": "#808495",
-        "titleFontSize": 14,
-        "titleFontWeight": 400,
-        "titleFontStyle": "normal",
-        "titleColor": "#808495",
-        "titlePadding": 5,
-        "labelPadding": 16,
-        "columnPadding": 8,
-        "rowPadding": 4,
-        "padding": 7,
-        "symbolStrokeWidth": 4,
-    },
-    "range": {
-        "category": [
-            "#0068c9",
-            "#83c9ff",
-            "#ff2b2b",
-            "#ffabab",
-            "#29b09d",
-            "#7defa1",
-            "#ff8700",
-            "#ffd16a",
-            "#6d3fc0",
-            "#d5dae5",
-        ],
-        "diverging": [
-            "#7d353b",
-            "#bd4043",
-            "#ff4b4b",
-            "#ff8c8c",
-            "#ffc7c7",
-            "#a6dcff",
-            "#60b4ff",
-            "#1c83e1",
-            "#0054a3",
-            "#004280",
-        ],
-        "ramp": [
-            "#e4f5ff",
-            "#c7ebff",
-            "#a6dcff",
-            "#83c9ff",
-            "#60b4ff",
-            "#3d9df3",
-            "#1c83e1",
-            "#0068c9",
-            "#0054a3",
-            "#004280",
-        ],
-        "heatmap": [
-            "#e4f5ff",
-            "#c7ebff",
-            "#a6dcff",
-            "#83c9ff",
-            "#60b4ff",
-            "#3d9df3",
-            "#1c83e1",
-            "#0068c9",
-            "#0054a3",
-            "#004280",
-        ],
-    },
-    "view": {
-        "columns": 1,
-        "strokeWidth": 0,
-        "stroke": "transparent",
-        "continuousHeight": 350,
-        "continuousWidth": 400,
-        "discreteHeight": {"step": 20},
-    },
-    "concat": {"columns": 1},
-    "facet": {"columns": 1},
-    "mark": {"tooltip": True, "color": "#0068c9"},
-    "bar": {"binSpacing": 4, "discreteBandSize": {"band": 0.85}},
-    "axisDiscrete": {"grid": False},
-    "axisXPoint": {"grid": False},
-    "axisTemporal": {"grid": False},
-    "axisXBand": {"grid": False},
-}
-
-# Create an HTML of a matrix of plots
-# Based on what altair plot.save('plot.html') does, but modified to draw a full matrix and autoresize
-# --------------------------------------------------------
-#          PLOT EXPORT TO HTML
-# --------------------------------------------------------
-
-
-html_template = """
-<!DOCTYPE html>
-<html>
-<head></head>
-<body>
-  <div id="UID">SUBDIVS</div>
-  <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
-  <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
-  <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
-  <script type="text/javascript">
-    UID_delta = 0
-    function draw_plot() {
-        width = document.getElementById("UID").parentElement.clientWidth;
-        var specs = %s;
-        var opt = {"renderer": "canvas", "actions": false};
-        specs.forEach(function(spec,i){ vegaEmbed("#UID-"+i, spec, opt); });
-    };
-    draw_plot();
-    // This is a hack to fix facet plot width issues
-    setTimeout(function() {
-        wc = %s;
-        wp = document.getElementById("UID").offsetWidth;
-        UID_delta = wp-wc;
-        if (UID_delta!=0) draw_plot();
-    }, 5);
-    %s
-   </script>
-</body>
-</html>
-"""
-
-
-def plot_matrix_html(
-    pmat: list[list[object]] | object | None, uid: str = "viz", width: int | None = None, responsive: bool = True
-) -> str | None:
-    """Generate HTML for a matrix of Altair plots.
-
-    Args:
-        pmat: Matrix of plots (list of lists) or single plot, or None.
-        uid: Unique identifier for HTML elements.
-        width: Optional plot width in pixels.
-        responsive: Whether plots should be responsive to container width.
-
-    Returns:
-        HTML string containing the plots, or None if pmat is None.
-    """
-    if not pmat:
-        return None
-    if not isinstance(pmat, list):
-        pmat, _ucw = [[pmat]], False
-
-    template = html_template.replace("UID", uid)
-
-    rstring = "XYZresponsiveXZY"  # Something we can replace easy
-    specs, ncols = [], len(pmat[0])
-    for i, p in enumerate(pmat):
-        for j, pp in enumerate(p):
-            pdict = json.loads(pp.to_json())
-            pdict["autosize"] = {"type": "fit-x", "contains": "padding"}
-            pdict["config"] = altair_default_config
-
-            if responsive:
-                cwidth = pdict["spec"]["width"] if "spec" in pdict else pdict["width"]
-                repl = f"(width-{uid}_delta/{ncols})/{width / cwidth}"
-                if "spec" in pdict:
-                    pdict["spec"]["width"] = rstring
-                else:
-                    pdict["width"] = rstring
-                pjson = json.dumps(pdict).replace(f'"{rstring}"', repl)
-            else:
-                pjson = json.dumps(pdict)
-            specs.append(pjson)
-
-    if responsive:
-        goal_width = f'document.getElementById("{uid}").parentElement.clientWidth'
-        resp_code = 'window.addEventListener("resize", draw_plot);'
-    else:
-        goal_width, resp_code = str(width), ""
-
-    html = template % (f"[{','.join(specs)}]", goal_width, resp_code)
-
-    # Add subdivs after the plots - otherwise width% needs complex escaping
-    subdivs = "".join(
-        [f'<div id="{uid}-{i}" style="width: {0.99 / ncols:.3%}"></div>' for i in range(sum(map(len, pmat)))]
-    )
-    html = html.replace("SUBDIVS", subdivs)
-
-    if responsive:
-        html = html.replace(f'"{rstring}"', repl)
-    return html

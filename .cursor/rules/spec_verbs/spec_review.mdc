@@ -1,0 +1,44 @@
+---
+description: How to review a spec before (and during) implementation
+globs: specs/**
+alwaysApply: false
+---
+
+## Workflow
+
+Review the spec for the following:
+
+**Sufficiency**
+- Does the spec contain enough information to implement the feature
+  - Add missing context as needed
+- Is the itemized todo list sufficient to lead to that implementation
+  - Add any missing steps as new tasks
+- Is the **Definition of done** up to date and is it sufficient to check the feature
+
+**Consistency**
+- Is it consistent with the style required in [specs.mdc](mdc:.cursor/rules/specs.mdc)
+- Is it internally consistent, i.e. does not contradict itself
+- Move things around and clean as needed to make it consistent
+- Are links to other files and specs up-to-date?
+
+**Concision**
+- Can any sentences be shortened without losing important information
+- Is there anything irrelevant to the feature at hand
+- Is there anything written that is covered by relevant domains rules already
+  - Domain rules (as laid out in included .mdc files) do not need to be repeated
+- Is any information duplicated in multiple places
+- Clean up everything that is unnecessary and make spec as short as possible
+  - Re-structure things as needed to achieve this
+
+**Reflects current state**
+- If some tasks are marked as done, check if that is indeed true
+- Then check the next few tasks to see if they have been started
+  - If yes, make a note of that under the tasks
+  - Report everything you failed to validate
+
+Iterate the spec until it fills all the above criteria
+
+**BE ADVERSARIAL**
+- Assume the spec was written by a lazy idiot that was half-asleep that we all hate
+- If something sounds weird, out of place, or unclear, check it and clarify with user as needed
+- Constructive criticism is expected in this phase - DO NOT HOLD BACK

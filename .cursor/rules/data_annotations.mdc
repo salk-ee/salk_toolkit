@@ -1,6 +1,6 @@
 ---
 description: Guidelines for survey data annotation workflows
-globs: salk_toolkit/io.py, salk_toolkit/validation.py, tests/test_io.py
+globs: salk_toolkit/io.py, salk_toolkit/validation.py, salk_toolkit/serialization.py, tests/test_io.py
 ---
 
 # Data Annotations
@@ -21,15 +21,9 @@ globs: salk_toolkit/io.py, salk_toolkit/validation.py, tests/test_io.py
   - Marking if a category is ordered or not - important both for plots and for modeling
   - Adding labels to columns and blocks for plot headers and tooltips
   - Adding colors for categories for colored line/barcharts
-- **Streamlined/Explicated** - Two standard forms for two main use cases
-  - Streamlined (for auditing) shows only bare minimum: only things that are actually mandated/changed
-    - Example: `'categories': 'infer'` if the category order does not matter (defaults to alphabetical)
-  - Explicated (for plotting/modeling) has everything explicitly written out for easier use in code
-    - I.e. you can assume categories list is present instead of dealing with 'infer' special case everywhere
-  - When reading in annotations, they are automatically explicated by read_annotated_data
-    - This is currently not fully implemented, but the goal is to transition towards this state
-  - When displaying to user, the models are streamlined again to make changes easier to track
-    - This not implemented at all yet, but should be the goal.
+- **Serialization** - Pydantic model for DataMeta differs substantially from serialized JSON
+  - Conversion handled via Pydantic custom validators and serializers (serialization.py)
+  - This is required for backwards compatibility. Internally always use DataMeta object
 - **Question blocks** - groups of columns that are about the same kind of information
   - Example - demographics; issue positions; opinion about parties; etc.
   - Questions in a block can (but don't have to) share the answer scale

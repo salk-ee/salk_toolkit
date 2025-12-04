@@ -1,0 +1,66 @@
+{
+  "data": {
+    "name": "data-normalized"
+  },
+  "datasets": {
+    "data-normalized": [
+      {
+        "EKRE": -3.0,
+        "nationality": "Estonian"
+      },
+      {
+        "EKRE": -1.0,
+        "nationality": "Other"
+      }
+    ]
+  },
+  "encoding": {
+    "color": {
+      "field": "nationality",
+      "legend": null,
+      "scale": {
+        "domain": [
+          "Other",
+          "Estonian"
+        ],
+        "range": [
+          "grey",
+          "blue"
+        ]
+      },
+      "type": "nominal"
+    },
+    "tooltip": [
+      {
+        "field": "EKRE",
+        "format": ".1f",
+        "type": "quantitative"
+      },
+      {
+        "field": "nationality",
+        "type": "nominal"
+      }
+    ],
+    "x": {
+      "axis": {
+        "format": ".1f"
+      },
+      "field": "EKRE",
+      "title": "EKRE",
+      "type": "quantitative"
+    },
+    "y": {
+      "field": "nationality",
+      "sort": [
+        "Other",
+        "Estonian"
+      ],
+      "title": null,
+      "type": "nominal"
+    }
+  },
+  "mark": {
+    "type": "bar"
+  },
+  "width": 450
+}
