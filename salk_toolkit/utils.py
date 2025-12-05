@@ -325,7 +325,7 @@ def match_data(
             d2 = replace_cat_with_dummies(d2, c, cs)
 
     # Use pseudoinverse in case we have collinear columns
-    cov = np.cov(np.vstack([d1.values, d2.values]).T.astype("float"))
+    cov = np.cov(np.vstack((d1.values, d2.values)).T.astype("float"))  # type: ignore[call-overload]
     cov += np.eye(len(cov)) * 1e-5  # Add a small amount of noise to avoid singular matrix
     pVI = np.linalg.pinv(cov).T
     dmat = cdist(d1, d2, "mahalanobis", VI=pVI)
@@ -632,10 +632,10 @@ def is_datetime(col: pd.Series) -> bool:
 def rel_wave_times(ws: Sequence[int], dts: Sequence[Any], dt0: pd.Timestamp | None = None) -> pd.Series:
     """Convert survey wave codes + dates into a relative time axis (months)."""
 
-    df = pd.DataFrame({"wave": ws, "dt": pd.to_datetime(dts)})
+    df = pd.DataFrame({"wave": ws, "dt": pd.to_datetime(list(dts))})
     adf = df.groupby("wave")["dt"].median()
     if dt0 is None:
-        dt0 = adf.max()  # use last wave date as the reference
+        dt0 = cast(pd.Timestamp, adf.max())  # use last wave date as the reference
 
     assert dt0 is not None, "dt0 must be set"
     w_to_time = dict(((adf - dt0).dt.days / 30).items())
@@ -744,7 +744,7 @@ def cut_nice(
     mi, ma = s_arr.min(), s_arr.max()
     isint = np.issubdtype(s_arr.dtype, np.integer) or (s_arr % 1 == 0.0).all()
     breaks, labels = cut_nice_labels(breaks, mi, ma, isint, format, separator)
-    return pd.cut(s_arr, breaks, right=False, labels=labels, ordered=False)
+    return cast(pd.Categorical, pd.cut(s_arr, breaks, right=False, labels=labels, ordered=False))
 
 
 def rename_cats(df: pd.DataFrame, col: str, cat_map: Mapping[str, str]) -> None:
@@ -860,7 +860,7 @@ def gb_in_apply(
     else:
         # Convert to list for pandas groupby overload matching
         res = df.groupby(list(gb_cols), observed=False)[cols].apply(fn, **kwargs)  # type: ignore[call-overload]
-    return res
+    return cast(pd.DataFrame, res)
 
 
 def stk_defaultdict(dv: object) -> defaultdict[str, Any]:
@@ -897,11 +897,11 @@ def scores_to_ordinal_rankings(
         prefix = prefix or cols
         cols = [c for c in df.columns if c.startswith(cols)]
 
-    sinds = np.argsort(-df[cols].values, axis=1)
+    sinds = np.argsort(-cast(np.ndarray, df[cols].values), axis=1)
 
     rmat = df[cols].rank(method="max", ascending=False, axis=1).values
     # rmat = np.concatenate([rmat,np.full((len(rmat),1),0)],axis=1)
-    rvals = rmat[np.tile(np.arange(len(rmat)), (len(rmat[0]), 1)).T, sinds]
+    rvals = cast(np.ndarray, rmat)[np.tile(np.arange(len(rmat)), (len(rmat[0]), 1)).T, sinds]
 
     names_a, ties_a = [], []
     for cns, rs in zip(np.array(cols)[sinds], rvals):

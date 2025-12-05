@@ -640,11 +640,11 @@ def _process_annotated_data(
                     warn(f"Column {sn} not found")
                 continue
 
-            if raw_data[sn].isna().all():
+            if cast(pd.Series, raw_data[sn]).isna().all():
                 warn(f"Column {sn} is empty and thus ignored")
                 continue
 
-            s = raw_data[sn]
+            s = cast(pd.Series, raw_data[sn])
             # Store original dtype info if categorical (before any conversions)
             original_dtype = s.dtype
             if not only_fix_categories and not _is_series_of_lists(s):
@@ -677,7 +677,7 @@ def _process_annotated_data(
                 if mcm.datetime:
                     s = pd.to_datetime(s, errors="coerce")
                 elif mcm.continuous:
-                    s = pd.to_numeric(s, errors="coerce")
+                    s = cast(pd.Series, pd.to_numeric(s, errors="coerce"))
 
             s: pd.Series = pd.Series(s, name=cn)  # In case transformation removes the name or renames it
 
@@ -816,7 +816,7 @@ def _process_annotated_data(
     ndf["original_inds"] = np.arange(len(ndf))
     if meta_obj.excluded and not ignore_exclusions:
         excl_inds = [i for i, _ in meta_obj.excluded]
-        ndf = ndf[~ndf["original_inds"].isin(excl_inds)]
+        ndf = cast(pd.DataFrame, ndf[~ndf["original_inds"].isin(excl_inds)])
     if not add_original_inds:
         ndf.drop(columns=["original_inds"], inplace=True)
 
@@ -1125,7 +1125,7 @@ def _change_df_to_meta(
     if len(set(df.columns) - set(cols)) > 0:
         print("Dropping columns:", set(df.columns) - set(cols))
 
-    return df[cols]
+    return cast(pd.DataFrame, df[cols])
 
 
 def replace_data_meta_in_parquet(parquet_name: str, metafile_name: str, advanced: bool = True) -> pd.DataFrame:
@@ -1377,7 +1377,7 @@ def infer_meta(
     meta["structure"] = [main_grp]
 
     # Remove empty columns
-    cols = [c for c in df.columns if df[c].notna().any()]
+    cols = [c for c in df.columns if cast(pd.Series, df[c]).notna().any()]
 
     # Determine category lists for all categories
     for cn in cols:
