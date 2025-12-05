@@ -163,7 +163,7 @@ def _cspec(tpl: ColumnSpecInput) -> ParsedColumnSpec:
 
     Parse column specification tuple/list into [column_name, source_name, metadata].
     """
-    if isinstance(tpl, list):
+    if isinstance(tpl, list | tuple):
         if not tpl:
             raise TypeError("Column specification lists must contain at least the new column name.")
 
@@ -208,7 +208,7 @@ def _cs_lst_to_dict(
     from salk_toolkit.validation import ColumnMeta
 
     result: dict[str, ColumnSpecMeta] = {}
-    for cn, _sn, meta_dict in parsed_specs:
+    for cn, _, meta_dict in parsed_specs:
         # Create ColumnMeta with source already in the dict
         result[cn] = ColumnMeta.model_validate(meta_dict)
     return result

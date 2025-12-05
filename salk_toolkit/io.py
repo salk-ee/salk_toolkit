@@ -944,6 +944,7 @@ def extract_column_meta(data_meta: DataMeta) -> dict[str, GroupOrColumnMeta]:
 
     res: dict[str, GroupOrColumnMeta] = {}
     for block in data_meta.structure.values():
+        block = ColumnBlockMeta.model_validate(block)
         scale_meta = block.scale
         col_prefix = scale_meta.col_prefix if scale_meta and scale_meta.col_prefix else ""
 
@@ -1205,6 +1206,7 @@ def _fix_meta_categories(
 
     for g in structure.values():
         all_cats = set()
+        g = ColumnBlockMeta.model_validate(g)
         # Work with Pydantic object directly
         scale_meta = g.scale
         prefix = scale_meta.col_prefix if scale_meta is not None and scale_meta.col_prefix is not None else ""
