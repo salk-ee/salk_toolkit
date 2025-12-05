@@ -26,7 +26,7 @@ __all__ = [
 ]
 
 import itertools as it
-from typing import Mapping, Sequence, cast
+from typing import Mapping, Sequence
 
 import altair as alt
 import numpy as np
@@ -450,7 +450,9 @@ def mandate_plot(
     )
 
     # Remove parties who have no chance of even one elector
-    eliminate = cast(pd.Series, res.groupby(f0.col, observed=True)["percent"].sum()) < 0.2
+    res_sum = res.groupby(f0.col, observed=True)["percent"].sum()
+    assert isinstance(res_sum, pd.Series)
+    eliminate = res_sum < 0.2
     el_cols = [i for i, v in eliminate.items() if v]
     res = res[~res[f0.col].isin(el_cols)]
     cat_order = list(eliminate[~eliminate].index)
@@ -593,13 +595,17 @@ def coalition_applet(
         .rename("percent")
         .reset_index()
     )
+    medians = odf.groupby(party_col)["mandates"].median()
+    assert isinstance(medians, pd.Series)
     ddf = ddf.merge(
-        cast(pd.Series, odf.groupby(party_col)["mandates"].median()).rename(str(tf("median"))),
+        medians.rename(str(tf("median"))),
         left_on=party_col,
         right_index=True,
     )
+    over_threshold_means = odf.groupby(party_col)["over_t"].mean()
+    assert isinstance(over_threshold_means, pd.Series)
     ddf = ddf.merge(
-        cast(pd.Series, odf.groupby(party_col)["over_t"].mean()).rename(str(tf("over_threshold"))),
+        over_threshold_means.rename(str(tf("over_threshold"))),
         left_on=party_col,
         right_index=True,
     )

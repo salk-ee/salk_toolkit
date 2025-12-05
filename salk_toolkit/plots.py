@@ -49,7 +49,7 @@ __all__ = [
 
 import itertools as it
 import math
-from typing import Any, Dict, Sequence, cast
+from typing import Any, Dict, Sequence
 
 import altair as alt
 import arviz as az
@@ -2057,8 +2057,10 @@ def marimekko(
             .apply(lambda df: pd.DataFrame({ycol: df[ycol], "yv": df["w"] / df["w"].sum(), "w": df["w"]}))
             .reset_index()
         )
+        max_yv = ndata.groupby(outer_cols + [ycol], observed=True)["yv"].max()
+        assert isinstance(max_yv, pd.Series)
         ndata = ndata.merge(
-            cast(pd.Series, ndata.groupby(outer_cols + [ycol], observed=True)["yv"].max()).rename("ym").reset_index(),
+            max_yv.rename("ym").reset_index(),
             on=outer_cols + [ycol],
         ).fillna({"ym": 0.0})
         ndata = (

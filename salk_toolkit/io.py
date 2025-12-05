@@ -640,11 +640,15 @@ def _process_annotated_data(
                     warn(f"Column {sn} not found")
                 continue
 
-            if cast(pd.Series, raw_data[sn]).isna().all():
+            col_data = raw_data[sn]
+            assert isinstance(col_data, pd.Series)
+            if col_data.isna().all():
                 warn(f"Column {sn} is empty and thus ignored")
                 continue
 
-            s = cast(pd.Series, raw_data[sn])
+            s_temp = raw_data[sn]
+            assert isinstance(s_temp, pd.Series)
+            s = s_temp
             # Store original dtype info if categorical (before any conversions)
             original_dtype = s.dtype
             if not only_fix_categories and not _is_series_of_lists(s):
@@ -677,7 +681,9 @@ def _process_annotated_data(
                 if mcm.datetime:
                     s = pd.to_datetime(s, errors="coerce")
                 elif mcm.continuous:
-                    s = cast(pd.Series, pd.to_numeric(s, errors="coerce"))
+                    s_num = pd.to_numeric(s, errors="coerce")
+                    assert isinstance(s_num, pd.Series)
+                    s = s_num
 
             s: pd.Series = pd.Series(s, name=cn)  # In case transformation removes the name or renames it
 
@@ -816,7 +822,9 @@ def _process_annotated_data(
     ndf["original_inds"] = np.arange(len(ndf))
     if meta_obj.excluded and not ignore_exclusions:
         excl_inds = [i for i, _ in meta_obj.excluded]
-        ndf = cast(pd.DataFrame, ndf[~ndf["original_inds"].isin(excl_inds)])
+        ndf_filtered = ndf[~ndf["original_inds"].isin(excl_inds)]
+        assert isinstance(ndf_filtered, pd.DataFrame)
+        ndf = ndf_filtered
     if not add_original_inds:
         ndf.drop(columns=["original_inds"], inplace=True)
 
@@ -1125,7 +1133,9 @@ def _change_df_to_meta(
     if len(set(df.columns) - set(cols)) > 0:
         print("Dropping columns:", set(df.columns) - set(cols))
 
-    return cast(pd.DataFrame, df[cols])
+    df_out = df[cols]
+    assert isinstance(df_out, pd.DataFrame)
+    return df_out
 
 
 def replace_data_meta_in_parquet(parquet_name: str, metafile_name: str, advanced: bool = True) -> pd.DataFrame:
@@ -1377,7 +1387,12 @@ def infer_meta(
     meta["structure"] = [main_grp]
 
     # Remove empty columns
-    cols = [c for c in df.columns if cast(pd.Series, df[c]).notna().any()]
+    cols = []
+    for c in df.columns:
+        s_check = df[c]
+        assert isinstance(s_check, pd.Series)
+        if s_check.notna().any():
+            cols.append(c)
 
     # Determine category lists for all categories
     for cn in cols:

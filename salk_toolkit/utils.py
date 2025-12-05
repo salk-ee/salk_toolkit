@@ -635,7 +635,9 @@ def rel_wave_times(ws: Sequence[int], dts: Sequence[Any], dt0: pd.Timestamp | No
     df = pd.DataFrame({"wave": ws, "dt": pd.to_datetime(list(dts))})
     adf = df.groupby("wave")["dt"].median()
     if dt0 is None:
-        dt0 = cast(pd.Timestamp, adf.max())  # use last wave date as the reference
+        dt0_val = adf.max()  # use last wave date as the reference
+        assert isinstance(dt0_val, pd.Timestamp)
+        dt0 = dt0_val
 
     assert dt0 is not None, "dt0 must be set"
     w_to_time = dict(((adf - dt0).dt.days / 30).items())
@@ -744,7 +746,9 @@ def cut_nice(
     mi, ma = s_arr.min(), s_arr.max()
     isint = np.issubdtype(s_arr.dtype, np.integer) or (s_arr % 1 == 0.0).all()
     breaks, labels = cut_nice_labels(breaks, mi, ma, isint, format, separator)
-    return cast(pd.Categorical, pd.cut(s_arr, breaks, right=False, labels=labels, ordered=False))
+    res = pd.cut(s_arr, breaks, right=False, labels=labels, ordered=False)
+    assert isinstance(res, pd.Categorical)
+    return res
 
 
 def rename_cats(df: pd.DataFrame, col: str, cat_map: Mapping[str, str]) -> None:
@@ -860,7 +864,8 @@ def gb_in_apply(
     else:
         # Convert to list for pandas groupby overload matching
         res = df.groupby(list(gb_cols), observed=False)[cols].apply(fn, **kwargs)  # type: ignore[call-overload]
-    return cast(pd.DataFrame, res)
+    assert isinstance(res, pd.DataFrame)
+    return res
 
 
 def stk_defaultdict(dv: object) -> defaultdict[str, Any]:
@@ -897,11 +902,14 @@ def scores_to_ordinal_rankings(
         prefix = prefix or cols
         cols = [c for c in df.columns if c.startswith(cols)]
 
-    sinds = np.argsort(-cast(np.ndarray, df[cols].values), axis=1)
+    df_vals = df[cols].values
+    assert isinstance(df_vals, np.ndarray)
+    sinds = np.argsort(-df_vals, axis=1)
 
     rmat = df[cols].rank(method="max", ascending=False, axis=1).values
     # rmat = np.concatenate([rmat,np.full((len(rmat),1),0)],axis=1)
-    rvals = cast(np.ndarray, rmat)[np.tile(np.arange(len(rmat)), (len(rmat[0]), 1)).T, sinds]
+    assert isinstance(rmat, np.ndarray)
+    rvals = rmat[np.tile(np.arange(len(rmat)), (len(rmat[0]), 1)).T, sinds]
 
     names_a, ties_a = [], []
     for cns, rs in zip(np.array(cols)[sinds], rvals):

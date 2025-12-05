@@ -1511,16 +1511,15 @@ def create_plot(
             # Otherwise, we are good to sort, simply by value_col
             else:
                 ordervals = data.groupby(cn, observed=True)[pi.value_col].mean()
-            order = cast(pd.Series, ordervals).sort_values(ascending=ascending).index
+            assert isinstance(ordervals, pd.Series)
+            order = ordervals.sort_values(ascending=ascending).index
             data[cn] = pd.Categorical(data[cn], list(order))
     elif "ordering_value" in data.columns and pp_desc.plot == "maxdiff":
         if pp_desc.factor_cols:
             q = pp_desc.factor_cols[0]
-            order = (
-                cast(pd.Series, data.groupby(q, observed=True)["ordering_value"].mean())
-                .sort_values(ascending=False)
-                .index
-            )
+            order_val_mean = data.groupby(q, observed=True)["ordering_value"].mean()
+            assert isinstance(order_val_mean, pd.Series)
+            order = order_val_mean.sort_values(ascending=False).index
             data[q] = pd.Categorical(data[q], list(order))
 
     # Handle internal facets (and translate as needed)
