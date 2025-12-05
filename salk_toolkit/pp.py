@@ -170,7 +170,7 @@ def _augment_draws(
 
     # Generate new draws
     new_rows = data.iloc[np.random.choice(len(data), len(new_draws)), :].copy()
-    new_rows["draw"] = new_draws
+    new_rows = new_rows.assign(draw=new_draws)
 
     return pd.concat([data, new_rows])
 
@@ -529,11 +529,15 @@ def matching_plots(
     if not cols:
         raise ValueError(f"Columns {ocols} not found in data")
 
-    nonneg = (rcm.categories is not None) or (
-        df[cols].min(axis=None) >= 0
-        if not lazy
-        else df.select(pl.min_horizontal(pl.col(cols).min())).collect().item() >= 0
-    )
+    # Only compute min_val if we don't have categories (to avoid errors with unordered categoricals)
+    if rcm.categories is None:
+        if not lazy:
+            min_val = df[cols].min(axis=None)
+        else:
+            min_val = df.select(pl.min_horizontal(pl.col(cols).min())).collect().item()
+        nonneg = cast(float, min_val) >= 0
+    else:
+        nonneg = True
 
     convert_res = pp_desc.convert_res
     if convert_res == "continuous" and (rcm.categories is not None):

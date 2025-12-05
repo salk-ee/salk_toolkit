@@ -163,7 +163,7 @@ def _cspec(tpl: ColumnSpecInput) -> ParsedColumnSpec:
 
     Parse column specification tuple/list into [column_name, source_name, metadata].
     """
-    if isinstance(tpl, list):
+    if isinstance(tpl, list | tuple):
         if not tpl:
             raise TypeError("Column specification lists must contain at least the new column name.")
 

@@ -61,6 +61,8 @@ dev = [
   "types-polib",
   "types-PyYAML",
   "types-tqdm",
+  "pandas-stubs",
+  "deepl",
 ]
 
 [project.scripts]
