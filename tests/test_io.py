@@ -66,8 +66,8 @@ def make_data_meta(meta_dict: dict[str, object]) -> DataMeta:
     """Build a DataMeta object for tests, filling required fields."""
 
     payload = dict(meta_dict)
-    if "file" not in payload and "files" not in payload:
-        payload["file"] = "__test__"
+    if "files" not in payload:
+        payload["files"] = [{"file": "__test__", "opts": {}, "code": "F0"}]
     return soft_validate(payload, DataMeta)
 
 
@@ -2096,7 +2096,9 @@ class TestSoftValidate:
         # Should return a DataMeta instance
         assert isinstance(result, DataMeta)
         # Valid fields should be present
-        assert result.file == "test.csv"
+        assert result.files is not None
+        assert len(result.files) == 1
+        assert result.files[0].file == "test.csv"
         assert result.description == "Valid field"
         # Extra fields at top level should be ignored (not accessible as attributes)
         assert not hasattr(result, "extra_field_1")
@@ -2213,6 +2215,210 @@ class TestErrorHandling:
 
         with pytest.raises((NameError, SyntaxError)):
             read_annotated_data(str(meta_file))
+
+
+class TestMultiSourceColumns:
+    """Test multi-source columns with per-file processing"""
+
+    def test_multi_source_columns_dict_mapping(self, temp_dir):
+        """Test source dict mapping different column names from each file to single output column"""
+        # Create 3 CSV files with different column names
+        file1 = temp_dir / "file1.csv"
+        file2 = temp_dir / "file2.csv"
+        file3 = temp_dir / "file3.csv"
+        meta_file = temp_dir / "meta.json"
+
+        pd.DataFrame({"id": [1, 2], "name_col": ["Alice", "Bob"]}).to_csv_file(file1)
+        pd.DataFrame({"id": [3, 4], "person_name": ["Charlie", "Diana"]}).to_csv_file(file2)
+        pd.DataFrame({"id": [5, 6], "fullname": ["Eve", "Frank"]}).to_csv_file(file3)
+
+        meta = {
+            "files": [
+                {"file": "file1.csv", "code": "F0"},
+                {"file": "file2.csv", "code": "F1"},
+                {"file": "file3.csv", "code": "F2"},
+            ],
+            "structure": [
+                {
+                    "name": "demographics",
+                    "columns": {
+                        "id": {},
+                        "name": {
+                            "source": {
+                                "F0": "name_col",
+                                "F1": "person_name",
+                                "F2": "fullname",
+                            },
+                            "categories": "infer",
+                        },
+                    },
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+
+        df = read_annotated_data(str(meta_file))
+        assert "name" in df.columns
+        assert len(df) == 6
+        assert set(df["name"].dropna().unique()) == {"Alice", "Bob", "Charlie", "Diana", "Eve", "Frank"}
+
+    def test_multi_source_missing_file_code(self, temp_dir):
+        """Test missing file code in dict results in missing values"""
+        file1 = temp_dir / "file1.csv"
+        file2 = temp_dir / "file2.csv"
+        meta_file = temp_dir / "meta.json"
+
+        pd.DataFrame({"id": [1, 2], "name": ["Alice", "Bob"]}).to_csv_file(file1)
+        pd.DataFrame({"id": [3, 4], "name": ["Charlie", "Diana"]}).to_csv_file(file2)
+
+        meta = {
+            "files": [
+                {"file": "file1.csv", "code": "F0"},
+                {"file": "file2.csv", "code": "F1"},
+            ],
+            "structure": [
+                {
+                    "name": "test",
+                    "columns": {
+                        "id": {},
+                        "value": {
+                            "source": {
+                                "F0": "name",  # Only F0 has this column
+                                # F1 missing - should result in missing values
+                            },
+                            "categories": "infer",
+                        },
+                    },
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+
+        df = read_annotated_data(str(meta_file))
+        assert "value" in df.columns
+        assert df.loc[df["file_code"] == "F0", "value"].notna().all()
+        assert df.loc[df["file_code"] == "F1", "value"].isna().all()
+
+    def test_multi_source_string_fallback(self, temp_dir):
+        """Test string source applies to all files, missing column results in missing values"""
+        file1 = temp_dir / "file1.csv"
+        file2 = temp_dir / "file2.csv"
+        meta_file = temp_dir / "meta.json"
+
+        pd.DataFrame({"id": [1, 2], "value": [10, 20]}).to_csv_file(file1)
+        pd.DataFrame({"id": [3, 4]}).to_csv_file(file2)  # Missing 'value' column
+
+        meta = {
+            "files": [
+                {"file": "file1.csv", "code": "F0"},
+                {"file": "file2.csv", "code": "F1"},
+            ],
+            "structure": [
+                {
+                    "name": "test",
+                    "columns": {
+                        "id": {},
+                        "value": {"source": "value", "continuous": True},  # String source
+                    },
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+
+        df = read_annotated_data(str(meta_file))
+        assert "value" in df.columns
+        assert df.loc[df["file_code"] == "F0", "value"].notna().all()
+        assert df.loc[df["file_code"] == "F1", "value"].isna().all()
+
+    def test_multi_source_preprocessing_per_file(self, temp_dir):
+        """Test preprocessing runs per file with correct context"""
+        file1 = temp_dir / "file1.csv"
+        file2 = temp_dir / "file2.csv"
+        meta_file = temp_dir / "meta.json"
+
+        pd.DataFrame({"id": [1, 2], "value": [10, 20]}).to_csv_file(file1)
+        pd.DataFrame({"id": [3, 4], "value": [30, 40]}).to_csv_file(file2)
+
+        meta = {
+            "files": [
+                {"file": "file1.csv", "code": "F0"},
+                {"file": "file2.csv", "code": "F1"},
+            ],
+            "preprocessing": "df['file_flag'] = file_code",  # Should add file_code-based flag
+            "structure": [
+                {
+                    "name": "test",
+                    "columns": {
+                        "id": {},
+                        "value": {"continuous": True},
+                        "file_flag": {"categories": "infer"},
+                    },
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+
+        df = read_annotated_data(str(meta_file))
+        assert "file_flag" in df.columns
+        assert set(df["file_flag"].unique()) == {"F0", "F1"}
+
+    def test_multi_source_category_reconciliation(self, temp_dir):
+        """Test category reconciliation works across files"""
+        file1 = temp_dir / "file1.csv"
+        file2 = temp_dir / "file2.csv"
+        meta_file = temp_dir / "meta.json"
+
+        pd.DataFrame({"id": [1, 2], "status": ["A", "B"]}).to_csv_file(file1)
+        pd.DataFrame({"id": [3, 4], "status": ["B", "C"]}).to_csv_file(file2)
+
+        meta = {
+            "files": [
+                {"file": "file1.csv", "code": "F0"},
+                {"file": "file2.csv", "code": "F1"},
+            ],
+            "structure": [
+                {
+                    "name": "test",
+                    "columns": {
+                        "id": {},
+                        "status": {"categories": "infer"},
+                    },
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+
+        df = read_annotated_data(str(meta_file))
+        assert "status" in df.columns
+        # Categories should be reconciled across files
+        assert set(df["status"].cat.categories) == {"A", "B", "C"}
+
+    def test_multi_source_backward_compatibility(self, temp_dir):
+        """Test backward compatibility with single-file inputs"""
+        file1 = temp_dir / "file1.csv"
+        meta_file = temp_dir / "meta.json"
+
+        pd.DataFrame({"id": [1, 2], "name": ["Alice", "Bob"]}).to_csv_file(file1)
+
+        meta = {
+            "file": "file1.csv",  # Single file (not files list)
+            "structure": [
+                {
+                    "name": "test",
+                    "columns": {
+                        "id": {},
+                        "name": {"categories": "infer"},
+                    },
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+
+        df = read_annotated_data(str(meta_file))
+        assert "name" in df.columns
+        assert len(df) == 2
+        # Should work as before
+        assert set(df["name"].unique()) == {"Alice", "Bob"}
 
 
 if __name__ == "__main__":
