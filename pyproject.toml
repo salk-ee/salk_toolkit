@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "salk_toolkit"
-version = "0.9.0"
+version = "0.9.1"
 description = "Toolkit for annotated survey data ingestion, plotting, and dashboards"
 readme = "README.md"
 license = { file = "LICENSE" }
