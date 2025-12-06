@@ -25,8 +25,8 @@ from salk_toolkit.validation import DataMeta, GroupOrColumnMeta, PlotDescriptor,
 def make_data_meta(meta_dict: dict[str, object]) -> DataMeta:
     """Build a DataMeta object from a bare dict for test fixtures."""
     payload = dict(meta_dict)
-    if "file" not in payload and "files" not in payload:
-        payload["file"] = "__test__"
+    if "files" not in payload:
+        payload["files"] = [{"file": "__test__", "opts": {}, "code": "F0"}]
     return soft_validate(payload, DataMeta)
 
 

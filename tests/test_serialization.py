@@ -41,7 +41,6 @@ DEFAULT_DATA_META_FIELDS = [
     "collection_start",
     "collection_end",
     "author",
-    "file",
     "read_opts",
     "files",
     "constants",
@@ -223,13 +222,16 @@ class TestDataMetaSerialization:
         serialized = data_meta.model_dump(mode="json")
 
         # Required/non-default fields should be included
-        assert "file" in serialized
-        assert serialized["file"] == "test.csv"
+        # files is present (normalization converts file -> files from dict input)
+        assert "files" in serialized
+        assert len(serialized["files"]) == 1
+        assert serialized["files"][0]["file"] == "test.csv"
+        assert serialized["files"][0]["code"] == "F0"
         assert "structure" in serialized
 
-        # Default fields should be excluded
+        # Default fields should be excluded (except files which is non-default)
         for field in DEFAULT_DATA_META_FIELDS:
-            if field != "file":  # file is non-default in this test
+            if field != "files":  # files is non-default in this test
                 assert field not in serialized
 
     def test_data_meta_includes_non_defaults(self):
@@ -256,8 +258,9 @@ class TestDataMetaSerialization:
         assert serialized["preprocessing"] == "df = df.dropna()"
 
         # Other defaults should still be excluded
+        # files is present because normalization converts file -> files
         default_fields_to_check = [
-            f for f in DEFAULT_DATA_META_FIELDS if f not in ["description", "preprocessing", "file"]
+            f for f in DEFAULT_DATA_META_FIELDS if f not in ["description", "preprocessing", "files"]
         ]
         for field in default_fields_to_check:
             assert field not in serialized
@@ -387,9 +390,10 @@ class TestRoundTripSerialization:
         serialized = data_meta.model_dump(mode="json")
 
         # Check that DataMeta default fields are excluded
+        # files is present because normalization converts file -> files
         default_data_meta_fields = [
-            f for f in DEFAULT_DATA_META_FIELDS if f != "file"
-        ]  # file is non-default in this test
+            f for f in DEFAULT_DATA_META_FIELDS if f != "files"
+        ]  # files is non-default in this test
         for field in default_data_meta_fields:
             assert field not in serialized
 

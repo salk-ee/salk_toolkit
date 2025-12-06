@@ -144,7 +144,7 @@ def sample_meta() -> DataMeta:
             },
         ]
     }
-    meta["file"] = "__test__"
+    meta["files"] = [{"file": "__test__", "opts": {}, "code": "F0"}]
     return soft_validate(meta, DataMeta)
 
 

@@ -121,8 +121,9 @@ MandatesDict = Dict[str, int]  # Dictionary mapping electoral districts to manda
 
 class ColumnMeta(PBase):
     # Source column name ()
-    source: Optional[str] = (
-        None  # Name of the source column in the raw data. Defaults to the column name itself if None
+    source: Optional[Union[str, Dict[str, str]]] = (
+        None  # Name of the source column in the raw data. Can be a string (applies to all files),
+        # a dict mapping file codes to column names, or None (defaults to the column name itself)
     )
 
     # Type specification
@@ -211,18 +212,18 @@ class BlockScaleMeta(ColumnMeta):
     question_colors: Dict[str, Color] = DF(dict)  # Dict mapping columns to different colors
 
 
-class TopKBlock(BaseModel):
+class TopKBlock(PBase):
     type: Literal["topk"] = "topk"
     k: Union[int, Literal["max"]] = "max"
     from_columns: Optional[Union[str, List[str]]] = None
     res_cols_prefix: Optional[str] = None
-    res_cols: Optional[str] = None
+    res_cols: str = ""
     agg_index: int = -1  # TODO: Is this allowed to vary properly here?
     na_val: Optional[str] = None
     ordered: bool = False
 
 
-class MaxDiffBlock(BaseModel):
+class MaxDiffBlock(PBase):
     type: Literal["maxdiff"] = "maxdiff"
     best_columns: Optional[Union[str, List[str]]] = None
     worst_columns: Optional[Union[str, List[str]]] = None
@@ -249,7 +250,7 @@ class ColumnBlockMeta(PBase):
     # Block level flags
     generated: bool = False  # This block is for data that is generated, i.e. not initially in the file.
     hidden: bool = False  # Use this to hide the block in explorer.py
-    create: Optional[Union[TopKBlock, None]] = None  # TODO: None -> MaxDiff
+    create: Union[TopKBlock, MaxDiffBlock, None] = None
 
     @model_validator(mode="after")
     def merge_scale_with_columns(self) -> Self:
@@ -336,6 +337,43 @@ class FileDesc(BaseModel):
     code: Optional[str] = None  # Short code identifier for the file (e.g., 'F1', 'F2' or 'wave1', 'wave2')
 
 
+def _normalize_files_dict(meta: Any, read_opts_key: str = "read_opts") -> Any:  # noqa: ANN401
+    """Normalize file → files list, ensuring all FileDesc entries have codes based on index.
+
+    Args:
+        meta: Dictionary or object to normalize (will be converted to dict if needed).
+        read_opts_key: Key name for read options (default "read_opts" for DataMeta, not used for DataDescription).
+
+    Returns:
+        Normalized dictionary with files list and codes set based on index (F0, F1, F2, ...).
+    """
+    if isinstance(meta, dict):
+        # If file is provided, convert to first entry in files list
+        if meta.get("file") is not None:
+            file_value = meta.get("file")
+            read_opts = meta.get(read_opts_key, {}) if read_opts_key != "__no_read_opts__" else {}
+            meta = dict(meta)  # Make a copy
+            meta.pop("file", None)
+            if read_opts_key != "__no_read_opts__":
+                meta.pop("read_opts", None)  # read_opts is now in files
+            if not meta.get("files"):
+                meta["files"] = []
+            meta["files"].insert(0, {"file": file_value, "opts": read_opts})
+
+        # Ensure all files have codes based on their index in the list
+        if meta.get("files") is not None:
+            files = list(meta["files"])
+            normalized_files = []
+            for i, fd in enumerate(files):
+                assert isinstance(fd, dict), "Files entries must be dicts"
+                if fd.get("code") is None:
+                    fd["code"] = f"F{i}"  # Set code based on index: F0, F1, F2, ...
+                normalized_files.append(fd)
+            meta["files"] = normalized_files
+
+    return meta
+
+
 class DataMeta(PBase):
     """Complete metadata specification for annotated survey data.
 
@@ -360,12 +398,8 @@ class DataMeta(PBase):
     # Data source(s)
     ########################################################
 
-    # Single input file
-    file: Optional[str] = None  # Name of the file, with relative path from this json file
-    read_opts: Dict = DF(dict)  # Additional options to pass to reading function
-
-    # Multiple files
     files: Optional[List[FileDesc]] = None
+    read_opts: Dict = DF(dict)  # Additional options to pass to reading function (used by FileDesc)
 
     ########################################################
     # Data processing
@@ -387,6 +421,12 @@ class DataMeta(PBase):
     excluded: List[Tuple[int, str]] = []  # Index of row + str  reason for exclusion
     total_size: Optional[float] = None  # Optional total population size override
     draws_data: Dict[str, Tuple[str, int]] = DF(dict)  # Precomputed draws info keyed by column
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_files(cls, meta: Any) -> Any:  # noqa: ANN401  # pydantic validators require Any
+        """Normalize file + read_opts → files list, ensuring all FileDesc entries have a code."""
+        return _normalize_files_dict(meta, read_opts_key="read_opts")
 
     @model_validator(mode="before")
     @classmethod
@@ -534,13 +574,19 @@ class DataDescription(BaseModel):
     Note: Uses BaseModel (not PBase) to allow for extensions like PopulationDescription.
     """
 
-    file: Optional[str] = None  # Single file to read
     files: Optional[List[FileDesc]] = None  # Multiple files to parse
     data: Optional[Dict[str, Any]] = None  # Alternative to file, files. Dictionary of column {name: values} pairs.
     preprocessing: Optional[Union[str, List[str]]] = None  # String of python code that can reference df
     filter: Optional[str] = None  # String of python code that can reference df and is evaluated as df[filter code]
     merge: MergeSpec = []  # Optionally merge another data source into this one
     postprocessing: Optional[Union[str, List[str]]] = None  # String of python code that can reference df
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_files(cls, meta: Any) -> Any:  # noqa: ANN401  # pydantic validators require Any
+        """Normalize file → files list, ensuring all FileDesc entries have a code based on index."""
+        # DataDescription doesn't have read_opts, so use a non-existent key
+        return _normalize_files_dict(meta, read_opts_key="__no_read_opts__")
 
 
 # Filter spec:
