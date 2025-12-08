@@ -370,7 +370,7 @@ def _create_topk_metas_and_dfs(
     has_subgroups = n_groups >= 2  # Multiple aggregations needed?
     regex_to = create.res_cols
     kmax = create.k
-    na_vals = [create.na_val] if create.na_val is not None else []
+    na_vals = create.na_vals if create.na_vals is not None else []
     if has_subgroups:
         # collect all subgroups, later aggregate each subgroup separately
         def _get_subgroup_id(column: str) -> tuple[str, ...]:
@@ -404,7 +404,7 @@ def _create_topk_metas_and_dfs(
         def _expand_col(col: str) -> str:
             match = regex_from.match(col)
             assert match is not None, f"Column {col} should match regex {regex_from.pattern}"
-            return match.expand(regex_to)
+            return match.expand(regex_to)  # type: ignore[call-overload]
 
         newcols = [
             # from_cols names map to res_cols names
@@ -433,6 +433,8 @@ def _create_topk_metas_and_dfs(
             "scale": deepcopy(block_with_create.scale.model_dump(mode="python") if block_with_create.scale else {}),
             "columns": sdf.columns.tolist(),
         }
+        if block_with_create.create.translate_after is not None:
+            sdf = sdf.replace(block_with_create.create.translate_after)
         meta_subgroup = soft_validate(meta_subgroup, ColumnBlockMeta)
         topk_dfs.append(sdf)
         subgroup_metas.append(meta_subgroup)

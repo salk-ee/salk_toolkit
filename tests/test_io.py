@@ -264,25 +264,20 @@ class TestReadAnnotatedData:
         # Valid fields should be present
         assert meta_ret_dict.get("description") == "Valid metadata"
 
-    @pytest.mark.skip(reason="Fix post refactor: TODO")
     def test_topk_create_block(self, meta_file, csv_file):
         """Test top k create block."""
         meta = {
             "file": "test.csv",
             "structure": [
                 {
-                    "name": "topk",
+                    "name": "topkcols",
                     "columns": ["id", "q1_1", "q1_2", "q1_3", "q2_1", "q2_2", "q2_3"],
                     "create": {
                         "type": "topk",
                         "from_columns": r"q(\d+)_(\d+)",
-                        "name": "issue_importance_raw",
                         "na_vals": ["not_selected"],
                         "res_cols": r"q\1_R\2",
-                        "scale": {
-                            "categories": "infer",
-                            "translate": {"1": "USA", "2": "Canada", "3": "Mexico"},
-                        },
+                        "translate_after": {"1": "USA", "2": "Canada", "3": "Mexico"},
                     },
                 }
             ],
@@ -314,26 +309,9 @@ class TestReadAnnotatedData:
             dtype=pd.CategoricalDtype(categories=["USA", "Canada", "Mexico"]),
         )
         expected_structure = [
-            {
-                "name": "topk",
-                "columns": ["id", "q1_1", "q1_2", "q1_3", "q2_1", "q2_2", "q2_3"],
-            },
-            {
-                "name": "issue_importance_raw_1",
-                "scale": {
-                    "categories": ["USA", "Canada", "Mexico"],
-                    "translate": {"1": "USA", "2": "Canada", "3": "Mexico"},
-                },
-                "columns": ["q1_R1"],
-            },
-            {
-                "name": "issue_importance_raw_2",
-                "scale": {
-                    "categories": ["USA", "Canada", "Mexico"],
-                    "translate": {"1": "USA", "2": "Canada", "3": "Mexico"},
-                },
-                "columns": ["q2_R1", "q2_R2", "q2_R3"],
-            },
+            {"name": "topkcols", "columns": ["id", "q1_1", "q1_2", "q1_3", "q2_1", "q2_2", "q2_3"]},
+            {"name": "topkcols_topk_1", "columns": ["q1_R1"]},
+            {"name": "topkcols_topk_2", "columns": ["q2_R1", "q2_R2", "q2_R3"]},
         ]
         assert_frame_equal(
             diffs.fillna(pd.NA),
@@ -2419,6 +2397,91 @@ class TestMultiSourceColumns:
         assert len(df) == 2
         # Should work as before
         assert set(df["name"].unique()) == {"Alice", "Bob"}
+
+    def test_multi_source_columns_topk(self, temp_dir):
+        """Test different column names from each file to two output columns with topk"""
+        # Create 3 CSV files with different column names
+        file1 = temp_dir / "file1.csv"
+        file2 = temp_dir / "file2.csv"
+        file3 = temp_dir / "file3.csv"
+        meta_file = temp_dir / "meta.json"
+
+        pd.DataFrame({"id": [1, 2], "topk_col1": ["Yes", "No"], "topk_col2": ["No", "Yes"]}).to_csv_file(file1)
+        pd.DataFrame(
+            {"id": [3, 4], "column1": ["Mentioned", "Mentioned"], "column2": ["Mentioned", "Not mentioned"]}
+        ).to_csv_file(file2)
+        pd.DataFrame({"id": [5, 6], "USA": ["True", "False"], "Canada": ["False", "True"]}).to_csv_file(file3)
+
+        meta = {
+            "files": [
+                {"file": "file1.csv", "code": "F0"},
+                {"file": "file2.csv", "code": "F1"},
+                {"file": "file3.csv", "code": "F2"},
+            ],
+            "structure": [
+                {
+                    "name": "demographics",
+                    "columns": {
+                        "id": {},
+                        "topk_1": {
+                            "source": {
+                                "F0": "topk_col1",
+                                "F1": "column1",
+                                "F2": "USA",
+                            },
+                            "categories": "infer",
+                        },
+                        "topk_2": {
+                            "source": {
+                                "F0": "topk_col2",
+                                "F1": "column2",
+                                "F2": "Canada",
+                            },
+                            "categories": "infer",
+                        },
+                    },
+                    "create": {
+                        "type": "topk",
+                        "from_columns": r"topk_(\d)",
+                        "na_vals": ["Not mentioned", "No", "False"],
+                        "res_cols": r"topk_R\1",
+                        "translate_after": {"1": "USA", "2": "Canada"},
+                    },
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+
+        data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
+
+        assert data_meta.model_dump(mode="json") == {
+            "files": [
+                {"file": "file1.csv", "opts": {}, "code": "F0"},
+                {"file": "file2.csv", "opts": {}, "code": "F1"},
+                {"file": "file3.csv", "opts": {}, "code": "F2"},
+            ],
+            "structure": [
+                {"name": "demographics_topk", "columns": ["topk_R1", "topk_R2"]},
+                {
+                    "name": "demographics",
+                    "columns": [
+                        "id",
+                        ["topk_1", {"categories": ["False", "Mentioned", "No", "True", "Yes"]}],
+                        ["topk_2", {"categories": ["False", "Mentioned", "No", "Not mentioned", "True", "Yes"]}],
+                    ],
+                },
+            ],
+        }
+        expected_data = [
+            ["F0", 1, "Yes", "No", "USA", None],
+            ["F0", 2, "No", "Yes", "Canada", None],
+            ["F1", 3, "Mentioned", "Mentioned", "USA", "Canada"],
+            ["F1", 4, "Mentioned", "Not mentioned", "USA", None],
+            ["F2", 5, "True", "False", "USA", None],
+            ["F2", 6, "False", "True", "Canada", None],
+        ]
+        edf = pd.DataFrame(expected_data, columns=["file_code", "id", "topk_1", "topk_2", "topk_R1", "topk_R2"])
+        assert_frame_equal(data_df, edf, check_dtype=False, check_categorical=False)
 
 
 if __name__ == "__main__":
