@@ -215,12 +215,12 @@ class BlockScaleMeta(ColumnMeta):
 class TopKBlock(PBase):
     type: Literal["topk"] = "topk"
     k: Union[int, Literal["max"]] = "max"
-    from_columns: Optional[Union[str, List[str]]] = None
-    res_cols: Optional[str] = None
-    agg_index: int = -1  # TODO: Is this allowed to vary properly here?
-    na_vals: Optional[List[str]] = None
-    ordered: bool = False
+    from_columns: Union[str, List[str]]
+    res_columns: Union[str, List[str]]  # Has to be list if from_columns is list
+    agg_index: int = -1
+    na_vals: Optional[List[str]] = []
     translate_after: Dict[str, str] = DF(dict)
+    from_prefix: Optional[str] = None  # If from_columns is list, prefix will be removed to enable translation
 
 
 class MaxDiffBlock(PBase):

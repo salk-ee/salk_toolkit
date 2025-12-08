@@ -3,6 +3,7 @@ Comprehensive tests for read_annotated_data and read_and_process_data functions
 covering all features of meta parsing.
 """
 
+from copy import deepcopy
 import pytest
 import pandas as pd
 import numpy as np
@@ -276,14 +277,13 @@ class TestReadAnnotatedData:
                         "type": "topk",
                         "from_columns": r"q(\d+)_(\d+)",
                         "na_vals": ["not_selected"],
-                        "res_cols": r"q\1_R\2",
+                        "res_columns": r"q\1_R\2",
                         "translate_after": {"1": "USA", "2": "Canada", "3": "Mexico"},
                     },
                 }
             ],
         }
         write_json(meta_file, meta)
-
         df = pd.DataFrame(
             {
                 "q1_1": ["selected", "not_selected", "not_selected"],
@@ -297,6 +297,7 @@ class TestReadAnnotatedData:
         )
         df.to_csv_file(csv_file)
         data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
+
         newcols = data_df.columns.difference(df.columns)
         diffs = data_df[newcols].replace("<NA>", pd.NA)
         expected_result = pd.DataFrame(
@@ -323,6 +324,20 @@ class TestReadAnnotatedData:
         assert sorted(serialized_meta["structure"], key=lambda x: x["name"]) == sorted(
             expected_structure, key=lambda x: x["name"]
         )
+
+        # Also test that we can give from_columns and res_cols as lists (no subgroups possible here)
+        # TODO: Can be a separate test, but there'd be a lot of boilerplate code.
+        new_meta = deepcopy(meta)
+        from_cols = ["q1_1", "q1_2", "q1_3"]  # Note the parentheses to specify the regex group for translate
+        res_cols = ["q1_R1", "q1_R2", "q1_R3"]
+        new_meta["structure"][0]["create"]["from_columns"] = from_cols
+        new_meta["structure"][0]["create"]["res_columns"] = res_cols
+        new_meta["structure"][0]["create"]["from_prefix"] = "q1_"
+        write_json(meta_file, new_meta)
+        data_df2, data_meta2 = read_and_process_data(str(meta_file), return_meta=True)
+        assert "q1_R1" in data_df2.columns
+        assert "q1_R2" not in data_df2.columns  # Testing for top 1
+        assert data_df2["q1_R1"].tolist() == ["USA", "Canada", "Mexico"]
 
 
 class TestColumnTransformations:
@@ -2444,7 +2459,7 @@ class TestMultiSourceColumns:
                         "type": "topk",
                         "from_columns": r"topk_(\d)",
                         "na_vals": ["Not mentioned", "No", "False"],
-                        "res_cols": r"topk_R\1",
+                        "res_columns": r"topk_R\1",
                         "translate_after": {"1": "USA", "2": "Canada"},
                     },
                 }

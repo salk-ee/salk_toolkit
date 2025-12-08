@@ -347,13 +347,31 @@ def _create_topk_metas_and_dfs(
     if not isinstance(create, TopKBlock):
         raise ValueError("Expecting TopKBlock create block")
     name = f"{block_with_create.name}_{create.type}"
-    # Compile regex to catch df.columns that we want to apply topk for.
     from_columns = create.from_columns
     if from_columns is None:
         raise ValueError("TopKBlock must have from_columns specified")
-    if isinstance(from_columns, list):
-        # If it's a list, join with | for regex alternation
-        from_columns = "|".join(from_columns)
+
+    has_regex = isinstance(from_columns, str)
+    has_list = isinstance(from_columns, list)
+
+    if has_regex:
+        return _create_topk_metas_and_dfs_regex(df, block_with_create, create, name)
+    elif has_list:
+        return _create_topk_metas_and_dfs_list(df, block_with_create, create, name)
+    else:
+        raise ValueError(f"from_columns must be either str (regex) or list, got {type(from_columns)}")
+
+
+def _create_topk_metas_and_dfs_regex(
+    df: pd.DataFrame,
+    block_with_create: ColumnBlockMeta,
+    create: TopKBlock,
+    name: str,
+) -> tuple[list[pd.DataFrame], list[ColumnBlockMeta]]:
+    """Create top K aggregations from DataFrame using regex pattern matching."""
+    from_columns = create.from_columns
+    assert isinstance(from_columns, str), "from_columns must be str for regex mode"
+
     regex_from = re.compile(from_columns)
     from_cols = list(filter(lambda s: regex_from.match(s), df.columns))
     # agg_ind is index of the regex group that we want to aggregate over.
@@ -368,9 +386,10 @@ def _create_topk_metas_and_dfs(
     assert first_match is not None, f"Column {from_cols[0]} should match regex {regex_from.pattern}"
     n_groups = len(first_match.groups())
     has_subgroups = n_groups >= 2  # Multiple aggregations needed?
-    regex_to = create.res_cols
+    regex_to = create.res_columns if isinstance(create.res_columns, str) else None
     kmax = create.k
     na_vals = create.na_vals if create.na_vals is not None else []
+
     if has_subgroups:
         # collect all subgroups, later aggregate each subgroup separately
         def _get_subgroup_id(column: str) -> tuple[str, ...]:
@@ -414,13 +433,19 @@ def _create_topk_metas_and_dfs(
         ]
 
         # Convert one-hot encoded columns into a list-of-selected format
+        if "|" in from_columns:
+            raise ValueError(sdf.columns)
         sdf.columns = sdf.columns.map(_get_regex_group_at_agg_ind)
+
         sdf = sdf.mask(
             ~sdf.isna(), other=pd.Series(sdf.columns, index=sdf.columns), axis=1
         )  # replace cell with column name where not NA
         _throw_vals_left(sdf)  # changes df in place, Nones go to rightmost side
-
         sdf.columns = newcols  # set column names per the regex_to template
+
+        if "|" in from_columns:
+            raise NotImplementedError("Regex symbol `|` is not supported yet.")
+
         sdf = sdf.dropna(axis=1, how="all")  # drop rightmost cols that are all NA
         # Handle kmax: if it's "max" or None, don't limit; otherwise limit to that number
         if kmax and kmax != "max" and isinstance(kmax, int):
@@ -433,12 +458,65 @@ def _create_topk_metas_and_dfs(
             "scale": deepcopy(block_with_create.scale.model_dump(mode="python") if block_with_create.scale else {}),
             "columns": sdf.columns.tolist(),
         }
-        if block_with_create.create.translate_after is not None:
-            sdf = sdf.replace(block_with_create.create.translate_after)
+        if create.translate_after is not None:
+            sdf = sdf.replace(create.translate_after)
         meta_subgroup = soft_validate(meta_subgroup, ColumnBlockMeta)
         topk_dfs.append(sdf)
         subgroup_metas.append(meta_subgroup)
     return topk_dfs, subgroup_metas  # note: each df has one meta for zip later
+
+
+def _create_topk_metas_and_dfs_list(
+    df: pd.DataFrame,
+    block_with_create: ColumnBlockMeta,
+    create: TopKBlock,
+    name: str,
+) -> tuple[list[pd.DataFrame], list[ColumnBlockMeta]]:
+    """Create top K aggregations from DataFrame using explicit column lists."""
+    from_columns = create.from_columns
+    assert isinstance(from_columns, list), "from_columns must be list for list mode"
+
+    if not isinstance(create.res_columns, list):
+        raise ValueError("res_columns must be a list when from_columns is a list")
+
+    if len(from_columns) != len(create.res_columns):
+        raise ValueError(
+            f"from_columns ({len(from_columns)}) and res_columns ({len(create.res_columns)}) must have the same length"
+        )
+
+    from_cols = from_columns
+    res_cols = create.res_columns
+    kmax = create.k
+    na_vals = create.na_vals if create.na_vals is not None else []
+    if create.from_prefix:
+        without_prefix = {col: col.removeprefix(create.from_prefix) for col in from_cols}
+        from_cols = [without_prefix.get(col, col) for col in from_cols]
+        df.columns = [without_prefix.get(col, col) for col in df.columns]
+
+    sdf = df[from_cols].replace(na_vals, None)
+    sdf = sdf.mask(
+        ~sdf.isna(), other=pd.Series(sdf.columns, index=sdf.columns), axis=1
+    )  # replace cell with column name where not NA
+
+    if create.translate_after is not None:
+        sdf = sdf.replace(create.translate_after)
+    sdf.columns = res_cols
+
+    _throw_vals_left(sdf)  # changes df in place, Nones go to rightmost side
+    sdf = sdf.dropna(axis=1, how="all")  # drop rightmost cols that are all NA
+
+    # Handle kmax: if it's "max" or None, don't limit; otherwise limit to that number
+    if kmax and kmax != "max" and isinstance(kmax, int):
+        sdf = sdf.iloc[:, :kmax]  # up to kmax columns if spec-d
+
+    meta_subgroup = {
+        "name": name,
+        "scale": deepcopy(block_with_create.scale.model_dump(mode="python") if block_with_create.scale else {}),
+        "columns": sdf.columns.tolist(),
+    }
+    meta_subgroup = soft_validate(meta_subgroup, ColumnBlockMeta)
+
+    return [sdf], [meta_subgroup]
 
 
 create_block_type_to_create_fn = {
