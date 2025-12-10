@@ -68,6 +68,7 @@ __all__ = [
 ]
 
 import json
+import re
 import warnings
 import math
 import inspect
@@ -1213,6 +1214,10 @@ def plot_matrix_html(
         return None
     if not isinstance(pmat, list):
         pmat = [[pmat]]
+
+    # Sanitize uid so it can be used as a variable name in JavaScript
+    # - replace all whitespace and non-alphanumeric characters with underscores
+    uid = re.sub(r"\W+", "_", str(uid))
 
     template = html_template.replace("UID", uid)
 

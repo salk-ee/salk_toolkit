@@ -109,6 +109,22 @@ def test_plot_matrix_html_generates_embed_block() -> None:
     assert "vegaEmbed" in html
     assert "test-0" in html
 
+    # Test that uid with spaces is sanitized
+    html_with_spaces = dashboard.plot_matrix_html(chart, uid="test plot with spaces", width=400, responsive=True)
+    assert html_with_spaces is not None
+    assert "test_plot_with_spaces" in html_with_spaces
+    assert "test plot with spaces" not in html_with_spaces
+    assert "test_plot_with_spaces-0" in html_with_spaces
+
+    # Test that uid with special characters is sanitized
+    html_with_special = dashboard.plot_matrix_html(
+        chart, uid="test@plot#with$special%chars", width=400, responsive=True
+    )
+    assert html_with_special is not None
+    assert "test_plot_with_special_chars" in html_with_special
+    assert "test@plot#with$special%chars" not in html_with_special
+    assert "test_plot_with_special_chars-0" in html_with_special
+
 
 @pytest.fixture
 def sample_meta() -> DataMeta:
