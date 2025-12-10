@@ -343,6 +343,7 @@ def replace_constants(
     constants: Mapping[str, JSONValue] | None = None,
     inplace: bool = False,
     keep: bool = False,
+    tracker: set[str] | None = None,
 ) -> JSONStructure:
     """Recursively expand ``"constants"`` references inside annotation dicts.
 
@@ -351,6 +352,7 @@ def replace_constants(
         constants: Pre-existing constant definitions to seed recursion with.
         inplace: Whether to mutate the provided structure.
         keep: Whether to preserve the constants key (for DataMeta).
+        tracker: Optional set to collect names of constants that were replaced.
 
     Returns:
         Structure with string references swapped for their constant values.
@@ -370,15 +372,19 @@ def replace_constants(
         for k, v in d.items():
             if isinstance(v, str) and v in constants_map:
                 d[k] = constants_map[v]
+                if tracker is not None:
+                    tracker.add(v)
             elif isinstance(v, (dict, list)):
-                d[k] = replace_constants(v, constants_map, inplace=True, keep=keep)
+                d[k] = replace_constants(v, constants_map, inplace=True, keep=keep, tracker=tracker)
     # Handle list case
     elif isinstance(d, list):
         for i, v in enumerate(d):
             if isinstance(v, str) and v in constants_map:
                 d[i] = constants_map[v]
+                if tracker is not None:
+                    tracker.add(v)
             elif isinstance(v, (dict, list)):
-                d[i] = replace_constants(v, constants_map, inplace=True, keep=keep)
+                d[i] = replace_constants(v, constants_map, inplace=True, keep=keep, tracker=tracker)
 
     return d
 
