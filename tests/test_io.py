@@ -3,6 +3,7 @@ Comprehensive tests for read_annotated_data and read_and_process_data functions
 covering all features of meta parsing.
 """
 
+from copy import deepcopy
 import pytest
 import pandas as pd
 import numpy as np
@@ -66,8 +67,8 @@ def make_data_meta(meta_dict: dict[str, object]) -> DataMeta:
     """Build a DataMeta object for tests, filling required fields."""
 
     payload = dict(meta_dict)
-    if "file" not in payload and "files" not in payload:
-        payload["file"] = "__test__"
+    if "files" not in payload:
+        payload["files"] = [{"file": "__test__", "opts": {}, "code": "F0"}]
     return soft_validate(payload, DataMeta)
 
 
@@ -264,31 +265,25 @@ class TestReadAnnotatedData:
         # Valid fields should be present
         assert meta_ret_dict.get("description") == "Valid metadata"
 
-    @pytest.mark.skip(reason="Fix post refactor: TODO")
     def test_topk_create_block(self, meta_file, csv_file):
         """Test top k create block."""
         meta = {
             "file": "test.csv",
             "structure": [
                 {
-                    "name": "topk",
+                    "name": "topkcols",
                     "columns": ["id", "q1_1", "q1_2", "q1_3", "q2_1", "q2_2", "q2_3"],
                     "create": {
                         "type": "topk",
                         "from_columns": r"q(\d+)_(\d+)",
-                        "name": "issue_importance_raw",
                         "na_vals": ["not_selected"],
-                        "res_cols": r"q\1_R\2",
-                        "scale": {
-                            "categories": "infer",
-                            "translate": {"1": "USA", "2": "Canada", "3": "Mexico"},
-                        },
+                        "res_columns": r"q\1_R\2",
+                        "translate_after": {"1": "USA", "2": "Canada", "3": "Mexico"},
                     },
                 }
             ],
         }
         write_json(meta_file, meta)
-
         df = pd.DataFrame(
             {
                 "q1_1": ["selected", "not_selected", "not_selected"],
@@ -302,6 +297,7 @@ class TestReadAnnotatedData:
         )
         df.to_csv_file(csv_file)
         data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
+
         newcols = data_df.columns.difference(df.columns)
         diffs = data_df[newcols].replace("<NA>", pd.NA)
         expected_result = pd.DataFrame(
@@ -314,26 +310,9 @@ class TestReadAnnotatedData:
             dtype=pd.CategoricalDtype(categories=["USA", "Canada", "Mexico"]),
         )
         expected_structure = [
-            {
-                "name": "topk",
-                "columns": ["id", "q1_1", "q1_2", "q1_3", "q2_1", "q2_2", "q2_3"],
-            },
-            {
-                "name": "issue_importance_raw_1",
-                "scale": {
-                    "categories": ["USA", "Canada", "Mexico"],
-                    "translate": {"1": "USA", "2": "Canada", "3": "Mexico"},
-                },
-                "columns": ["q1_R1"],
-            },
-            {
-                "name": "issue_importance_raw_2",
-                "scale": {
-                    "categories": ["USA", "Canada", "Mexico"],
-                    "translate": {"1": "USA", "2": "Canada", "3": "Mexico"},
-                },
-                "columns": ["q2_R1", "q2_R2", "q2_R3"],
-            },
+            {"name": "topkcols", "columns": ["id", "q1_1", "q1_2", "q1_3", "q2_1", "q2_2", "q2_3"]},
+            {"name": "topkcols_topk_1", "columns": ["q1_R1"]},
+            {"name": "topkcols_topk_2", "columns": ["q2_R1", "q2_R2", "q2_R3"]},
         ]
         assert_frame_equal(
             diffs.fillna(pd.NA),
@@ -345,6 +324,20 @@ class TestReadAnnotatedData:
         assert sorted(serialized_meta["structure"], key=lambda x: x["name"]) == sorted(
             expected_structure, key=lambda x: x["name"]
         )
+
+        # Also test that we can give from_columns and res_cols as lists (no subgroups possible here)
+        # TODO: Can be a separate test, but there'd be a lot of boilerplate code.
+        new_meta = deepcopy(meta)
+        from_cols = ["q1_1", "q1_2", "q1_3"]  # Note the parentheses to specify the regex group for translate
+        res_cols = ["q1_R1", "q1_R2", "q1_R3"]
+        new_meta["structure"][0]["create"]["from_columns"] = from_cols
+        new_meta["structure"][0]["create"]["res_columns"] = res_cols
+        new_meta["structure"][0]["create"]["from_prefix"] = "q1_"
+        write_json(meta_file, new_meta)
+        data_df2, data_meta2 = read_and_process_data(str(meta_file), return_meta=True)
+        assert "q1_R1" in data_df2.columns
+        assert "q1_R2" not in data_df2.columns  # Testing for top 1
+        assert data_df2["q1_R1"].tolist() == ["USA", "Canada", "Mexico"]
 
 
 class TestColumnTransformations:
@@ -2096,7 +2089,9 @@ class TestSoftValidate:
         # Should return a DataMeta instance
         assert isinstance(result, DataMeta)
         # Valid fields should be present
-        assert result.file == "test.csv"
+        assert result.files is not None
+        assert len(result.files) == 1
+        assert result.files[0].file == "test.csv"
         assert result.description == "Valid field"
         # Extra fields at top level should be ignored (not accessible as attributes)
         assert not hasattr(result, "extra_field_1")
@@ -2213,6 +2208,295 @@ class TestErrorHandling:
 
         with pytest.raises((NameError, SyntaxError)):
             read_annotated_data(str(meta_file))
+
+
+class TestMultiSourceColumns:
+    """Test multi-source columns with per-file processing"""
+
+    def test_multi_source_columns_dict_mapping(self, temp_dir):
+        """Test source dict mapping different column names from each file to single output column"""
+        # Create 3 CSV files with different column names
+        file1 = temp_dir / "file1.csv"
+        file2 = temp_dir / "file2.csv"
+        file3 = temp_dir / "file3.csv"
+        meta_file = temp_dir / "meta.json"
+
+        pd.DataFrame({"id": [1, 2], "name_col": ["Alice", "Bob"]}).to_csv_file(file1)
+        pd.DataFrame({"id": [3, 4], "person_name": ["Charlie", "Diana"]}).to_csv_file(file2)
+        pd.DataFrame({"id": [5, 6], "fullname": ["Eve", "Frank"]}).to_csv_file(file3)
+
+        meta = {
+            "files": [
+                {"file": "file1.csv", "code": "F0"},
+                {"file": "file2.csv", "code": "F1"},
+                {"file": "file3.csv", "code": "F2"},
+            ],
+            "structure": [
+                {
+                    "name": "demographics",
+                    "columns": {
+                        "id": {},
+                        "name": {
+                            "source": {
+                                "F0": "name_col",
+                                "F1": "person_name",
+                                "F2": "fullname",
+                            },
+                            "categories": "infer",
+                        },
+                    },
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+
+        df = read_annotated_data(str(meta_file))
+        assert "name" in df.columns
+        assert len(df) == 6
+        assert set(df["name"].dropna().unique()) == {"Alice", "Bob", "Charlie", "Diana", "Eve", "Frank"}
+
+    def test_multi_source_missing_file_code(self, temp_dir):
+        """Test missing file code in dict results in missing values"""
+        file1 = temp_dir / "file1.csv"
+        file2 = temp_dir / "file2.csv"
+        meta_file = temp_dir / "meta.json"
+
+        pd.DataFrame({"id": [1, 2], "name": ["Alice", "Bob"]}).to_csv_file(file1)
+        pd.DataFrame({"id": [3, 4], "name": ["Charlie", "Diana"]}).to_csv_file(file2)
+
+        meta = {
+            "files": [
+                {"file": "file1.csv", "code": "F0"},
+                {"file": "file2.csv", "code": "F1"},
+            ],
+            "structure": [
+                {
+                    "name": "test",
+                    "columns": {
+                        "id": {},
+                        "value": {
+                            "source": {
+                                "F0": "name",  # Only F0 has this column
+                                # F1 missing - should result in missing values
+                            },
+                            "categories": "infer",
+                        },
+                    },
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+
+        df = read_annotated_data(str(meta_file))
+        assert "value" in df.columns
+        assert df.loc[df["file_code"] == "F0", "value"].notna().all()
+        assert df.loc[df["file_code"] == "F1", "value"].isna().all()
+
+    def test_multi_source_string_fallback(self, temp_dir):
+        """Test string source applies to all files, missing column results in missing values"""
+        file1 = temp_dir / "file1.csv"
+        file2 = temp_dir / "file2.csv"
+        meta_file = temp_dir / "meta.json"
+
+        pd.DataFrame({"id": [1, 2], "value": [10, 20]}).to_csv_file(file1)
+        pd.DataFrame({"id": [3, 4]}).to_csv_file(file2)  # Missing 'value' column
+
+        meta = {
+            "files": [
+                {"file": "file1.csv", "code": "F0"},
+                {"file": "file2.csv", "code": "F1"},
+            ],
+            "structure": [
+                {
+                    "name": "test",
+                    "columns": {
+                        "id": {},
+                        "value": {"source": "value", "continuous": True},  # String source
+                    },
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+
+        df = read_annotated_data(str(meta_file))
+        assert "value" in df.columns
+        assert df.loc[df["file_code"] == "F0", "value"].notna().all()
+        assert df.loc[df["file_code"] == "F1", "value"].isna().all()
+
+    def test_multi_source_preprocessing_per_file(self, temp_dir):
+        """Test preprocessing runs per file with correct context"""
+        file1 = temp_dir / "file1.csv"
+        file2 = temp_dir / "file2.csv"
+        meta_file = temp_dir / "meta.json"
+
+        pd.DataFrame({"id": [1, 2], "value": [10, 20]}).to_csv_file(file1)
+        pd.DataFrame({"id": [3, 4], "value": [30, 40]}).to_csv_file(file2)
+
+        meta = {
+            "files": [
+                {"file": "file1.csv", "code": "F0"},
+                {"file": "file2.csv", "code": "F1"},
+            ],
+            "preprocessing": "df['file_flag'] = file_code",  # Should add file_code-based flag
+            "structure": [
+                {
+                    "name": "test",
+                    "columns": {
+                        "id": {},
+                        "value": {"continuous": True},
+                        "file_flag": {"categories": "infer"},
+                    },
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+
+        df = read_annotated_data(str(meta_file))
+        assert "file_flag" in df.columns
+        assert set(df["file_flag"].unique()) == {"F0", "F1"}
+
+    def test_multi_source_category_reconciliation(self, temp_dir):
+        """Test category reconciliation works across files"""
+        file1 = temp_dir / "file1.csv"
+        file2 = temp_dir / "file2.csv"
+        meta_file = temp_dir / "meta.json"
+
+        pd.DataFrame({"id": [1, 2], "status": ["A", "B"]}).to_csv_file(file1)
+        pd.DataFrame({"id": [3, 4], "status": ["B", "C"]}).to_csv_file(file2)
+
+        meta = {
+            "files": [
+                {"file": "file1.csv", "code": "F0"},
+                {"file": "file2.csv", "code": "F1"},
+            ],
+            "structure": [
+                {
+                    "name": "test",
+                    "columns": {
+                        "id": {},
+                        "status": {"categories": "infer"},
+                    },
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+
+        df = read_annotated_data(str(meta_file))
+        assert "status" in df.columns
+        # Categories should be reconciled across files
+        assert set(df["status"].cat.categories) == {"A", "B", "C"}
+
+    def test_multi_source_backward_compatibility(self, temp_dir):
+        """Test backward compatibility with single-file inputs"""
+        file1 = temp_dir / "file1.csv"
+        meta_file = temp_dir / "meta.json"
+
+        pd.DataFrame({"id": [1, 2], "name": ["Alice", "Bob"]}).to_csv_file(file1)
+
+        meta = {
+            "file": "file1.csv",  # Single file (not files list)
+            "structure": [
+                {
+                    "name": "test",
+                    "columns": {
+                        "id": {},
+                        "name": {"categories": "infer"},
+                    },
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+
+        df = read_annotated_data(str(meta_file))
+        assert "name" in df.columns
+        assert len(df) == 2
+        # Should work as before
+        assert set(df["name"].unique()) == {"Alice", "Bob"}
+
+    def test_multi_source_columns_topk(self, temp_dir):
+        """Test different column names from each file to two output columns with topk"""
+        # Create 3 CSV files with different column names
+        file1 = temp_dir / "file1.csv"
+        file2 = temp_dir / "file2.csv"
+        file3 = temp_dir / "file3.csv"
+        meta_file = temp_dir / "meta.json"
+
+        pd.DataFrame({"id": [1, 2], "topk_col1": ["Yes", "No"], "topk_col2": ["No", "Yes"]}).to_csv_file(file1)
+        pd.DataFrame(
+            {"id": [3, 4], "column1": ["Mentioned", "Mentioned"], "column2": ["Mentioned", "Not mentioned"]}
+        ).to_csv_file(file2)
+        pd.DataFrame({"id": [5, 6], "USA": ["True", "False"], "Canada": ["False", "True"]}).to_csv_file(file3)
+
+        meta = {
+            "files": [
+                {"file": "file1.csv", "code": "F0"},
+                {"file": "file2.csv", "code": "F1"},
+                {"file": "file3.csv", "code": "F2"},
+            ],
+            "structure": [
+                {
+                    "name": "demographics",
+                    "columns": {
+                        "id": {},
+                        "topk_1": {
+                            "source": {
+                                "F0": "topk_col1",
+                                "F1": "column1",
+                                "F2": "USA",
+                            },
+                            "categories": "infer",
+                        },
+                        "topk_2": {
+                            "source": {
+                                "F0": "topk_col2",
+                                "F1": "column2",
+                                "F2": "Canada",
+                            },
+                            "categories": "infer",
+                        },
+                    },
+                    "create": {
+                        "type": "topk",
+                        "from_columns": r"topk_(\d)",
+                        "na_vals": ["Not mentioned", "No", "False"],
+                        "res_columns": r"topk_R\1",
+                        "translate_after": {"1": "USA", "2": "Canada"},
+                    },
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+
+        data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
+
+        assert data_meta.model_dump(mode="json") == {
+            "files": [
+                {"file": "file1.csv", "opts": {}, "code": "F0"},
+                {"file": "file2.csv", "opts": {}, "code": "F1"},
+                {"file": "file3.csv", "opts": {}, "code": "F2"},
+            ],
+            "structure": [
+                {"name": "demographics_topk", "columns": ["topk_R1", "topk_R2"]},
+                {
+                    "name": "demographics",
+                    "columns": [
+                        "id",
+                        ["topk_1", {"categories": ["False", "Mentioned", "No", "True", "Yes"]}],
+                        ["topk_2", {"categories": ["False", "Mentioned", "No", "Not mentioned", "True", "Yes"]}],
+                    ],
+                },
+            ],
+        }
+        expected_data = [
+            ["F0", 1, "Yes", "No", "USA", None],
+            ["F0", 2, "No", "Yes", "Canada", None],
+            ["F1", 3, "Mentioned", "Mentioned", "USA", "Canada"],
+            ["F1", 4, "Mentioned", "Not mentioned", "USA", None],
+            ["F2", 5, "True", "False", "USA", None],
+            ["F2", 6, "False", "True", "Canada", None],
+        ]
+        edf = pd.DataFrame(expected_data, columns=["file_code", "id", "topk_1", "topk_2", "topk_R1", "topk_R2"])
+        assert_frame_equal(data_df, edf, check_dtype=False, check_categorical=False)
 
 
 if __name__ == "__main__":
