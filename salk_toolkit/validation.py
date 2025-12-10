@@ -66,6 +66,7 @@ from pydantic import (
     model_serializer,
     BeforeValidator,
     ValidationError,
+    ValidationInfo,
 )
 from pydantic_extra_types.color import Color
 import altair as alt
@@ -430,9 +431,12 @@ class DataMeta(PBase):
 
     @model_validator(mode="before")
     @classmethod
-    def replace_constants(cls, meta: Any) -> Any:  # noqa: ANN401  # pydantic validators require Any
+    def replace_constants(cls, meta: Any, info: ValidationInfo) -> Any:  # noqa: ANN401  # pydantic validators require Any
         """Replace constant references in metadata with their actual values."""
-        return replace_constants(meta, keep=True)
+        tracker = None
+        if info.context and isinstance(info.context, dict):
+            tracker = info.context.get("tracker")
+        return replace_constants(meta, keep=True, tracker=tracker)
 
     @model_serializer(mode="wrap")
     def _serialize_model(
@@ -478,7 +482,7 @@ def _create_strict_model_class(base_model: type[BaseModel]) -> type[BaseModel]:
     return base_model
 
 
-def soft_validate(m: dict[str, object] | BaseModel, model: type[T]) -> T:
+def soft_validate(m: dict[str, object] | BaseModel, model: type[T], context: dict[str, Any] | None = None) -> T:
     """Validate dict/model against a pydantic model, printing warnings, then returning validated object.
 
     First validates with a temporary strict model (extra='forbid') to catch extra fields and print warnings.
@@ -487,6 +491,7 @@ def soft_validate(m: dict[str, object] | BaseModel, model: type[T]) -> T:
     Args:
         m: Dictionary or Pydantic model instance to validate.
         model: Pydantic model class to validate against.
+        context: Optional context to pass to Pydantic validation.
 
     Returns:
         Validated Pydantic model instance.
@@ -505,7 +510,7 @@ def soft_validate(m: dict[str, object] | BaseModel, model: type[T]) -> T:
     # This generates warnings but doesn't affect the final result
     StrictModel = _create_strict_model_class(model)
     try:
-        StrictModel.model_validate(m_dict)
+        StrictModel.model_validate(m_dict, context=context)
     except ValidationError as e:
         # Print warnings for validation errors (mostly extra fields)
         print(f"Validation warnings for {model.__name__}:")
@@ -516,7 +521,7 @@ def soft_validate(m: dict[str, object] | BaseModel, model: type[T]) -> T:
 
     # Now validate with the normal model (extra='ignore') which runs all validators
     # and allows extra fields at all nesting levels
-    inst = cast(T, model.model_validate(m_dict, strict=False))
+    inst = cast(T, model.model_validate(m_dict, strict=False, context=context))
     return inst
 
 

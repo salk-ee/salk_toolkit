@@ -11,6 +11,7 @@ __all__ = [
     "translate_pot",
     "translate_dashboard_fn",
     "translate_dashboard",
+    "run_annotator",
 ]
 
 # Keep this list minimal as this py will actually be executed
@@ -47,6 +48,8 @@ def streamlit_fn_factory(relpath: str, curpath: str) -> Callable[[], None]:
 # | eval: false
 # Run explorer app
 run_explorer = streamlit_fn_factory("./tools/explorer.py", os.path.dirname(__file__))
+# Run annotator app
+run_annotator = streamlit_fn_factory("./tools/annotator.py", os.path.dirname(__file__))
 
 
 def translate_pot(template: str, dest: str, t_func: Callable[[str], str], sources: list[str] | None = None) -> None:
