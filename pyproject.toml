@@ -50,6 +50,7 @@ dependencies = [
   "streamlit-js",
   "streamlit_option_menu",
   "streamlit_dimensions",
+  "streamlit-sortables",
   "vl-convert-python",
 ]
 
@@ -69,6 +70,7 @@ dev = [
 [project.scripts]
 stk_explorer = "salk_toolkit.commands:run_explorer"
 stk_translate_dashboard = "salk_toolkit.commands:translate_dashboard"
+stk_annotator = "salk_toolkit.commands:run_annotator"
 
 [project.urls]
 Homepage = "https://github.com/salk-ee/salk_toolkit"

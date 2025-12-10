@@ -70,6 +70,7 @@ from pydantic import (
     model_serializer,
     BeforeValidator,
     ValidationError,
+    ValidationInfo,
 )
 from pydantic_extra_types.color import Color
 
@@ -420,9 +421,12 @@ class DataMeta(PBase):
 
     @model_validator(mode="before")
     @classmethod
-    def replace_constants(cls, meta: Any) -> Any:  # noqa: ANN401  # pydantic validators require Any
+    def replace_constants(cls, meta: Any, info: ValidationInfo) -> Any:  # noqa: ANN401  # pydantic validators require Any
         """Replace constant references in metadata with their actual values."""
-        return replace_constants(meta, keep=True)
+        tracker = None
+        if info.context and isinstance(info.context, dict):
+            tracker = info.context.get("tracker")
+        return replace_constants(meta, keep=True, tracker=tracker)
 
     @model_serializer(mode="wrap")
     def _serialize_model(

@@ -1,7 +1,7 @@
 # TOOL-002: Annotations Editor
 
 **Last Updated**: 2025-12-10
-**Status**: 🚧 Planning
+**Status**: ✅ Complete
 **Module**: Tool
 **Tags**: `#tool`, `#streamlit`, `#data-annotation`
 **Dependencies**: None
@@ -57,6 +57,8 @@ Streamlit-based utility for inspecting and editing data annotation JSON metafile
   - **Undo/Redo**: The history stack should store the *serialized* `DataMeta` (result of `model_dump()`).
   - **Current State**: On restore (undo/redo), use `soft_validate(snapshot, DataMeta)` to reconstitute the Pydantic object.
   - **Constants**: `soft_validate` must support a context to track constant usage during validation.
+  - **Input Wrapping**:
+    - All Streamlit inputs must be wrapped using a helper function `wrap` to ensure instantaneous updates to `DataMeta` and automatic history tracking.
 
 **Blocks:**
 - Sidebar contains
@@ -147,6 +149,18 @@ Streamlit-based utility for inspecting and editing data annotation JSON metafile
 - **Components**:
   - Use `st.dialog` for raw JSON edits and category reordering.
   - Use `st.fragment` for column blocks to ensure responsiveness.
+  - **Input Wrapper**:
+    - `wrap(inp, *args, path: str | list[str], **kwargs)` helper function:
+      - Wraps Streamlit input widgets (e.g., `st.selectbox`, `st.text_input`).
+      - Arguments:
+        - `inp`: The Streamlit input function to call.
+        - `*args`: Positional arguments for the input widget.
+        - `path`: Dot-notation string (e.g., "structure.block.col.translate") pointing to the location in `master_meta`.
+        - `**kwargs`: Keyword arguments for the input widget.
+      - Responsibilities:
+        - Reads the current value from `master_meta` at `path` to initialize the widget.
+        - Updates `master_meta` at `path` immediately upon change.
+        - Pushes the previous state to the undo history before modification.
 - **Validation Context**:
   - Pass `context={'track_constants': True}` to `soft_validate`.
   - Validators write constant usage to this context to trace which fields are backed by constants.
@@ -169,6 +183,7 @@ Streamlit-based utility for inspecting and editing data annotation JSON metafile
 - [ ] Implement `annotator.py` backbone.
   - [ ] CLI arg parsing.
   - [ ] State initialization (`master_meta`, `history`, `constants`).
+  - [ ] `wrap` helper function for inputs (auto-update `master_meta` & history).
   - [ ] `_load_raw_data` helper using `io._load_data_files`.
   - [ ] `_process_for_editor` helper (custom pipeline, no translate, cached).
 - [ ] Implement Undo/Redo.
