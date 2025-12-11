@@ -3,7 +3,6 @@ Comprehensive tests for read_annotated_data and read_and_process_data functions
 covering all features of meta parsing.
 """
 
-from copy import deepcopy
 import pytest
 import pandas as pd
 import numpy as np
@@ -325,6 +324,19 @@ class TestReadAnnotatedData:
             expected_structure, key=lambda x: x["name"]
         )
 
+        # Also test that we can give from_columns and res_cols as lists (no subgroups possible here)
+        # TODO: Can be a separate test, but there'd be a lot of boilerplate code.
+        from_cols = ["q1_1", "q1_2", "q1_3"]  # Note the parentheses to specify the regex group for translate
+        res_cols = ["q1_R1", "q1_R2", "q1_R3"]
+        meta["structure"][0]["create"]["from_columns"] = from_cols
+        meta["structure"][0]["create"]["res_columns"] = res_cols
+        meta["structure"][0]["create"]["from_prefix"] = "q1_"
+        write_json(meta_file, meta)
+        data_df2, data_meta2 = read_and_process_data(str(meta_file), return_meta=True)
+        assert "q1_R1" in data_df2.columns
+        assert "q1_R2" not in data_df2.columns  # Testing for top 1
+        assert data_df2["q1_R1"].tolist() == ["USA", "Canada", "Mexico"]
+
     @staticmethod
     def _assert_structure_matches(
         actual_structure: dict[str, ColumnBlockMeta],
@@ -466,11 +478,9 @@ class TestReadAnnotatedData:
                 }
             ],
         }
-        meta_file, csv_file = "tmpmeta.json", "test.csv"
         write_json(meta_file, meta)
 
         df = pd.DataFrame(np.hstack([ids.reshape(23, 1) + 1, C, D]), columns=["Q2_Version"] + columns)
-
         q2sets = [f"Q2_{k}set" for k in range(1, 11)]
         q2sethidden = np.array(list(map(lambda s: list(map(lambda s2: "".join(s2), s)), topics[sets - 1][ids])))
         df[q2sets] = q2sethidden

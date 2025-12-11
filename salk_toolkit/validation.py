@@ -222,6 +222,7 @@ class TopKBlock(PBase):
     translate_after: Dict[str, str] = DF(dict)
     from_prefix: Optional[str] = None  # If from_columns is list, prefix will be removed to enable translation
 
+
 class MaxDiffBlock(PBase):
     type: Literal["maxdiff"] = "maxdiff"
     name: Optional[str] = None
@@ -257,6 +258,7 @@ class ColumnBlockMeta(PBase):
     @model_validator(mode="after")
     def merge_scale_with_columns(self) -> Self:
         """Merge scale metadata with each column's metadata automatically on read.
+
         This ensures that column metadata inherits defaults from the block's scale,
         with column-specific metadata taking precedence.
 

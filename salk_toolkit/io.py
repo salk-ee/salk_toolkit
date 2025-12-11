@@ -340,7 +340,7 @@ def _throw_vals_left(df: pd.DataFrame) -> None:
 def _create_topk_metas_and_dfs(
     df: pd.DataFrame,
     block_with_create: ColumnBlockMeta,
-    **kwargs,  # used by other create blocks
+    **kwargs: dict[str, str],  # used by other create blocks
 ) -> tuple[list[pd.DataFrame], list[ColumnBlockMeta]]:
     """Create top K aggregations from DataFrame."""
     if block_with_create.create is None:
@@ -388,9 +388,8 @@ def _create_topk_metas_and_dfs_regex(
     assert first_match is not None, f"Column {from_cols[0]} should match regex {regex_from.pattern}"
     n_groups = len(first_match.groups())
     has_subgroups = n_groups >= 2  # Multiple aggregations needed?
-    regex_to = create.res_cols or ""
-    kmax_raw = create.k
-    kmax = None if kmax_raw in (None, "max") else kmax_raw
+    regex_to = create.res_columns or ""
+    kmax = None if create.k in (None, "max") else create.k
     na_vals = create.na_vals or []
     if has_subgroups:
         # collect all subgroups, later aggregate each subgroup separately
@@ -434,10 +433,7 @@ def _create_topk_metas_and_dfs_regex(
             for col in sdf.columns
         ]
 
-        if "|" in from_columns:
-            raise ValueError(sdf.columns)
         sdf.columns = sdf.columns.map(_get_regex_group_at_agg_ind)
-
         sdf = sdf.mask(
             ~sdf.isna(), other=pd.Series(sdf.columns, index=sdf.columns), axis=1
         )  # replace cell with column name where not NA
@@ -502,12 +498,16 @@ def _create_maxdiff_metas_and_dfs(
     best_cols: Sequence[str] | str = create.best_columns
     worst_cols: Sequence[str] | str = create.worst_columns
     set_cols: Sequence[str] | str | None = create.set_columns
-    if create.setindex_column is None:
-        setindex_col = None
-    elif isinstance(create.setindex_column, str):
-        setindex_col = [create.setindex_column]
-    else:
-        setindex_col = list(create.setindex_column)
+    # Parse setindex_column: can be None, str, or [str] or [str, dict]
+    setindex_col_name: str | None = None
+    setindex_col_meta: ColumnMeta | None = None
+    if isinstance(create.setindex_column, str):
+        setindex_col_name = create.setindex_column
+    elif isinstance(create.setindex_column, list):
+        items = list(create.setindex_column)
+        setindex_col_name = str(items[0]) if items else None
+        if items and len(items) > 1 and isinstance(items[1], dict):
+            setindex_col_meta = soft_validate(items[1], ColumnMeta)
     best_is_str = isinstance(best_cols, str)
     set_is_str = isinstance(set_cols, str)
     if set_cols is None:
@@ -530,7 +530,7 @@ def _create_maxdiff_metas_and_dfs(
         def _expand_set_col(col: str) -> str:
             match = best_template.match(col)
             if match is None:
-                raise ValueError(f"Column {col} does not match best_cols pattern")
+                raise ValueError(f"Column {col} does not match best_cols pattern {best_cols_str}")
             return match.expand(set_cols_pattern)
 
         def _get_group_index(s: str) -> int:
@@ -605,15 +605,15 @@ def _create_maxdiff_metas_and_dfs(
         raise ValueError(f"Unsupported token types in maxdiff set definition: {tokens}")
 
     ordered_cols = best_cols + worst_cols
-    if setindex_col:
-        df = df[ordered_cols + [setindex_col[0]]]
+    if setindex_col_name:
+        df = df[ordered_cols + [setindex_col_name]]
         if topics is None or sets is None:
             raise ValueError("Maxdiff definitions using 'setindex_column' must also define 'topics' and 'sets'.")
         topics_arr = np.array(["", *topics], dtype=object)
         sets_arr = np.asarray(sets, dtype=int)
         lsets = topics_arr[sets_arr]
 
-        setindex = df[setindex_col[0]].astype(np.int64).to_numpy() - 1
+        setindex = df[setindex_col_name].astype(np.int64).to_numpy() - 1
         selected_sets = lsets[setindex]
         df_setcols = pd.DataFrame(selected_sets.tolist(), columns=set_cols, index=df.index)
         df[set_cols] = df_setcols
@@ -634,11 +634,23 @@ def _create_maxdiff_metas_and_dfs(
 
     generated_name = create.name or f"{group.name}_maxdiff"
     df = df.sort_index(axis=1)  # sort columns
+
+    base_columns = sorted(best_cols + worst_cols + cast(list[str], set_cols))
+    columns_spec: dict[str, ColumnMeta] = {col: ColumnMeta() for col in base_columns}
+    if setindex_col_name is not None:
+        if setindex_col_meta is None:
+            setindex_col_meta = ColumnMeta()
+        if topics is not None and setindex_col_meta.categories is None:
+            setindex_col_meta = setindex_col_meta.model_copy(update={"categories": list(topics)})
+        if setindex_col_meta.continuous is False:
+            setindex_col_meta = setindex_col_meta.model_copy(update={"continuous": True})
+        columns_spec = {setindex_col_name: setindex_col_meta} | columns_spec
+
     return [df], [
         {
             "name": generated_name,
             "scale": deepcopy(create.scale or {}),
-            "columns": ([setindex_col] if setindex_col else []) + sorted(best_cols + worst_cols + set_cols),
+            "columns": columns_spec,
         }
     ]
 
@@ -695,41 +707,13 @@ def _create_topk_metas_and_dfs_list(
 
     return [sdf], [meta_subgroup]
 
+
 CreateBlockModel = TopKBlock | MaxDiffBlock
 
-
-# CreateFn accepts df, group, and **kwargs (with optional topics/sets for maxdiff)
-# Using Protocol for better type checking while allowing different signatures
-class CreateFn(Protocol):
-    def __call__(
-        self,
-        df: pd.DataFrame,
-        group: ColumnBlockMeta,
-        **kwargs: dict[str, str],
-    ) -> tuple[list[pd.DataFrame], list[dict[str, object]]]: ...
-
-
-create_block_type_to_create_fn: dict[str, CreateFn] = {
+create_block_type_to_create_fn: dict[str, Callable] = {
     "topk": _create_topk_metas_and_dfs,  # type: ignore[assignment]
     "maxdiff": _create_maxdiff_metas_and_dfs,  # type: ignore[assignment]
 }
-
-create_block_type_to_model: dict[str, type[TopKBlock] | type[MaxDiffBlock]] = {
-    "topk": TopKBlock,
-    "maxdiff": MaxDiffBlock,
-}
-
-
-def _coerce_create_block(create_block: object) -> tuple[str, CreateBlockModel]:
-    if isinstance(create_block, (TopKBlock, MaxDiffBlock)):
-        return create_block.type, create_block
-    if not isinstance(create_block, dict):
-        raise TypeError("Create block must be a dictionary or a validated block model.")
-    block_type = cast(str, create_block.get("type"))
-    model_cls = create_block_type_to_model.get(block_type)
-    if model_cls is None:
-        raise NotImplementedError(f"Create block {block_type} not supported")
-    return block_type, model_cls.model_validate(create_block)
 
 
 def _create_new_columns_and_metas(
@@ -862,8 +846,10 @@ def _process_annotated_data(
             exec(_str_from_list(meta_obj.preprocessing), globs)
             raw_data_dict[file_code] = globs["df"]
 
+    raw_data_concat = pd.concat(raw_data_dict.values()).reset_index(drop=True) if raw_data_dict else pd.DataFrame()
+
     # Initialize concatenated DataFrame - start empty, will be built column by column
-    ndf_df = pd.DataFrame()
+    ndf_df = pd.DataFrame(index=raw_data_concat.index)
 
     # Compute and store row index ranges for each file_code
     file_index_ranges: dict[str, slice] = {}
@@ -1109,11 +1095,12 @@ def _process_annotated_data(
                 ndf_df[sg] = transformed_combined[sg].values
         # Handle create blocks - may add new groups to structure
         if group.create is not None:
+            create_source_df = ndf_df.combine_first(raw_data_concat) if not raw_data_concat.empty else ndf_df
             for newdf, newmeta_dict in _create_new_columns_and_metas(
-                ndf_df,
+                create_source_df,
                 group,
-                topics=globs.get("topics", None),
-                sets=globs.get("sets", None),
+                topics=constants.get("topics", None),
+                sets=constants.get("sets", None),
             ):
                 ndf_df = ndf_df.combine_first(newdf)
                 new_group_meta = soft_validate(newmeta_dict, ColumnBlockMeta)
