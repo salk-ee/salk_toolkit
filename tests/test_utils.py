@@ -52,6 +52,7 @@ from salk_toolkit.utils import (
     default_bidirectional_gradient,
     redblue_gradient,
     greyscale_gradient,
+    rename_dict_key,
 )
 
 
@@ -136,6 +137,23 @@ class TestBasicUtilities:
         result = match_sum_round([2.7])
         expected = np.array([3])
         assert np.array_equal(result, expected)
+
+    def test_rename_dict_key(self):
+        """Test rename_dict_key helper."""
+        d = {"a": 1, "b": 2, "c": 3}
+        out = rename_dict_key(d, "b", "bb")
+        assert list(out.keys()) == ["a", "bb", "c"]
+        assert out["bb"] == 2
+        assert "b" not in out
+
+        # Original is unchanged
+        assert list(d.keys()) == ["a", "b", "c"]
+
+        with pytest.raises(KeyError):
+            rename_dict_key(d, "missing", "x")
+
+        with pytest.raises(ValueError, match="Target key already exists"):
+            rename_dict_key(d, "b", "a")
 
 
 class TestNumericalUtilities:

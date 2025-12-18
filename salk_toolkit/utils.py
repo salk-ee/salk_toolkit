@@ -65,6 +65,7 @@ __all__ = [
     "unescape_vega_label",
     "warn",
     "plot_matrix_html",
+    "rename_dict_key",
 ]
 
 import json
@@ -168,6 +169,37 @@ def factorize_w_codes(s: pd.Series, codes: Sequence[Any]) -> np.ndarray:
 
 
 T = TypeVar("T")
+K = TypeVar("K")
+V = TypeVar("V")
+
+
+def rename_dict_key(d: dict[K, V], old: K, new: K) -> dict[K, V]:
+    """Return a copy of ``d`` where key ``old`` is renamed to ``new`` while preserving insertion order.
+
+    Args:
+        d: Input dictionary.
+        old: Existing key to rename.
+        new: New key name (must not already exist in ``d``).
+
+    Returns:
+        New dictionary with the same values and insertion order, with ``old`` replaced by ``new``.
+
+    Raises:
+        KeyError: If ``old`` is not in ``d``.
+        ValueError: If ``new`` already exists in ``d``.
+    """
+    if old not in d:
+        raise KeyError(old)
+    if new in d:
+        raise ValueError(f"Target key already exists: {new!r}")
+
+    out: dict[K, V] = {}
+    for k, v in d.items():
+        if k == old:
+            out[new] = v
+        else:
+            out[k] = v
+    return out
 
 
 def batch(iterable: Sequence[T], n: int = 1) -> Iterator[Sequence[T]]:

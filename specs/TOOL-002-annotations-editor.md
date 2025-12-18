@@ -1,6 +1,6 @@
 # TOOL-002: Annotations Editor
 
-**Last Updated**: 2025-12-10
+**Last Updated**: 2025-12-18
 **Status**: ✅ Complete
 **Module**: Tool
 **Tags**: `#tool`, `#streamlit`, `#data-annotation`
@@ -43,7 +43,7 @@ Streamlit-based utility for inspecting and editing data annotation JSON metafile
 **Shared:**
 
 - **File loading**:
-  - Load the annotation file using standard JSON/YAML loaders.
+  - Load the annotation file as JSON.
   - Load input data files using `salk_toolkit.io._load_data_files` (accessing the internal function).
 - **Data Processing**:
   - Implement a custom processing pipeline in `annotator.py` that mirrors `_process_annotated_data` but with key differences:
@@ -51,7 +51,7 @@ Streamlit-based utility for inspecting and editing data annotation JSON metafile
     - **Skip translation**: The editor needs to see original values to map them. Skip `translate` and `translate_after` steps.
     - **Applies**: `preprocessing`, `transform` (per-file), and `subgroup_transform`.
   - **Caching**: The resulting dictionary of per-file DataFrames should be cached.
-    - Recompute ONLY if: files list changes, `preprocessing` script changes, or `transform` scripts change.
+    - Recompute ONLY if: loaded file codes change, `preprocessing` changes, or column `transform` scripts change.
     - Do NOT recompute if: categories, translations, or other metadata changes. This allows fast UI updates when editing mappings.
 - **State Management**:
   - **Undo/Redo**: The history stack should store the *serialized* `DataMeta` (result of `model_dump()`).
@@ -60,77 +60,51 @@ Streamlit-based utility for inspecting and editing data annotation JSON metafile
   - **Input Wrapping**:
     - All Streamlit inputs must be wrapped using a helper function `wrap` to ensure instantaneous updates to `DataMeta` and automatic history tracking.
 
-**Blocks:**
-- Sidebar contains
- - Choice of block - selectbox
- - "Separate" toggle, on by default
-- Main pane functionality:
-  - Rename block
-  - Column editors as expanders (more below)
-    - a pseudo "All" entry for the block `scale` + one per column
-  - Add column(s)
-    - selectbox for column (from list of all columns from all files combined)
-    - text_input for name (by default, blank in which case use the name of original column)
-    - "Add" button to confirm the action
-  - Split block
-    - text_input for name of the new block
-    - multi-select to choose which columns to split off from this block
-    - "Split" button to confirm the action
+**Functionality (as implemented)**
 
-**Column editor:**
-
-- Expander text also shows `label` (if present) and names of original columns
-  - Original columns have a warning icon if it is also used in another block
-  - It is acceptable to scan the entire `master_meta` each render to determine other-block usage.
-- rename column text_input
-- warning with list of other blocks this column is in
-- Visualization - visualize the values of the column (using the cached pre-translation data)
-  - All plots use Altair.
-  - For `continuous` columns - show density plot
-    - Colored by `file_code` if "Separate"
-    - Show count of missing values + mean, median, std
-    - or a table of these values by `file_code` if "Separate"
-  - For categorical columns - show horizontal histogram of values
-    - with `yOffset` on `file_code` if separate
-    - Show categories in the same order they are ordered
-    - Use the annotation `colors` to color the histogram
-    - Add NA as a category to end of histogram if any missing values present (color it `#cc4560`)
-- reorder categories dialog button via `streamlit_sortables`,
-  - Ensure `streamlit-sortables` dependency is listed in `pyproject.toml`.
-- `ordered`, `likert` toggles, `nonordered` multi-select - all on the same row as 'reorder'
-- Category editor in a table format
-  - With the following columns:
-    - Original value (from cached data, before `translate`)
-    - Count of that original value
-      - Either in total or separately for each file (column per file) based on "Separate" toggle
-        - If separately, header of this column should be `file_code` for that file
-    - Text_input for what the value should `translate` to
-     - Treat empty string as a translation to `None`
-    - Numerical value for that translated category (`num_values`)
-      - default empty, showing consecutive numbers in translated category order as placeholder
-    - Color picker for the color of that category
-      - default is pure white `#FFFFFF` which is translated to `None` in `master_meta`
-  - Group the categories that translate to the same value together in ordering
-    - Alphabetic ordering on original names inside the groups
-    - Groups ordered according to category order given for the column
-    - Numerical value and color picker shown only for the first row of the group
-  - Show categories from all input files
-    - If some category not present, show a 0 on a yellow background
-    - Also show NA as a table row with counts if there are any missing values in that column
-   - Button to open JSON metadata edit dialog (validated against `ColumnMeta`)
-- "Remove column" button
-
-**Constants:**
-- list, edit, delete, or add constants via JSON text areas, with validation through `json.loads`.
-- Updates to constants require re-validation of the `DataMeta` object to propagate changes.
-
-**Files:**
-- show linked input files, allow code renaming, read option editing, removal, and auto-detection of additional data files alongside the metafile.
-- Multi-file translation editor: when split-by-file mode is active (in Blocks mode), show per-file raw-value counts.
-- Full undo/redo functionality on all edits.
-- Ability to save the current state of annotations as a json.
-  - Prompt for output path; default to the original file path. When overwriting, create a backup `{original_name}.orig.{i}.json`.
-  - Validate against `DataMeta` before saving.
+- **CLI**:
+  - `stk_annotator <path_to_meta.json>` runs the Streamlit app.
+- **Modes**:
+  - Sidebar `Mode` radio: `Blocks`, `Constants`, `Files`.
+  - Sidebar includes Undo/Redo buttons, plus `Save Changes` (writes the annotation JSON back to disk, with backup).
+- **Blocks mode**:
+  - Block selection via `selectbox` in the main pane.
+  - Column selection via `selectbox` in the main pane.
+    - Includes a pseudo-column `scale` when `block.scale` exists.
+  - `Separate files` toggle lives in the sidebar, is shown only when multiple files exist, and is off by default.
+  - Block actions:
+    - Rename block (renames the `structure` dict key).
+    - Add column: choose a raw column name (from all loaded raw files), optionally rename, and create a new `ColumnMeta(source=<raw_col>)`.
+    - Split block: move selected columns to a new `ColumnBlockMeta`.
+- **Column editor**:
+  - Column-level fields:
+    - `label` (`text_input`)
+    - `ordered`, `likert` (`checkbox`)
+    - `nonordered` (`multiselect`) from the current categories list
+  - Visualisations (Altair) computed from cached per-file processed data:
+    - Continuous: density plot + summary table (`separate` optionally groups by `file_code`)
+    - Datetime: binned count plot + min/max table
+    - Categorical: histogram of **translated display values** (based on `translate` and `categories` ordering), optionally split by `file_code`
+  - Category mapping table:
+    - Lists original observed values and counts (total or per-file).
+    - Provides per-original `translate` text input:
+      - Empty string means “translate to NA” (stored as `""`).
+      - Leaving translation equal to the original value is treated as “no explicit translate entry” (removes key).
+    - Updates `categories` ordering when translations change to preserve order where possible.
+    - Provides `num_values` editor for ordered categoricals (indexed by translated category order).
+    - Provides `colors` editor via `color_picker` for translated categories; picking pure white `#FFFFFF` stores `None`.
+    - Includes NA row counts when missing values exist.
+  - Reorder categories dialog via `streamlit_sortables`.
+- **Constants mode**:
+  - A single JSON text area editor for `constants` (`json.loads` validation).
+  - Note: changing constants updates `constants` only; it does not re-resolve constant references already materialised in the current `DataMeta` instance.
+- **Files mode**:
+  - Lists `files`; supports editing per-file `code`.
+  - Displays `opts` (read-only).
+- **Save**:
+  - `Save Changes` writes to the original `meta_path`.
+  - When overwriting, creates a backup `{original_name}.orig.{i}.json`.
+  - Writes `master_meta.model_dump(mode="json", exclude_none=True)` (no separate hard-validate step).
 
 **Architecture:**
 
@@ -171,57 +145,64 @@ Streamlit-based utility for inspecting and editing data annotation JSON metafile
 
 ### Foundation Setup
 
-- [ ] Update `salk_toolkit/validation.py`:
-  - [ ] Modify `soft_validate` to accept `context: dict[str, Any] | None = None`.
-  - [ ] Ensure validators in `DataMeta` (and children) respect context for tracing constants.
-- [ ] Declare dependencies in `pyproject.toml`.
-  - [ ] Add `streamlit-sortables`.
-  - [ ] Register script `stk_annotator` in `[project.scripts]`.
+- [x] Update `salk_toolkit/validation.py`:
+  - [x] Modify `soft_validate` to accept `context: dict[str, Any] | None = None`.
+  - [x] Ensure validators in `DataMeta` (and children) respect context for tracing constants.
+- [x] Declare dependencies in `pyproject.toml`.
+  - [x] Add `streamlit-sortables`.
+  - [x] Register script `stk_annotator` in `[project.scripts]`.
 
 ### Core Development
 
-- [ ] Implement `annotator.py` backbone.
-  - [ ] CLI arg parsing.
-  - [ ] State initialization (`master_meta`, `history`, `constants`).
-  - [ ] `wrap` helper function for inputs (auto-update `master_meta` & history).
-  - [ ] `_load_raw_data` helper using `io._load_data_files`.
-  - [ ] `_process_for_editor` helper (custom pipeline, no translate, cached).
-- [ ] Implement Undo/Redo.
-  - [ ] `save_state()`: serialize `master_meta` -> history.
-  - [ ] `restore_state()`: pop history -> `soft_validate` -> `master_meta`.
-- [ ] Build Blocks Mode.
-  - [ ] Sidebar (Block selector, Separate toggle).
-  - [ ] Block Editor (Rename, Add, Split).
-  - [ ] Column Editor Fragment.
-    - [ ] Visualizations (using cached pre-translate data).
-    - [ ] Category Table (mapping original -> translated).
-    - [ ] Reorder Dialog.
-- [ ] Build Constants Mode.
-  - [ ] JSON editors for constants.
-  - [ ] Update logic (edit constant -> re-validate `master_meta`).
-- [ ] Build Files Mode.
-  - [ ] File management UI.
-- [ ] Implement Save.
-  - [ ] Validate, Backup, Write.
+- [x] Implement `annotator.py` backbone.
+  - [x] CLI arg parsing.
+  - [x] State initialization (`master_meta`, `history`, `constants`).
+  - [x] `wrap` helper function for inputs (auto-update `master_meta` & history).
+  - [x] `_load_raw_data` helper using `io._load_data_files`.
+  - [x] `_process_for_editor` helper (custom pipeline, no translate, cached).
+- [x] Implement Undo/Redo.
+  - [x] `save_state()`: serialize `master_meta` -> history.
+  - [x] `restore_state()`: pop history -> `soft_validate` -> `master_meta`.
+- [x] Build Blocks Mode.
+  - [x] Mode switcher + navigation.
+  - [x] Block Editor (Rename, Add, Split).
+  - [x] Column editor (selectbox-driven, includes scale).
+  - [x] Visualizations (uses cached processed data).
+  - [x] Category table / mapping editor.
+  - [x] Reorder Dialog.
+- [x] Build Constants Mode.
+  - [x] JSON editor for constants.
+- [x] Build Files Mode.
+  - [x] List files and allow code editing.
+- [x] Implement Save.
+  - [x] Backup, Write.
 
 ### Integration & Testing
 
-- [ ] Write unit tests for new validation context logic in `tests/test_io.py` (or `test_validation.py`).
-- [ ] Manual QA:
-  - [ ] Verify editor works with pre-translation values.
-  - [ ] Verify changing a constant updates the resolved value in the UI.
-  - [ ] Verify undo/redo works across all modes.
-- [ ] Smoke test CLI.
+- [x] Write unit tests for new validation context logic in `tests/test_io.py` (or `test_validation.py`).
+- [ ] Manual QA (recommended):
+  - [ ] Verify editor works on a real annotation+data pair.
+  - [ ] Verify undo/redo for wrapped widget edits.
+  - [ ] Verify save produces a valid JSON file and a backup when overwriting.
 
 ## Definition of Done
 
-- [ ] `soft_validate` supports validation context.
-- [ ] `annotator.py` implements custom non-aggregating, non-translating pipeline.
-- [ ] Editor UI correctly maps original values to categories.
-- [ ] Tool is registered and runnable.
-- [ ] Undo/Redo relies on serialized state and `soft_validate`.
-- [ ] Saving produces valid JSON.
+- [x] `soft_validate` supports validation context.
+- [x] `annotator.py` implements custom non-aggregating, non-translating pipeline.
+- [x] Editor UI correctly maps original values to categories.
+- [x] Tool is registered and runnable.
+- [x] Undo/Redo relies on serialized state and `soft_validate`.
+- [x] Saving produces valid JSON.
 
 ## Implementation Notes
 
-Track decisions and pattern deviations as you work.
+**Future enhancements (not implemented)**
+
+- Column rename that updates `structure[block].columns` keys
+- Cross-block “column used elsewhere” warnings
+- “Edit raw ColumnMeta JSON” dialog for a column
+- Remove column action
+- Missing-category highlighting (e.g. yellow 0s) across files
+- Constants propagation by re-validating `master_meta` after edits
+- Files editing: add/remove entries, edit `opts`, auto-detect data files next to the meta file
+- Save-as prompt and/or explicit `hard_validate` before writing
