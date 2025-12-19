@@ -15,15 +15,17 @@ import streamlit as st
 from streamlit_sortables import sort_items
 
 from salk_toolkit.utils import rename_dict_key
-from salk_toolkit.validation import ColumnBlockMeta, ColumnMeta
+from salk_toolkit.validation import BlockScaleMeta, ColumnBlockMeta, ColumnMeta, soft_validate
+from pydantic import ValidationError
 
 from salk_toolkit.tools.annotator.framework import (
+    edit_json_modal,
     get_all_raw_columns,
     get_column_data,
     normalize_translate_dict,
+    rebuild_data_cache,
     save_state,
     set_path_value,
-    updated_categories_from_translate,
     wrap,
 )
 
@@ -60,6 +62,7 @@ def remove_column_dialog(block_name: str, col_name: str) -> None:
             del block.columns[col_name]
 
             options: list[str] = []
+            options.append("Block settings")
             if block.scale is not None:
                 options.append("scale")
             options.extend(list(block.columns.keys()))
@@ -156,27 +159,27 @@ def _render_categorical_visualization(df: pd.DataFrame, col_meta: ColumnMeta, se
 
     color_scale = None
     if col_meta.colors:
-        color_domain = []
-        color_range = []
-        if sort_order:
-            for cat in sort_order:
-                if cat in col_meta.colors:
-                    color_domain.append(cat)
-                    color_val = col_meta.colors[cat]
-                    if hasattr(color_val, "as_hex"):
-                        color_range.append(color_val.as_hex())
-                    else:
-                        color_range.append(str(color_val))
-        else:
-            for cat, color_val in col_meta.colors.items():
-                color_domain.append(str(cat))
-                if hasattr(color_val, "as_hex"):
-                    color_range.append(color_val.as_hex())
-                else:
-                    color_range.append(str(color_val))
+        # Altair's default single-color is steelblue.
+        default_altair_color = "#4682b4"
 
-        if color_domain:
-            color_scale = alt.Scale(domain=color_domain, range=color_range)
+        if sort_order:
+            domain = list(sort_order)
+        else:
+            # No explicit ordering: use observed translated values.
+            domain = sorted({str(v) for v in df_plot["translated_value"].dropna().unique()})
+
+        color_range: list[str] = []
+        for cat in domain:
+            color_val = col_meta.colors.get(cat)
+            if color_val is None:
+                color_range.append(default_altair_color)
+            elif hasattr(color_val, "as_hex"):
+                color_range.append(color_val.as_hex())
+            else:
+                color_range.append(str(color_val))
+
+        if domain:
+            color_scale = alt.Scale(domain=domain, range=color_range)
 
     encode_dict: dict[str, Any] = {
         "y": alt.Y("translated_value:N", axis=alt.Axis(title="Value"), sort=sort_order if sort_order else "-x"),
@@ -197,8 +200,6 @@ def _render_categorical_visualization(df: pd.DataFrame, col_meta: ColumnMeta, se
 
 def column_editor(block_name: str, col_name: str, col_meta: ColumnMeta) -> None:
     """Editor for column metadata."""
-    st.write(f"Column: {col_name}")
-
     if "master_meta" in st.session_state:
         block = st.session_state.master_meta.structure.get(block_name)
         if col_name == "scale":
@@ -216,6 +217,11 @@ def column_editor(block_name: str, col_name: str, col_meta: ColumnMeta) -> None:
         rename_key = f"rename_{block_name}_{col_name}"
         if rename_key not in st.session_state:
             st.session_state[rename_key] = col_name
+
+        type_key = f"type_{block_name}_{col_name}"
+        current_type = "continuous" if col_meta.continuous else "datetime" if col_meta.datetime else "categorical"
+        if type_key not in st.session_state:
+            st.session_state[type_key] = current_type
 
         def _apply_column_rename() -> None:
             """Rename the column key in the block columns mapping."""
@@ -238,55 +244,144 @@ def column_editor(block_name: str, col_name: str, col_meta: ColumnMeta) -> None:
                 return
 
             save_state(["structure", block_name, "columns", col_name])
+            # If the column used the implicit default source (== old column key), make it explicit
+            # so that renaming the key does not break the link to the raw data column.
+            meta_obj = block.columns[col_name]
+            if getattr(meta_obj, "source", None) is None:
+                meta_obj.source = col_name
             block.columns = rename_dict_key(block.columns, col_name, new_name)
             st.session_state.selected_column = new_name
             st.session_state[f"rename_{block_name}_{new_name}"] = new_name
-            st.rerun()
+            rebuild_data_cache()
 
-        st.text_input("Rename Column", key=rename_key, on_change=_apply_column_rename)
+        def _apply_column_type() -> None:
+            """Update column type flags and keep categorical metadata consistent."""
+            block = st.session_state.master_meta.structure.get(block_name)
+            if not block or col_name not in block.columns:
+                return
 
-        if st.button("Remove Column…", type="secondary", key=f"remove_btn_{block_name}_{col_name}"):
-            remove_column_dialog(block_name, col_name)
+            meta_obj = block.columns[col_name]
+            old_type = "continuous" if meta_obj.continuous else "datetime" if meta_obj.datetime else "categorical"
+            new_type = str(st.session_state.get(type_key, old_type))
+            if new_type == old_type:
+                return
 
-    col1, _ = st.columns(2)
-    with col1:
-        wrap(st.text_input, "Label", path=base_path + ["label"], key=f"label_{block_name}_{col_name}")
+            save_state(base_path + ["continuous"])
 
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        wrap(st.checkbox, "Ordered", path=base_path + ["ordered"], key=f"ordered_{block_name}_{col_name}")
-    with col2:
-        wrap(st.checkbox, "Likert", path=base_path + ["likert"], key=f"likert_{block_name}_{col_name}")
-    with col3:
-        cats = col_meta.categories if isinstance(col_meta.categories, list) else []
-        wrap(
-            st.multiselect,
-            "Non-ordered categories",
-            options=cats,
-            path=base_path + ["nonordered"],
-            key=f"nonordered_{block_name}_{col_name}",
-        )
+            meta_obj.continuous = new_type == "continuous"
+            meta_obj.datetime = new_type == "datetime"
 
-    if col_name == "scale":
+            if new_type == "categorical":
+                # Set explicit categories based on observed values so the categorical UI can render
+                # without collapsing everything into NA defaults.
+                col_prefix_local = getattr(getattr(block, "scale", None), "col_prefix", None)
+                data_cn = f"{col_prefix_local}{col_name}" if col_prefix_local else col_name
+                df_vals = get_column_data(data_cn)
+                if not df_vals.empty:
+                    cats = sorted({str(v) for v in df_vals["value"].dropna().unique()})
+                    meta_obj.categories = cats
+                else:
+                    meta_obj.categories = "infer"
+            else:
+                # Clear categorical-only fields to satisfy ColumnMeta validation when categories is None.
+                meta_obj.categories = None
+                meta_obj.ordered = False
+                meta_obj.likert = False
+                meta_obj.groups = {}
+                meta_obj.colors = {}
+                meta_obj.num_values = None
+                meta_obj.topo_feature = None
+
+            rebuild_data_cache()
+
+        name_col, type_col, remove_col = st.columns([7, 3, 2])
+        with name_col:
+            st.text_input("Column name", key=rename_key, on_change=_apply_column_rename)
+        with type_col:
+            st.selectbox(
+                "Type",
+                options=["categorical", "continuous", "datetime"],
+                key=type_key,
+                on_change=_apply_column_type,
+                label_visibility="collapsed",
+            )
+
+        with remove_col:
+            if st.button("Remove Column…", type="secondary", key=f"remove_btn_{block_name}_{col_name}"):
+                remove_column_dialog(block_name, col_name)
+    else:
         st.info(
             "Scale metadata applies to all columns in this block. Individual column metadata overrides scale settings."
         )
+
+    label_col, edit_col = st.columns([10, 2])
+    with label_col:
+        wrap(st.text_input, "Label", path=base_path + ["label"], key=f"label_{block_name}_{col_name}")
+    with edit_col:
+        if st.button(
+            "Edit Column Meta (JSON)…",
+            type="secondary",
+            key=f"edit_meta_btn_{block_name}_{col_name}",
+        ):
+            edit_json_modal(base_path)
+
+    # Data fetch
+    block_local = st.session_state.master_meta.structure.get(block_name) if "master_meta" in st.session_state else None
+    col_prefix = None
+    if block_local is not None and getattr(block_local, "scale", None) is not None:
+        col_prefix = getattr(block_local.scale, "col_prefix", None)
+
+    if col_name == "scale":
         if hasattr(col_meta, "col_prefix"):
             wrap(st.text_input, "Column Prefix", path=base_path + ["col_prefix"], key=f"col_prefix_{block_name}_scale")
-        return
 
-    df = get_column_data(col_name)
+        # Mirror per-column display, but aggregate data across *all* columns in the block.
+        frames: list[pd.DataFrame] = []
+        if block_local is not None:
+            for orig_cn in block_local.columns.keys():
+                data_cn = f"{col_prefix}{orig_cn}" if col_prefix else orig_cn
+                sub = get_column_data(data_cn)
+                if not sub.empty:
+                    frames.append(sub)
+        df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=["value", "file_code"])
+        data_key_for_cache = f"{block_name}__scale__{len(frames)}"
+    else:
+        data_cn = f"{col_prefix}{col_name}" if col_prefix else col_name
+        df = get_column_data(data_cn)
+        data_key_for_cache = data_cn
+
+    is_categorical = not col_meta.continuous and not col_meta.datetime
+    if is_categorical:
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            ordered = wrap(st.checkbox, "Ordered", path=base_path + ["ordered"], key=f"ordered_{block_name}_{col_name}")
+
+        if ordered:
+            with col2:
+                wrap(st.checkbox, "Likert", path=base_path + ["likert"], key=f"likert_{block_name}_{col_name}")
+            with col3:
+                cats = col_meta.categories if isinstance(col_meta.categories, list) else []
+                wrap(
+                    st.multiselect,
+                    "Non-ordered categories",
+                    options=cats,
+                    path=base_path + ["nonordered"],
+                    key=f"nonordered_{block_name}_{col_name}",
+                )
+
     if df.empty:
         st.warning(f"No data found for {col_name}")
         st.json(col_meta.model_dump(mode="json"))
         return
 
     separate = st.session_state.get("separate_files", True)
-    meta_hash = hash(str(col_meta.model_dump(mode="json")))
-    cache_key_counts = f"col_counts_{block_name}_{col_name}_{separate}_{meta_hash}"
+    # Counts depend both on scale/column metadata and on which underlying data columns are included.
+    meta_hash = hash(str(col_meta.model_dump(mode="json")) + str(data_key_for_cache))
+    cache_key_counts = f"col_counts_{block_name}_{data_key_for_cache}_{separate}_{meta_hash}"
 
     if cache_key_counts not in st.session_state:
-        old_keys = [k for k in st.session_state.keys() if k.startswith(f"col_counts_{block_name}_{col_name}_")]
+        prefix_key = f"col_counts_{block_name}_{data_key_for_cache}_"
+        old_keys = [k for k in st.session_state.keys() if k.startswith(prefix_key)]
         for k in old_keys:
             if k != cache_key_counts:
                 del st.session_state[k]
@@ -306,7 +401,9 @@ def column_editor(block_name: str, col_name: str, col_meta: ColumnMeta) -> None:
     else:
         _render_categorical_visualization(df, col_meta, separate)
 
-    if not col_meta.datetime and st.button("Reorder Categories", key=f"reorder_btn_{block_name}_{col_name}"):
+    if (not col_meta.continuous and not col_meta.datetime) and st.button(
+        "Reorder Categories", key=f"reorder_btn_{block_name}_{col_name}"
+    ):
         reorder_dialog(col_meta)
 
     if not col_meta.continuous and not col_meta.datetime:
@@ -316,19 +413,11 @@ def column_editor(block_name: str, col_name: str, col_meta: ColumnMeta) -> None:
         counts_index_map = {str(idx): idx for idx in counts.index}
 
         trans_to_orig: defaultdict[str, list[str]] = defaultdict(list)
-        translate_path = base_path + ["translate"]
         translate_dict = normalize_translate_dict(col_meta.translate) if col_meta.translate else {}
 
         init_flag = f"_translate_initialized_{block_name}_{col_name}"
         if not st.session_state.get(init_flag, False):
-            missing_keys = sorted(k for k in unique_vals_str if k not in translate_dict)
-            if missing_keys:
-                for k in missing_keys:
-                    translate_dict[k] = ""
-                set_path_value(st.session_state.master_meta, translate_path, translate_dict)
-                block = st.session_state.master_meta.structure.get(block_name)
-                if block and col_name in block.columns:
-                    col_meta = block.columns[col_name]
+            # Do not auto-populate `translate` in metadata. Missing mappings are treated as identity.
             st.session_state[init_flag] = True
 
         for orig_str in unique_vals_str:
@@ -442,48 +531,102 @@ def column_editor(block_name: str, col_name: str, col_meta: ColumnMeta) -> None:
                         old_val: str | None,
                         path: list[str | int],
                     ) -> None:
-                        """Update categories list when translations change, preserving order when possible."""
+                        """Update categories/colors when translations change (rename/merge/split/realign)."""
                         block = st.session_state.master_meta.structure.get(block_name)
                         if not block or col_name not in block.columns:
                             return
 
+                        if not (len(path) >= 2 and path[-2] == "translate"):
+                            return
+
+                        changed_key = str(path[-1])
+
+                        # Work off the *already updated* translate mapping (wrap() applied the change).
                         col_meta_local = block.columns[col_name]
-                        translate_path = base_path + ["translate"]
-                        translate_dict_raw = col_meta_local.translate if col_meta_local.translate else {}
-                        translate_dict = normalize_translate_dict(translate_dict_raw)
-
-                        if len(path) >= 2 and path[-2] == "translate":
-                            changed_key = str(path[-1])
-                            if new_val is None:
-                                translate_dict.pop(changed_key, None)
-                            else:
-                                translate_dict[changed_key] = str(new_val)
-
-                        set_path_value(st.session_state.master_meta, translate_path, translate_dict)
-                        col_meta_local = block.columns[col_name]
-
-                        current_categories: list[str] = []
-                        if col_meta_local.categories and isinstance(col_meta_local.categories, list):
-                            current_categories = [str(c) for c in col_meta_local.categories]
-
-                        new_categories = updated_categories_from_translate(
-                            current_categories,
-                            translate_dict,
-                            old_val,
-                            new_val,
+                        translate_dict = (
+                            normalize_translate_dict(col_meta_local.translate) if col_meta_local.translate else {}
                         )
-                        if new_categories != current_categories:
-                            categories_path = base_path + ["categories"]
-                            set_path_value(st.session_state.master_meta, categories_path, new_categories)
+
+                        # Only auto-maintain explicit order if categories is already explicit.
+                        if not (col_meta_local.categories and isinstance(col_meta_local.categories, list)):
+                            return
+
+                        cats = [str(c) for c in col_meta_local.categories]
+
+                        def _label(val: str | None) -> str:
+                            if val is None:
+                                return changed_key  # identity mapping
+                            if val == "":
+                                return ""  # maps to NA
+                            return str(val)
+
+                        old_lbl = _label(old_val)
+                        new_lbl = _label(new_val)
+
+                        # Determine which translated labels are used by observed raw values after the edit.
+                        used: set[str] = set()
+                        for orig in unique_vals_str:
+                            mapped = translate_dict.get(orig, orig)
+                            if mapped != "":
+                                used.add(mapped)
+
+                        old_used = old_lbl != "" and old_lbl in used
+                        new_used = new_lbl != "" and new_lbl in used
+                        old_in = old_lbl in cats
+                        new_in = new_lbl in cats
+
+                        colors_path = base_path + ["colors"]
+                        colors = dict(col_meta_local.colors or {})
+
+                        # Update ordering + colors based on the four-case model.
+                        if new_lbl == "":
+                            # Map-to-NA: drop old category/color if it is no longer used.
+                            if old_in and not old_used:
+                                cats = [c for c in cats if c != old_lbl]
+                                colors.pop(old_lbl, None)
+                        elif not old_used and (not new_in) and new_used:
+                            # Rename: old disappears, new appears (preserve position; move old color if new missing).
+                            if old_in:
+                                cats[cats.index(old_lbl)] = new_lbl
+                            else:
+                                cats.append(new_lbl)
+                            if old_lbl in colors and new_lbl not in colors:
+                                colors[new_lbl] = colors.pop(old_lbl)
+                            else:
+                                colors.pop(old_lbl, None)
+                        elif not old_used and new_in and new_used:
+                            # Merge: old disappears, new already present (do NOT touch new color).
+                            if old_in:
+                                cats = [c for c in cats if c != old_lbl]
+                            colors.pop(old_lbl, None)
+                        elif old_used and (not new_in) and new_used:
+                            # Split: old remains, new appears (insert new after old).
+                            if old_in:
+                                cats.insert(cats.index(old_lbl) + 1, new_lbl)
+                            else:
+                                cats.append(new_lbl)
+                        else:
+                            # Realign (or no-op): keep order as-is.
+                            pass
+
+                        # Ensure all used labels exist in categories (append missing deterministically).
+                        missing = sorted(used - set(cats))
+                        if missing:
+                            cats.extend(missing)
+
+                        set_path_value(st.session_state.master_meta, base_path + ["categories"], cats)
+                        set_path_value(st.session_state.master_meta, colors_path, colors)
 
                     wrap(
                         st.text_input,
                         "Trans",
                         label_visibility="collapsed",
                         path=base_path + ["translate", translate_key],
+                        # Show identity mapping by default, but keep it implicit (not stored).
                         default_value=orig,
+                        i_to_o=lambda s, _orig=orig: None if s is None or str(s).strip() in ("", _orig) else s,
                         on_change=update_categories_from_translations,
-                        key=f"trans_{block_name}_{col_name}_{orig}_{i}",
+                        key=f"trans_{block_name}_{col_name}_{orig}",
                     )
             else:
                 trans_col_idx = len(counts.columns) + 1 if separate else 2
@@ -506,13 +649,34 @@ def column_editor(block_name: str, col_name: str, col_meta: ColumnMeta) -> None:
 
                     if cat_index is not None:
                         with cols[num_val_col_idx]:
-                            default_num_val = float(cat_index + 1)
+
+                            def num_o_to_i(val: Any) -> str:  # noqa: ANN401
+                                """Render numeric category mapping in a compact form (ints stay ints)."""
+                                if isinstance(val, int):
+                                    return str(val)
+                                if isinstance(val, float):
+                                    return str(int(val)) if val.is_integer() else str(val)
+                                return ""  # Other cases - return ""
+
+                            def num_i_to_o(txt: str | None) -> int | float | None:
+                                """Parse numeric category mapping from text ('' -> None)."""
+                                if txt is None:
+                                    return None
+                                try:
+                                    f = float(txt)
+                                except ValueError:
+                                    return None
+                                return int(f) if f.is_integer() else f
+
+                            default_num_val = cat_index + 1
                             wrap(
-                                st.number_input,
+                                st.text_input,
                                 "Num Value",
                                 label_visibility="collapsed",
                                 path=base_path + ["num_values", cat_index],
-                                default_value=default_num_val,
+                                default_value=str(default_num_val),
+                                o_to_i=num_o_to_i,
+                                i_to_o=num_i_to_o,
                                 key=f"num_val_{block_name}_{col_name}_{trans_cat}_{cat_index}",
                             )
                     else:
@@ -578,37 +742,48 @@ def block_editor() -> None:
         st.error(f"Block {block_name} not found")
         return
 
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        st.selectbox("Select Block", block_names, key="selected_block")
-    with col2:
-        column_options: list[str] = []
+    def block_settings_view() -> None:
+        """Render block-level settings UI for the selected block."""
+
+        # Shared scale toggle:
+        # - When toggled OFF: stash existing scale in session_state and set `block.scale=None`.
+        # - When toggled ON: restore stashed scale (or create a default) and set `block.scale=<BlockScaleMeta>`.
+        stash_key = "_block_scale_stash"
+        if stash_key not in st.session_state:
+            st.session_state[stash_key] = {}
+        stash: dict[str, object] = st.session_state[stash_key]
+
         if block.scale is not None:
-            column_options.append("scale")
-        column_options.extend(list(block.columns.keys()))
+            stash[block_name] = block.scale.model_dump(mode="json")
 
-        if "selected_column" not in st.session_state or st.session_state.selected_column not in column_options:
-            st.session_state.selected_column = column_options[0] if column_options else None
+        toggle_key = f"_shared_scale_{block_name}"
+        if toggle_key not in st.session_state:
+            st.session_state[toggle_key] = block.scale is not None
 
-        if column_options:
-            st.selectbox("Select Column", column_options, key="selected_column")
-        else:
-            st.info("No columns in this block")
-            return
+        def _toggle_shared_scale() -> None:
+            if st.session_state.get("_initializing", False) or st.session_state.get("_restoring", False):
+                return
 
-    selected_col = st.session_state.selected_column
-    if selected_col == "scale" and block.scale is not None:
-        st.subheader("Scale Settings")
-        column_editor(block_name, "scale", block.scale)
-    elif selected_col in block.columns:
-        column_editor(block_name, selected_col, block.columns[selected_col])
-    else:
-        st.warning(f"Column {selected_col} not found")
-        return
+            want_scale = bool(st.session_state.get(toggle_key))
+            block_local = st.session_state.master_meta.structure.get(block_name)
+            if block_local is None:
+                return
 
-    st.divider()
+            if want_scale and block_local.scale is None:
+                payload = stash.get(block_name, {})
+                try:
+                    scale_obj = soft_validate(payload, BlockScaleMeta, context={"track_constants": True})
+                except ValidationError:
+                    scale_obj = BlockScaleMeta()
+                save_state(["structure", block_name, "scale"])
+                block_local.scale = scale_obj
 
-    with st.expander("Block Settings", expanded=False):
+            if (not want_scale) and block_local.scale is not None:
+                stash[block_name] = block_local.scale.model_dump(mode="json")
+                save_state(["structure", block_name, "scale"])
+                block_local.scale = None
+
+        st.toggle("Shared scale", key=toggle_key, on_change=_toggle_shared_scale)
 
         def handle_block_rename(new_name: str | None, old_name: str | None, path: list[str | int]) -> None:
             """Handle block rename: update dictionary key when block.name changes."""
@@ -674,3 +849,34 @@ def block_editor() -> None:
 
                 st.session_state.master_meta.structure[split_name] = new_block
                 save_state(["split_block", split_name])
+
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        st.selectbox("Select Block", block_names, key="selected_block")
+    with col2:
+        column_options: list[str] = ["Block settings"]
+        if block.scale is not None:
+            column_options.append("scale")
+        column_options.extend(list(block.columns.keys()))
+
+        if "selected_column" not in st.session_state or st.session_state.selected_column not in column_options:
+            st.session_state.selected_column = column_options[0] if column_options else None
+
+        if column_options:
+            st.selectbox("Select Column", column_options, key="selected_column")
+        else:
+            st.info("No columns in this block")
+            return
+
+    selected_col = st.session_state.selected_column
+    if selected_col == "Block settings":
+        st.subheader("Block settings")
+        block_settings_view()
+    elif selected_col == "scale" and block.scale is not None:
+        st.subheader("Scale Settings")
+        column_editor(block_name, "scale", block.scale)
+    elif selected_col in block.columns:
+        column_editor(block_name, selected_col, block.columns[selected_col])
+    else:
+        st.warning(f"Column {selected_col} not found")
+        return

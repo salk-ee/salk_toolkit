@@ -53,6 +53,7 @@ from salk_toolkit.utils import (
     redblue_gradient,
     greyscale_gradient,
     rename_dict_key,
+    translate_missing_to_na_keys,
 )
 
 
@@ -154,6 +155,19 @@ class TestBasicUtilities:
 
         with pytest.raises(ValueError, match="Target key already exists"):
             rename_dict_key(d, "b", "a")
+
+    def test_translate_missing_to_na_keys(self):
+        """Test translate_missing_to_na_keys helper."""
+        observed = ["a", "b", "c"]
+
+        # No categories -> legacy: all missing translate keys default to NA.
+        assert translate_missing_to_na_keys(observed, None, {}) == ["a", "b", "c"]
+        assert translate_missing_to_na_keys(observed, None, {"a": "A"}) == ["b", "c"]
+
+        # With categories -> only values not in categories default to NA.
+        assert translate_missing_to_na_keys(observed, ["a", "b", "c"], {}) == []
+        assert translate_missing_to_na_keys(observed, ["a", "b"], {}) == ["c"]
+        assert translate_missing_to_na_keys(observed, ["a", "b"], {"c": "C"}) == []
 
 
 class TestNumericalUtilities:

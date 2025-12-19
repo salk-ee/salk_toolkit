@@ -66,6 +66,7 @@ __all__ = [
     "warn",
     "plot_matrix_html",
     "rename_dict_key",
+    "translate_missing_to_na_keys",
 ]
 
 import json
@@ -195,11 +196,31 @@ def rename_dict_key(d: dict[K, V], old: K, new: K) -> dict[K, V]:
 
     out: dict[K, V] = {}
     for k, v in d.items():
-        if k == old:
-            out[new] = v
-        else:
-            out[k] = v
+        out[new if k == old else k] = v
     return out
+
+
+def translate_missing_to_na_keys(
+    observed_values: Iterable[str],
+    categories: Sequence[str] | None,
+    translate_dict: Mapping[str, str],
+) -> list[str]:
+    """Return observed raw values that should default to translating to NA (empty string).
+
+    Args:
+        observed_values: Raw values observed in the data (stringified).
+        categories: Explicit category order (translated labels) or None if not set.
+        translate_dict: Existing translate mapping.
+
+    Returns:
+        Sorted list of raw values for which we should create ``translate[k] = ""``.
+    """
+    observed = {str(v) for v in observed_values}
+    missing = observed - set(translate_dict.keys())
+    if categories is None:
+        return sorted(missing)
+    cats = {str(c) for c in categories}
+    return sorted(k for k in missing if k not in cats)
 
 
 def batch(iterable: Sequence[T], n: int = 1) -> Iterator[Sequence[T]]:

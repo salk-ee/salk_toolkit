@@ -1,0 +1,18 @@
+---
+globs: **.py
+alwaysApply: false
+---
+
+# Annotator
+
+A tool to edit data annotations
+
+Annotation data structure is defined in `../validation.py`
+
+# Architectural principles
+- `master_meta` should reflect current state
+  - when loading a view, all values should be reloaded from there fresh
+  - when state is changed, it should change the master_meta and then reload 
+  - where possible, this should be achieved by `wrap`-ing the `st` inputs
+- Each main view should have it's own file
+  - shared functions in `framework.py`  
