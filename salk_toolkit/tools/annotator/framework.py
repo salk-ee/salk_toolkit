@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
-from typing import Any, Callable
+from typing import Any, Callable, get_args, get_origin
 
 import pandas as pd
 import streamlit as st
@@ -16,6 +16,7 @@ import scipy as sp
 import salk_toolkit as stk
 from salk_toolkit.io import _load_data_files, _str_from_list
 from salk_toolkit.validation import DataMeta, soft_validate
+from pydantic import BaseModel, ValidationError
 
 
 def get_path_value(obj: Any, path: list[str | int]) -> Any:  # noqa: ANN401
@@ -115,46 +116,38 @@ def wrap(  # noqa: ANN401
     key = kwargs["key"]
 
     # Initialize widget value from current state
-    # Special handling for color_picker: always re-read from master_meta to avoid stale values
-    # For other widgets: if key already exists in session_state, use that value to avoid triggering on_change
-    # during initialization
-    force_reread = inp_func == st.color_picker
+    # This enforces current state being the thing always on display
 
-    if key in st.session_state and not st.session_state.get("_initializing", False) and not force_reread:
-        # Key exists and we're not initializing - widget was already created
-        # Don't override the value, let Streamlit use the existing one
-        pass
+    # Set initial value from master_meta
+    if inp_func == st.multiselect:
+        kwargs["default"] = current_value if current_value is not None else []
+    elif inp_func in (st.selectbox, st.radio):
+        # For selectbox/radio, we need to find the index of current_value in options
+        options = kwargs.get("options")
+        if options is None and len(args) > 1:
+            options = args[1]
+
+        index = 0
+        if options is not None and current_value is not None:
+            # Try to find current_value in options
+            try:
+                options_list = list(options)
+                if current_value in options_list:
+                    index = options_list.index(current_value)
+            except ValueError:
+                pass
+        kwargs["index"] = index
     else:
-        # Set initial value from master_meta
-        if inp_func == st.multiselect:
-            kwargs["default"] = current_value if current_value is not None else []
-        elif inp_func in (st.selectbox, st.radio):
-            # For selectbox/radio, we need to find the index of current_value in options
-            options = kwargs.get("options")
-            if options is None and len(args) > 1:
-                options = args[1]
+        # text_input, number_input, checkbox, toggle, text_area, color_picker
+        # Apply o_to_i conversion first, then default_value logic
+        input_value = o_to_i(current_value) if o_to_i is not None else current_value
 
-            index = 0
-            if options is not None and current_value is not None:
-                # Try to find current_value in options
-                try:
-                    options_list = list(options)
-                    if current_value in options_list:
-                        index = options_list.index(current_value)
-                except ValueError:
-                    pass
-            kwargs["index"] = index
-        else:
-            # text_input, number_input, checkbox, toggle, text_area, color_picker
-            # Apply o_to_i conversion first, then default_value logic
-            input_value = o_to_i(current_value) if o_to_i is not None else current_value
-
-            # Apply default_value logic: if result is None, use default_value
-            if input_value is None and default_value is not None:
-                kwargs["value"] = default_value
-            elif input_value is not None:
-                kwargs["value"] = input_value
-            # Otherwise let widget use its default
+        # Apply default_value logic: if result is None, use default_value
+        if input_value is None and default_value is not None:
+            kwargs["value"] = default_value
+        elif input_value is not None:
+            kwargs["value"] = input_value
+        # Otherwise let widget use its default
 
     def on_change_callback() -> None:
         # Don't save state during initialization or state restoration
@@ -166,6 +159,15 @@ def wrap(  # noqa: ANN401
 
         # Handle default_value: if input value equals default_value, convert to None
         if default_value is not None and new_val == default_value:
+            new_val = None
+        # Special-case: color picker returns hex strings (often lowercased). Treat default_value
+        # comparison as case-insensitive so "#ffffff" clears when default is "#FFFFFF".
+        elif (
+            inp_func == st.color_picker
+            and isinstance(default_value, str)
+            and isinstance(new_val, str)
+            and new_val.lower() == default_value.lower()
+        ):
             new_val = None
 
         if i_to_o is not None:
@@ -194,7 +196,17 @@ def wrap(  # noqa: ANN401
                 return
 
             save_state(path)
-            set_path_value(st.session_state.master_meta, path, new_val)
+            # If the target is a dict key and the new value is None, prefer deleting the key
+            # (keeps JSON cleaner than `"key": null` and matches translate-like semantics).
+            if new_val is None:
+                parent = get_path_value(st.session_state.master_meta, path[:-1])
+                last_part = path[-1]
+                if isinstance(parent, dict):
+                    parent.pop(last_part, None)
+                else:
+                    set_path_value(st.session_state.master_meta, path, new_val)
+            else:
+                set_path_value(st.session_state.master_meta, path, new_val)
 
             if on_change is not None:
                 on_change(new_val, old_val, path)
@@ -267,6 +279,16 @@ def _compute_cache_hash(raw_data_dict: dict[str, pd.DataFrame], meta: DataMeta) 
     if meta.preprocessing:
         hash_parts.append(_str_from_list(meta.preprocessing))
 
+    # Structure fingerprint: column names + source mappings affect the processed data shape.
+    struct_parts: list[tuple[str, str, object, object]] = []
+    for block_name, group in sorted(meta.structure.items()):
+        scale_meta = group.scale
+        col_prefix = scale_meta.col_prefix if scale_meta is not None else None
+        for orig_cn, col_meta in sorted(group.columns.items()):
+            source_spec: object = col_meta.source if col_meta.source is not None else orig_cn
+            struct_parts.append((block_name, orig_cn, source_spec, col_prefix))
+    hash_parts.append(tuple(struct_parts))
+
     transform_scripts: list[str] = []
     for group in meta.structure.values():
         for col_meta in group.columns.values():
@@ -276,6 +298,17 @@ def _compute_cache_hash(raw_data_dict: dict[str, pd.DataFrame], meta: DataMeta) 
 
     hash_str = str(hash_parts)
     return hashlib.md5(hash_str.encode()).hexdigest()
+
+
+def rebuild_data_cache() -> None:
+    """Rebuild processed data cache from `raw_data_dict` + current `master_meta`."""
+    if "raw_data_dict" not in st.session_state or "master_meta" not in st.session_state:
+        return
+    raw_data_dict: dict[str, pd.DataFrame] = st.session_state.raw_data_dict
+    _clear_column_data_cache()
+    processed_data = _process_for_editor(raw_data_dict, st.session_state.master_meta)
+    cache_hash = _compute_cache_hash(raw_data_dict, st.session_state.master_meta)
+    st.session_state.data_cache = (cache_hash, processed_data)
 
 
 def _process_for_editor(raw_data_dict: dict[str, pd.DataFrame], meta: DataMeta) -> dict[str, pd.DataFrame]:
@@ -412,14 +445,20 @@ def redo() -> None:
 def restore_state() -> None:
     """Restore state from history."""
     st.session_state._restoring = True
-    history_entry = st.session_state.history[st.session_state.history_index]
-    if isinstance(history_entry, tuple):
-        state_dump, path_str = history_entry
-    else:
-        state_dump = history_entry
-        path_str = "unknown"
-    st.session_state.master_meta = soft_validate(state_dump, DataMeta, context={"track_constants": True})
-    st.session_state._last_restored_path = path_str
+    try:
+        history_entry = st.session_state.history[st.session_state.history_index]
+        if isinstance(history_entry, tuple):
+            state_dump, path_str = history_entry
+        else:
+            state_dump = history_entry
+            path_str = "unknown"
+        st.session_state.master_meta = soft_validate(state_dump, DataMeta, context={"track_constants": True})
+        st.session_state._last_restored_path = path_str
+
+        # The processed data cache depends on structure/transform metadata; ensure it matches the restored state.
+        rebuild_data_cache()
+    finally:
+        st.session_state._restoring = False
 
 
 def save_meta() -> None:
@@ -596,3 +635,169 @@ def updated_categories_from_translate(
 
     new_categories.extend(sorted(remaining))
     return new_categories
+
+
+def _unwrap_optional(tp: object) -> object:
+    """Return non-None inner type for Optional/Union types (best-effort)."""
+    origin = get_origin(tp)
+    if origin is None:
+        return tp
+    if origin is list or origin is dict:
+        return tp
+    if origin is tuple:
+        return tp
+    if origin is type(None):  # noqa: E721
+        return tp
+    if origin is None:
+        return tp
+    if origin is object:
+        return tp
+    if origin is Callable:
+        return tp
+    if origin is type:
+        return tp
+    if origin is getattr(__import__("typing"), "Union", object()):
+        args = [a for a in get_args(tp) if a is not type(None)]  # noqa: E721
+        if len(args) == 1:
+            return args[0]
+    return tp
+
+
+def _infer_model_class_for_path(path: list[str | int]) -> type[BaseModel] | None:
+    """Infer the pydantic model class expected at `path` (best-effort)."""
+    obj: Any = st.session_state.master_meta
+    expected: object = DataMeta
+
+    for part in path:
+        # If we have a model instance, prefer its runtime type.
+        if isinstance(obj, BaseModel):
+            expected = obj.__class__
+
+        # Step through BaseModel field access.
+        if isinstance(part, str) and isinstance(obj, BaseModel):
+            field = obj.__class__.model_fields.get(part)
+            if field is not None:
+                expected = field.annotation
+            obj = getattr(obj, part, None)
+            continue
+
+        # Dict key access: use expected type if we have it.
+        if isinstance(obj, dict):
+            exp = _unwrap_optional(expected)
+            if get_origin(exp) is dict:
+                args = get_args(exp)
+                if len(args) == 2:
+                    expected = args[1]
+            obj = obj.get(part)  # type: ignore[arg-type]
+            continue
+
+        # List index access: use expected type if we have it.
+        if isinstance(obj, list):
+            exp = _unwrap_optional(expected)
+            if get_origin(exp) is list:
+                args = get_args(exp)
+                if len(args) == 1:
+                    expected = args[0]
+            try:
+                obj = obj[int(part)]  # type: ignore[arg-type]
+            except Exception:
+                obj = None
+            continue
+
+        # Fallback: attempt attribute access for string parts.
+        if isinstance(part, str):
+            obj = getattr(obj, part, None)
+            continue
+
+        return None
+
+    # End: if we have an instance, that's authoritative.
+    if isinstance(obj, BaseModel):
+        return obj.__class__
+
+    exp = _unwrap_optional(expected)
+    if isinstance(exp, type) and issubclass(exp, BaseModel):
+        return exp
+    return None
+
+
+@st.dialog("Edit JSON")
+def edit_json_modal(path: list[str | int]) -> None:
+    """Edit a pydantic object at `path` by JSON round-trip + `soft_validate`."""
+    if "master_meta" not in st.session_state:
+        st.error("No metadata loaded.")
+        return
+
+    val = get_path_value(st.session_state.master_meta, path)
+    model_cls = _infer_model_class_for_path(path)
+    if model_cls is None:
+        st.error("Could not infer a pydantic model type for this path.")
+        return
+
+    # Serialize current value into editable JSON.
+    if isinstance(val, BaseModel):
+        payload: Any = val.model_dump(mode="json")
+    else:
+        payload = val
+    json_text = json.dumps(payload, indent=2)
+
+    path_key = ".".join(str(p) for p in path)
+    editor_key = f"_json_modal_{path_key}"
+    err_key = f"_json_modal_err_{path_key}"
+    prev_key = f"_json_modal_prev_{path_key}"
+    if editor_key not in st.session_state:
+        st.session_state[editor_key] = json_text
+
+    st.text_area("JSON", key=editor_key, height=400)
+
+    # Clear validation error when user edits the JSON.
+    curr_text = st.session_state.get(editor_key, "")
+    if st.session_state.get(prev_key) != curr_text:
+        st.session_state[prev_key] = curr_text
+        if err_key in st.session_state:
+            del st.session_state[err_key]
+
+    # Render validation error (scrollable).
+    if err_key in st.session_state and st.session_state[err_key]:
+        st.error("Validation error")
+        st.text_area(
+            "Details",
+            value=str(st.session_state[err_key]),
+            height=220,
+            disabled=True,
+            label_visibility="collapsed",
+        )
+
+    c1, c2 = st.columns([1, 1])
+    with c1:
+        if st.button("Save", type="primary", key=f"_json_modal_save_{path_key}"):
+            try:
+                parsed = json.loads(st.session_state[editor_key])
+            except Exception as e:
+                st.session_state[err_key] = f"Invalid JSON: {e}"
+                return
+
+            try:
+                validated = soft_validate(parsed, model_cls, context={"track_constants": True})
+            except ValidationError as e:
+                # Store full error in session state so it renders in a scrollable container.
+                try:
+                    st.session_state[err_key] = e.json(indent=2)
+                except Exception:
+                    st.session_state[err_key] = str(e)
+                return
+            except Exception as e:
+                st.session_state[err_key] = f"Validation failed: {e}"
+                return
+
+            save_state(path)
+            set_path_value(st.session_state.master_meta, path, validated)
+            if err_key in st.session_state:
+                del st.session_state[err_key]
+            st.rerun()
+
+    with c2:
+        if st.button("Cancel", key=f"_json_modal_cancel_{path_key}"):
+            if err_key in st.session_state:
+                del st.session_state[err_key]
+            st.rerun()

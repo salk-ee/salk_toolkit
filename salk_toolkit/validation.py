@@ -74,7 +74,7 @@ from pydantic import (
 )
 from pydantic_extra_types.color import Color
 
-from salk_toolkit.utils import replace_constants
+from salk_toolkit.utils import replace_constants as replace_constants_util
 
 DF = lambda dc: Field(default_factory=dc)
 
@@ -426,7 +426,7 @@ class DataMeta(PBase):
         tracker = None
         if info.context and isinstance(info.context, dict):
             tracker = info.context.get("tracker")
-        return replace_constants(meta, keep=True, tracker=tracker)
+        return replace_constants_util(meta, keep=True, tracker=tracker)
 
     @model_serializer(mode="wrap")
     def _serialize_model(
