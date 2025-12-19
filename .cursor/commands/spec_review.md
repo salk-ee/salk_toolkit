@@ -1,9 +1,3 @@
----
-description: How to review a spec before (and during) implementation
-globs: specs/**
-alwaysApply: false
----
-
 ## Workflow
 
 Review the spec for the following:
@@ -14,6 +8,7 @@ Review the spec for the following:
 - Is the itemized todo list sufficient to lead to that implementation
   - Add any missing steps as new tasks
 - Is the **Definition of done** up to date and is it sufficient to check the feature
+- Does it list all the correct domain rules files that need to be followed?
 
 **Consistency**
 - Is it consistent with the style required in [specs.mdc](mdc:.cursor/rules/specs.mdc)
