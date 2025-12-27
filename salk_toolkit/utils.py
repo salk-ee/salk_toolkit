@@ -122,7 +122,9 @@ JSONArray: TypeAlias = list[JSONValue]
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
-def merge_pydantic_models(defaults: ModelT | None, overrides: ModelT) -> ModelT:
+def merge_pydantic_models(
+    defaults: ModelT | None, overrides: ModelT, *, context: dict[str, object] | None = None
+) -> ModelT:
     """Merge two BaseModel instances, similar to ``{**defaults, **overrides}``."""
 
     if defaults is None:
@@ -131,7 +133,7 @@ def merge_pydantic_models(defaults: ModelT | None, overrides: ModelT) -> ModelT:
     defaults_dict = defaults.model_dump(mode="python")
     overrides_dict = overrides.model_dump(mode="python", exclude_unset=True, exclude_none=True)
     merged_dict = {**defaults_dict, **overrides_dict}
-    return overrides.__class__.model_validate(merged_dict)
+    return overrides.__class__.model_validate(merged_dict, context=context)
 
 
 # convenience for warnings that gives a more useful stack frame (fn calling the warning, not warning fn itself)

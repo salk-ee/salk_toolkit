@@ -46,6 +46,9 @@ Set of tools to help in analysing and visualizing polling data
     - `pyright salk_toolkit` for type checking
     - `pytest tests` for tests
 
+- **Pydantic object handling**
+  - In general, we should use `soft_validate` for all data coming from outside to be lenient on issues
+
 - **tests**: all new functionalities should be covered by tests!
   - For writing tests, follow rules described in [testing.mdc](mdc:.cursor/rules/testing.mdc).
 

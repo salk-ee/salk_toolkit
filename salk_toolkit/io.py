@@ -259,7 +259,7 @@ def _load_data_files(
                 add_original_inds=add_original_inds,
             )
             if result_meta is not None:
-                metas.append(soft_validate(result_meta, DataMeta))
+                metas.append(soft_validate(result_meta, DataMeta, warnings=True))
         elif extension in ["csv", "gz"]:
             read_opts = cast(dict[str, Any], opts) if opts else {}
             raw_data = pd.read_csv(cast(str, mapped_file), low_memory=False, **read_opts)  # type: ignore[call-overload]
@@ -587,6 +587,7 @@ def _process_annotated_data(
     """Process annotated data according to metadata specifications."""
     # Read metafile
     metafile = cast(dict[str, str], stk_file_map).get(meta_fname, meta_fname)  # type: ignore[call-overload]
+    meta_input: DataMeta | dict[str, object] | None = meta
     if meta_fname is not None:
         ext = os.path.splitext(metafile)[1]
         if ext == ".yaml":
@@ -596,13 +597,12 @@ def _process_annotated_data(
         else:
             raise Exception(f"Unknown meta file format {ext} for file: {meta_fname}")
         assert isinstance(meta_raw, dict), "Meta file must contain a dict"
-        meta_input: dict[str, object] = dict(meta_raw)  # Cast to ensure object values
-        meta = soft_validate(meta_input, DataMeta)
+        meta_input = dict(meta_raw)  # Cast to ensure object values
 
     # Soft-validate and work with Pydantic DataMeta object throughout
-    if meta is None:
+    if meta_input is None:
         raise ValueError("Metadata cannot be None")
-    meta_obj = soft_validate(meta, DataMeta)
+    meta_obj = soft_validate(meta_input, DataMeta, warnings=True)
     constants: dict[str, object] = dict(meta_obj.constants)
     # Now meta is guaranteed to be a DataMeta object, not None
 
@@ -1080,7 +1080,7 @@ def extract_column_meta(data_meta: DataMeta) -> dict[str, GroupOrColumnMeta]:
             # Convert BlockScaleMeta to GroupOrColumnMeta by dumping and adding columns field
             group_dict = scale_meta.model_dump(mode="python")
             group_dict["columns"] = group_columns
-            res[block.name] = GroupOrColumnMeta.model_validate(group_dict)
+            res[block.name] = soft_validate(group_dict, GroupOrColumnMeta)
         else:
             # No scale, create empty GroupOrColumnMeta with just columns
             res[block.name] = GroupOrColumnMeta(columns=group_columns)
@@ -1096,7 +1096,7 @@ def extract_column_meta(data_meta: DataMeta) -> dict[str, GroupOrColumnMeta]:
                 update_dict["label"] = None
             col_dict = col_meta.model_dump(mode="python")
             col_dict.update(update_dict)
-            res[col_name] = GroupOrColumnMeta.model_validate(col_dict)
+            res[col_name] = soft_validate(col_dict, GroupOrColumnMeta)
     return res
 
 
@@ -1683,7 +1683,7 @@ def read_and_process_data(
             files=[{"file": desc, "opts": {}, "code": "F0"}]
         )  # Allow easy shorthand for simple cases
     elif isinstance(desc, dict):
-        desc_obj = soft_validate(desc, DataDescription)  # Convert dict to DataDescription
+        desc_obj = soft_validate(desc, DataDescription, warnings=True)  # Convert dict to DataDescription
     else:
         desc_obj = desc
 
@@ -1729,7 +1729,7 @@ def read_and_process_data(
         elif isinstance(meta_raw, DataMeta):
             meta_obj = meta_raw
         else:
-            meta_obj = soft_validate(meta_raw, DataMeta)
+            meta_obj = soft_validate(meta_raw, DataMeta, warnings=True)
 
     if meta_obj is None and return_meta:
         raise Exception("No meta found on any of the files")

@@ -6,7 +6,7 @@ keeping the validation.py file clean by separating serialization concerns.
 
 from typing import Any, Callable, Dict, Sequence, Tuple, Union
 
-from pydantic import BaseModel, SerializationInfo
+from pydantic import BaseModel, SerializationInfo, ValidationInfo
 
 # Type aliases for column specifications
 ColumnSpecMeta = Dict[str, Any]
@@ -196,6 +196,7 @@ def _cspec(tpl: ColumnSpecInput) -> ParsedColumnSpec:
 
 def _cs_lst_to_dict(
     lst: Sequence[ColumnSpecInput] | dict[str, ColumnSpecMeta],
+    info: ValidationInfo | None = None,
 ) -> dict[str, ColumnSpecMeta]:
     """Transform list of column specs to dictionary format."""
 
@@ -204,13 +205,10 @@ def _cs_lst_to_dict(
         return lst
 
     parsed_specs = [_cspec(item) for item in lst]
-    # Import here to avoid circular dependency
-    from salk_toolkit.validation import ColumnMeta
-
     result: dict[str, ColumnSpecMeta] = {}
     for cn, _sn, meta_dict in parsed_specs:
-        # Create ColumnMeta with source already in the dict
-        result[cn] = ColumnMeta.model_validate(meta_dict)
+        # Return raw dict payloads; pydantic will validate them into ColumnMeta with context.
+        result[cn] = meta_dict
     return result
 
 

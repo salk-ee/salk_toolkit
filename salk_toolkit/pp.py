@@ -24,6 +24,8 @@ import inspect
 import itertools as it
 import json
 from math import ceil
+from copy import copy as shallow_copy, deepcopy
+from dataclasses import dataclass, field
 from typing import (
     Any,
     Callable,
@@ -85,7 +87,8 @@ def _question_meta_clone(base_meta: GroupOrColumnMeta, categories: Sequence[str]
     return clone
 
 
-class PlotInput(PBase):
+@dataclass
+class PlotInput:
     """Structured container passed to individual plot functions."""
 
     data: pd.DataFrame
@@ -95,15 +98,24 @@ class PlotInput(PBase):
     val_format: str = "%"
     val_range: Optional[Tuple[Optional[float], Optional[float]]] = None
     filtered_size: float = 0.0
-    facets: List[FacetMeta] = DF(list)
+    facets: List[FacetMeta] = field(default_factory=list)
     translate: Optional[Callable[[str], str]] = None
-    tooltip: List[Any] = DF(list)
+    tooltip: List[Any] = field(default_factory=list)
     value_range: Optional[Tuple[float, float]] = None
-    outer_colors: Dict[str, Any] = DF(dict)
+    outer_colors: Dict[str, Any] = field(default_factory=dict)
     width: int = 800
-    alt_properties: Dict[str, Any] = DF(dict)
-    outer_factors: List[str] = DF(list)
-    plot_args: Dict[str, Any] = DF(dict)
+    alt_properties: Dict[str, Any] = field(default_factory=dict)
+    outer_factors: List[str] = field(default_factory=list)
+    plot_args: Dict[str, Any] = field(default_factory=dict)
+
+    def model_copy(self, *, deep: bool = False, update: dict[str, Any] | None = None) -> "PlotInput":
+        """Backwards-compatible copy helper (mirrors the old Pydantic API used internally)."""
+
+        out = deepcopy(self) if deep else shallow_copy(self)
+        if update:
+            for k, v in update.items():
+                setattr(out, k, v)
+        return out
 
 
 def _normalize_color_dict(scale: Dict[str, Color | str] | None) -> Dict[str, str] | None:
@@ -435,7 +447,7 @@ def _update_data_meta_with_pp_desc(
     res_meta_raw = desc_obj.res_meta
     if res_meta_raw:
         if isinstance(res_meta_raw, dict):
-            res_meta = ColumnBlockMeta.model_validate(res_meta_raw)
+            res_meta = soft_validate(res_meta_raw, ColumnBlockMeta)
         else:
             # Already a ColumnBlockMeta object
             res_meta = res_meta_raw
@@ -446,7 +458,7 @@ def _update_data_meta_with_pp_desc(
             if base_col_meta is not None:
                 scale_payload = base_col_meta.model_dump(mode="python")
                 scale_payload["col_prefix"] = ""
-                res_meta = res_meta.model_copy(update={"scale": BlockScaleMeta.model_validate(scale_payload)})
+                res_meta = res_meta.model_copy(update={"scale": soft_validate(scale_payload, BlockScaleMeta)})
 
         structure[res_meta.name] = res_meta
         working_meta = working_meta.model_copy(update={"structure": structure})
@@ -529,15 +541,15 @@ def matching_plots(
     if not cols:
         raise ValueError(f"Columns {ocols} not found in data")
 
-    # Only compute min_val if we don't have categories (to avoid errors with unordered categoricals)
-    if rcm.categories is None:
+    if rcm.categories is not None:
+        nonneg = True
+    else:
         if not lazy:
             min_val = df[cols].min(axis=None)
         else:
-            min_val = df.select(pl.min_horizontal(pl.col(cols).min())).collect().item()
+            # Casting with strict=False makes this robust even if some columns are non-numeric.
+            min_val = df.select(pl.min_horizontal(pl.col(cols).cast(pl.Float64, strict=False).min())).collect().item()
         nonneg = cast(float, min_val) >= 0
-    else:
-        nonneg = True
 
     convert_res = pp_desc.convert_res
     if convert_res == "continuous" and (rcm.categories is not None):
@@ -971,8 +983,8 @@ def pp_transform_data(
         if c in cols and schema[c].is_numeric():
             current_meta = c_meta.get(c)
             filtered_df, labels = _discretize_continuous(filtered_df, c, current_meta)
-            merge_payload = GroupOrColumnMeta.model_validate(
-                {"categories": list(labels), "ordered": True, "continuous": False}
+            merge_payload = soft_validate(
+                {"categories": list(labels), "ordered": True, "continuous": False}, GroupOrColumnMeta
             )
             c_meta[c] = merge_pydantic_models(c_meta.get(c, GroupOrColumnMeta()), merge_payload)
 
@@ -1008,12 +1020,13 @@ def pp_transform_data(
             )
             nvals = np.array(nvals, dtype="float")  # To handle null as nan
             val_range = (np.nanmin(nvals), np.nanmax(nvals)) if len(nvals) > 0 else (0.0, 1.0)
-            update_model = GroupOrColumnMeta.model_validate(
+            update_model = soft_validate(
                 {
                     "continuous": True,
                     "categories": None,
                     "val_range": val_range,
-                }
+                },
+                GroupOrColumnMeta,
             )
             c_meta[rc] = merge_pydantic_models(c_meta.get(rc, GroupOrColumnMeta()), update_model)
             c_meta[pp_desc.res_col] = merge_pydantic_models(
@@ -1157,10 +1170,11 @@ def _wrangle_data(
     #     # Should we try to bootstrap the data to always have augment_to points. Note this is relatively slow
     #     raw_df = _augment_draws(raw_df,gb_dims[1:],threshold=pp_desc['augment_to'])
 
-    pi_payload: Dict[str, Any] = {"value_col": "value"}
+    value_col = "value"
+    cat_col: str | None = None
 
     if data_format == "raw":
-        pi_payload["value_col"] = res_col
+        value_col = res_col
         if plot_meta.sample:
             selected = raw_df.select(gb_dims + [res_col])
             grouped = getattr(selected, "groupby", lambda *args: selected)(gb_dims)
@@ -1180,8 +1194,8 @@ def _wrangle_data(
         # Check if _highest_lowest_ranked is called before _wrangle_data
 
         if is_categorical:
-            pi_payload["cat_col"] = res_col
-            pi_payload["value_col"] = "percent"
+            cat_col = res_col
+            value_col = "percent"
 
             # Aggregate the data
             data = raw_df.group_by(gb_dims + [res_col]).agg(pl.col(weight_col).sum().alias("percent"))
@@ -1233,7 +1247,7 @@ def _wrangle_data(
                     ]
                 )
 
-            pi_payload["value_col"] = res_col
+            value_col = res_col
 
         if plot_meta.group_sizes:
             data = data.rename({weight_col: "group_size"})
@@ -1257,10 +1271,10 @@ def _wrangle_data(
     gc.collect()  # Does not help much, but unlikely to hurt either
 
     # How many datapoints the plot is based on. This is useful metainfo to display sometimes
-    pi_payload["filtered_size"] = raw_df.select(pl.col(weight_col).sum()).collect().item() / n_questions
+    filtered_size = raw_df.select(pl.col(weight_col).sum()).collect().item() / n_questions
 
     # Ensure derived columns have placeholder metadata so later lookups succeed
-    for key in [pi_payload["value_col"], pi_payload.get("cat_col")]:
+    for key in [value_col, cat_col]:
         if key and key not in col_meta:
             col_meta[key] = GroupOrColumnMeta()
 
@@ -1283,10 +1297,13 @@ def _wrangle_data(
 
             data[c] = pd.Categorical(data[c], u_cats, ordered=meta.ordered)
 
-    pi_payload["col_meta"] = col_meta  # As this has been adjusted for discretization etc
-    pi_payload["data"] = data
-
-    return PlotInput.model_validate(pi_payload)
+    return PlotInput(
+        data=data,
+        col_meta=dict(col_meta),  # As this has been adjusted for discretization etc
+        value_col=value_col,
+        cat_col=cat_col,
+        filtered_size=filtered_size,
+    )
 
 
 def _get_neutral_cats(cmeta: ColumnMeta) -> List[str]:
@@ -1457,7 +1474,7 @@ def create_plot(
     """
 
     # Make a shallow copy so we don't mess with the original object. Important for caching
-    pi = pi.model_copy(deep=False)
+    pi = shallow_copy(pi)
     pi.facets = list(pi.facets or [])
     pi.tooltip = list(pi.tooltip or [])
     pi.outer_factors = list(pi.outer_factors or [])
@@ -1472,17 +1489,10 @@ def create_plot(
         if "question" not in col_meta:
             col_meta["question"] = GroupOrColumnMeta()
 
-    raw_plot_args = pp_desc.plot_args or {}
-    plot_param_fields = PlotInput.model_fields.keys()
-    extra_plot_args = dict(pi.plot_args)
-
-    for key, value in raw_plot_args.items():
-        if key in plot_param_fields:
-            setattr(pi, key, value)
-        else:
-            extra_plot_args[key] = value
-
-    pi.plot_args = extra_plot_args
+    # `pp_desc.plot_args` are always forwarded to the concrete plot function.
+    # PlotInput itself should not be mutated by ad-hoc keys.
+    plot_args = {**dict(pi.plot_args), **dict(pp_desc.plot_args or {})}
+    pi.plot_args = plot_args
 
     # Get list of factor columns (adding question and category if needed)
     factor_cols_input = list(pp_desc.factor_cols or [])
@@ -1535,7 +1545,7 @@ def create_plot(
                 order=utils.get_categories(data[cn].dtype),
                 colors=_meta_color_scale(base_meta, data[cn]),
                 neutrals=_get_neutral_cats(base_meta),
-                meta=ColumnMeta.model_validate(base_meta.model_dump(mode="python")),
+                meta=soft_validate(base_meta.model_dump(mode="python"), ColumnMeta),
             )
 
             pi.facets.append(fd)
@@ -1546,7 +1556,7 @@ def create_plot(
                 if v == "pass":
                     facet_meta = col_meta.get(pi.facets[i].ocol)
                     if facet_meta:
-                        extra_plot_args[k] = _meta_to_plain(facet_meta).get(k)
+                        plot_args[k] = _meta_to_plain(facet_meta).get(k)
 
         factor_cols = factor_cols[n_inner:]  # Leave rest for external faceting
 
@@ -1648,12 +1658,12 @@ def create_plot(
     if alt_wrapper is None:
         alt_wrapper = lambda p: p
 
-    plot_arg_payload = clean_kwargs(plot_fn, extra_plot_args)
+    plot_arg_payload = clean_kwargs(plot_fn, plot_args)
 
     def _call_plot_fn(
         data_override: pd.DataFrame | None = None,
     ) -> AltairChart | List[List[AltairChart]] | PlotInput:
-        payload = pi if data_override is None else pi.model_copy(deep=True)
+        payload = pi if data_override is None else deepcopy(pi)
         if data_override is not None:
             payload.data = data_override
         return plot_fn(payload, **plot_arg_payload)
@@ -1838,10 +1848,10 @@ def e2e_plot(
     if plot_cache is not None:
         key = json.dumps(pp_desc.model_dump(mode="python"), sort_keys=True)
         if key in plot_cache:
-            pi = plot_cache[key].model_copy(deep=True)
+            pi = deepcopy(plot_cache[key])
         else:
             pi = pp_transform_data(full_df, data_meta, pp_desc)
-            plot_cache[key] = pi.model_copy(deep=True)
+            plot_cache[key] = deepcopy(pi)
     else:  # No caching
         pi = pp_transform_data(full_df, data_meta, pp_desc)
 

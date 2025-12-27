@@ -41,6 +41,7 @@ __all__ = [
 ]
 
 from datetime import date, datetime
+from functools import lru_cache
 from typing import (
     Annotated,
     Any,
@@ -62,6 +63,7 @@ from pydantic import (
     ConfigDict,
     Field,
     SerializationInfo,
+    ValidationInfo,
     model_validator,
     model_serializer,
     BeforeValidator,
@@ -176,7 +178,9 @@ class ColumnMeta(PBase):
         return serialize_column_meta(self, handler, info)
 
     @model_validator(mode="after")
-    def check_categorical(self) -> Self:
+    def check_categorical(self, info: ValidationInfo) -> Self:
+        if info.context and info.context.get("validation_mode") == "soft":
+            return self
         if self.categories is None:
             # if not self.continuous and not self.datetime:
             #    raise ValueError('Column type undefined: need either categories, continuous or datetime')
@@ -253,7 +257,7 @@ class ColumnBlockMeta(PBase):
     create: Union[TopKBlock, MaxDiffBlock, None] = None
 
     @model_validator(mode="after")
-    def merge_scale_with_columns(self) -> Self:
+    def merge_scale_with_columns(self, info: ValidationInfo) -> Self:
         """Merge scale metadata with each column's metadata automatically on read.
 
         This ensures that column metadata inherits defaults from the block's scale,
@@ -270,7 +274,7 @@ class ColumnBlockMeta(PBase):
         # Merge scale with each column's metadata
         merged_columns: dict[str, ColumnMeta] = {}
         for col_name, col_meta in self.columns.items():
-            merged_meta = merge_pydantic_models(self.scale, col_meta)
+            merged_meta = merge_pydantic_models(self.scale, col_meta, context=info.context)
 
             # Special case: Don't inherit label from scale unless explicitly set on column
             # This prevents scale-level labels from propagating to individual columns
@@ -469,24 +473,41 @@ T = TypeVar("T", bound=BaseModel)
 
 def _create_strict_model_class(base_model: type[BaseModel]) -> type[BaseModel]:
     """Create a strict version of a model class with extra='forbid' for validation warnings."""
-    if issubclass(base_model, PBase):
-
-        class StrictModel(base_model):  # type: ignore[valid-type, misc]
-            model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
-
-        return StrictModel
-    return base_model
+    return _strict_model_class_cached(base_model)
 
 
-def soft_validate(m: dict[str, object] | BaseModel, model: type[T]) -> T:
+@lru_cache(maxsize=None)
+def _strict_model_class_cached(base_model: type[BaseModel]) -> type[BaseModel]:
+    """Cached strict-model wrapper to avoid repeated dynamic class creation."""
+    # If it's already strict, don't wrap again.
+    if getattr(base_model, "model_config", None) and (
+        cast(dict[str, Any], base_model.model_config).get("extra") == "forbid"
+    ):
+        return base_model
+
+    if not issubclass(base_model, PBase):
+        return base_model
+
+    class StrictModel(base_model):  # type: ignore[valid-type, misc]
+        model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
+
+    return StrictModel
+
+
+def soft_validate(
+    m: dict[str, object] | BaseModel,
+    model: type[T],
+    warnings: bool = False,
+    *,
+    context: dict[str, object] | None = None,
+) -> T:
     """Validate dict/model against a pydantic model, printing warnings, then returning validated object.
-
-    First validates with a temporary strict model (extra='forbid') to catch extra fields and print warnings.
-    Then validates with the normal model (extra='ignore') which allows extra fields but runs all validators.
+    Validates with the normal model (extra='ignore') which allows extra fields but runs all validators.
 
     Args:
         m: Dictionary or Pydantic model instance to validate.
         model: Pydantic model class to validate against.
+        warnings: Whether to print warnings about extra fields by doing a separate Hard validation pass
 
     Returns:
         Validated Pydantic model instance.
@@ -501,22 +522,25 @@ def soft_validate(m: dict[str, object] | BaseModel, model: type[T]) -> T:
     else:
         m_dict = m
 
-    # First, validate with a temporary strict model (extra='forbid') to catch extra fields
-    # This generates warnings but doesn't affect the final result
-    StrictModel = _create_strict_model_class(model)
-    try:
-        StrictModel.model_validate(m_dict)
-    except ValidationError as e:
-        # Print warnings for validation errors (mostly extra fields)
-        print(f"Validation warnings for {model.__name__}:")
-        for error in e.errors():
-            loc = " -> ".join(str(x) for x in error["loc"])
-            msg = error["msg"]
-            print(f"  {loc}: {msg}")
+    if warnings:
+        # First, validate with a temporary strict model (extra='forbid') to catch extra fields
+        # This generates warnings but doesn't affect the final result
+        StrictModel = _create_strict_model_class(model)
+        try:
+            StrictModel.model_validate(m_dict)
+        except ValidationError as e:
+            # Print warnings for validation errors (mostly extra fields)
+            print(f"Validation warnings for {model.__name__}:")
+            for error in e.errors():
+                loc = " -> ".join(str(x) for x in error["loc"])
+                msg = error["msg"]
+                print(f"  {loc}: {msg}")
 
     # Now validate with the normal model (extra='ignore') which runs all validators
     # and allows extra fields at all nesting levels
-    inst = cast(T, model.model_validate(m_dict, strict=False))
+    soft_context = dict(context or {})
+    soft_context["validation_mode"] = "soft"
+    inst = cast(T, model.model_validate(m_dict, strict=False, context=soft_context))
     return inst
 
 

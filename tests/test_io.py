@@ -11,6 +11,7 @@ import json
 import tempfile
 from pathlib import Path
 from pandas.testing import assert_frame_equal
+from pydantic import ValidationError
 
 from salk_toolkit.io import (
     read_annotated_data,
@@ -2175,6 +2176,39 @@ class TestSoftValidate:
         # Should return the same instance
         assert result is meta
         assert isinstance(result, DataMeta)
+
+    def test_soft_validate_only_warns_on_issues(self):
+        """Test that soft_validate context propagates into `_cs_lst_to_dict` and ColumnMeta validators."""
+        meta_dict = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "name": "test",
+                    # List-form column specs -> triggers BeforeValidator(_cs_lst_to_dict)
+                    "columns": [
+                        # invalid when categories is None (would raise in strict mode)
+                        ["x", {"ordered": True, "xyz": False}],
+                        ["y", {"categories": ["A", "B"], "ordered": False, "likert": True}],  # invalid in strict mode
+                    ],
+                }
+            ],
+        }
+
+        # Soft validation should bypass categorical checks (context must reach ColumnMeta validators)
+        meta = soft_validate(meta_dict, DataMeta)
+        assert isinstance(meta, DataMeta)
+
+        # Sanity: strict validation should still error for the same payload
+        with pytest.raises(ValidationError):
+            DataMeta.model_validate(meta_dict)
+
+    def test_soft_validate_strict_model_is_cached(self) -> None:
+        """Strict model wrapper should be cached to avoid repeated dynamic class creation."""
+        from salk_toolkit.validation import _create_strict_model_class
+
+        a = _create_strict_model_class(DataMeta)
+        b = _create_strict_model_class(DataMeta)
+        assert a is b
 
 
 class TestErrorHandling:
