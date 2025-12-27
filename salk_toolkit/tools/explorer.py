@@ -10,7 +10,7 @@ import warnings
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
 # If true, the profiler will be shown
-profile = True
+profile = False
 memprofile = False
 
 if memprofile:
