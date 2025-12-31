@@ -7,9 +7,11 @@ from typing import Any
 
 import pandas as pd
 import pytest
+import altair as alt
 
 from salk_toolkit.pp import (
     _calculate_priority as calculate_priority,
+    get_plot_fn,
     impute_factor_cols,
     matching_plots,
     PlotMeta,
@@ -221,3 +223,26 @@ def test_impute_factor_cols_handles_categorical_and_continuous_cases() -> None:
     }
     continuous_factors = impute_factor_cols(continuous_desc, col_meta)
     assert continuous_factors == ["question", "region"]
+
+
+def test_get_plot_fn_legacy_wrapper_builds_chart() -> None:
+    """`get_plot_fn` should support the legacy `get_plot_fn(name)(**pparams)` convention."""
+
+    plot = get_plot_fn("matrix")(
+        data=pd.DataFrame(
+            {
+                "row": ["A", "A", "B", "B"],
+                "col": ["X", "Y", "X", "Y"],
+                "value": [1.0, 2.0, 3.0, 4.0],
+            }
+        ),
+        facets=[
+            {"col": "row", "order": ["A", "B"], "colors": alt.Undefined},
+            {"col": "col", "order": ["X", "Y"], "colors": alt.Undefined},
+        ],
+        value_col="value",
+        val_format=".2",
+        log_colors=False,
+    )
+
+    assert hasattr(plot, "to_dict")
