@@ -4,8 +4,9 @@ This module provides a web-based interface for exploring annotated survey data,
 allowing users to interactively create plots, filter data, and adjust plot parameters.
 """
 
-import streamlit as st
 import warnings
+
+import streamlit as st
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
@@ -42,8 +43,9 @@ else:
 
 # Allow explorer to be deployed online with access restrictions similar to other dashboards
 if has_secrets and st.secrets.get("sip", {}).get("input_files"):  # st.secrets.get('auth',{}).get('use_oauth'):
-    from salk_toolkit.dashboard import FronteggAuthenticationManager, log_event
     import s3fs  # type: ignore[import-untyped]
+
+    from salk_toolkit.dashboard import FronteggAuthenticationManager, log_event
 
     groups = ["user", "admin"]
     org_whitelist = st.secrets["sip"]["org_whitelist"]
@@ -95,41 +97,44 @@ else:
     sdb = None
 
 with st.spinner("Loading libraries.."):
-    import pandas as pd
-    import polars as pl
+    import contextlib
     import json
     import os
     import sys
-    import psutil
+    import warnings
     from collections import defaultdict
+    from copy import deepcopy
+    from typing import TypeVar
 
     import altair as alt
-    import warnings
-    import contextlib
-
+    import pandas as pd
+    import polars as pl
+    import psutil
     from streamlit_js import st_js, st_js_blocking  # type: ignore[import-untyped]
 
-    from salk_toolkit.io import read_json, extract_column_meta, read_parquet_with_metadata
-    from salk_toolkit.utils import replace_constants, plot_matrix_html
-    from salk_toolkit.validation import DataMeta, PlotDescriptor, soft_validate
-    from salk_toolkit.pp import (
-        _update_data_meta_with_pp_desc,
-        impute_factor_cols,
-        matching_plots,
-        get_plot_meta,
-        cont_transform_options,
-        pp_transform_data,
-        create_plot,
-    )
     from salk_toolkit.dashboard import (
+        default_translate,
         draw_plot_matrix,
         facet_ui,
         filter_ui,
-        default_translate,
         stss_safety,
     )
-    from copy import deepcopy
-    from typing import TypeVar
+    from salk_toolkit.io import (
+        extract_column_meta,
+        read_json,
+        read_parquet_with_metadata,
+    )
+    from salk_toolkit.pp import (
+        _update_data_meta_with_pp_desc,
+        cont_transform_options,
+        create_plot,
+        get_plot_meta,
+        impute_factor_cols,
+        matching_plots,
+        pp_transform_data,
+    )
+    from salk_toolkit.utils import plot_matrix_html, replace_constants
+    from salk_toolkit.validation import DataMeta, PlotDescriptor, soft_validate
 
     T = TypeVar("T")
     tqdm = lambda x: x  # So we can freely copy-paste from notebooks
@@ -311,11 +316,11 @@ with st.sidebar:  # .expander("Select dimensions"):
         st_js_blocking('localStorage.removeItem("session_state")')
         st.session_state.clear()
 
-    draw = st.toggle("Draw plots", True)
+    draw = st.toggle("Draw plots", True, key="draw")
 
-    show_grouped = st.toggle("Show grouped facets", True)
+    show_grouped = st.toggle("Show grouped facets", True, key="show_grouped")
 
-    if st.toggle("Convert to continuous", False):
+    if st.toggle("Convert to continuous", False, key="convert_res"):
         args["convert_res"] = "continuous"
 
     schema = getattr(first_data, "collect_schema", lambda: None)()

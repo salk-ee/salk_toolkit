@@ -126,88 +126,134 @@
       }
     ]
   },
-  "encoding": {
-    "color": {
-      "field": "question",
-      "legend": {
-        "columns": 4,
-        "orient": "top"
-      },
-      "scale": {
-        "domain": [
-          "Keskerakond",
-          "EKRE",
-          "Reformierakond",
-          "Isamaa",
-          "SDE",
-          "Rohelised",
-          "Eesti 200",
-          "Parempoolsed"
+  "layer": [
+    {
+      "encoding": {
+        "color": {
+          "field": "question",
+          "legend": {
+            "columns": 4,
+            "orient": "top"
+          },
+          "scale": {
+            "domain": [
+              "Keskerakond",
+              "EKRE",
+              "Reformierakond",
+              "Isamaa",
+              "SDE",
+              "Rohelised",
+              "Eesti 200",
+              "Parempoolsed"
+            ],
+            "range": [
+              "#007557",
+              "#8B4513",
+              "#FFE200",
+              "#009BDF",
+              "#E10600",
+              "#88AF47",
+              "#31758A",
+              "orange"
+            ]
+          },
+          "sort": [
+            "Keskerakond",
+            "EKRE",
+            "Reformierakond",
+            "Isamaa",
+            "SDE",
+            "Rohelised",
+            "Eesti 200",
+            "Parempoolsed"
+          ],
+          "type": "nominal"
+        },
+        "tooltip": [
+          {
+            "field": "thermometer",
+            "format": ".1f",
+            "type": "quantitative"
+          },
+          {
+            "field": "question",
+            "type": "nominal"
+          },
+          {
+            "field": "education",
+            "type": "nominal"
+          }
         ],
-        "range": [
-          "#007557",
-          "#8B4513",
-          "#FFE200",
-          "#009BDF",
-          "#E10600",
-          "#88AF47",
-          "#31758A",
-          "orange"
-        ]
+        "x": {
+          "axis": {
+            "labelAngle": 0
+          },
+          "field": "education",
+          "sort": [
+            "Basic education",
+            "Secondary education",
+            "Higher education"
+          ],
+          "title": null,
+          "type": "nominal"
+        },
+        "y": {
+          "axis": {
+            "format": ".1f"
+          },
+          "field": "thermometer",
+          "title": "thermometer",
+          "type": "quantitative"
+        }
       },
-      "sort": [
-        "Keskerakond",
-        "EKRE",
-        "Reformierakond",
-        "Isamaa",
-        "SDE",
-        "Rohelised",
-        "Eesti 200",
-        "Parempoolsed"
-      ],
-      "type": "nominal"
-    },
-    "tooltip": [
-      {
-        "field": "thermometer",
-        "format": ".1f",
-        "type": "quantitative"
-      },
-      {
-        "field": "question",
-        "type": "nominal"
-      },
-      {
-        "field": "education",
-        "type": "nominal"
+      "mark": {
+        "interpolate": "cardinal",
+        "point": true,
+        "type": "line"
       }
-    ],
-    "x": {
-      "axis": {
-        "labelAngle": 0
-      },
-      "field": "education",
-      "sort": [
-        "Basic education",
-        "Secondary education",
-        "Higher education"
-      ],
-      "title": null,
-      "type": "nominal"
     },
-    "y": {
-      "axis": {
-        "format": ".1f"
+    {
+      "encoding": {
+        "tooltip": [
+          {
+            "field": "thermometer",
+            "format": ".1f",
+            "type": "quantitative"
+          },
+          {
+            "field": "question",
+            "type": "nominal"
+          },
+          {
+            "field": "education",
+            "type": "nominal"
+          }
+        ],
+        "x": {
+          "axis": {
+            "labelAngle": 0
+          },
+          "field": "education",
+          "sort": [
+            "Basic education",
+            "Secondary education",
+            "Higher education"
+          ],
+          "title": null,
+          "type": "nominal"
+        },
+        "y": {
+          "field": "thermometer",
+          "title": null,
+          "type": "quantitative"
+        }
       },
-      "field": "thermometer",
-      "title": "thermometer",
-      "type": "quantitative"
+      "mark": {
+        "opacity": 0,
+        "size": 200,
+        "type": "point"
+      }
     }
-  },
-  "mark": {
-    "interpolate": "basis",
-    "point": "transparent",
-    "type": "line"
-  },
+  ],
   "width": 400
 }

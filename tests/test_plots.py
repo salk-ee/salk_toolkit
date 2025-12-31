@@ -190,8 +190,7 @@ class TestPlots:
                     plot_html_path.write_text(full_html, encoding="utf-8")
             else:
                 # Single chart - use save_plot_comparison_html with dummy reference
-                from utils.plot_comparison import save_plot_comparison_html
-
+                # save_plot_comparison_html imported at module scope (avoid shadowing it here)
                 # Create a dummy reference spec for display (same as actual)
                 dummy_reference = result_spec.copy()
                 save_plot_comparison_html(
@@ -204,9 +203,11 @@ class TestPlots:
                 )
 
             plot_uri = plot_html_path.resolve().as_uri()
+            recompute_cmd = f"pytest tests/test_plots.py::TestPlots::{test_name} --recompute"
             raise ValueError(
                 f"Reference file for {test_name} not found.\n"
                 f"Plot HTML saved to: {plot_uri}\n"
+                f"Recompute with: {recompute_cmd}\n"
                 f"Run with --recompute to create the reference file."
             )
 
@@ -267,11 +268,13 @@ class TestPlots:
                 if diff_html_path is not None
                 else "\nComparison HTML: failed to generate (see log above)"
             )
+            recompute_cmd = f"pytest tests/test_plots.py::TestPlots::{test_name} --recompute"
 
             diff_report = pretty_print_json_differences(reference_json, normalized_result, float_tolerance)
             assert False, (
                 f"Plot output differs from reference. Test: {test_name}\n"
-                f"Reference file: {reference_file}\n{comparison_note}\n\n"
+                f"Reference file: {reference_file}\n{comparison_note}\n"
+                f"Recompute with: {recompute_cmd}\n\n"
                 f"{diff_report}"
             )
 

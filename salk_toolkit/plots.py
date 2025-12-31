@@ -67,7 +67,6 @@ from salk_toolkit import utils as utils
 from salk_toolkit.pp import AltairChart, PlotInput, stk_plot
 from salk_toolkit.validation import FacetMeta
 
-
 # --------------------------------------------------------
 #          LEGEND UTILITIES
 # --------------------------------------------------------
@@ -1179,8 +1178,8 @@ def lines(
     else:
         fy, fx = p.facets[0], p.facets[1]
     if smooth:
-        smoothing = "basis"
-        points = "transparent"
+        smoothing = "cardinal"
+        points = True  # "transparent"
     else:
         smoothing = "natural"
         points = True
@@ -1188,36 +1187,45 @@ def lines(
     # See if we should use a continous axis (if categoricals are actually numbers)
     x_axis, data = _cat_to_cont_axis(data, fx)
 
-    plot = (
-        alt.Chart(data)
-        .mark_line(point=points, interpolate=smoothing)
-        .encode(
-            x=x_axis,
-            y=alt.Y(
-                field=p.value_col,
-                type="quantitative",
-                title=(p.value_col if len(p.value_col) < 20 else None),
-                axis=alt.Axis(format=fmt),
-            ),
-            tooltip=p.tooltip,
-            **(
-                {
-                    "color": alt.Color(
-                        field=fy.col,
-                        type="nominal",
-                        scale=fy.colors,
-                        sort=fy.order,
-                        legend=alt.Legend(
-                            orient="top",
-                            columns=estimate_legend_columns_horiz(fy.order, chart_width),
-                        ),
-                    )
-                }
-                if fy is not None
-                else {}
-            ),
-        )
+    chart = alt.Chart(data)
+    plot = chart.mark_line(point=points, interpolate=smoothing).encode(
+        x=x_axis,
+        y=alt.Y(
+            field=p.value_col,
+            type="quantitative",
+            title=(p.value_col if len(p.value_col) < 20 else None),
+            axis=alt.Axis(format=fmt),
+        ),
+        tooltip=p.tooltip,
+        **(
+            {
+                "color": alt.Color(
+                    field=fy.col,
+                    type="nominal",
+                    scale=fy.colors,
+                    sort=fy.order,
+                    legend=alt.Legend(
+                        orient="top",
+                        columns=estimate_legend_columns_horiz(fy.order, chart_width),
+                    ),
+                )
+            }
+            if fy is not None
+            else {}
+        ),
     )
+
+    # Add larger area for tooltip
+    plot += chart.mark_point(size=200, opacity=0).encode(
+        x=x_axis,
+        y=alt.Y(
+            field=p.value_col,
+            type="quantitative",
+            title=None,
+        ),
+        tooltip=p.tooltip,
+    )
+
     return plot
 
 
@@ -1797,7 +1805,12 @@ def facet_dist(
             x=alt.X("percentile:Q", axis=alt.Axis(format="%")),
             y=alt.Y("density:Q", axis=alt.Axis(title=None, format="%"), stack="normalize"),
             tooltip=p.tooltip[1:],
-            color=alt.Color(field=f0.col, type="nominal", scale=f0.colors, legend=alt.Legend(orient="top")),
+            color=alt.Color(
+                field=f0.col,
+                type="nominal",
+                scale=f0.colors,
+                legend=alt.Legend(orient="top"),
+            ),
             # order=alt.Order('order:O')
         )
     )
@@ -1984,7 +1997,12 @@ def ordered_population(
     )
     # selection = alt.selection_multi(fields=[dim], bind='legend')
     line = base.mark_circle(size=10).encode(
-        y=alt.Y(f"{p.value_col}:Q", impute={"value": None}, title="", axis=alt.Axis(grid=True)),
+        y=alt.Y(
+            f"{p.value_col}:Q",
+            impute={"value": None},
+            title="",
+            axis=alt.Axis(grid=True),
+        ),
         # opacity=alt.condition(selection, alt.Opacity("matches:Q",scale=None), alt.value(0.1)),
         color=alt.Color(field=f0.col, type="nominal", sort=f0.order, scale=f0.colors)
         if f0 is not None
