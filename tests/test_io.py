@@ -377,9 +377,13 @@ class TestReadAnnotatedData:
         expected_topics: list[str] | None = None,
     ) -> None:
         """Helper to compare actual and expected structures."""
-        assert set(actual_structure.keys()) == set(expected_structure.keys()), (
-            f"Structure keys differ: {set(actual_structure.keys())} != {set(expected_structure.keys())}"
-        )
+        # System blocks like 'files' are automatically added by read_and_process_data
+        actual_keys = set(actual_structure.keys())
+        expected_keys = set(expected_structure.keys())
+        if "files" in actual_keys and "files" not in expected_keys:
+            actual_keys.remove("files")
+
+        assert actual_keys == expected_keys, f"Structure keys differ: {actual_keys} != {expected_keys}"
 
         for block_name in expected_structure.keys():
             if block_name not in actual_structure:
@@ -396,7 +400,7 @@ class TestReadAnnotatedData:
 
             # For maxdiff_maxdiff, optionally check columns match DataFrame
             if block_name == "maxdiff_maxdiff" and data_df is not None:
-                df_cols = set(data_df.columns)
+                df_cols = set(data_df.columns) - {"file_code", "file_name"}
                 assert actual_cols == df_cols, (
                     f"Block {block_name} columns {actual_cols} should match DataFrame columns {df_cols}"
                 )
@@ -537,7 +541,10 @@ class TestReadAnnotatedData:
         data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
 
         # The code sorts columns alphabetically, so reorder expected df to match
-        expected_df = df[sorted(df.columns)]
+        expected_df = df.copy()
+        expected_df["file_code"] = "F0"
+        expected_df["file_name"] = "test_meta.json"
+        expected_df = expected_df[sorted(expected_df.columns)]
         assert_frame_equal(data_df, expected_df, check_dtype=False, check_categorical=False)
 
         # Compare structures
@@ -652,6 +659,8 @@ class TestReadAnnotatedData:
             for block_idx in range(num_blocks):
                 col = f"Q2_{block_idx + 1}set"
                 expected_df[col] = [list(row_sets[row][block_idx]) for row in range(num_rows)]
+            expected_df["file_code"] = "F0"
+            expected_df["file_name"] = "test_meta.json"
             expected_df = expected_df[data_df.columns]
 
             assert_frame_equal(

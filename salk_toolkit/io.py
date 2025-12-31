@@ -472,9 +472,10 @@ def _create_topk_metas_and_dfs_regex(
     assert first_match is not None, f"Column {from_cols[0]} should match regex {regex_from.pattern}"
     n_groups = len(first_match.groups())
     has_subgroups = n_groups >= 2  # Multiple aggregations needed?
-    regex_to = create.res_columns or ""
-    kmax = None if create.k in (None, "max") else create.k
-    na_vals = create.na_vals or []
+    regex_to = create.res_columns if isinstance(create.res_columns, str) else None
+    kmax = create.k
+    na_vals = create.na_vals if create.na_vals is not None else []
+
     if has_subgroups:
         # collect all subgroups, later aggregate each subgroup separately
         def _get_subgroup_id(column: str) -> tuple[str, ...]:
@@ -517,7 +518,11 @@ def _create_topk_metas_and_dfs_regex(
             for col in sdf.columns
         ]
 
+        # Convert one-hot encoded columns into a list-of-selected format
+        if "|" in from_columns:
+            raise ValueError(sdf.columns)
         sdf.columns = sdf.columns.map(_get_regex_group_at_agg_ind)
+
         sdf = sdf.mask(
             ~sdf.isna(), other=pd.Series(sdf.columns, index=sdf.columns), axis=1
         )  # replace cell with column name where not NA
@@ -938,9 +943,47 @@ def _process_annotated_data(
             exec(_str_from_list(meta_obj.preprocessing), globs)
             raw_data_dict[file_code] = globs["df"]
 
+    # Ensure file metadata columns always survive end-to-end (also if preprocessing dropped/mutated them).
+    file_names_in_order: list[str] = []
+    for file_code in file_codes_in_order:
+        df = raw_data_dict[file_code]
+        file_name_val = file_meta_map[file_code]
+        # Overwrite to guarantee correctness even if preprocessing mutated/dropped these columns.
+        df["file_code"] = str(file_code)
+        df["file_name"] = file_name_val
+        raw_data_dict[file_code] = df
+        file_names_in_order.append(file_name_val)
+
+    # Inject implicit metadata for system file columns so they can be used downstream (e.g. plotting/pipeline).
+    # Provide explicit ordered category order (no "infer") for determinism.
+    sys_block_name = "files"
+    sys_block_hidden = len(raw_data_dict) <= 1
+    sys_block_dict: dict[str, object] = {
+        "name": sys_block_name,
+        "generated": True,
+        "hidden": sys_block_hidden,
+        "columns": {
+            "file_code": {"categories": [str(fc) for fc in file_codes_in_order], "ordered": True},
+            "file_name": {"categories": file_names_in_order, "ordered": True},
+        },
+    }
+    sys_block = soft_validate(sys_block_dict, ColumnBlockMeta)
+    structure2 = dict(meta_obj.structure)
+    if sys_block_name in structure2:
+        existing = structure2[sys_block_name]
+        merged_cols = dict(existing.columns)
+        for k, v in sys_block.columns.items():
+            merged_cols.setdefault(k, v)
+        structure2[sys_block_name] = existing.model_copy(
+            update={"columns": merged_cols, "hidden": sys_block_hidden, "generated": True}
+        )
+    else:
+        structure2[sys_block_name] = sys_block
+    meta_obj = meta_obj.model_copy(update={"structure": structure2})
+
     raw_data_concat = pd.concat(raw_data_dict.values()).reset_index(drop=True) if raw_data_dict else pd.DataFrame()
     # Initialize concatenated DataFrame - start empty, will be built column by column
-    ndf_df = pd.DataFrame(index=raw_data_concat.index)
+    ndf_df = pd.DataFrame()
 
     # Compute and store row index ranges for each file_code
     file_index_ranges: dict[str, slice] = {}
