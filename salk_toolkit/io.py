@@ -769,7 +769,7 @@ def _process_annotated_data(
                         idx_range = file_index_ranges[file_code]
                         s_local = s.iloc[idx_range]
                         ndf_local = ndf_df.iloc[idx_range]
-                        s_local = eval(
+                        transformed = eval(
                             mcm.transform,
                             {
                                 "s": s_local,
@@ -781,7 +781,9 @@ def _process_annotated_data(
                                 **constants,
                             },
                         )
-                        transformed_parts.append(s_local)
+
+                        s_out = pd.Series(transformed, index=s_local.index, name=cn)
+                        transformed_parts.append(s_out)
                     s = pd.concat(transformed_parts, ignore_index=True)
                 if mcm.translate_after:
                     s = (

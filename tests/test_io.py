@@ -99,6 +99,35 @@ def sample_csv_data():
 class TestReadAnnotatedData:
     """Test read_annotated_data function"""
 
+    def test_transform_can_return_categorical(self, csv_file, meta_file, sample_csv_data):
+        """Transform expressions may return pandas.Categorical (e.g. stk.cut_nice); ensure we handle it."""
+        sample_csv_data.to_csv_file(csv_file)
+
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "name": "basic",
+                    "columns": [
+                        [
+                            "age_group",
+                            "age",
+                            {
+                                # pd.Categorical(...) returns a pandas.Categorical (not a Series)
+                                "transform": "pd.Categorical(s.astype(str))",
+                                "categories": "infer",
+                            },
+                        ]
+                    ],
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+
+        df = read_annotated_data(str(meta_file))
+        assert "age_group" in df.columns
+        assert df["age_group"].dtype.name == "category"
+
     def test_json_file_loading_basic(self, csv_file, meta_file, sample_csv_data):
         """Test basic JSON metafile loading"""
         sample_csv_data.to_csv_file(csv_file)
