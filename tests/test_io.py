@@ -838,6 +838,44 @@ class TestCategoricalFeatures:
         # Categories are the original strings, numerically ordered (10 should come last).
         assert list(df["value"].dtype.categories) == ["1.5", "2.333", "4.0", "5.25", "10"]
 
+    def test_category_inference_mixed_int_and_numeric_string_after_translate(self, csv_file, meta_file):
+        """Mixed int + numeric-string values should still yield string categories (Arrow-safe)."""
+        # This mirrors a common real-world case:
+        # - translation maps some string labels to ints
+        # - other values remain as numeric strings (e.g. numeric codes that were already present)
+        pd.DataFrame(
+            {
+                "mixed": ["A", "B", 2],
+                "id": [1, 2, 3],
+            }
+        ).to_csv_file(csv_file)
+
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "name": "test",
+                    "columns": [
+                        "id",
+                        [
+                            "mixed",
+                            {
+                                "categories": "infer",
+                                "translate": {"A": 1, "B": 4},
+                            },
+                        ],
+                    ],
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+
+        df = read_annotated_data(str(meta_file))
+
+        assert df["mixed"].dtype.name == "category"
+        assert all(isinstance(c, str) for c in df["mixed"].dtype.categories)
+        assert list(df["mixed"].dtype.categories) == ["1", "2", "4"]
+
     def test_category_inference_datetime_strings(self, csv_file, meta_file):
         """Datetime-like strings should sort chronologically but keep original string values."""
         pd.DataFrame(

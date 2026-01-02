@@ -362,6 +362,9 @@ def _deterministic_categories_and_values(s: pd.Series) -> tuple[pd.Series, list[
     else:
         s_str = s.copy()
 
+    # Ensure everything is a string
+    s_str.loc[~s_str.isna()] = s_str[~s_str.isna()].astype(str)
+
     # true datetime types are numeric so have to be excluded
     is_numeric = (is_true_numeric or is_numeric_like_str) and not is_true_datetime
     conv_f = pd.to_numeric if is_numeric else pd.to_datetime
@@ -372,7 +375,6 @@ def _deterministic_categories_and_values(s: pd.Series) -> tuple[pd.Series, list[
         return s_str, cats
 
     # Case 3: general categorical-like values -> deterministic lexicographic ordering
-    s_str.loc[~s_str.isna()] = s_str[~s_str.isna()].astype(str)
     uniq = list(sorted(pd.unique(s_str.dropna())))
     return s_str, uniq
 
