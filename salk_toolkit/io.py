@@ -199,11 +199,13 @@ def _reconcile_categories(
                 and isinstance(s.iloc[0], Iterable)
             ):
                 continue  # Skip if it's a list or tuple or ndarray
-            reconciled[c] = pd.Categorical([], list(s.unique())).dtype
+            _, cats = _deterministic_categories_and_values(s)
+            reconciled[c] = pd.Categorical([], cats).dtype
         elif not set(fdf[c].dropna().unique()) <= set(
             utils.get_categories(dtype)
         ):  # If the categories are not the same, create a new dtype
-            reconciled[c] = pd.Categorical([], list(fdf[c].dropna().unique())).dtype
+            _, cats = _deterministic_categories_and_values(fdf[c].dropna())
+            reconciled[c] = pd.Categorical([], cats).dtype
             n_cats = len(utils.get_categories(reconciled[c]))
             warn(f"Categories for {c} are different between files - merging to total {n_cats} cats")
         else:
@@ -304,6 +306,7 @@ def _load_data_files(
 
     if metas:  # Do we have any metainfo?
         meta = metas[-1]
+
         # This will fix categories inside meta too - use concatenated view for this
         fdf = pd.concat(raw_data_dict.values())
         meta = _fix_meta_categories(meta, fdf, warnings=False)
@@ -319,6 +322,59 @@ def _convert_number_series_to_categorical(s: pd.Series) -> pd.Series:
     This is a practical judgement call right now - round to two digits after comma and remove .00 from integers.
     """
     return s.astype("float").map("{:.2f}".format).str.replace(".00", "").replace({"nan": None})
+
+
+def _convert_datetime_series_to_categorical(s: pd.Series) -> pd.Series:
+    """Convert datetime series to categorical strings like "01 Dec 25".
+
+    Note: Month names are locale-dependent; this is intentional per user preference.
+    """
+    dt = pd.to_datetime(s, errors="coerce")
+    # out = dt.dt.strftime("%Y-%m-%d") # ISO YYYY-MM-DD
+    out = dt.dt.strftime("%d %b %y")
+    return out.where(dt.notna(), None)
+
+
+def _deterministic_categories_and_values(s: pd.Series) -> tuple[pd.Series, list[object]]:
+    """Return (possibly coerced) values + deterministic category list.
+
+    Sorts numeric and datetime values (even if strings) in expected order.
+    Also converts values to strings if needed.
+    """
+    s_nonnull = s.dropna()
+    if len(s_nonnull) == 0:
+        return s, []
+
+    # Merge numeric dtype and numeric-like string paths to share code
+    parsed = pd.to_numeric(s, errors="coerce")
+    is_true_numeric = pd.api.types.is_numeric_dtype(s_nonnull)  # Case 1
+    is_numeric_like_str = parsed.isna().sum() == s.isna().sum()  # Case 2
+
+    # Same for datetime
+    dt_parsed = pd.to_datetime(s, errors="coerce")
+    is_true_datetime = pd.api.types.is_datetime64_any_dtype(s_nonnull)
+    is_datetime_like_str = dt_parsed.isna().sum() == s.isna().sum()
+
+    if is_true_numeric:
+        s_str = _convert_number_series_to_categorical(s)
+    elif is_true_datetime:
+        s_str = _convert_datetime_series_to_categorical(s)
+    else:
+        s_str = s.copy()
+
+    # true datetime types are numeric so have to be excluded
+    is_numeric = (is_true_numeric or is_numeric_like_str) and not is_true_datetime
+    conv_f = pd.to_numeric if is_numeric else pd.to_datetime
+
+    if is_true_numeric or is_numeric_like_str or is_true_datetime or is_datetime_like_str:
+        unique_vals = pd.unique(s_str.dropna())
+        cats = sorted(unique_vals, key=conv_f)
+        return s_str, cats
+
+    # Case 3: general categorical-like values -> deterministic lexicographic ordering
+    s_str.loc[~s_str.isna()] = s_str[~s_str.isna()].astype(str)
+    uniq = list(sorted(pd.unique(s_str.dropna())))
+    return s_str, uniq
 
 
 def _is_series_of_lists(s: pd.Series) -> bool:
@@ -818,22 +874,16 @@ def _process_annotated_data(
                         # Update metadata with inferred categories (preserves translation dict order)
                         mcm = mcm.model_copy(update={"categories": inferred_cats})
                     else:
-                        # Just use lexicographic ordering (or numeric for numbers)
+                        # Deterministic ordering:
+                        # - numeric dtype -> numeric sort
+                        # - numeric-like strings -> numeric sort
+                        # - otherwise -> lexicographic sort
                         if should_warn_ordered:
                             warn(
                                 f"Ordered category {cn} had category: infer. "
                                 "This only works correctly if you want lexicographic ordering!"
                             )
-                        if pd.api.types.is_numeric_dtype(s):
-                            # For numeric data, sort numerically first, then convert to categorical strings
-                            cinds = s.drop_duplicates().sort_values().index
-                            s_converted = _convert_number_series_to_categorical(s)
-                            inferred_cats = [s_converted.iloc[i] for i in cinds if pd.notna(s_converted.iloc[i])]
-                        else:
-                            # For non-numeric data, use lexicographic ordering (deterministic)
-                            s.loc[~s.isna()] = s[~s.isna()].astype(str)
-                            unique_vals = s.dropna().unique()
-                            inferred_cats = sorted(unique_vals.tolist())
+                        s, inferred_cats = _deterministic_categories_and_values(s)
                         # Update metadata with inferred categories
                         mcm = mcm.model_copy(update={"categories": inferred_cats})
                     cats = inferred_cats
@@ -1368,7 +1418,8 @@ def _fix_meta_categories(
                         warn(f"Fixing missing categories for {cn}: {diff}")
                     # Preserve original order and append missing categories at the end
                     existing_cats = list(col_meta.categories)
-                    missing_cats = sorted([c for c in cats if c not in existing_cats])
+                    # Preserve the observed dtype category order (do NOT sort).
+                    missing_cats = [c for c in cats if c not in existing_cats]
                     updated_col_meta = col_meta.model_copy(update={"categories": existing_cats + missing_cats})
                 all_cats |= set(cats)
             updated_columns[cn] = updated_col_meta
@@ -1733,6 +1784,10 @@ def read_and_process_data(
             meta_obj = meta_raw
         else:
             meta_obj = soft_validate(meta_raw, DataMeta, warnings=True)
+
+        # Ensure returned metadata categories reflect reconciled categoricals (including injected extra fields).
+        if meta_obj is not None:
+            meta_obj = _fix_meta_categories(meta_obj, df, warnings=False)
 
     if meta_obj is None and return_meta:
         raise Exception("No meta found on any of the files")

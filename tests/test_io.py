@@ -815,6 +815,80 @@ class TestCategoricalFeatures:
         assert isinstance(value_meta["categories"], list)
         assert len(value_meta["categories"]) > 0
 
+    def test_category_inference_numeric_strings_preserve_strings(self, csv_file, meta_file):
+        """Numeric-like strings should sort numerically but keep original string values (no rounding)."""
+        pd.DataFrame(
+            {
+                "value": ["1.5", "2.333", "10", "4.0", "5.25"],
+                "id": [1, 2, 3, 4, 5],
+            }
+        ).to_csv_file(csv_file)
+
+        meta = {
+            "file": "test.csv",
+            # Ensure we actually read the column as strings; otherwise pandas may parse it as float.
+            "read_opts": {"dtype": {"value": "string"}},
+            "structure": [{"name": "test", "columns": ["id", ["value", {"categories": "infer"}]]}],
+        }
+        write_json(meta_file, meta)
+
+        df = read_annotated_data(str(meta_file))
+
+        assert df["value"].dtype.name == "category"
+        # Categories are the original strings, numerically ordered (10 should come last).
+        assert list(df["value"].dtype.categories) == ["1.5", "2.333", "4.0", "5.25", "10"]
+
+    def test_category_inference_datetime_strings(self, csv_file, meta_file):
+        """Datetime-like strings should sort chronologically but keep original string values."""
+        pd.DataFrame(
+            {
+                "dt": ["2024-12-31", "2024-01-02", "2024-01-01"],
+                "id": [1, 2, 3],
+            }
+        ).to_csv_file(csv_file)
+
+        meta = {
+            "file": "test.csv",
+            # Ensure we actually read the column as strings
+            "read_opts": {"dtype": {"dt": "string"}},
+            "structure": [{"name": "test", "columns": ["id", ["dt", {"categories": "infer"}]]}],
+        }
+        write_json(meta_file, meta)
+
+        df = read_annotated_data(str(meta_file))
+
+        assert df["dt"].dtype.name == "category"
+        assert list(df["dt"].dtype.categories) == ["2024-01-01", "2024-01-02", "2024-12-31"]
+
+    def test_category_inference_datetime_dtype_formats_human(self, csv_file, meta_file):
+        """True datetime dtype should be converted to '01 Dec 25' and sorted chronologically."""
+        pd.DataFrame(
+            {
+                "dt_raw": ["2025-12-01", "2025-12-02", "2025-01-01"],
+                "id": [1, 2, 3],
+            }
+        ).to_csv_file(csv_file)
+
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "name": "test",
+                    "columns": [
+                        "id",
+                        # Force datetime dtype first, then infer categories on that datetime series.
+                        ["dt", "dt_raw", {"datetime": True, "categories": "infer"}],
+                    ],
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+
+        df = read_annotated_data(str(meta_file))
+
+        assert df["dt"].dtype.name == "category"
+        assert list(df["dt"].dtype.categories) == ["01 Jan 25", "01 Dec 25", "02 Dec 25"]
+
     def test_numeric_to_categorical_nearest_mapping(self, csv_file, meta_file):
         """Test numeric series mapping to nearest categorical values"""
         pd.DataFrame(
@@ -1530,6 +1604,61 @@ class TestReadAndProcessData:
 
         assert "multiplied" in df.columns
         assert df["multiplied"].equals(df["age"] * 5)
+
+    def test_return_meta_extra_field_categories(self, temp_dir):
+        """Extra FileDesc fields (e.g. t) should be reflected in returned meta categories."""
+        # Create tiny source CSVs (no `t` column); meta declares `t` but it will be empty at this stage.
+        csv1 = temp_dir / "d1.csv"
+        csv2 = temp_dir / "d2.csv"
+        pd.DataFrame({"id": [1, 2], "value": ["A", "B"]}).to_csv_file(csv1)
+        pd.DataFrame({"id": [3, 4], "value": ["C", "D"]}).to_csv_file(csv2)
+
+        meta1 = temp_dir / "m1.json"
+        meta2 = temp_dir / "m2.json"
+        write_json(
+            meta1,
+            {
+                "file": "d1.csv",
+                "structure": [
+                    {
+                        "name": "survey",
+                        "columns": [
+                            "id",
+                            "value",
+                            ["t", {"categories": []}],
+                        ],
+                    }
+                ],
+            },
+        )
+        write_json(
+            meta2,
+            {
+                "file": "d2.csv",
+                "structure": [
+                    {
+                        "name": "survey",
+                        "columns": [
+                            "id",
+                            "value",
+                            ["t", {"categories": []}],
+                        ],
+                    }
+                ],
+            },
+        )
+
+        # Load annotated metas as multi-file description, injecting per-file `t` values.
+        desc = {
+            "files": [
+                {"file": str(meta1), "t": "-3"},
+                {"file": str(meta2), "t": "0"},
+            ]
+        }
+        df, m = read_and_process_data(desc, return_meta=True)
+
+        assert df["t"].dropna().unique().tolist() == ["-3", "0"]
+        assert m.structure["survey"].columns["t"].categories == ["-3", "0"]
 
 
 class TestFileTracking:
