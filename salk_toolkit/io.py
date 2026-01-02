@@ -351,7 +351,13 @@ def _deterministic_categories_and_values(s: pd.Series) -> tuple[pd.Series, list[
     is_numeric_like_str = parsed.isna().sum() == s.isna().sum()  # Case 2
 
     # Same for datetime
-    dt_parsed = pd.to_datetime(s, errors="coerce")
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=r"Could not infer format, so each element will be parsed individually.*",
+            category=UserWarning,
+        )
+        dt_parsed = pd.to_datetime(s, errors="coerce")
     is_true_datetime = pd.api.types.is_datetime64_any_dtype(s_nonnull)
     is_datetime_like_str = dt_parsed.isna().sum() == s.isna().sum()
 
@@ -748,6 +754,8 @@ def _process_annotated_data(
         # group.columns is Dict[str, ColumnMeta]
         # Note: scale metadata is already merged with column metadata
         # by ColumnBlockMeta.merge_scale_with_columns validator
+        # Keep for forward-compat; metadata categories are reconciled later by _fix_meta_categories.
+        # (We do not remove missing columns from meta, we only skip materializing them into df.)
         updated_columns: dict[str, ColumnMeta] = {}
         for orig_cn, col_meta in group.columns.items():
             # Work with Pydantic objects directly
@@ -772,7 +780,6 @@ def _process_annotated_data(
 
             if only_fix_categories:
                 source_spec = cn
-            g_cols.append(cn)
 
             # Extract columns from all files and concatenate immediately
             per_file_series: list[pd.Series] = []
@@ -812,6 +819,10 @@ def _process_annotated_data(
 
             # Concatenated series ready for processing
             s: pd.Series = pd.concat(per_file_series).reset_index(drop=True)
+
+            # Declared in meta but missing/empty in all source files -> drop from df and meta.
+            if s.isna().all():
+                continue
 
             # Store original dtype info if categorical (before any conversions)
             original_dtype = s.dtype
@@ -930,6 +941,7 @@ def _process_annotated_data(
 
             # Add column directly to concatenated DataFrame
             ndf_df[cn] = s
+            g_cols.append(cn)
 
             # Store updated column metadata (with inferred categories if applicable)
             updated_columns[orig_cn] = mcm
@@ -1659,7 +1671,9 @@ def _data_with_inferred_meta(data_file: str, **kwargs: object) -> tuple[pd.DataF
 
 
 def _perform_merges(
-    df: pd.DataFrame, merges: SingleMergeSpec | list[SingleMergeSpec], constants: dict[str, object] | None = None
+    df: pd.DataFrame,
+    merges: SingleMergeSpec | list[SingleMergeSpec],
+    constants: dict[str, object] | None = None,
 ) -> pd.DataFrame:
     """Perform merge operations on a DataFrame."""
     if constants is None:
@@ -1678,6 +1692,13 @@ def _perform_merges(
             ms_on = on
             ms_add = list(add) if isinstance(add, list) else [add]
             ndf = ndf[ms_on + ms_add]
+        overlap = (set(df.columns) & set(ndf.columns)) - set(on)
+        if overlap:
+            cols = ", ".join(sorted(overlap))
+            raise ValueError(
+                f"Merge would suffix overlapping columns ({cols}). "
+                "Fix by dropping/renaming columns or using merge.add to select only non-overlapping columns."
+            )
         # print(df.columns,ndf.columns,ms.on)
         mdf = pd.merge(df, ndf, on=on, how=how)
 

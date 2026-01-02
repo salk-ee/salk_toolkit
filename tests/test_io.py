@@ -195,6 +195,24 @@ class TestReadAnnotatedData:
         processed_df = read_annotated_data(str(meta_file), return_raw=False)
         assert "Good" in processed_df["score"].values  # Translated values
 
+    def test_drop_missing_declared_columns(self, temp_dir):
+        """Declared-but-missing columns are always dropped from both df and returned meta."""
+        csv = temp_dir / "src.csv"
+        pd.DataFrame({"id": [1, 2]}).to_csv_file(csv)
+
+        meta_file = temp_dir / "m_drop_missing.json"
+        write_json(
+            meta_file,
+            {
+                "file": "src.csv",
+                "structure": [{"name": "g", "columns": ["id", "persona"]}],
+            },
+        )
+
+        df, meta = read_annotated_data(str(meta_file), return_meta=True)
+        assert "persona" not in df.columns
+        assert "persona" in extract_column_meta(meta)
+
     def test_parquet_file_loading(self, temp_dir, sample_csv_data):
         """Test loading parquet files with embedded metadata"""
         parquet_file = temp_dir / "test.parquet"
@@ -1642,6 +1660,21 @@ class TestReadAndProcessData:
 
         assert "multiplied" in df.columns
         assert df["multiplied"].equals(df["age"] * 5)
+
+    def test_merge_error_on_suffixes(self, temp_dir):
+        """Merges error when overlapping columns would be suffixed."""
+        main_csv = temp_dir / "main.csv"
+        merge_csv = temp_dir / "merge.csv"
+        pd.DataFrame({"municipality": ["A", "B"], "persona": ["x", "y"]}).to_csv_file(main_csv)
+        pd.DataFrame({"municipality": ["A", "B"], "persona": ["xx", "yy"]}).to_csv_file(merge_csv)
+
+        desc = {
+            "file": str(main_csv),
+            "merge": {"file": str(merge_csv), "on": "municipality"},
+        }
+
+        with pytest.raises(ValueError, match="suffix"):
+            read_and_process_data(desc)
 
     def test_return_meta_extra_field_categories(self, temp_dir):
         """Extra FileDesc fields (e.g. t) should be reflected in returned meta categories."""
