@@ -14,8 +14,8 @@ from salk_toolkit.election_models import (
     simulate_election_pp,
     vec_smallest_k,
 )
-from salk_toolkit.pp import PlotInput
-from salk_toolkit.validation import ColumnMeta, ElectoralSystem, FacetMeta
+from salk_toolkit.pp import FacetMeta, PlotInput
+from salk_toolkit.validation import ColumnMeta, ElectoralSystem
 
 
 def _make_plot_params(data: pd.DataFrame, mandates: dict[str, int]) -> PlotInput:
@@ -62,11 +62,10 @@ def test_dhondt_allocates_expected_counts() -> None:
 def test_simulate_election_quota_sum() -> None:
     """simulate_election should return expected mandate totals."""
     support = np.array([[[10.0, 5.0]]])  # draws=1, districts=1, parties=2
-    parties = ["Party1", "Party2"]
+    parties = ["PartyA", "PartyB"]
     districts = ["District1"]
     mandates = {"District1": 2}
-    es = ElectoralSystem()
-    result = simulate_election(support, parties, districts, mandates, es)
+    result = simulate_election(support, parties, districts, mandates, ElectoralSystem(threshold=0.0))
     assert result.shape == (1, 2, 2)  # district + compensation row
     assert result.sum() == 2
 
@@ -83,7 +82,6 @@ def test_simulate_election_variable_thresholds() -> None:
     # But with correct per-party thresholds, PartyB should fail (15% < 20%)
     parties = ["PartyA", "PartyB", "PartyC"]
     support = np.array([[[50.0, 15.0, 35.0]]])  # draws=1, districts=1, parties=3
-    np.array([5])  # 5 mandates to allocate
 
     # Variable thresholds: different for each party
     thresholds = {

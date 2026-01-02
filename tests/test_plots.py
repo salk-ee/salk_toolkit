@@ -14,12 +14,11 @@ import pytest
 
 from salk_toolkit.election_models import mandate_plot
 from salk_toolkit.io import read_json, read_parquet_with_metadata
-from salk_toolkit.pp import AltairChart, e2e_plot, matching_plots, PlotInput
+from salk_toolkit.pp import AltairChart, FacetMeta, e2e_plot, matching_plots, PlotInput
 from salk_toolkit.validation import (
     ColumnMeta,
     DataMeta,
     ElectoralSystem,
-    FacetMeta,
     soft_validate,
 )
 

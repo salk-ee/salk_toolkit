@@ -34,7 +34,6 @@ __all__ = [
     "SingleMergeSpec",
     "smc_ensure_list",
     "PlotDescriptor",
-    "FacetMeta",
     "GroupOrColumnMeta",
     "ElectoralSystem",
     "MandatesDict",
@@ -70,8 +69,6 @@ from pydantic import (
     ValidationError,
 )
 from pydantic_extra_types.color import Color
-import altair as alt
-from altair.utils.schemapi import UndefinedType
 
 from salk_toolkit.utils import replace_constants
 
@@ -297,17 +294,6 @@ class ColumnBlockMeta(PBase):
         from salk_toolkit.serialization import serialize_column_block_meta
 
         return serialize_column_block_meta(self, handler, info)
-
-
-class FacetMeta(PBase):
-    """Facet definition consumed by the plotting pipeline."""
-
-    col: str  # Column name used for faceting within the processed dataframe
-    ocol: str  # Original column (before translations or label tweaks)
-    order: List[str] = DF(list)  # Ordered categories for the facet column
-    colors: Optional[Dict[str, Any] | alt.Scale | UndefinedType] = None  # Altair-ready color definition
-    neutrals: List[str] = DF(list)  # Likert neutral categories to mute in gradients
-    meta: ColumnMeta  # Full metadata reference for the facet column
 
 
 def _cb_lst_to_dict(lst: Sequence[dict[str, object]] | dict[str, dict[str, object]]) -> dict[str, dict[str, object]]:

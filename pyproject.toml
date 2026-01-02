@@ -109,6 +109,7 @@ pythonVersion = "3.12"
 typeCheckingMode = "basic"
 include = [
     "salk_toolkit",
+    "tests",
 ]
 reportUnknownMemberType = false
 reportUnknownArgumentType = false

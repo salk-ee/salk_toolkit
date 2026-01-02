@@ -842,6 +842,7 @@ def _process_annotated_data(
                     cats = mcm.categories
                     if not isinstance(cats, list):
                         raise ValueError(f"Categories for {cn} must be a list when series is numeric")
+
                     try:
                         fcats = np.array(cats).astype(float)
                         s_values_arr = np.asarray(s.values)

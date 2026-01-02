@@ -63,7 +63,6 @@ from salk_toolkit.validation import (
     ColumnBlockMeta,
     ColumnMeta,
     DataMeta,
-    FacetMeta,
     GroupOrColumnMeta,
     PlotDescriptor,
     PBase,
@@ -85,6 +84,18 @@ def _question_meta_clone(base_meta: GroupOrColumnMeta, categories: Sequence[str]
     if categories is not None:
         clone.categories = list(categories)
     return clone
+
+
+@dataclass
+class FacetMeta:
+    """Facet definition consumed by the plotting pipeline."""
+
+    col: str  # Column name used for faceting within the processed dataframe
+    ocol: str  # Original column (before translations or label tweaks)
+    order: List[str] = field(default_factory=list)  # Ordered categories for the facet column
+    colors: object | None = None  # Altair-ready color definition (often `alt.Scale`, `alt.Undefined`, or a dict)
+    neutrals: List[str] = field(default_factory=list)  # Likert neutral categories to mute in gradients
+    meta: ColumnMeta = field(default_factory=ColumnMeta)  # Full metadata reference for the facet column
 
 
 @dataclass
@@ -1108,6 +1119,12 @@ def pp_transform_data(
                 {
                     "continuous": True,
                     "categories": None,
+                    "ordered": False,
+                    "groups": {},
+                    "colors": {},
+                    "num_values": None,
+                    "likert": False,
+                    "neutral_middle": None,
                     "val_range": val_range,
                 },
                 GroupOrColumnMeta,

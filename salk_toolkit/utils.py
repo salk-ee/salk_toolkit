@@ -131,7 +131,13 @@ def merge_pydantic_models(
         return overrides
 
     defaults_dict = defaults.model_dump(mode="python")
-    overrides_dict = overrides.model_dump(mode="python", exclude_unset=True, exclude_none=True)
+    # Important semantic: fields explicitly set on the override should replace defaults,
+    # including explicit `None` (JSON `null`) which should clear inherited values.
+    #
+    # Note: Many of our Pydantic models use custom serializers that drop default-valued
+    # fields, so `model_dump(exclude_unset=True)` is insufficient to detect "explicit None".
+    # Use `model_fields_set` to preserve the user's intent.
+    overrides_dict = {k: getattr(overrides, k) for k in overrides.model_fields_set}
     merged_dict = {**defaults_dict, **overrides_dict}
     return overrides.__class__.model_validate(merged_dict, context=context)
 

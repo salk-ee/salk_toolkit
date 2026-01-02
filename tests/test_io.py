@@ -1557,6 +1557,29 @@ class TestFileTracking:
 class TestMetadataUtilities:
     """Test metadata utility functions"""
 
+    def test_scale_merge_explicit_null_clears_defaults(self):
+        """Explicit null (`None`) in column meta should clear inherited block-scale defaults."""
+        meta = make_data_meta(
+            {
+                "structure": [
+                    {
+                        "name": "blk",
+                        "scale": {"categories": ["A", "B"]},
+                        "columns": [
+                            # Explicitly clear categories inherited from scale
+                            ["x", {"categories": None, "continuous": True}],
+                            # Normal inheritance
+                            "age",
+                        ],
+                    }
+                ]
+            }
+        )
+
+        cmeta = extract_column_meta(meta)
+        assert cmeta["x"].categories is None
+        assert cmeta["age"].categories == ["A", "B"]
+
     def test_extract_column_meta_basic(self):
         """Test basic extract_column_meta functionality"""
         meta = make_data_meta(

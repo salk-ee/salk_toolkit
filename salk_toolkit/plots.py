@@ -64,8 +64,7 @@ from PIL import ImageFont
 from scipy.cluster import hierarchy
 
 from salk_toolkit import utils as utils
-from salk_toolkit.pp import AltairChart, PlotInput, stk_plot
-from salk_toolkit.validation import FacetMeta
+from salk_toolkit.pp import AltairChart, FacetMeta, PlotInput, stk_plot
 
 # --------------------------------------------------------
 #          LEGEND UTILITIES
