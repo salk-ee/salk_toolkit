@@ -2252,7 +2252,7 @@ def _get_filter_limits(
                         )
                         continue
                     else:
-                        categories = ldf.select(pl.all()).unique(d).collect().to_series().sort().to_list()
+                        categories = ldf.select(pl.col(d)).unique().collect()[d].sort().to_list()
                         limits[d] = {"categories": categories}
                 else:
                     limits[d] = {"categories": meta_d.categories}
