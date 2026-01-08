@@ -185,3 +185,60 @@ def test_get_filter_limits_handles_groups_and_continuous(sample_meta: DataMeta) 
     assert limits["age"]["continuous"] is True
     assert limits["age"]["min"] == 21
     assert limits["age"]["max"] == 42
+
+
+def test_get_filter_limits_infer_categories_from_correct_column() -> None:
+    """Categories 'infer' must extract unique values from the target column, not another column.
+
+    This is a regression test for a bug where the code used:
+        ldf.select(pl.all()).unique(d).collect().to_series().sort().to_list()
+
+    The bug was that .to_series() returns the FIRST column by default,
+    so if the first column was numeric (like 'draw'), the categories
+    would be integers from that column instead of the actual string values
+    from the target column.
+
+    The fix is:
+        ldf.select(pl.col(d).unique()).collect()[d].sort().to_list()
+    """
+    # Create metadata with categories: "infer"
+    meta = {
+        "structure": [
+            {
+                "name": "demographics",
+                "columns": [
+                    # citizen has categories: "infer" - bug would return values from 'draw' column
+                    ["citizen", {"categories": "infer"}],
+                ],
+            },
+        ],
+        "files": [{"file": "__test__", "opts": {}, "code": "F0"}],
+    }
+    dmeta = soft_validate(meta, DataMeta)
+
+    # Create a DataFrame where:
+    # - First column is 'draw' (numeric) with values [1, 4]
+    # - Target column 'citizen' has string values ['Estonian', 'Other']
+    # The bug would return [1, 4] instead of ['Estonian', 'Other']
+    frame = pl.DataFrame(
+        {
+            "draw": [1, 1, 4, 4],  # First column - numeric
+            "citizen": ["Estonian", "Estonian", "Other", "Other"],  # Target column - strings
+        }
+    ).lazy()
+
+    limits = dashboard._get_filter_limits.__wrapped__(  # type: ignore[attr-defined]
+        frame, dims=["citizen"], dmeta=dmeta, uid="infer_test"
+    )
+
+    # The bug would cause this to be [1, 4] (from 'draw' column)
+    # The fix correctly returns ['Estonian', 'Other'] (from 'citizen' column)
+    assert "citizen" in limits
+    categories = limits["citizen"]["categories"]
+
+    # Verify we got string categories, not integers
+    assert all(isinstance(c, str) for c in categories), (
+        f"Expected string categories but got: {categories}. "
+        "This indicates the bug where .to_series() returns the wrong column."
+    )
+    assert set(categories) == {"Estonian", "Other"}, f"Expected {{'Estonian', 'Other'}} but got {set(categories)}"
