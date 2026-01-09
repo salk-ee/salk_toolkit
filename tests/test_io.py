@@ -1676,6 +1676,119 @@ class TestReadAndProcessData:
         with pytest.raises(ValueError, match="suffix"):
             read_and_process_data(desc)
 
+    def test_merge_applies_categorical_conversion_from_metadata(self, temp_dir):
+        """Merged columns should be converted to categorical based on metadata definitions."""
+        main_csv = temp_dir / "main.csv"
+        merge_csv = temp_dir / "merge.csv"
+        meta_file = temp_dir / "main_meta.json"
+
+        # Main data with municipality
+        pd.DataFrame(
+            {
+                "id": [1, 2, 3, 4],
+                "municipality": ["A", "B", "C", "D"],
+                "value": [10, 20, 30, 40],
+            }
+        ).to_csv_file(main_csv)
+
+        # Merge file with numeric winddev column (0/1 integers)
+        pd.DataFrame(
+            {
+                "municipality": ["A", "B", "C", "D"],
+                "winddev": [1, 0, 1, 0],
+                "other_num": [100, 200, 300, 400],
+            }
+        ).to_csv_file(merge_csv)
+
+        # Metadata file defines structure including merged columns
+        write_json(
+            meta_file,
+            {
+                "file": "main.csv",
+                "structure": [
+                    {
+                        "name": "main",
+                        "columns": ["id", "municipality", "value"],
+                    },
+                    {
+                        "name": "merged",
+                        "columns": [
+                            ["winddev", {"categories": "infer"}],
+                            "other_num",  # No categories - should remain numeric
+                        ],
+                    },
+                ],
+            },
+        )
+
+        # DataDescription with merge - metadata is in the file, merge is in the desc
+        desc = {
+            "file": str(meta_file),
+            "merge": {"file": str(merge_csv), "on": "municipality"},
+        }
+
+        df, meta = read_and_process_data(desc, return_meta=True)
+
+        # winddev should be converted to categorical
+        assert df["winddev"].dtype.name == "category", f"Expected winddev to be categorical, got {df['winddev'].dtype}"
+        # Categories should be inferred as strings in sorted order
+        assert list(df["winddev"].cat.categories) == ["0", "1"]
+
+        # other_num should remain numeric (no categories defined)
+        assert pd.api.types.is_numeric_dtype(df["other_num"])
+
+    def test_merge_applies_explicit_categories_from_metadata(self, temp_dir):
+        """Merged columns with explicit categories should use those categories."""
+        main_csv = temp_dir / "main.csv"
+        merge_csv = temp_dir / "merge.csv"
+        meta_file = temp_dir / "main_meta.json"
+
+        pd.DataFrame(
+            {
+                "id": [1, 2],
+                "key": ["X", "Y"],
+            }
+        ).to_csv_file(main_csv)
+
+        pd.DataFrame(
+            {
+                "key": ["X", "Y"],
+                "status": [1, 2],
+            }
+        ).to_csv_file(merge_csv)
+
+        # Metadata file defines structure including merged columns
+        write_json(
+            meta_file,
+            {
+                "file": "main.csv",
+                "structure": [
+                    {
+                        "name": "main",
+                        "columns": ["id", "key"],
+                    },
+                    {
+                        "name": "merged",
+                        "columns": [
+                            ["status", {"categories": ["1", "2", "3"], "ordered": True}],
+                        ],
+                    },
+                ],
+            },
+        )
+
+        # DataDescription with merge
+        desc = {
+            "file": str(meta_file),
+            "merge": {"file": str(merge_csv), "on": "key"},
+        }
+
+        df, meta = read_and_process_data(desc, return_meta=True)
+
+        assert df["status"].dtype.name == "category"
+        assert list(df["status"].cat.categories) == ["1", "2", "3"]
+        assert df["status"].cat.ordered is True
+
     def test_return_meta_extra_field_categories(self, temp_dir):
         """Extra FileDesc fields (e.g. t) should be reflected in returned meta categories."""
         # Create tiny source CSVs (no `t` column); meta declares `t` but it will be empty at this stage.
