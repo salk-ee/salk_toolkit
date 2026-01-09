@@ -1674,12 +1674,27 @@ def _perform_merges(
     df: pd.DataFrame,
     merges: SingleMergeSpec | list[SingleMergeSpec],
     constants: dict[str, object] | None = None,
+    data_meta: DataMeta | None = None,
 ) -> pd.DataFrame:
-    """Perform merge operations on a DataFrame."""
+    """Perform merge operations on a DataFrame.
+
+    Args:
+        df: DataFrame to merge into.
+        merges: Merge specification(s).
+        constants: Constants for path substitution.
+        data_meta: Optional metadata to apply categorical conversions to merged columns.
+
+    Returns:
+        Merged DataFrame with categorical conversions applied based on metadata.
+    """
     if constants is None:
         constants = {}
     if not isinstance(merges, list):
         merges = [merges]
+
+    # Extract column metadata for categorical conversion
+    col_meta = extract_column_meta(data_meta) if data_meta is not None else {}
+
     for ms in merges:
         # ms is always a SingleMergeSpec Pydantic model
         file = ms.file
@@ -1710,6 +1725,23 @@ def _perform_merges(
             )
             file_str = file if isinstance(file, str) else str(file)
             warn(f"Merge with {file_str} removes {1 - len(mdf) / len(df):.1%} rows with missing merges on: {missing}")
+
+        # Apply categorical conversions to newly merged columns based on metadata
+        new_cols = set(ndf.columns) - set(on)
+        for c in new_cols:
+            if c in col_meta and c in mdf.columns:
+                cm = col_meta[c]
+                if cm.categories is not None and mdf[c].dtype.name != "category":
+                    if cm.categories == "infer":
+                        # Infer categories using deterministic ordering
+                        mdf[c], inferred_cats = _deterministic_categories_and_values(mdf[c])
+                        mdf[c] = pd.Categorical(mdf[c], categories=inferred_cats, ordered=cm.ordered or False)
+                    elif isinstance(cm.categories, list):
+                        # Use explicit categories from metadata
+                        mdf[c] = pd.Categorical(
+                            mdf[c].astype(str), categories=cm.categories, ordered=cm.ordered or False
+                        )
+
         df = mdf
     return df
 
@@ -1824,7 +1856,7 @@ def read_and_process_data(
         if desc_obj.filter:
             globs["df"] = globs["df"][eval(desc_obj.filter, globs)]
         if desc_obj.merge:
-            globs["df"] = _perform_merges(globs["df"], desc_obj.merge, constants)
+            globs["df"] = _perform_merges(globs["df"], desc_obj.merge, constants, meta_obj)
         if desc_obj.postprocessing and not skip_postprocessing:
             exec(_str_from_list(desc_obj.postprocessing), globs)
         df = globs["df"]
