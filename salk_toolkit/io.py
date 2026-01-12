@@ -55,7 +55,9 @@ import salk_toolkit as stk
 from salk_toolkit import utils
 from salk_toolkit.utils import (
     replace_constants,
+    is_date_str_series,
     is_datetime,
+    is_numeric_str_series,
     warn,
     cached_fn,
     read_yaml,
@@ -346,20 +348,12 @@ def _deterministic_categories_and_values(s: pd.Series) -> tuple[pd.Series, list[
         return s, []
 
     # Merge numeric dtype and numeric-like string paths to share code
-    parsed = pd.to_numeric(s, errors="coerce")
     is_true_numeric = pd.api.types.is_numeric_dtype(s_nonnull)  # Case 1
-    is_numeric_like_str = parsed.isna().sum() == s.isna().sum()  # Case 2
+    is_numeric_like_str = is_numeric_str_series(s)  # Case 2
 
     # Same for datetime
-    with warnings.catch_warnings():
-        warnings.filterwarnings(
-            "ignore",
-            message=r"Could not infer format, so each element will be parsed individually.*",
-            category=UserWarning,
-        )
-        dt_parsed = pd.to_datetime(s, errors="coerce")
     is_true_datetime = pd.api.types.is_datetime64_any_dtype(s_nonnull)
-    is_datetime_like_str = dt_parsed.isna().sum() == s.isna().sum()
+    is_datetime_like_str = is_date_str_series(s)
 
     if is_true_numeric:
         s_str = _convert_number_series_to_categorical(s)

@@ -1962,7 +1962,7 @@ def admin_page(sdb: SalkDashboardBuilder) -> None:
         # Display the data
         st.dataframe(
             users,
-            use_container_width=True,
+            width="stretch",
             column_config={"last_login": st.column_config.DatetimeColumn("last_login", format="D MMM YYYY, HH:mm ")},
         )
 
@@ -2076,7 +2076,8 @@ def draw_plot_matrix(pmat: list[list[object]] | object | None) -> None:
             if j >= len(pmat[i]):
                 continue
             # print(pmat[i][j].to_json()) # to debug json
-            c.altair_chart(pmat[i][j], use_container_width=ucw)  # ,theme=None)
+            wstr = "stretch" if ucw else "content"
+            c.altair_chart(pmat[i][j], width=wstr)  # ,theme=None)
 
 
 def st_plot(pp_desc: dict[str, object], **kwargs: object) -> None:

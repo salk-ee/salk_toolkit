@@ -85,7 +85,8 @@
               "topo_feature": ["https://dl.dropboxusercontent.com/scl/fi/ciunedliwyvlafpm5nlos/estonia.topojson?rlkey=0g56uexaos1v59yghmikv09xi&dl=0","data","VNIMI"] }],
             ["unit", "T6", { "categories": "infer", "translate": { "Harjumaa (välja arvatud Tallinn)": "Harjumaa" },
              "topo_feature": ["https://dl.dropboxusercontent.com/scl/fi/ciunedliwyvlafpm5nlos/estonia.topojson?rlkey=0g56uexaos1v59yghmikv09xi&dl=0","data","MNIMI"] }],
-            ["citizen", "K0", {    "transform": "s=='Jah'" }]
+            ["citizen", "K0", {    "transform": "s=='Jah'" }],
+            ["td", { "categories": "infer", "ordered": true }]
         ]
     }, {
         "name": "wedge",

@@ -476,6 +476,17 @@ class TestPlots:
         }
         self._run_plot_test("test_lines_smooth", config, recompute=recompute)
 
+    def test_lines_date(self, recompute):
+        """Test line plot with smoothing."""
+        config = {
+            "res_col": "party_preference",
+            "factor_cols": ["td"],
+            "filter": {},
+            "plot": "lines",
+            "internal_facet": True,
+        }
+        self._run_plot_test("test_lines_date", config, recompute=recompute)
+
     def test_lines_hdi_basic(self, recompute):
         """Test HDI line plot."""
         config = {
@@ -775,6 +786,38 @@ class TestPlotUtilities:
         assert result <= len(cats)
         # Test the specific assertion from the notebook
         assert result == 6
+
+    def test_cat_to_cont_axis_numeric_and_datetime(self):
+        """Test _cat_to_cont_axis uses numeric/date string detection."""
+        from salk_toolkit.plots import _cat_to_cont_axis
+
+        # numeric-like categorical strings -> quantitative axis + float column
+        df_num = pd.DataFrame({"x": ["1", "2.5", "3"]})
+        x_axis, out = _cat_to_cont_axis(df_num.copy(), {"col": "x", "order": ["1", "2.5", "3"]})
+        x_dict = x_axis.to_dict()
+        assert x_dict["type"] == "quantitative"
+        assert x_dict["field"] == "x_cont"
+        assert out["x"].tolist() == ["1", "2.5", "3"]
+        assert pd.api.types.is_float_dtype(out["x_cont"])
+
+        # date-like categorical strings -> temporal axis + datetime column
+        df_dt = pd.DataFrame({"x": ["2020-01-01", "2020-01-02"]})
+        x_axis, out = _cat_to_cont_axis(df_dt.copy(), {"col": "x", "order": ["2020-01-01", "2020-01-02"]})
+        x_dict = x_axis.to_dict()
+        assert x_dict["type"] == "temporal"
+        assert x_dict["field"] == "x_cont"
+        assert len(x_dict["axis"]["values"]) == 1  # once per month
+        # Ensure tick values are JSON-friendly (no pandas.Timestamp).
+        assert not isinstance(x_dict["axis"]["values"][0], pd.Timestamp)
+        assert out["x"].tolist() == ["2020-01-01", "2020-01-02"]
+        assert out["x_cont"].tolist() == ["2020-01-01T00:00:00", "2020-01-02T00:00:00"]
+
+        # neither -> nominal axis (keeps original values)
+        df_nom = pd.DataFrame({"x": ["b", "a"]})
+        x_axis, out = _cat_to_cont_axis(df_nom.copy(), {"col": "x", "order": ["b", "a"]})
+        x_dict = x_axis.to_dict()
+        assert x_dict["type"] == "nominal"
+        assert out["x"].tolist() == ["b", "a"]
 
     def test_save_plot_comparison_html(self, tmp_path: Path) -> None:
         """Ensure helper writes an HTML diff to disk."""

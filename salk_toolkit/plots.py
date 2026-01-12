@@ -1114,30 +1114,60 @@ def _cat_to_cont_axis(
     data: pd.DataFrame,
     fx: FacetMeta | Dict[str, Any],
 ) -> tuple[alt.X, pd.DataFrame]:
-    """Convert categorical axis to numeric when labels are numeric strings."""
+    """Convert categorical axis to numeric/temporal when labels are numeric/date strings."""
 
     col = fx.col if isinstance(fx, FacetMeta) else fx["col"]
     order = fx.order if isinstance(fx, FacetMeta) else fx.get("order", [])
-    x_cont = pd.to_numeric(
-        data[col].apply(utils.unescape_vega_label),
-        errors="coerce",
-    )  # Unescape required as . gets escaped
-    if x_cont.notna().all():
-        data[col] = x_cont.astype("float")
+    cont_col = f"{col}_cont"
+
+    # Unescape required as '.' gets escaped for Vega in some contexts.
+    raw = data[col].map(lambda v: utils.unescape_vega_label(v) if isinstance(v, str) else v)
+
+    # Already numeric dtype -> treat as continuous.
+    if pd.api.types.is_numeric_dtype(raw):
+        data[cont_col] = raw.astype("float")
+        vals = sorted(pd.unique(data[cont_col].dropna()))
+        x_axis = alt.X(field=cont_col, type="quantitative", title=None, axis=alt.Axis(labelAngle=0, values=vals))
+        return x_axis, data
+
+    # Numeric-like strings -> parse to float.
+    if utils.is_numeric_str_series(raw):
+        x_cont = pd.to_numeric(raw, errors="coerce")
+        data[cont_col] = x_cont.astype("float")
+        vals = list(sorted(pd.unique(data[cont_col].dropna())))
+        x_axis = alt.X(field=cont_col, type="quantitative", title=None, axis=alt.Axis(labelAngle=0, values=vals))
+        data = data.sort_values(cont_col)
+        return x_axis, data
+
+    # Date-like strings -> parse to datetime and use temporal axis.
+    if utils.is_date_str_series(raw):
+        x_dt = pd.to_datetime(raw, errors="coerce")
+        # Keep cont axis values JSON-friendly and timezone-stable:
+        # use explicit UTC instants so Vega doesn't show local-time shifts (02 AM, etc.).
+        data[cont_col] = x_dt.dt.strftime("%Y-%m-%dT00:00:00").where(x_dt.notna(), None)
+        vals = list(sorted(pd.unique(pd.Series(data[cont_col]).dropna())))
+
+        # Monthly axis ticks (one per month) for readability.
+        if vals:
+            mi = pd.Timestamp(min(vals)).to_period("M").to_timestamp()
+            ma = pd.Timestamp(max(vals)).to_period("M").to_timestamp()
+            month_ticks = list(pd.date_range(mi, ma, freq="MS").strftime("%Y-%m-%dT00:00:00"))
+        else:
+            month_ticks = []
+
         x_axis = alt.X(
-            field=col,
-            type="quantitative",
+            field=cont_col,
+            type="temporal",
             title=None,
-            axis=alt.Axis(labelAngle=0, values=list(data[col].unique())),
+            axis=alt.Axis(
+                labelAngle=45, format={"year": "%b %y", "month": "%b", "date": "%b"}, values=month_ticks, ticks=True
+            ),
         )
-    else:
-        x_axis = alt.X(
-            field=col,
-            type="nominal",
-            title=None,
-            sort=order,
-            axis=alt.Axis(labelAngle=0),
-        )
+        data = data.sort_values(cont_col)
+        return x_axis, data
+
+    # Default: keep nominal categorical axis.
+    x_axis = alt.X(field=col, type="nominal", title=None, sort=order, axis=alt.Axis(labelAngle=0))
     return x_axis, data
 
 

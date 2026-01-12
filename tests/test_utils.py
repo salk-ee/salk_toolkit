@@ -24,7 +24,9 @@ from salk_toolkit.utils import (
     gradient_from_color,
     gradient_from_color_alt,
     split_to_neg_neutral_pos,
+    is_date_str_series,
     is_datetime,
+    is_numeric_str_series,
     rel_wave_times,
     stable_draws,
     deterministic_draws,
@@ -491,6 +493,45 @@ class TestTimeAndRandomUtilities:
         # Mixed column with some dates
         mixed_col = pd.Series(["2020-01-01", "not_a_date", "2020-01-03"])
         assert is_datetime(mixed_col)  # Should return True if any can be parsed
+
+    def test_is_numeric_str_series(self):
+        """Test is_numeric_str_series."""
+        assert is_numeric_str_series(pd.Series(["1", "2.3", "-4", " 5 "]))
+        assert is_numeric_str_series(pd.Series(["1", None, "2"]))
+
+        assert not is_numeric_str_series(pd.Series([None, None]))
+        assert not is_numeric_str_series(pd.Series(["1", "nan", "2"]))  # "nan" is not treated as missing
+        assert not is_numeric_str_series(pd.Series(["1", "x", "2"]))
+        assert not is_numeric_str_series(pd.Series(["1", 2, "3"]))  # non-str non-null values
+
+    def test_is_date_str_series(self):
+        """Test is_date_str_series."""
+        assert is_date_str_series(pd.Series(["2020-01-01", "2021-12-31"]))
+        assert is_date_str_series(pd.Series(["2020-01-01", None, "2021-12-31"]))
+        assert is_date_str_series(pd.Series(["01 Dec 25", "02 Dec 25"]))
+
+        assert not is_date_str_series(pd.Series([None, None]))
+        assert not is_date_str_series(pd.Series(["2020-01-01", "not_a_date"]))
+        assert not is_date_str_series(pd.Series(["1", "2"]))  # numeric strings should not count as dates
+        assert not is_date_str_series(pd.Series([pd.Timestamp("2020-01-01")]))  # non-str
+
+    def test_str_series_roundtrip_with_io_converters(self):
+        """Test helpers on the string output of IO converters."""
+        from salk_toolkit.io import _convert_datetime_series_to_categorical, _convert_number_series_to_categorical
+
+        # numeric strings -> formatted numeric strings
+        num_s = pd.Series(["1", "2.5", None, "-4"])
+        assert is_numeric_str_series(num_s)
+        num_cat = _convert_number_series_to_categorical(num_s)
+        assert is_numeric_str_series(num_cat)
+        assert not is_date_str_series(num_cat)
+
+        # date strings -> formatted date strings ("01 Dec 25")
+        dt_s = pd.Series(["2020-01-01", None, "2020-12-31"])
+        assert is_date_str_series(dt_s)
+        dt_cat = _convert_datetime_series_to_categorical(dt_s)
+        assert is_date_str_series(dt_cat)
+        assert not is_numeric_str_series(dt_cat)
 
 
 class TestHelperFunctions:

@@ -371,6 +371,23 @@ def save_plot_comparison_html(
     reference_dict = _spec_to_dict(reference_spec)
     actual_dict = _spec_to_dict(actual_spec)
 
+    # Reference JSON is normalized in tests; make the HTML view consistent by stripping config too.
+    reference_dict.pop("config", None)
+    actual_dict.pop("config", None)
+
+    # Make the comparison view easier by forcing equal outer dimensions.
+    # (Top-level height/width is enough for the vast majority of our vega-lite specs.)
+    ref_h, act_h = reference_dict.get("height"), actual_dict.get("height")
+    if isinstance(ref_h, (int, float)) or isinstance(act_h, (int, float)):
+        h = max(v for v in (ref_h, act_h) if isinstance(v, (int, float)))
+        reference_dict["height"] = h
+        actual_dict["height"] = h
+    ref_w, act_w = reference_dict.get("width"), actual_dict.get("width")
+    if isinstance(ref_w, (int, float)) or isinstance(act_w, (int, float)):
+        w = max(v for v in (ref_w, act_w) if isinstance(v, (int, float)))
+        reference_dict["width"] = w
+        actual_dict["width"] = w
+
     reference_dict.setdefault("$schema", "https://vega.github.io/schema/vega-lite/v5.json")
     actual_dict.setdefault("$schema", "https://vega.github.io/schema/vega-lite/v5.json")
     reference_dict.setdefault("title", reference_title)

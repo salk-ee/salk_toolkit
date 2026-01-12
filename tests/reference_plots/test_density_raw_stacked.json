@@ -62248,7 +62248,7 @@
         "type": "point"
       },
       "views": [
-        "view_1"
+        "view-normalized"
       ]
     }
   ],
@@ -62276,12 +62276,12 @@
           ],
           "range": [
             "#007557",
-            "#8B4513",
-            "#FFE200",
-            "#009BDF",
-            "#E10600",
-            "#88AF47",
-            "#31758A",
+            "saddlebrown",
+            "#ffe200",
+            "#009bdf",
+            "#e10600",
+            "#88af47",
+            "#31758a",
             "orange",
             "lightgrey",
             "lightgrey",
@@ -62326,6 +62326,7 @@
       "interpolate": "natural",
       "type": "area"
     },
+    "name": "view-normalized",
     "width": 166
   }
 }

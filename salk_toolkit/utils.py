@@ -41,7 +41,9 @@ __all__ = [
     "gradient_subrange",
     "gradient_to_discrete_color_scale",
     "index_encoder",
+    "is_date_str_series",
     "is_datetime",
+    "is_numeric_str_series",
     "loc2iloc",
     "match_data",
     "match_sum_round",
@@ -636,6 +638,34 @@ def is_datetime(col: pd.Series) -> bool:
             col.dtype.name in ["str", "object"] and pd.to_datetime(col, errors="coerce").notna().any()
         )
         return bool(result)
+
+
+def is_numeric_str_series(s: pd.Series) -> bool:
+    """Return True if all non-null values are strings that parse as numbers."""
+
+    nonnull = s.dropna()
+    if len(nonnull) == 0:
+        return False
+    if not nonnull.map(lambda v: isinstance(v, str)).all():
+        return False
+    parsed = pd.to_numeric(nonnull, errors="coerce")
+    return bool(parsed.notna().all())
+
+
+def is_date_str_series(s: pd.Series) -> bool:
+    """Return True if all non-null values are strings that parse as dates."""
+
+    nonnull = s.dropna()
+    if len(nonnull) == 0 or not nonnull.map(lambda v: isinstance(v, str)).all() or is_numeric_str_series(s):
+        return False
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=r"Could not infer format, so each element will be parsed individually.*",
+            category=UserWarning,
+        )
+        parsed = pd.to_datetime(nonnull, errors="coerce")
+    return bool(parsed.notna().all())
 
 
 def rel_wave_times(ws: Sequence[int], dts: Sequence[Any], dt0: pd.Timestamp | None = None) -> pd.Series:
