@@ -1122,8 +1122,16 @@ def fix_df_with_meta(df: pd.DataFrame, dmeta: DataMeta) -> pd.DataFrame:
             continue
         cd = cmeta[c]
         if cd.categories:
-            cats = list(df[c].unique()) if cd.categories == "infer" else cd.categories
-            df[c] = pd.Categorical(df[c], categories=cats, ordered=cd.ordered)
+            # Ensure categorical values behave well after lazy loads:
+            if cd.categories == "infer":
+                s_fixed, cats = _deterministic_categories_and_values(df[c])
+            else:
+                s_fixed, cats = df[c].astype("str"), [str(v) for v in cd.categories]
+
+            df[c] = pd.Series(
+                pd.Categorical(s_fixed, categories=cats, ordered=bool(cd.ordered)),
+                name=c,
+            )
     return df
 
 
@@ -1674,12 +1682,24 @@ def _perform_merges(
     df: pd.DataFrame,
     merges: SingleMergeSpec | list[SingleMergeSpec],
     constants: dict[str, object] | None = None,
+    data_meta: DataMeta | None = None,
 ) -> pd.DataFrame:
-    """Perform merge operations on a DataFrame."""
+    """Perform merge operations on a DataFrame.
+
+    Args:
+        df: DataFrame to merge into.
+        merges: Merge specification(s).
+        constants: Constants for path substitution.
+        data_meta: Optional metadata to apply categorical conversions to merged columns.
+
+    Returns:
+        Merged DataFrame with categorical conversions applied based on metadata.
+    """
     if constants is None:
         constants = {}
     if not isinstance(merges, list):
         merges = [merges]
+
     for ms in merges:
         # ms is always a SingleMergeSpec Pydantic model
         file = ms.file
@@ -1700,6 +1720,8 @@ def _perform_merges(
                 "Fix by dropping/renaming columns or using merge.add to select only non-overlapping columns."
             )
         # print(df.columns,ndf.columns,ms.on)
+        if data_meta is not None:
+            ndf = fix_df_with_meta(ndf, data_meta)
         mdf = pd.merge(df, ndf, on=on, how=how)
 
         for c in on:
@@ -1710,6 +1732,7 @@ def _perform_merges(
             )
             file_str = file if isinstance(file, str) else str(file)
             warn(f"Merge with {file_str} removes {1 - len(mdf) / len(df):.1%} rows with missing merges on: {missing}")
+
         df = mdf
     return df
 
@@ -1824,7 +1847,7 @@ def read_and_process_data(
         if desc_obj.filter:
             globs["df"] = globs["df"][eval(desc_obj.filter, globs)]
         if desc_obj.merge:
-            globs["df"] = _perform_merges(globs["df"], desc_obj.merge, constants)
+            globs["df"] = _perform_merges(globs["df"], desc_obj.merge, constants, meta_obj)
         if desc_obj.postprocessing and not skip_postprocessing:
             exec(_str_from_list(desc_obj.postprocessing), globs)
         df = globs["df"]
