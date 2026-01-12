@@ -1122,8 +1122,16 @@ def fix_df_with_meta(df: pd.DataFrame, dmeta: DataMeta) -> pd.DataFrame:
             continue
         cd = cmeta[c]
         if cd.categories:
-            cats = list(df[c].unique()) if cd.categories == "infer" else cd.categories
-            df[c] = pd.Categorical(df[c], categories=cats, ordered=cd.ordered)
+            # Ensure categorical values behave well after lazy loads:
+            if cd.categories == "infer":
+                s_fixed, cats = _deterministic_categories_and_values(df[c])
+            else:
+                s_fixed, cats = df[c].astype("str"), [str(v) for v in cd.categories]
+
+            df[c] = pd.Series(
+                pd.Categorical(s_fixed, categories=cats, ordered=bool(cd.ordered)),
+                name=c,
+            )
     return df
 
 
@@ -1692,9 +1700,6 @@ def _perform_merges(
     if not isinstance(merges, list):
         merges = [merges]
 
-    # Extract column metadata for categorical conversion
-    extract_column_meta(data_meta) if data_meta is not None else {}
-
     for ms in merges:
         # ms is always a SingleMergeSpec Pydantic model
         file = ms.file
@@ -1728,22 +1733,6 @@ def _perform_merges(
             file_str = file if isinstance(file, str) else str(file)
             warn(f"Merge with {file_str} removes {1 - len(mdf) / len(df):.1%} rows with missing merges on: {missing}")
 
-        # # Apply categorical conversions to newly merged columns based on metadata
-        # new_cols = set(ndf.columns) - set(on)
-        # for c in new_cols:
-        #     if c in col_meta and c in mdf.columns:
-        #         cm = col_meta[c]
-        #         if cm.categories is not None and mdf[c].dtype.name != "category":
-        #             if cm.categories == "infer":
-        #                 # Infer categories using deterministic ordering
-        #                 mdf[c], inferred_cats = _deterministic_categories_and_values(mdf[c])
-        #                 mdf[c] = pd.Categorical(mdf[c], categories=inferred_cats, ordered=cm.ordered or False)
-        #             elif isinstance(cm.categories, list):
-        #                 # Use explicit categories from metadata
-        #                 mdf[c] = pd.Categorical(
-        #                     mdf[c].astype(str), categories=cm.categories, ordered=cm.ordered or False
-        #                 )
-        #
         df = mdf
     return df
 
@@ -1823,7 +1812,6 @@ def read_and_process_data(
             only_fix_categories=only_fix_categories,
             add_original_inds=add_original_inds,
         )
-        print(f"files_list={files_list}, raw_data_dict={list(raw_data_dict)}")
 
         # Reconcile categories across files (only for read_and_process_data)
         reconciled_dtypes = _reconcile_categories(raw_data_dict, None)
