@@ -226,11 +226,14 @@ class TopKBlock(PBase):
 
 class MaxDiffBlock(PBase):
     type: Literal["maxdiff"] = "maxdiff"
-    best_columns: Optional[Union[str, List[str]]] = None
-    worst_columns: Optional[Union[str, List[str]]] = None
-    topics: Optional[str] = None
-    sets: Optional[str] = None
-    setindex: Optional[str] = None
+    name: Optional[str] = None
+    best_columns: Union[str, List[str]]
+    worst_columns: Union[str, List[str]]
+    set_columns: Optional[Union[str, List[str]]] = None  # Mutually exclusive with setindex. Only one is specified.
+    setindex_column: Optional[Union[str, List[object]]] = None  # Keeps metadata tuple used in annotations.
+    topics: Optional[List[str]] = None
+    sets: Optional[List[List[int]]] = None
+    scale: Optional[Dict[str, Any]] = None
 
 
 # Import _cs_lst_to_dict for BeforeValidator (needs to be at runtime)

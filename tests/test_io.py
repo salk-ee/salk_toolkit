@@ -3,7 +3,6 @@ Comprehensive tests for read_annotated_data and read_and_process_data functions
 covering all features of meta parsing.
 """
 
-from copy import deepcopy
 import pytest
 import pandas as pd
 import numpy as np
@@ -24,7 +23,7 @@ from salk_toolkit.io import (
     replace_data_meta_in_parquet,
     read_parquet_metadata,
 )
-from salk_toolkit.validation import soft_validate, DataMeta, ColumnMeta, ColumnBlockMeta
+from salk_toolkit.validation import soft_validate, DataMeta, ColumnMeta, ColumnBlockMeta, BlockScaleMeta
 from salk_toolkit.utils import read_json
 
 
@@ -375,17 +374,317 @@ class TestReadAnnotatedData:
 
         # Also test that we can give from_columns and res_cols as lists (no subgroups possible here)
         # TODO: Can be a separate test, but there'd be a lot of boilerplate code.
-        new_meta = deepcopy(meta)
         from_cols = ["q1_1", "q1_2", "q1_3"]  # Note the parentheses to specify the regex group for translate
         res_cols = ["q1_R1", "q1_R2", "q1_R3"]
-        new_meta["structure"][0]["create"]["from_columns"] = from_cols
-        new_meta["structure"][0]["create"]["res_columns"] = res_cols
-        new_meta["structure"][0]["create"]["from_prefix"] = "q1_"
-        write_json(meta_file, new_meta)
+        meta["structure"][0]["create"]["from_columns"] = from_cols
+        meta["structure"][0]["create"]["res_columns"] = res_cols
+        meta["structure"][0]["create"]["from_prefix"] = "q1_"
+        write_json(meta_file, meta)
         data_df2, data_meta2 = read_and_process_data(str(meta_file), return_meta=True)
         assert "q1_R1" in data_df2.columns
         assert "q1_R2" not in data_df2.columns  # Testing for top 1
         assert data_df2["q1_R1"].tolist() == ["USA", "Canada", "Mexico"]
+
+    @staticmethod
+    def _assert_structure_matches(
+        actual_structure: dict[str, ColumnBlockMeta],
+        expected_structure: dict[str, ColumnBlockMeta],
+        data_df: pd.DataFrame | None = None,
+        check_q2_version: bool = False,
+        expected_topics: list[str] | None = None,
+    ) -> None:
+        """Helper to compare actual and expected structures."""
+        assert set(actual_structure.keys()) == set(expected_structure.keys()), (
+            f"Structure keys differ: {set(actual_structure.keys())} != {set(expected_structure.keys())}"
+        )
+
+        for block_name in expected_structure.keys():
+            if block_name not in actual_structure:
+                continue
+            actual_block = actual_structure[block_name]
+            expected_block = expected_structure[block_name]
+
+            assert actual_block.name == expected_block.name, (
+                f"Block {block_name} name differs: {actual_block.name} != {expected_block.name}"
+            )
+
+            actual_cols = set(actual_block.columns.keys()) if actual_block.columns else set()
+            expected_cols = set(expected_block.columns.keys()) if expected_block.columns else set()
+
+            # For maxdiff_maxdiff, optionally check columns match DataFrame
+            if block_name == "maxdiff_maxdiff" and data_df is not None:
+                df_cols = set(data_df.columns)
+                assert actual_cols == df_cols, (
+                    f"Block {block_name} columns {actual_cols} should match DataFrame columns {df_cols}"
+                )
+
+                # Check Q2_Version if requested
+                if check_q2_version and "Q2_Version" in df_cols and "Q2_Version" in actual_cols:
+                    q2_version_meta = actual_block.columns["Q2_Version"]
+                    assert q2_version_meta.continuous, (
+                        f"Q2_Version should be continuous, got continuous={q2_version_meta.continuous}"
+                    )
+                    if expected_topics:
+                        assert q2_version_meta.categories == expected_topics, (
+                            f"Q2_Version should inherit scale categories, got {q2_version_meta.categories}"
+                        )
+                    column_list = list(actual_block.columns.keys())
+                    assert column_list[0] == "Q2_Version", (
+                        f"Q2_Version should be first column, but got order: {column_list[:5]}"
+                    )
+            else:
+                assert actual_cols == expected_cols, (
+                    f"Block {block_name} columns differ: {actual_cols} != {expected_cols}"
+                )
+
+            # Compare scale categories
+            if expected_block.scale is not None and expected_block.scale.categories is not None:
+                assert actual_block.scale is not None, f"Block {block_name} missing scale"
+                assert actual_block.scale.categories == expected_block.scale.categories, (
+                    f"{block_name} categories: {actual_block.scale.categories} != {expected_block.scale.categories}"
+                )
+            elif expected_block.scale is None:
+                assert actual_block.scale is None, f"Block {block_name} should not have scale"
+
+    @staticmethod
+    def _build_maxdiff_expected_structure(
+        topics: list[str],
+        column_names: list[str],
+        setindex_column: str | None = None,
+        setindex_meta: ColumnMeta | None = None,
+    ) -> dict[str, ColumnBlockMeta]:
+        """Build expected structure for maxdiff tests."""
+        all_columns = sorted(column_names)
+        if setindex_column:
+            all_columns = [setindex_column] + sorted(column_names)
+
+        structure = {
+            "maxdiff": ColumnBlockMeta(
+                name="maxdiff",
+                columns={},
+                create=None,
+            ),
+            "maxdiff_maxdiff": ColumnBlockMeta(
+                name="maxdiff_maxdiff",
+                scale=BlockScaleMeta(categories=topics),
+                columns={col: ColumnMeta() for col in all_columns},
+                create=None,
+            ),
+        }
+
+        if setindex_column and setindex_meta:
+            structure["maxdiff_maxdiff"].columns[setindex_column] = setindex_meta
+
+        return structure
+
+    def test_maxdiff_create_block(self, meta_file, csv_file):
+        """Test max diff create block."""
+        np.random.seed(42)
+
+        columns = [f"Q2_{k}best" for k in range(1, 11)]
+        columns += [f"Q2_{k}worst" for k in range(1, 11)]
+
+        # survey data formatting
+        topics_per_set, k, n = 5, 10, 36  # topics per set, sets per person, n_topic_perms
+        q = 18  # questions
+        N = 23  # number of dataframe rows
+        topics = np.array(list("ABCDEFGHIJKLMNOPQR"))
+        grid = np.random.randn(n, k, q)
+        perms = np.argsort(grid, axis=2)[:, :, :topics_per_set]
+        mask = np.arange(1, q + 1)
+        sets = mask[perms]
+
+        # survey data generation
+        best = np.random.choice(range(5), size=(N, k))
+        worst = np.random.choice(range(5), size=(N, k))
+        ids = np.random.choice(range(36), size=N)
+        worst[best == worst] = (worst[best == worst] + 1) % 5
+        A = topics[sets - 1][ids]
+        # with topics
+        i, j = np.ogrid[:N, :k]
+        C = A[i, j, best]
+        D = A[i, j, worst]
+
+        meta = {
+            "file": "test.csv",
+            "constants": {
+                "topics": topics.tolist(),
+                "sets": sets.tolist(),
+            },
+            "structure": [
+                {
+                    "name": "maxdiff",
+                    "columns": [],
+                    "create": {
+                        "type": "maxdiff",
+                        "best_columns": r"Q2_(\d+?)best",
+                        "worst_columns": r"Q2_(\d+?)worst",
+                        "set_columns": r"Q2_\1set",
+                        "setindex_column": ["Q2_Version", {"continuous": True, "categories": None}],
+                        "scale": {"categories": "topics"},
+                    },
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+
+        df = pd.DataFrame(np.hstack([ids.reshape(23, 1) + 1, C, D]), columns=["Q2_Version"] + columns)
+        q2sets = [f"Q2_{k}set" for k in range(1, 11)]
+        q2sethidden = np.array(list(map(lambda s: list(map(lambda s2: "".join(s2), s)), topics[sets - 1][ids])))
+        df[q2sets] = q2sethidden
+        q2sets = [f"Q2_{k}set" for k in range(1, 11)]
+        for q2set in q2sets:
+            df[q2set] = df[q2set].map(list)  # string -> list of chars, test specific
+
+        columnorder = []
+        for k in range(1, 11):
+            columnorder.extend([f"Q2_{k}best", f"Q2_{k}set", f"Q2_{k}worst"])
+
+        # Build expected structure
+        expected_structure = self._build_maxdiff_expected_structure(
+            topics=topics.tolist(),
+            column_names=columnorder,
+            setindex_column="Q2_Version",
+            setindex_meta=ColumnMeta(continuous=True, categories=topics.tolist()),
+        )
+
+        df = df[["Q2_Version"] + sorted(columnorder)]
+        df["Q2_Version"] = df["Q2_Version"].astype(int)
+        df.to_csv(csv_file, index=False)
+        data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
+
+        # The code sorts columns alphabetically, so reorder expected df to match
+        expected_df = df[sorted(df.columns)]
+        assert_frame_equal(data_df, expected_df, check_dtype=False, check_categorical=False)
+
+        # Compare structures
+        self._assert_structure_matches(
+            data_meta.structure,
+            expected_structure,
+            data_df=data_df,
+            check_q2_version=True,
+            expected_topics=topics.tolist(),
+        )
+
+    def test_maxdiff_create_block_explicit_sets(self, meta_file, csv_file):
+        """Ensure explicit set definitions are parsed for every serialization mode."""
+        topics = list("ABCDEFGHIJKLMNOP")
+        topic_index = {topic: idx for idx, topic in enumerate(topics)}
+
+        # Each row has K question blocks, and each block references the set explicitly.
+        row_sets = [
+            [
+                ["A", "B", "C", "D", "E"],
+                ["F", "G", "H", "I", "J"],
+                ["K", "L", "M", "N", "O"],
+            ],
+            [
+                ["B", "C", "D", "E", "F"],
+                ["G", "H", "I", "J", "K"],
+                ["L", "M", "N", "O", "P"],
+            ],
+            [
+                ["C", "D", "E", "F", "G"],
+                ["H", "I", "J", "K", "L"],
+                ["M", "N", "O", "P", "A"],
+            ],
+        ]
+        best_indices = [
+            [0, 2, 1],
+            [3, 0, 4],
+            [1, 4, 2],
+        ]
+        worst_indices = [
+            [2, 4, 3],
+            [1, 3, 0],
+            [4, 2, 3],
+        ]
+
+        num_rows = len(row_sets)
+        num_blocks = len(row_sets[0])
+
+        def serialize(row_topics, mode):
+            if mode == "topic_string":
+                return ", ".join(row_topics)
+            if mode == "topic_json":
+                return json.dumps(row_topics)
+
+            indices = [topic_index[topic] + 1 for topic in row_topics]
+            if mode == "index_string":
+                return ", ".join(map(str, indices))
+            if mode == "index_json":
+                return json.dumps(indices)
+            raise ValueError(f"Unsupported mode {mode}")
+
+        def build_dataframe(mode):
+            data = {}
+            for block_idx in range(num_blocks):
+                col = block_idx + 1
+                data[f"Q2_{col}best"] = [
+                    row_sets[row][block_idx][best_indices[row][block_idx]] for row in range(num_rows)
+                ]
+                data[f"Q2_{col}worst"] = [
+                    row_sets[row][block_idx][worst_indices[row][block_idx]] for row in range(num_rows)
+                ]
+                data[f"Q2_{col}set"] = [serialize(row_sets[row][block_idx], mode) for row in range(num_rows)]
+            return pd.DataFrame(data)
+
+        meta = {
+            "file": "test.csv",
+            "constants": {
+                "topics": topics,
+            },
+            "structure": [
+                {
+                    "name": "maxdiff",
+                    "columns": [],
+                    "create": {
+                        "type": "maxdiff",
+                        "best_columns": r"Q2_(\d+?)best",
+                        "worst_columns": r"Q2_(\d+?)worst",
+                        "set_columns": r"Q2_\1set",
+                        "scale": {"categories": "topics"},
+                    },
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+
+        exp_cols = []
+        for i in range(1, num_blocks + 1):
+            exp_cols.extend([f"Q2_{i}best", f"Q2_{i}set", f"Q2_{i}worst"])
+
+        # Build expected structure
+        expected_structure = self._build_maxdiff_expected_structure(
+            topics=topics,
+            column_names=exp_cols,
+        )
+
+        for mode in ["topic_string", "topic_json", "index_string", "index_json"]:
+            df = build_dataframe(mode)
+            df.to_csv_file(csv_file)
+
+            data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
+            expected_df = df.copy()
+            for block_idx in range(num_blocks):
+                col = f"Q2_{block_idx + 1}set"
+                expected_df[col] = [list(row_sets[row][block_idx]) for row in range(num_rows)]
+            expected_df = expected_df[data_df.columns]
+
+            assert_frame_equal(
+                data_df,
+                expected_df,
+                check_dtype=False,
+                check_categorical=False,
+                obj=f"mode={mode}",
+            )
+
+            # Compare structures
+            self._assert_structure_matches(
+                data_meta.structure,
+                expected_structure,
+                data_df=None,  # Don't check DataFrame columns for this test
+            )
 
 
 class TestColumnTransformations:
