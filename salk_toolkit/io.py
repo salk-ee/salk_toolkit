@@ -1100,19 +1100,22 @@ def read_annotated_data(
         )
 
 
-def fix_df_with_meta(df: pd.DataFrame, dmeta: DataMeta) -> pd.DataFrame:
+def fix_df_with_meta(df: pd.DataFrame, dmeta: DataMeta, exclude_cols: set[str] | None = None) -> pd.DataFrame:
     """Fix df dtypes etc using meta - needed after a lazy load.
 
     Args:
         df: DataFrame to fix.
         dmeta: Data metadata dictionary.
+        exclude_cols: Optional set of column names to skip (useful when fixing with fallback metadata).
 
     Returns:
         DataFrame with corrected dtypes and categories.
     """
+    if exclude_cols is None:
+        exclude_cols = set()
     cmeta = extract_column_meta(dmeta)
     for c in df.columns:
-        if c not in cmeta:
+        if c not in cmeta or c in exclude_cols:
             continue
         cd = cmeta[c]
         if cd.categories:
@@ -1126,6 +1129,79 @@ def fix_df_with_meta(df: pd.DataFrame, dmeta: DataMeta) -> pd.DataFrame:
                 pd.Categorical(s_fixed, categories=cats, ordered=bool(cd.ordered)),
                 name=c,
             )
+    return df
+
+
+def fix_df_with_meta_fallback(
+    df: pd.DataFrame,
+    primary_meta: DataMeta | None,
+    fallback_metas: DataMeta | Iterable[DataMeta | None] | None = None,
+) -> pd.DataFrame:
+    """Fix df dtypes using primary metadata, with fallback metadata for missing columns.
+
+    For columns present in multiple metadata sources, categories are merged:
+    - Primary metadata categories come first (preserving order)
+    - Fallback metadata categories not already present are appended in order
+
+    This is useful when:
+    - primary_meta is from a population file (e.g., cdf_meta)
+    - fallback_metas contains model/survey data metadata (e.g., data_meta)
+    - Some columns exist in multiple sources but may have different category sets
+
+    Args:
+        df: DataFrame to fix.
+        primary_meta: Primary metadata (typically from the population file), can be None.
+        fallback_metas: Optional fallback metadata source(s) for columns not in primary.
+                        Can be a single DataMeta, an iterable of DataMeta objects, or None.
+                        Categories are merged in order: primary first, then each fallback.
+
+    Returns:
+        DataFrame with corrected dtypes and merged categories.
+    """
+    # Build list of column metadata dicts in priority order
+    all_cmetas: list[dict[str, GroupOrColumnMeta]] = []
+
+    if primary_meta:
+        all_cmetas.append(extract_column_meta(primary_meta))
+
+    if fallback_metas is not None:
+        # Handle single DataMeta or iterable of DataMeta
+        if isinstance(fallback_metas, DataMeta):
+            all_cmetas.append(extract_column_meta(fallback_metas))
+        else:
+            for meta in fallback_metas:
+                if meta is not None:
+                    all_cmetas.append(extract_column_meta(meta))
+
+    for c in df.columns:
+        # Find the first metadata that has info for this column
+        primary_cd = None
+        for cmeta in all_cmetas:
+            if c in cmeta:
+                primary_cd = cmeta[c]
+                break
+
+        if not primary_cd or not primary_cd.categories:
+            continue
+
+        # Get base categories from the first source that has this column
+        if primary_cd.categories == "infer":
+            s_fixed, cats = _deterministic_categories_and_values(df[c])
+        else:
+            s_fixed = df[c].astype("str")
+            cats = [str(v) for v in primary_cd.categories]
+
+            # Merge categories from all fallback sources
+            for cmeta in all_cmetas:
+                fallback_cd = cmeta.get(c)
+                if fallback_cd and fallback_cd.categories and fallback_cd.categories != "infer":
+                    for cat in [str(v) for v in fallback_cd.categories]:
+                        if cat not in cats:
+                            cats.append(cat)
+
+        ordered = bool(primary_cd.ordered)
+        df[c] = pd.Series(pd.Categorical(s_fixed, categories=cats, ordered=ordered), name=c)
+
     return df
 
 
