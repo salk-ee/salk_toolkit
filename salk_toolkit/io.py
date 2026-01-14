@@ -74,6 +74,7 @@ from salk_toolkit.validation import (
     GroupOrColumnMeta,
     SingleMergeSpec,
     TopKBlock,
+    MergeSpec,
 )
 
 # Ignore fragmentation warnings
@@ -223,6 +224,7 @@ def _load_data_files(
     ignore_exclusions: bool = False,
     only_fix_categories: bool = False,
     add_original_inds: bool = False,
+    expected_columns: set[str] | None = None,
 ) -> tuple[dict[str, pd.DataFrame], DataMeta | None, dict[str, object]]:
     """Internal helper to load files defined in metadata or descriptions.
 
@@ -261,6 +263,7 @@ def _load_data_files(
                 ignore_exclusions=ignore_exclusions,
                 only_fix_categories=only_fix_categories,
                 add_original_inds=add_original_inds,
+                expected_columns=expected_columns,
             )
             if result_meta is not None:
                 metas.append(soft_validate(result_meta, DataMeta, warnings=True))
@@ -641,6 +644,7 @@ def _process_annotated_data(
     only_fix_categories: bool = False,
     return_raw: bool = False,
     add_original_inds: bool = False,
+    expected_columns: set[str] | None = None,
 ) -> pd.DataFrame | ProcessedDataReturn:
     """Process annotated data according to metadata specifications."""
     # Read metafile
@@ -673,6 +677,11 @@ def _process_annotated_data(
             files_list = [FileDesc(file=data_file, opts=meta_obj.read_opts)]
         elif meta_obj.files is not None:
             files_list = meta_obj.files
+            # Also collect expected columns from merges in the meta object, if any
+            # Note: DataMeta doesn't have a merge field directly, only DataDescription has.
+            # But the meta object coming from a DataDescription might be passed here.
+            # However, merge_cols is local to read_and_process_data.
+            # We rely on expected_columns passed from caller.
         else:
             raise ValueError("No files provided in metadata")
 
@@ -683,6 +692,7 @@ def _process_annotated_data(
             ignore_exclusions=ignore_exclusions,
             only_fix_categories=only_fix_categories,
             add_original_inds=add_original_inds,
+            expected_columns=expected_columns,
         )
         if inp_meta is not None:
             warn("Processing main meta file")  # Print this to separate warnings for input jsons from main
@@ -787,7 +797,9 @@ def _process_annotated_data(
                     sn = source_spec
 
                 if sn not in file_raw_data:
-                    if not group.generated:  # bypass warning for columns marked as being generated later
+                    if not group.generated and (
+                        expected_columns is None or sn not in expected_columns
+                    ):  # bypass warning for columns explicitly marked as generated or found in expected future columns
                         warn(f"Column {sn} not found in file {file_code}")
                     # Create empty series with same index as file
                     s = pd.Series(index=file_raw_data.index, dtype=object, name=cn)
@@ -1050,6 +1062,7 @@ def read_annotated_data(
         ignore_exclusions = bool(kwargs.get("ignore_exclusions", False))
         only_fix_categories = bool(kwargs.get("only_fix_categories", False))
         add_original_inds = bool(kwargs.get("add_original_inds", False))
+        expected_columns = kwargs.get("expected_columns", None)
         # Pass all parameters explicitly to match overloads - return_meta=True means ProcessedDataReturn
         data, meta_obj = _process_annotated_data(
             meta_fname=fname,
@@ -1058,6 +1071,7 @@ def read_annotated_data(
             ignore_exclusions=ignore_exclusions,
             only_fix_categories=only_fix_categories,
             add_original_inds=add_original_inds,
+            expected_columns=expected_columns,
         )
     elif ext == ".parquet":
         data, full_meta = read_parquet_with_metadata(fname)
@@ -1076,6 +1090,7 @@ def read_annotated_data(
     ignore_exclusions = bool(kwargs.get("ignore_exclusions", False))
     only_fix_categories = bool(kwargs.get("only_fix_categories", False))
     add_original_inds = bool(kwargs.get("add_original_inds", False))
+    expected_columns = kwargs.get("expected_columns", None)
     # Use conditional to match overloads based on return_meta value
     # Pass return_meta first (after *) to help Pyright match overloads
     if return_meta:
@@ -1087,6 +1102,7 @@ def read_annotated_data(
             ignore_exclusions=ignore_exclusions,
             only_fix_categories=only_fix_categories,
             add_original_inds=add_original_inds,
+            expected_columns=expected_columns,
         )
     else:
         return _process_annotated_data(
@@ -1097,22 +1113,26 @@ def read_annotated_data(
             ignore_exclusions=ignore_exclusions,
             only_fix_categories=only_fix_categories,
             add_original_inds=add_original_inds,
+            expected_columns=expected_columns,
         )
 
 
-def fix_df_with_meta(df: pd.DataFrame, dmeta: DataMeta) -> pd.DataFrame:
+def fix_df_with_meta(df: pd.DataFrame, dmeta: DataMeta, exclude_cols: set[str] | None = None) -> pd.DataFrame:
     """Fix df dtypes etc using meta - needed after a lazy load.
 
     Args:
         df: DataFrame to fix.
         dmeta: Data metadata dictionary.
+        exclude_cols: Optional set of column names to skip (useful when fixing with fallback metadata).
 
     Returns:
         DataFrame with corrected dtypes and categories.
     """
+    if exclude_cols is None:
+        exclude_cols = set()
     cmeta = extract_column_meta(dmeta)
     for c in df.columns:
-        if c not in cmeta:
+        if c not in cmeta or c in exclude_cols:
             continue
         cd = cmeta[c]
         if cd.categories:
@@ -1731,6 +1751,189 @@ def _perform_merges(
     return df
 
 
+def _peek_columns(file_path: str, opts: dict[str, Any] | None = None) -> list[str]:
+    """Peek at the columns in a file without loading the whole thing."""
+    if opts is None:
+        opts = {}
+
+    ext = os.path.splitext(file_path)[1].lower()[1:]
+
+    # Try using the mapped path if available (handles local path resolution)
+    mapped_file = stk_file_map.get(file_path, file_path)
+    if not os.path.exists(mapped_file) and os.path.exists(file_path):
+        mapped_file = file_path  # Fallback to original if map fails but original exists
+
+    try:
+        if ext == "csv":
+            # Read just the header
+            return list(pd.read_csv(mapped_file, nrows=0, **opts).columns)
+        elif ext == "parquet":
+            # Read schema
+            return list(pq.read_schema(mapped_file).names)
+        elif ext in ["sav", "dta"]:
+            # Pyreadstat has a metadata_only option
+            read_fn = getattr(pyreadstat, "read_" + ext)
+            # We don't want to apply value formats here as we just want column names
+            _, meta = read_fn(mapped_file, metadataonly=True, **opts)
+            return list(meta.column_names)
+        elif ext in ["xls", "xlsx", "xlsm", "xlsb", "odf", "ods", "odt"]:
+            # Excel is hard to peek, but we can read 0 rows
+            # Note: low_memory=True (default) might help?
+            return list(pd.read_excel(mapped_file, nrows=0, **opts).columns)
+        elif ext in ["json", ".json", "yaml", ".yaml", "yml", ".yml"]:
+            # For JSON/YAML, we might be looking at an annotated data file
+            # We should try to read it and look for "structure"
+            try:
+                is_yaml = ext in ["yaml", ".yaml", "yml", ".yml"]
+                if is_yaml:
+                    data = read_yaml(mapped_file)
+                else:
+                    data = read_json(mapped_file)
+
+                cols = []
+                if isinstance(data, dict):
+                    # Check for explicit structure
+                    if "structure" in data and isinstance(data["structure"], list):
+                        for block in data["structure"]:
+                            if isinstance(block, dict) and "columns" in block:
+                                # columns can be list of strings or dicts?
+                                # Validate against ColumnBlockMeta roughly or just grab keys
+                                bcols = block["columns"]
+                                if isinstance(bcols, list):
+                                    for c in bcols:
+                                        # Handle stringified lists like "['A', 'B']" which seem to occur
+                                        if isinstance(c, str):
+                                            if c.startswith("[") and c.endswith("]"):
+                                                try:
+                                                    val = ast.literal_eval(c)
+                                                    if isinstance(val, list):
+                                                        for v in val:
+                                                            if isinstance(v, str):
+                                                                cols.append(v)
+                                                            # If it's a dict inside list (meta?), ignore or handle?
+                                                            # Log showed "['nationality', 'T3', {'categories': ...}]"
+                                                            # So we want the strings.
+                                                except Exception:
+                                                    cols.append(c)  # Fallback
+                                            else:
+                                                cols.append(c)
+                                        elif isinstance(c, list):
+                                            # Handle actual lists if they occur: extract all strings
+                                            for v in c:
+                                                if isinstance(v, str):
+                                                    cols.append(v)
+                                elif isinstance(bcols, dict):
+                                    cols.extend([str(c) for c in bcols.keys()])
+
+                if not cols:
+                    # warn(f"DEBUG: JSON/YAML file {file_path} parsed but no columns found in 'structure'")
+                    pass
+                return cols
+
+            except Exception as e:
+                warn(f"Cannot peek columns for JSON/YAML file {file_path}: {e}")
+                return []
+    except Exception as e:
+        warn(f"Failed to peek columns for {file_path}: {e}")
+        return []
+
+    return []
+
+
+def _collect_anticipated_columns(
+    files: list[FileDesc] | None, merges: MergeSpec, constants: dict[str, object] | None = None
+) -> set[str]:
+    """Collect all columns that are anticipated to exist in the final dataframe.
+
+    This includes columns from:
+    1. Future merges defined in the DataDescription
+    2. Sibling input files (since read_and_process_data stacks them, a column in one is valid for all)
+    """
+    if constants is None:
+        constants = {}
+
+    expected_cols = set()
+
+    # Helper to process a file path or description
+    def process_file_source(desc: str | DataDescription | FileDesc) -> None:
+        fname = None
+        if isinstance(desc, str):
+            fname = desc
+        elif isinstance(desc, FileDesc):
+            if isinstance(desc.file, str):
+                fname = desc.file
+            # If desc.file is DataDescription, we could recurse, but let's stick to str for now
+            # or handle it below if we want deeper recursion on input files
+
+        # If we got a filename, process it
+        if fname:
+            for k, v in constants.items():
+                if isinstance(v, str):
+                    fname = fname.replace(k, v)
+
+            # Check if it's a JSON/YAML file - if so, parse as DataDescription and recurse
+            ext = os.path.splitext(fname)[1].lower()
+            if ext in [".json", ".yaml", ".yml"]:
+                try:
+                    mapped_fname = stk_file_map.get(fname, fname)
+                    if ext == ".json":
+                        mdata = read_json(mapped_fname)
+                    else:
+                        mdata = read_yaml(mapped_fname)
+
+                    if isinstance(mdata, dict):
+                        sub_desc = soft_validate(mdata, DataDescription, warnings=False)
+                        # Recurse on files
+                        if sub_desc.files:
+                            for fd in sub_desc.files:
+                                process_file_source(fd)  # Recursion!
+                        # Recurse on merges
+                        if sub_desc.merge:
+                            _collect_anticipated_cols_internal(sub_desc.merge)  # Call internal helper for merges
+
+                except Exception as e:
+                    warn(f"DEBUG: Failed to parse potential meta file {fname}: {e}")
+                    pass
+
+            cols = _peek_columns(fname)
+            warn(f"DEBUG: Peeked columns for {fname}: {cols}")
+            expected_cols.update(cols)
+
+    # Helper to process merges
+    def _collect_anticipated_cols_internal(merge_list: MergeSpec) -> None:
+        if not merge_list:
+            return
+        for ms in merge_list:
+            if ms.add:
+                if isinstance(ms.add, list):
+                    expected_cols.update(ms.add)
+                else:
+                    expected_cols.add(ms.add)
+            else:
+                # Otherwise we need to peek at the file
+                file_desc = ms.file
+                if isinstance(file_desc, str):
+                    process_file_source(file_desc)
+                elif isinstance(file_desc, DataDescription):
+                    # Recurse
+                    if file_desc.files:
+                        for fd in file_desc.files:
+                            process_file_source(fd)
+                    if file_desc.merge:
+                        _collect_anticipated_cols_internal(file_desc.merge)
+
+    # 1. Process merges
+    if merges:
+        _collect_anticipated_cols_internal(merges)
+
+    # 2. Process sibling files
+    if files:
+        for fd in files:
+            process_file_source(fd)
+
+    return expected_cols
+
+
 @overload
 def read_and_process_data(
     desc: str | dict[str, Any] | DataDescription,
@@ -1794,6 +1997,9 @@ def read_and_process_data(
         # Get files list from description
         if isinstance(desc_obj, DataDescription) and desc_obj.files:
             files_list = desc_obj.files
+            # New logic: collect anticipated columns from both merges AND input files (siblings)
+            # This suppresses warnings for columns that exist in other files being stacked
+            anticipated_cols = _collect_anticipated_columns(desc_obj.files, desc_obj.merge, constants)
         else:
             raise ValueError("No files provided in DataDescription")
 
@@ -1805,6 +2011,7 @@ def read_and_process_data(
             ignore_exclusions=ignore_exclusions,
             only_fix_categories=only_fix_categories,
             add_original_inds=add_original_inds,
+            expected_columns=anticipated_cols,
         )
 
         # Reconcile categories across files (only for read_and_process_data)
