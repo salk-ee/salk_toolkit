@@ -2076,8 +2076,7 @@ def draw_plot_matrix(pmat: list[list[object]] | object | None) -> None:
             if j >= len(pmat[i]):
                 continue
             # print(pmat[i][j].to_json()) # to debug json
-            wstr = "stretch" if ucw else "content"
-            c.altair_chart(pmat[i][j], width=wstr)  # ,theme=None)
+            c.altair_chart(pmat[i][j], use_container_width=ucw)  # ,theme=None)
 
 
 def st_plot(pp_desc: dict[str, object], **kwargs: object) -> None:
