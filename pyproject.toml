@@ -44,7 +44,7 @@ dependencies = [
   "pyyaml",
   "s3fs",
   "scipy",
-  "streamlit<=1.47.0",
+  "streamlit<=1.52.2",
   "streamlit-authenticator==0.3.3",
   "streamlit-dimensions",
   "streamlit-js",
