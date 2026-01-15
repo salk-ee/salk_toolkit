@@ -1166,6 +1166,9 @@ def _cat_to_cont_axis(
         data = data.sort_values(cont_col)
         return x_axis, data
 
+    if order:
+        data[col] = pd.Categorical(data[col], categories=order, ordered=True)
+        data = data.sort_values(col)
     # Default: keep nominal categorical axis.
     x_axis = alt.X(field=col, type="nominal", title=None, sort=order, axis=alt.Axis(labelAngle=0))
     return x_axis, data
