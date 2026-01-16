@@ -1174,13 +1174,32 @@ def _cat_to_cont_axis(
     return x_axis, data
 
 
+interp_methods = [False, True] + [
+    "basis",
+    "basis-open",
+    "basis-closed",
+    "bundle",
+    "cardinal",
+    "cardinal-open",
+    "cardinal-closed",
+    "catmull-rom",
+    "linear",
+    "linear-closed",
+    "monotone",
+    "natural",
+    "step",
+    "step-before",
+    "step-after",
+]
+
+
 @stk_plot(
     "lines",
     data_format="longform",
     draws=False,
     requires=[{}, {"ordered": True}],
     n_facets=(2, 2),
-    args={"smooth": "bool"},
+    args={"smooth": interp_methods},
     priority=10,
 )
 @stk_plot(
@@ -1189,12 +1208,12 @@ def _cat_to_cont_axis(
     draws=False,
     requires=[{"ordered": True}],
     n_facets=(1, 1),
-    args={"smooth": "bool"},
+    args={"smooth": interp_methods},
     priority=10,
 )
 def lines(
     p: PlotInput,
-    smooth: bool = False,
+    smooth: bool | str = False,
 ) -> AltairChart:
     """Line chart with optional smoothing and categorical faceting."""
 
@@ -1209,18 +1228,18 @@ def lines(
         fy = None
     else:
         fy, fx = p.facets[0], p.facets[1]
+
+    # Backwards compatibility from when it was true/false
     if smooth:
-        smoothing = "cardinal"
-        points = True  # "transparent"
-    else:
-        smoothing = "natural"
-        points = True
+        smooth = "natural"
+    elif not smooth:
+        smooth = "linear"
 
     # See if we should use a continous axis (if categoricals are actually numbers)
     x_axis, data = _cat_to_cont_axis(data, fx)
 
     chart = alt.Chart(data)
-    plot = chart.mark_line(point=points, interpolate=smoothing).encode(
+    plot = chart.mark_line(point=True, interpolate=smooth).encode(
         x=x_axis,
         y=alt.Y(
             field=p.value_col,
@@ -1289,7 +1308,7 @@ def draws_to_hdis(
     draws=True,
     requires=[{}, {"ordered": True}],
     n_facets=(2, 2),
-    args={"hdi1": "float", "hdi2": "float"},
+    args={"hdi1": "float", "hdi2": "float", "smooth": interp_methods},
 )
 @stk_plot(
     "line_hdi",
@@ -1297,14 +1316,21 @@ def draws_to_hdis(
     draws=True,
     requires=[{"ordered": True}],
     n_facets=(1, 1),
-    args={"hdi1": "float", "hdi2": "float"},
+    args={"hdi1": "float", "hdi2": "float", "smooth": interp_methods},
 )
 def lines_hdi(
     p: PlotInput,
     hdi1: float = 0.94,
     hdi2: float = 0.5,
+    smooth: bool | str = "basis",
 ) -> AltairChart:
     """Line chart showing central tendency plus HDI ribbons."""
+
+    # Backwards compatibility from when it was true/false
+    if smooth:
+        smooth = "basis"
+    elif not smooth:
+        smooth = "linear"
 
     data = p.data.copy()
     if not p.facets:
@@ -1353,7 +1379,7 @@ def lines_hdi(
 
     plot = (
         alt.Chart(hdf)
-        .mark_area(interpolate="basis")
+        .mark_area(interpolate=smooth)
         .encode(
             x=x_axis,
             y=alt.Y(

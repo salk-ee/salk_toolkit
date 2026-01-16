@@ -551,7 +551,7 @@
         }
       },
       "mark": {
-        "interpolate": "natural",
+        "interpolate": "linear",
         "point": true,
         "type": "line"
       }

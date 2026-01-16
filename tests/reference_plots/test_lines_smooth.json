@@ -207,7 +207,7 @@
         }
       },
       "mark": {
-        "interpolate": "cardinal",
+        "interpolate": "natural",
         "point": true,
         "type": "line"
       }
