@@ -1841,7 +1841,12 @@ def read_and_process_data(
         if desc_obj.filter:
             globs["df"] = globs["df"][eval(desc_obj.filter, globs)]
         if desc_obj.merge:
+            # Note: expects merge files to have corresponding meta in global DataMeta file
+            oldcols = globs["df"].columns
             globs["df"] = _perform_merges(globs["df"], desc_obj.merge, constants, meta_obj)
+            if kwargs.get("data_meta", False):
+                newcols = [col for col in globs["df"].columns if col not in oldcols]
+                globs["df"].loc[:, newcols] = fix_df_with_meta(globs["df"][newcols], kwargs["data_meta"])
         if desc_obj.postprocessing and not skip_postprocessing:
             exec(_str_from_list(desc_obj.postprocessing), globs)
         df = globs["df"]
