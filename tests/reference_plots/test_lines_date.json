@@ -519,22 +519,21 @@
         ],
         "x": {
           "axis": {
-            "format": {
-              "date": "%b",
-              "month": "%b",
-              "year": "%b %y"
-            },
             "labelAngle": 45,
+            "labelExpr": "\n                    indexof(['2022-12-31', '2023-07-31'], timeFormat(datum.value, '%Y-%m-%d')) >= 0\n                    ? timeFormat(datum.value, '%d %b %y')\n                    : indexof(['2022-12-31', '2023-02-01', '2023-03-01', '2023-04-01', '2023-05-01', '2023-06-01', '2023-07-01', '2023-07-31'], timeFormat(datum.value, '%Y-%m-%d')) < 0\n                      ? ''\n                      : indexof(['2022-12-31', '2023-07-31'], timeFormat(datum.value, '%Y-%m-%d')) >= 0\n                        ? timeFormat(datum.value, '%b %y')\n                        : timeFormat(datum.value, '%b')\n                ",
+            "labelOverlap": false,
             "ticks": true,
             "values": [
               "2022-12-01T00:00:00",
+              "2022-12-31T00:00:00",
               "2023-01-01T00:00:00",
               "2023-02-01T00:00:00",
               "2023-03-01T00:00:00",
               "2023-04-01T00:00:00",
               "2023-05-01T00:00:00",
               "2023-06-01T00:00:00",
-              "2023-07-01T00:00:00"
+              "2023-07-01T00:00:00",
+              "2023-07-31T00:00:00"
             ]
           },
           "field": "td_cont",
@@ -575,22 +574,21 @@
         ],
         "x": {
           "axis": {
-            "format": {
-              "date": "%b",
-              "month": "%b",
-              "year": "%b %y"
-            },
             "labelAngle": 45,
+            "labelExpr": "\n                    indexof(['2022-12-31', '2023-07-31'], timeFormat(datum.value, '%Y-%m-%d')) >= 0\n                    ? timeFormat(datum.value, '%d %b %y')\n                    : indexof(['2022-12-31', '2023-02-01', '2023-03-01', '2023-04-01', '2023-05-01', '2023-06-01', '2023-07-01', '2023-07-31'], timeFormat(datum.value, '%Y-%m-%d')) < 0\n                      ? ''\n                      : indexof(['2022-12-31', '2023-07-31'], timeFormat(datum.value, '%Y-%m-%d')) >= 0\n                        ? timeFormat(datum.value, '%b %y')\n                        : timeFormat(datum.value, '%b')\n                ",
+            "labelOverlap": false,
             "ticks": true,
             "values": [
               "2022-12-01T00:00:00",
+              "2022-12-31T00:00:00",
               "2023-01-01T00:00:00",
               "2023-02-01T00:00:00",
               "2023-03-01T00:00:00",
               "2023-04-01T00:00:00",
               "2023-05-01T00:00:00",
               "2023-06-01T00:00:00",
-              "2023-07-01T00:00:00"
+              "2023-07-01T00:00:00",
+              "2023-07-31T00:00:00"
             ]
           },
           "field": "td_cont",

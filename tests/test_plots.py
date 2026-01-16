@@ -806,7 +806,7 @@ class TestPlotUtilities:
         x_dict = x_axis.to_dict()
         assert x_dict["type"] == "temporal"
         assert x_dict["field"] == "x_cont"
-        assert len(x_dict["axis"]["values"]) == 1  # once per month
+        assert len(x_dict["axis"]["values"]) == 2  # explicit start/end ticks
         # Ensure tick values are JSON-friendly (no pandas.Timestamp).
         assert not isinstance(x_dict["axis"]["values"][0], pd.Timestamp)
         assert out["x"].tolist() == ["2020-01-01", "2020-01-02"]

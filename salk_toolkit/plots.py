@@ -1147,20 +1147,82 @@ def _cat_to_cont_axis(
         data[cont_col] = x_dt.dt.strftime("%Y-%m-%dT00:00:00").where(x_dt.notna(), None)
         vals = list(sorted(pd.unique(pd.Series(data[cont_col]).dropna())))
 
-        # Monthly axis ticks (one per month) for readability.
+        # Month-start ticks (1..4 month interval) anchored from Jan-1, aiming for ~31 ticks,
+        # plus explicit start/end ticks on the true first/last day and month-start gridlines.
         if vals:
-            mi = pd.Timestamp(min(vals)).to_period("M").to_timestamp()
-            ma = pd.Timestamp(max(vals)).to_period("M").to_timestamp()
-            month_ticks = list(pd.date_range(mi, ma, freq="MS").strftime("%Y-%m-%dT00:00:00"))
+            raw_series = pd.to_datetime(pd.Series(vals), format="mixed")
+            sorted_unique = sorted(raw_series.unique())
+            start_ts, end_ts = sorted_unique[0], sorted_unique[-1]
+
+            start_tick = start_ts.normalize()
+            end_tick = end_ts.normalize()
+            start_month = start_tick.replace(day=1)
+            end_month = end_tick.replace(day=1)
+
+            if start_tick == end_tick:
+                all_ticks = [start_tick]
+            else:
+                month_span = (end_month.year - start_month.year) * 12 + (end_month.month - start_month.month)
+                # month interval (1MS..4MS) targeting roughly ~31 ticks total
+                step_months = min(4, max(1, int(math.ceil(month_span / 30))))
+
+                # Anchored on Jan-1 so the cadence is 1 Jan, 1 Mar, 1 May ... (for step=2), etc.
+                anchor_start = pd.Timestamp(year=start_month.year, month=1, day=1)
+                tick_candidates = pd.date_range(
+                    start=anchor_start,
+                    end=end_month,
+                    freq=f"{step_months}MS",
+                ).tolist()
+
+                # Avoid placing month-start filler ticks too close to the true endpoints.
+                td = step_months * 10
+                lower = start_tick + pd.Timedelta(days=td)
+                upper = end_tick - pd.Timedelta(days=td)
+                tick_candidates = [d for d in tick_candidates if lower < d < upper]
+                all_ticks = [start_tick, *tick_candidates, end_tick]
+
+            year_marker = {
+                all_ticks[0].strftime("%Y-%m-%d"),
+                all_ticks[-1].strftime("%Y-%m-%d"),
+            }
+            year_marker |= {d.strftime("%Y-%m-%d") for d in all_ticks[1:-1] if d.month == 1 and d.day == 1}
+            year_marker_strings = sorted(year_marker)
+            end_marker_strings = [
+                all_ticks[0].strftime("%Y-%m-%d"),
+                all_ticks[-1].strftime("%Y-%m-%d"),
+            ]
+
+            label_tick_strings = [d.strftime("%Y-%m-%d") for d in all_ticks]
+
+            # Gridlines: always monthly (month starts), regardless of label sparsity.
+            month_grid = pd.date_range(start=start_month, end=end_month, freq="MS").tolist()
+            axis_ticks = sorted({start_tick, end_tick, *month_grid})
+            combined_ticks = [d.strftime("%Y-%m-%dT%H:%M:%S") for d in axis_ticks]
+
         else:
-            month_ticks = []
+            combined_ticks = []
+            year_marker_strings = []
+            end_marker_strings = []
+            label_tick_strings = []
 
         x_axis = alt.X(
             field=cont_col,
             type="temporal",
             title=None,
             axis=alt.Axis(
-                labelAngle=45, format={"year": "%b %y", "month": "%b", "date": "%b"}, values=month_ticks, ticks=True
+                values=combined_ticks,
+                labelAngle=45,
+                labelOverlap=False,
+                labelExpr=f"""
+                    indexof({end_marker_strings}, timeFormat(datum.value, '%Y-%m-%d')) >= 0
+                    ? timeFormat(datum.value, '%d %b %y')
+                    : indexof({label_tick_strings}, timeFormat(datum.value, '%Y-%m-%d')) < 0
+                      ? ''
+                      : indexof({year_marker_strings}, timeFormat(datum.value, '%Y-%m-%d')) >= 0
+                        ? timeFormat(datum.value, '%b %y')
+                        : timeFormat(datum.value, '%b')
+                """,
+                ticks=True,
             ),
         )
         data = data.sort_values(cont_col)
