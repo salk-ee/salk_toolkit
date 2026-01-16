@@ -1230,10 +1230,8 @@ def lines(
         fy, fx = p.facets[0], p.facets[1]
 
     # Backwards compatibility from when it was true/false
-    if smooth:
-        smooth = "natural"
-    elif not smooth:
-        smooth = "linear"
+    if isinstance(smooth, bool):
+        smooth = "natural" if smooth else "linear"
 
     # See if we should use a continous axis (if categoricals are actually numbers)
     x_axis, data = _cat_to_cont_axis(data, fx)
@@ -1327,10 +1325,8 @@ def lines_hdi(
     """Line chart showing central tendency plus HDI ribbons."""
 
     # Backwards compatibility from when it was true/false
-    if smooth:
-        smooth = "basis"
-    elif not smooth:
-        smooth = "linear"
+    if isinstance(smooth, bool):
+        smooth = "basis" if smooth else "linear"
 
     data = p.data.copy()
     if not p.facets:
