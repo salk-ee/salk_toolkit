@@ -346,7 +346,7 @@ class TestReadAnnotatedData:
         df.to_csv_file(csv_file)
         data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
 
-        newcols = data_df.columns.difference(df.columns)
+        newcols = data_df.columns.difference(df.columns).difference(["file_code", "file_name"])
         diffs = data_df[newcols].replace("<NA>", pd.NA)
         expected_result = pd.DataFrame(
             [
@@ -369,7 +369,8 @@ class TestReadAnnotatedData:
             check_categorical=False,
         )
         serialized_meta = data_meta.model_dump(mode="json")
-        assert sorted(serialized_meta["structure"], key=lambda x: x["name"]) == sorted(
+        structure_wo_files = [b for b in serialized_meta["structure"] if b.get("name") != "files"]
+        assert sorted(structure_wo_files, key=lambda x: x["name"]) == sorted(
             expected_structure, key=lambda x: x["name"]
         )
 
@@ -1585,7 +1586,8 @@ class TestReadAndProcessData:
         df = read_and_process_data(str(csv_file))
 
         assert len(df) == 5
-        assert list(df.columns) == list(sample_csv_data.columns)
+        assert list(df.columns[: len(sample_csv_data.columns)]) == list(sample_csv_data.columns)
+        assert set(df.columns) - set(sample_csv_data.columns) == {"file_code", "file_name"}
 
     def test_data_description_validation(self, csv_file, sample_csv_data):
         """Test DataDescription validation"""
@@ -2687,6 +2689,16 @@ class TestMultiSourceColumns:
         write_json(meta_file, meta)
 
         df = read_annotated_data(str(meta_file))
+        # System file columns should always be present for multi-file inputs
+        assert {"file_code", "file_name"}.issubset(df.columns)
+        assert list(df["file_code"].cat.categories) == ["F0", "F1"]
+        assert bool(df["file_code"].cat.ordered) is True
+        assert list(df["file_name"].cat.categories) == ["file1.csv", "file2.csv"]
+        assert bool(df["file_name"].cat.ordered) is True
+        assert df.loc[df["file_code"] == "F0", "file_name"].nunique() == 1
+        assert str(df.loc[df["file_code"] == "F0", "file_name"].iloc[0]) == "file1.csv"
+        assert df.loc[df["file_code"] == "F1", "file_name"].nunique() == 1
+        assert str(df.loc[df["file_code"] == "F1", "file_name"].iloc[0]) == "file2.csv"
         assert "value" in df.columns
         assert df.loc[df["file_code"] == "F0", "value"].notna().all()
         assert df.loc[df["file_code"] == "F1", "value"].isna().all()
@@ -2718,6 +2730,12 @@ class TestMultiSourceColumns:
         write_json(meta_file, meta)
 
         df = read_annotated_data(str(meta_file))
+        # System file columns should always be present for multi-file inputs
+        assert {"file_code", "file_name"}.issubset(df.columns)
+        assert list(df["file_code"].cat.categories) == ["F0", "F1"]
+        assert bool(df["file_code"].cat.ordered) is True
+        assert list(df["file_name"].cat.categories) == ["file1.csv", "file2.csv"]
+        assert bool(df["file_name"].cat.ordered) is True
         assert "value" in df.columns
         assert df.loc[df["file_code"] == "F0", "value"].notna().all()
         assert df.loc[df["file_code"] == "F1", "value"].isna().all()
@@ -2736,7 +2754,10 @@ class TestMultiSourceColumns:
                 {"file": "file1.csv", "code": "F0"},
                 {"file": "file2.csv", "code": "F1"},
             ],
-            "preprocessing": "df['file_flag'] = file_code",  # Should add file_code-based flag
+            "preprocessing": [
+                "df['file_flag'] = file_code",  # Should add file_code-based flag
+                "df['file_name_flag'] = file_name",
+            ],
             "structure": [
                 {
                     "name": "test",
@@ -2744,6 +2765,7 @@ class TestMultiSourceColumns:
                         "id": {},
                         "value": {"continuous": True},
                         "file_flag": {"categories": "infer"},
+                        "file_name_flag": {"categories": "infer", "ordered": True},
                     },
                 }
             ],
@@ -2751,8 +2773,10 @@ class TestMultiSourceColumns:
         write_json(meta_file, meta)
 
         df = read_annotated_data(str(meta_file))
+        assert {"file_code", "file_name"}.issubset(df.columns)
         assert "file_flag" in df.columns
         assert set(df["file_flag"].unique()) == {"F0", "F1"}
+        assert set(df["file_name_flag"].unique()) == {"file1.csv", "file2.csv"}
 
     def test_multi_source_category_reconciliation(self, temp_dir):
         """Test category reconciliation works across files"""
@@ -2806,11 +2830,16 @@ class TestMultiSourceColumns:
         }
         write_json(meta_file, meta)
 
-        df = read_annotated_data(str(meta_file))
+        df, meta_out = read_annotated_data(str(meta_file), return_meta=True)
         assert "name" in df.columns
         assert len(df) == 2
         # Should work as before
         assert set(df["name"].unique()) == {"Alice", "Bob"}
+        dumped = meta_out.model_dump(mode="json")
+        sys_blocks = [b for b in dumped["structure"] if b.get("name") == "files"]
+        assert len(sys_blocks) == 1
+        assert sys_blocks[0].get("hidden") is True
+        assert sys_blocks[0].get("generated") is True
 
     def test_multi_source_columns_topk(self, temp_dir):
         """Test different column names from each file to two output columns with topk"""
@@ -2868,24 +2897,31 @@ class TestMultiSourceColumns:
 
         data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
 
-        assert data_meta.model_dump(mode="json") == {
-            "files": [
-                {"file": "file1.csv", "opts": {}, "code": "F0"},
-                {"file": "file2.csv", "opts": {}, "code": "F1"},
-                {"file": "file3.csv", "opts": {}, "code": "F2"},
+        dumped = data_meta.model_dump(mode="json")
+        assert dumped["files"] == [
+            {"file": "file1.csv", "opts": {}, "code": "F0"},
+            {"file": "file2.csv", "opts": {}, "code": "F1"},
+            {"file": "file3.csv", "opts": {}, "code": "F2"},
+        ]
+        # Core structure entries should match (additional system blocks may also be present)
+        assert {"name": "demographics_topk", "columns": ["topk_R1", "topk_R2"]} in dumped["structure"]
+        assert {
+            "name": "demographics",
+            "columns": [
+                "id",
+                ["topk_1", {"categories": ["False", "Mentioned", "No", "True", "Yes"]}],
+                ["topk_2", {"categories": ["False", "Mentioned", "No", "Not mentioned", "True", "Yes"]}],
             ],
-            "structure": [
-                {"name": "demographics_topk", "columns": ["topk_R1", "topk_R2"]},
-                {
-                    "name": "demographics",
-                    "columns": [
-                        "id",
-                        ["topk_1", {"categories": ["False", "Mentioned", "No", "True", "Yes"]}],
-                        ["topk_2", {"categories": ["False", "Mentioned", "No", "Not mentioned", "True", "Yes"]}],
-                    ],
-                },
-            ],
-        }
+        } in dumped["structure"]
+        # System file metadata block is injected implicitly for multi-file inputs
+        sys_blocks = [b for b in dumped["structure"] if b.get("name") == "files"]
+        assert len(sys_blocks) == 1
+        sysb = sys_blocks[0]
+        # hidden=False is the default and may be omitted from JSON serialization
+        assert sysb.get("hidden", False) is False
+        assert sysb.get("generated") is True
+        sys_cols = {c[0] if isinstance(c, list) else c for c in sysb.get("columns", [])}
+        assert {"file_code", "file_name"}.issubset(sys_cols)
         expected_data = [
             ["F0", 1, "Yes", "No", "USA", None],
             ["F0", 2, "No", "Yes", "Canada", None],
@@ -2895,7 +2931,9 @@ class TestMultiSourceColumns:
             ["F2", 6, "False", "True", "Canada", None],
         ]
         edf = pd.DataFrame(expected_data, columns=["file_code", "id", "topk_1", "topk_2", "topk_R1", "topk_R2"])
-        assert_frame_equal(data_df, edf, check_dtype=False, check_categorical=False)
+        # data_df may contain additional system columns (file_ind, file_name) in multi-file mode
+        assert_frame_equal(data_df[edf.columns], edf, check_dtype=False, check_categorical=False)
+        assert {"file_name"}.issubset(data_df.columns)
 
 
 if __name__ == "__main__":

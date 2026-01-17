@@ -290,12 +290,26 @@ def _load_data_files(
         if isinstance(raw_data.columns, pd.MultiIndex):
             raw_data.columns = [" | ".join(tpl) for tpl in raw_data.columns]
 
-        # Add extra columns to raw data that contain info about the file
-        # Always includes 'file_ind' with index and 'file_code' with the code identifier
-        # Can be used to add survey_date or other useful metainfo
-        if len(data_files) > 1:
-            raw_data["file_ind"] = fi
+        # Add extra columns to raw data that contain info about the file.
+        #
+        # Explicit expectation: these are reserved system columns and are overwritten here for raw
+        # file loads so downstream code can rely on them being consistent with `data_files`.
+        #
+        # However, when we load an already-annotated multi-file dataset (e.g. a JSON/YAML meta file
+        # that expands to multiple source files, or a processed parquet with embedded meta),
+        # we must NOT overwrite its internal per-file provenance columns (file_code/file_name),
+        # otherwise we'd collapse them into a single file.
+        preserve_annotated_multi = (
+            extension in ["json", "yaml", "parquet"]
+            and "result_meta" in locals()
+            and result_meta is not None
+            and getattr(result_meta, "files", None) is not None
+            and len(cast(list[object], getattr(result_meta, "files"))) > 1
+        )
+        if not preserve_annotated_multi:
             raw_data["file_code"] = file_code
+            raw_data["file_name"] = os.path.basename(data_file)
+
         # Add extra fields from FileDesc (any fields beyond file, opts, code)
         # In Pydantic v2, extra fields are stored in __pydantic_extra__ when extra="allow"
         pydantic_extra = getattr(fd, "__pydantic_extra__", None) or {}
@@ -335,6 +349,18 @@ def _convert_datetime_series_to_categorical(s: pd.Series) -> pd.Series:
     # out = dt.dt.strftime("%Y-%m-%d") # ISO YYYY-MM-DD
     out = dt.dt.strftime("%d %b %y")
     return out.where(dt.notna(), None)
+
+
+def _file_meta_map(dfs: dict[str, pd.DataFrame]) -> dict[str, str]:
+    """Return mapping of file_code -> file_name, requiring a 1-to-1 relationship."""
+    fm = (
+        pd.concat((df[["file_code", "file_name"]] for df in dfs.values()), ignore_index=True)
+        .assign(file_code=lambda d: d.file_code.astype(str), file_name=lambda d: d.file_name.astype(str))
+        .drop_duplicates()
+    )
+    if fm.duplicated(["file_code"]).any() or fm.duplicated(["file_name"]).any():
+        raise ValueError("file_code/file_name must be 1-to-1")
+    return dict(zip(fm["file_code"], fm["file_name"]))
 
 
 def _deterministic_categories_and_values(s: pd.Series) -> tuple[pd.Series, list[object]]:
@@ -701,9 +727,16 @@ def _process_annotated_data(
             return (raw_data_concat, meta_obj)
         return raw_data_concat
 
+    assert raw_data_dict is not None, "Expected raw_data_dict to be initialized before processing"
+
+    file_meta_map = _file_meta_map(raw_data_dict)
+    file_codes_in_order = list(raw_data_dict.keys())
+    raw_data_dict = {fc: raw_data_dict[fc] for fc in file_codes_in_order}
+
     # Run preprocessing per file
     if meta_obj.preprocessing is not None and not only_fix_categories:
         for file_code, df in raw_data_dict.items():
+            file_name = file_meta_map[file_code]
             globs = {
                 "pd": pd,
                 "np": np,
@@ -711,11 +744,50 @@ def _process_annotated_data(
                 "stk": stk,
                 "df": df,
                 "file_code": file_code,
+                "file_name": file_name,
                 **einfo,
                 **constants,
             }
             exec(_str_from_list(meta_obj.preprocessing), globs)
             raw_data_dict[file_code] = globs["df"]
+
+    # Ensure file metadata columns always survive end-to-end (also if preprocessing dropped/mutated them).
+    file_names_in_order: list[str] = []
+    for file_code in file_codes_in_order:
+        df = raw_data_dict[file_code]
+        file_name_val = file_meta_map[file_code]
+        # Overwrite to guarantee correctness even if preprocessing mutated/dropped these columns.
+        df["file_code"] = str(file_code)
+        df["file_name"] = file_name_val
+        raw_data_dict[file_code] = df
+        file_names_in_order.append(file_name_val)
+
+    # Inject implicit metadata for system file columns so they can be used downstream (e.g. plotting/pipeline).
+    # Provide explicit ordered category order (no "infer") for determinism.
+    sys_block_name = "files"
+    sys_block_hidden = len(raw_data_dict) <= 1
+    sys_block_dict: dict[str, object] = {
+        "name": sys_block_name,
+        "generated": True,
+        "hidden": sys_block_hidden,
+        "columns": {
+            "file_code": {"categories": [str(fc) for fc in file_codes_in_order], "ordered": True},
+            "file_name": {"categories": file_names_in_order, "ordered": True},
+        },
+    }
+    sys_block = soft_validate(sys_block_dict, ColumnBlockMeta)
+    structure2 = dict(meta_obj.structure)
+    if sys_block_name in structure2:
+        existing = structure2[sys_block_name]
+        merged_cols = dict(existing.columns)
+        for k, v in sys_block.columns.items():
+            merged_cols.setdefault(k, v)
+        structure2[sys_block_name] = existing.model_copy(
+            update={"columns": merged_cols, "hidden": sys_block_hidden, "generated": True}
+        )
+    else:
+        structure2[sys_block_name] = sys_block
+    meta_obj = meta_obj.model_copy(update={"structure": structure2})
 
     # Initialize concatenated DataFrame - start empty, will be built column by column
     ndf_df = pd.DataFrame()
@@ -727,13 +799,6 @@ def _process_annotated_data(
         file_len = len(file_raw)
         file_index_ranges[file_code] = slice(current_idx, current_idx + file_len)
         current_idx += file_len
-
-    # Add file_code column if multiple files
-    if len(raw_data_dict) > 1:
-        file_code_series_list = []
-        for file_code, file_raw in raw_data_dict.items():
-            file_code_series_list.append(pd.Series(file_code, index=file_raw.index, name="file_code"))
-        ndf_df = ndf_df.assign(file_code=pd.concat(file_code_series_list).reset_index(drop=True))
 
     all_cns = dict()
     # Build new structure dict as we process groups (Pydantic models are immutable)
@@ -1176,7 +1241,17 @@ def extract_column_meta(data_meta: DataMeta) -> dict[str, GroupOrColumnMeta]:
 def group_columns_dict(data_meta: DataMeta) -> dict[str, list[str]]:
     """Get dictionary mapping group names to their column lists."""
 
-    return {name: list(meta.columns) for name, meta in extract_column_meta(data_meta).items() if meta.columns}
+    if data_meta.structure is None:
+        return {}
+
+    res: dict[str, list[str]] = {}
+    for block in data_meta.structure.values():
+        if block.hidden:
+            continue
+        scale_meta = block.scale
+        prefix = scale_meta.col_prefix if scale_meta is not None and scale_meta.col_prefix is not None else ""
+        res[block.name] = [f"{prefix}{cn}" for cn in block.columns.keys()]
+    return res
 
     # return { g['name'] : [(t[0] if type(t)!=str else t) for t in g['columns']] for g in data_meta['structure'] }
 
@@ -1706,6 +1781,12 @@ def _perform_merges(
             ms_on = on
             ms_add = list(add) if isinstance(add, list) else [add]
             ndf = ndf[ms_on + ms_add]
+        # Drop system provenance columns from the merge-side to avoid suffix collisions.
+        # Keep them on the left df (the main dataset) only.
+        ndf = ndf.drop(
+            columns=[c for c in ["file_code", "file_name"] if c in ndf.columns and c not in on],
+            errors="ignore",
+        )
         overlap = (set(df.columns) & set(ndf.columns)) - set(on)
         if overlap:
             cols = ", ".join(sorted(overlap))
