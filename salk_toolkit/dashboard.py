@@ -2077,14 +2077,17 @@ def draw_plot_matrix(pmat: list[list[object]] | object | None) -> None:
                 continue
             # print(pmat[i][j].to_json()) # to debug json
             chart_dict = pmat[i][j].to_dict() if hasattr(pmat[i][j], "to_dict") else pmat[i][j]
+            chart_dict = deepcopy(chart_dict)
+            chart_dict = cast(dict[str, Any], chart_dict)
+            if "width" in chart_dict and chart_dict["width"] == "stretch":
+                del chart_dict["width"]
+
             chart_dict.setdefault("usermeta", {}).setdefault("embedOptions", {})
             # Set scaleFactor for higher resolution PNG (High PPI)
             chart_dict["usermeta"]["embedOptions"]["scaleFactor"] = 10
             # Force canvas instead of SVG
             chart_dict["usermeta"]["embedOptions"]["renderer"] = "canvas"
-            chart_dict["width"] = "stretch"
-
-            c.vega_lite_chart(chart_dict)
+            c.vega_lite_chart(spec=chart_dict, width="stretch" if ucw else "content")
 
 
 def st_plot(pp_desc: dict[str, object], **kwargs: object) -> None:
