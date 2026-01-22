@@ -445,12 +445,14 @@ with st.sidebar:  # .expander("Select dimensions"):
     # Export options
     with st.expander("Export"):
         width = None
+        height = None
         # Toggle export options because generating them is slow
         export = st.toggle("Show export options", value=False)
         if export:
-            custom_width = st.toggle("Custom width", value=False)
-            if custom_width:
+            custom_size = st.toggle("Custom size", value=False)
+            if custom_size:
                 width = st.slider("Width", value=800, min_value=100, max_value=1200, step=50)
+                height = st.slider("Height", value=600, min_value=100, max_value=2500, step=50)
             st.subheader("Export")
             export_ct = st.container()
 
@@ -530,6 +532,7 @@ elif input_files_facet:
         soft_validate(args, PlotDescriptor),
         translate=translate,
         width=(width or get_plot_width("full", 1)),
+        height=height,
         return_matrix_of_plots=matrix_form,
     )
 
@@ -566,6 +569,7 @@ else:
                 ppd,
                 translate=translate,
                 width=cur_width,
+                height=height,
                 return_matrix_of_plots=matrix_form,
             )
 
@@ -575,7 +579,7 @@ else:
                 c1, c2, c3 = export_ct.columns(3)
                 c1.download_button(
                     "HTML",
-                    plot_matrix_html(plot, uid=name, width=cur_width, responsive=not custom_width),
+                    plot_matrix_html(plot, uid=name, width=cur_width, responsive=not custom_size),
                     f"{name}.html",
                 )
                 c2.download_button("Data CSV", pi.data.to_csv().encode("utf-8"), f"{name}.csv")
@@ -583,7 +587,7 @@ else:
                 @st.dialog("iframe Code")
                 def show_iframe_modal() -> None:
                     """Display iframe embed code in a modal dialog."""
-                    content = plot_matrix_html(plot, uid=name, width=cur_width, responsive=not custom_width)
+                    content = plot_matrix_html(plot, uid=name, width=cur_width, responsive=not custom_size)
                     if content is None:
                         st.error("Failed to generate HTML content")
                         return
