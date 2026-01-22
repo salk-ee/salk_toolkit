@@ -4,7 +4,10 @@ This module provides a web-based interface for exploring annotated survey data,
 allowing users to interactively create plots, filter data, and adjust plot parameters.
 """
 
+from salk_toolkit.tools.s3_util import upload_html_to_s3
+
 import warnings
+import base64
 
 import streamlit as st
 
@@ -155,6 +158,14 @@ def get_plot_width(width_str: str, ncols: int = 1) -> int:
     """
     return min(800, int(1200 / ncols))
 
+
+# --- State Management ---
+if "iframe_url" not in st.session_state:
+    st.session_state.iframe_url = None
+if "iframe_html_content" not in st.session_state:
+    st.session_state.iframe_html_content = None
+if "is_uploading" not in st.session_state:
+    st.session_state.is_uploading = False
 
 if "ls_loaded" not in st.session_state:
     try:
@@ -570,14 +581,96 @@ else:
 
             # Add export buttons for first data source
             if export and i == 0:
+                # Clear iframe state if plot configuration changed
+                import hashlib
+                import json
+
+                # Create a stable hash by using JSON serialization
+                config_dict = {
+                    "res_col": args.get("res_col"),
+                    "factor_cols": args.get("factor_cols"),
+                    "plot": args.get("plot"),
+                    "plot_args": args.get("plot_args"),
+                    "filter": args.get("filter"),
+                    "width": cur_width,
+                    "custom_width": custom_width,
+                }
+                config_hash = hashlib.md5(json.dumps(config_dict, sort_keys=True).encode()).hexdigest()
+
+                if "last_config_hash" not in st.session_state:
+                    st.session_state.last_config_hash = None
+
+                if st.session_state.last_config_hash != config_hash:
+                    # Clear everything when config changes
+                    st.session_state.iframe_url = None
+                    st.session_state.iframe_html_content = None
+                    st.session_state.is_uploading = False
+
                 name = f"{args['res_col']}_{'_'.join(args['factor_cols']) if args['factor_cols'] else 'all'}"
-                c1, c2 = export_ct.columns(2)
+                c1, c2, c3 = export_ct.columns(3)
                 c1.download_button(
                     "HTML",
                     plot_matrix_html(plot, uid=name, width=cur_width, responsive=not custom_width),
                     f"{name}.html",
                 )
                 c2.download_button("Data CSV", pi.data.to_csv().encode("utf-8"), f"{name}.csv")
+                # Scenario 1: Ready to Navigate
+                if st.session_state.iframe_url:
+                    c3.markdown(
+                        f"""
+                        <a href="{st.session_state.iframe_url}" target="_blank" style="text-decoration: none;">
+                            <div style="
+                                display: inline-block;
+                                padding: 0.45rem 1rem;
+                                color: white;
+                                background-color: #FF4B4B;
+                                border-radius: 0.5rem;
+                                text-align: center;
+                                font-weight: 400;
+                                line-height: 1.6;
+                                width: 100%;
+                                border: 0px;">
+                                Get URL
+                            </div>
+                        </a>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                    # Display iframe embed code with base64-encoded HTML
+                    if hasattr(st.session_state, "iframe_html_content") and st.session_state.iframe_html_content:
+                        encoded_html = base64.b64encode(st.session_state.iframe_html_content.encode("utf-8")).decode(
+                            "utf-8"
+                        )
+                        iframe_code = (
+                            f'<iframe src="data:text/html;base64,{encoded_html}" width="700" '
+                            'height="525" frameborder="0" allowfullscreen style="aspect-ratio: 4/3;">'
+                            "</iframe>"
+                        )
+                        export_ct.code(iframe_code, language="html")
+
+                    # Optional: Button to reset state
+                    if st.button("Generate New"):
+                        st.session_state.iframe_url = None
+                        st.rerun()
+
+                # Scenario 2: Generate Trigger
+                else:
+                    if c3.button("Make iframe", disabled=st.session_state.is_uploading):
+                        st.session_state.is_uploading = True
+                        with st.spinner("Upload..."):
+                            # Generate your HTML content
+                            content = plot_matrix_html(plot, uid=name, width=cur_width, responsive=not custom_width)
+                            try:
+                                url = upload_html_to_s3(content)
+                                st.session_state.iframe_url = url
+                                st.session_state.iframe_html_content = content  # Store for base64 encoding
+                                st.session_state.last_config_hash = config_hash  # Save hash after successful creation
+                            except Exception as e:
+                                st.error(f"Upload failed: {e}")
+                            finally:
+                                st.session_state.is_uploading = False
+                                st.rerun()
 
             # n_questions = pi['data']['question'].nunique() if 'question' in pi['data'] else 1
             # st.write('Based on %.1f%% of data' %
