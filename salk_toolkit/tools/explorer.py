@@ -97,6 +97,7 @@ else:
     sdb = None
 
 with st.spinner("Loading libraries.."):
+    import base64
     import contextlib
     import json
     import os
@@ -571,13 +572,31 @@ else:
             # Add export buttons for first data source
             if export and i == 0:
                 name = f"{args['res_col']}_{'_'.join(args['factor_cols']) if args['factor_cols'] else 'all'}"
-                c1, c2 = export_ct.columns(2)
+                c1, c2, c3 = export_ct.columns(3)
                 c1.download_button(
                     "HTML",
                     plot_matrix_html(plot, uid=name, width=cur_width, responsive=not custom_width),
                     f"{name}.html",
                 )
                 c2.download_button("Data CSV", pi.data.to_csv().encode("utf-8"), f"{name}.csv")
+
+                @st.dialog("iframe Code")
+                def show_iframe_modal() -> None:
+                    """Display iframe embed code in a modal dialog."""
+                    content = plot_matrix_html(plot, uid=name, width=cur_width, responsive=not custom_width)
+                    if content is None:
+                        st.error("Failed to generate HTML content")
+                        return
+                    encoded_html = base64.b64encode(content.encode("utf-8")).decode("utf-8")
+                    iframe_code = (
+                        f'<iframe src="data:text/html;base64,{encoded_html}" width="700" '
+                        'height="525" frameborder="0" allowfullscreen style="aspect-ratio: 4/3;">'
+                        "</iframe>"
+                    )
+                    st.code(iframe_code, language="html")
+
+                if c3.button("iframe"):
+                    show_iframe_modal()
 
             # n_questions = pi['data']['question'].nunique() if 'question' in pi['data'] else 1
             # st.write('Based on %.1f%% of data' %
