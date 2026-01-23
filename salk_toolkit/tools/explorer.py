@@ -10,7 +10,7 @@ import streamlit as st
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
-# If true, the profiler will be shown
+
 profile = False
 memprofile = False
 
@@ -134,7 +134,7 @@ with st.spinner("Loading libraries.."):
         matching_plots,
         pp_transform_data,
     )
-    from salk_toolkit.utils import plot_matrix_html, replace_constants
+    from salk_toolkit.utils import plot_matrix_html, replace_constants, set_custom_config_path
     from salk_toolkit.validation import DataMeta, PlotDescriptor, soft_validate
 
     T = TypeVar("T")
@@ -209,6 +209,9 @@ else:
         path = "./"
     else:
         path += "/"
+    
+    # Set custom config path to the directory we are exploring
+    set_custom_config_path(path)
 
     input_file_choices = default_inputs + sorted([f for f in os.listdir(path) if f[-8:] == ".parquet"])
 

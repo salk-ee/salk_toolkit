@@ -52,6 +52,7 @@ import os
 import csv
 import re
 import time
+import logging
 import inspect
 import psutil
 from collections import defaultdict
@@ -90,6 +91,8 @@ from typing import Callable, Any, cast, IO, ContextManager, Protocol
 
 # Type alias for JSON data
 JsonDict = dict[str, Any]
+
+logger = logging.getLogger(__name__)
 
 
 class TranslationObject(Protocol):
@@ -202,7 +205,7 @@ def read_parquet_with_data_meta_lazy_cached(data_source: str, **kwargs: object) 
     Returns:
         Tuple of (lazy Polars DataFrame, DataMeta).
     """
-    print(f"Reading lazy data from {data_source}")
+    logger.info(f"Reading lazy data from {data_source}")
     df, full_meta = read_parquet_with_metadata(data_source, lazy=True, **kwargs)
     assert full_meta is not None, "Expected metadata to be present"
     data_meta = full_meta.data
@@ -292,7 +295,7 @@ def log_event(event: str, uid: str, path: str, s3_fs: s3fs.S3FileSystem | None =
     timestamp = dt.datetime.now(dt.timezone.utc).strftime("%d-%m-%Y, %H:%M:%S")
 
     if not exists_fn(path, s3_fs=s3_fs):  # If file not present, create it
-        print(f"Log file {path} not found, creating it")
+        logger.info(f"Log file {path} not found, creating it")
         with open_fn(path, "w", s3_fs=s3_fs):
             pass  # Just create the file
 
@@ -1094,7 +1097,7 @@ class SalkDashboardBuilder:
             # Download the data if it's not already locally present
             # This is done because lazy loading over s3 is very painfully slow as data files are big
             if not os.path.exists(self.data_source):
-                print(f"Downloading {self.filemap[self.data_source]} to {self.data_source}")
+                logger.info(f"Downloading {self.filemap[self.data_source]} to {self.data_source}")
                 self.s3fs.download(self.filemap[self.data_source], self.data_source)
 
             self.ldf, self.meta = read_parquet_with_data_meta_lazy_cached(self.data_source)
@@ -1307,7 +1310,7 @@ def sqlite_client(url: str, token: str) -> libsql_client.ClientSync:
     Returns:
         SQLite client object.
     """
-    print(f"User database from {url}")
+    logger.debug(f"User database from {url}")
     return libsql_client.create_client_sync(url=url, auth_token=token)
 
 
@@ -1687,7 +1690,7 @@ class FronteggAuthenticationManager(UserAuthenticationManager):
         if "prompt" in st.secrets["auth"]:
             st.logout()
         else:
-            print("User refresh needs [auth.prompt] segment in secrets.toml")
+            logger.warning("User refresh needs [auth.prompt] segment in secrets.toml")
 
     def login_screen(self) -> None:
         """Display Frontegg OAuth login screen."""
@@ -1706,7 +1709,7 @@ class FronteggAuthenticationManager(UserAuthenticationManager):
             # IF authenticated, but token not refreshed this session and is at least 60 sec old
             # This is to ensure that settings changes are also visible if logging in on another device
             # Also good for keeping users logged in for a while as it refreshes the access token
-            print("Refreshing user info")
+            logger.debug("Refreshing user info")
             self.refresh_user()
         else:
             st.session_state["OA_fresh"] = True
@@ -2070,15 +2073,82 @@ def draw_plot_matrix(pmat: list[list[object]] | object | None) -> None:
         pmat, ucw = [[pmat]], False
     else:
         ucw = True  # If we are drawing more than one plot, we want to use the container width
+
+    # Reload configs to ensure we have the latest
+    utils.load_custom_configs()
+
+    # Check for both config files and warn user via Streamlit
+    import os
+
+    custom_chart_path = os.path.join(os.getcwd(), "altair_custom.json")
+    if not os.path.exists(custom_chart_path):
+        custom_chart_path = os.path.join(os.path.dirname(utils.__file__), "..", "altair_custom.json")
+
+    custom_config_path = os.path.join(os.getcwd(), "altair_custom_config.json")
+    if not os.path.exists(custom_config_path):
+        custom_config_path = os.path.join(os.path.dirname(utils.__file__), "..", "altair_custom_config.json")
+
+    if os.path.exists(custom_chart_path) and os.path.exists(custom_config_path):
+        st.warning(
+            "⚠️ Both `altair_custom.json` and `altair_custom_config.json` exist. "
+            "`altair_custom.json` takes precedence and will replace the entire chart. "
+            "Consider merging or deleting/renaming one of the files."
+        )
+
     cols = st.columns(len(pmat[0])) if len(pmat[0]) > 1 else [st]
     for j, c in enumerate(cols):
         for i, row in enumerate(pmat):
             if j >= len(pmat[i]):
                 continue
-            # print(pmat[i][j].to_json()) # to debug json
-            chart_dict = pmat[i][j].to_dict() if hasattr(pmat[i][j], "to_dict") else pmat[i][j]
-            chart_dict = deepcopy(chart_dict)
-            chart_dict = cast(dict[str, Any], chart_dict)
+
+            # If altair_custom_chart is defined, use it as the entire chart_dict
+            if utils.altair_custom_chart:
+                chart_dict = deepcopy(utils.altair_custom_chart)
+                logger.info("Using custom chart override from altair_custom.json")
+            else:
+                # print(pmat[i][j].to_json()) # to debug json
+                chart_dict = pmat[i][j].to_dict() if hasattr(pmat[i][j], "to_dict") else pmat[i][j]
+                chart_dict = deepcopy(chart_dict)
+                chart_dict = cast(dict[str, Any], chart_dict)
+
+                # Inject global Altair configuration (including custom overrides)
+                # We need to deep merge this with existing config in chart_dict if any
+                if "config" not in chart_dict:
+                    chart_dict["config"] = {}
+
+                # Simple recursive merge helper similar to utils.py
+                def _deep_merge(target, source) -> None:
+                    for k, v in source.items():
+                        if isinstance(v, dict) and k in target and isinstance(target[k], dict):
+                            _deep_merge(target[k], v)
+
+                # Apply config precedence: Default < Plot < Custom
+                # This matches the precedence in utils.plot_matrix_html
+
+                # 1. Start with base defaults (not including custom config)
+                from salk_toolkit.utils import _altair_base_config, deep_merge
+
+                full_config = deepcopy(_altair_base_config)
+
+                # 2. Merge plot-specific config (overwrites defaults)
+                if "config" in chart_dict:
+                    deep_merge(full_config, chart_dict["config"])
+
+                # 3. Merge custom user overrides (overwrites everything)
+                if utils.altair_custom_config:
+                    deep_merge(full_config, utils.altair_custom_config)
+
+                chart_dict["autosize"] = {"type": "fit-x", "contains": "padding"}
+                chart_dict["config"] = full_config
+
+                # Offload data to local server if available
+                # We use a unique ID derived from the plot content or position for caching
+                uid = f"st_plot_{i}_{j}_{hash(str(chart_dict.keys()))}"
+                try:
+                    chart_dict = utils.process_chart_data(chart_dict, uid=uid, i=i, j=j)
+                except Exception as e:
+                    logger.warning(f"Failed to process chart data: {e}")
+
             if "width" in chart_dict and chart_dict["width"] == "stretch":
                 del chart_dict["width"]
 

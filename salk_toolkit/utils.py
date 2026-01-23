@@ -71,7 +71,10 @@ __all__ = [
 
 import json
 import re
+import os
+import pandas as pd
 import warnings
+import logging
 import math
 import inspect
 import sys
@@ -100,7 +103,6 @@ if TYPE_CHECKING:
 
 
 import numpy as np
-import pandas as pd
 import scipy
 from scipy.optimize import linear_sum_assignment
 from scipy.spatial.distance import cdist
@@ -111,6 +113,8 @@ import hsluv  # type: ignore[import-untyped]
 
 import Levenshtein
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 pd.set_option("future.no_silent_downcasting", True)
 
@@ -1062,13 +1066,23 @@ def read_yaml(model_desc_file: str) -> JSONValue:
         try:
             yaml_desc = yaml.safe_load(stream)
         except yaml.YAMLError as exc:
-            print(exc)
+            logger.error(f"YAML load error: {exc}")
     return yaml_desc
 
 
+def deep_merge(target: dict[str, Any], source: dict[str, Any]) -> dict[str, Any]:
+    """Recursively merge source dict into target dict."""
+    for k, v in source.items():
+        if isinstance(v, dict) and k in target and isinstance(target[k], dict):
+            deep_merge(target[k], v)
+        else:
+            target[k] = v
+    return target
+
+
 # Altair default configuration for plot styling
-altair_default_config = {
-    "font": '"Source Sans Pro", sans-serif',
+_altair_base_config = config = {
+    "font": '"Source Sans", sans-serif',
     "background": "#ffffff",
     "fieldTitle": "verbal",
     "autosize": {"type": "fit", "contains": "padding"},
@@ -1126,6 +1140,7 @@ altair_default_config = {
         "titlePadding": 5,
         "labelPadding": 16,
         "columnPadding": 8,
+        "labelLimit": 350,
         "rowPadding": 4,
         "padding": 7,
         "symbolStrokeWidth": 4,
@@ -1184,19 +1199,86 @@ altair_default_config = {
         "columns": 1,
         "strokeWidth": 0,
         "stroke": "transparent",
-        "continuousHeight": 350,
-        "continuousWidth": 400,
+        "continuousHeight": 300,
+        "continuousWidth": 300,
         "discreteHeight": {"step": 20},
     },
     "concat": {"columns": 1},
     "facet": {"columns": 1},
-    "mark": {"tooltip": True, "color": "#0068c9"},
+    "mark": {"tooltip": {"content": "encoding"}, "color": "#0068c9"},
     "bar": {"binSpacing": 4, "discreteBandSize": {"band": 0.85}},
     "axisDiscrete": {"grid": False},
     "axisXPoint": {"grid": False},
-    "axisTemporal": {"grid": False},
     "axisXBand": {"grid": False},
 }
+
+
+altair_default_config = deepcopy(_altair_base_config)
+altair_custom_config: Dict[str, Any] = {}
+altair_custom_chart: Dict[str, Any] | None = None
+_custom_config_path: str | None = None
+
+
+def set_custom_config_path(path: str) -> None:
+    """Set the directory to look for custom config files."""
+    global _custom_config_path
+    _custom_config_path = path
+    load_custom_configs()
+
+
+def load_custom_configs() -> None:
+    """Load or reload custom Altair configurations from JSON files."""
+    global altair_custom_config, altair_custom_chart
+
+    # Determine search paths
+    search_paths = []
+    if _custom_config_path:
+        search_paths.append(_custom_config_path)
+    search_paths.append(os.getcwd())
+    search_paths.append(os.path.join(os.path.dirname(__file__), ".."))
+
+    # Helper to find file in search paths
+    def find_file(filename: str) -> str | None:
+        for p in search_paths:
+            fp = os.path.join(p, filename)
+            if os.path.exists(fp):
+                return fp
+        return None
+
+    # 1. Load custom chart override
+    custom_chart_path = find_file("altair_custom.json")
+    if custom_chart_path:
+        try:
+            with open(custom_chart_path, "r") as f:
+                altair_custom_chart = json.load(f)
+                logger.warning(f"Loaded custom Altair chart override from {os.path.abspath(custom_chart_path)}")
+        except Exception as e:
+            logger.warning(f"Failed to load custom Altair chart: {e}")
+            altair_custom_chart = None
+    else:
+        altair_custom_chart = None
+
+    # 2. Load custom config (ALWAYS try to load, regardless of chart presence)
+    custom_config_path = find_file("altair_custom_config.json")
+    if custom_config_path:
+        try:
+            with open(custom_config_path, "r") as f:
+                altair_custom_config = json.load(f)
+                logger.warning(f"Loaded custom Altair config from {os.path.abspath(custom_config_path)}")
+        except Exception as e:
+            logger.warning(f"Failed to load custom Altair config: {e}")
+            altair_custom_config = {}
+    else:
+        altair_custom_config = {}
+
+    # Check for both files and warn
+    if altair_custom_chart and altair_custom_config:
+        # We only warn once per session/reload to avoid spamming validity checks
+        pass
+
+
+# Initial load
+load_custom_configs()
 
 # HTML template for embedding Altair plots
 html_template = """
@@ -1231,11 +1313,116 @@ html_template = """
 """
 
 
+try:
+    from salk_toolkit.data_server import get_data_server
+
+    logger.debug(f"get_data_server import success: {get_data_server}")
+except ImportError:
+    try:
+        from .data_server import get_data_server
+
+        logger.debug(f"get_data_server relative import success: {get_data_server}")
+    except ImportError as e:
+        logger.debug(f"get_data_server import FAILED: {e}")
+        get_data_server = None
+
+
+def process_chart_data(pdict: dict[str, Any], uid: str, i: int, j: int) -> dict[str, Any]:
+    """Process chart dictionary to offload data to local server if available.
+
+    Args:
+        pdict: The chart specification dictionary.
+        uid: Unique identifier for the plot matrix.
+        i: Row index.
+        j: Column index.
+
+    Returns:
+        Modified chart specification dictionary.
+    """
+    # Debug: Dump original spec
+    debug_dump = True  # Set to True to enable debug files
+    if debug_dump:
+        try:
+            with open(f".app_data/served_data/debug_{uid}_original.json", "w") as f:
+                json.dump(pdict, f, indent=2)
+        except Exception:
+            pass
+
+    # Global toggle via env var
+    if os.environ.get("ST_SERVE_DATA", "true").lower() == "false":
+        return pdict
+
+    # Try to initialize data server if requested
+    data_server = None
+    if get_data_server:
+        try:
+            data_server = get_data_server()
+        except Exception:
+            # print(f"Failed to start data server: {e}")
+            pass
+
+    if not data_server:
+        return pdict
+
+    # Helper to replace data refs
+    def replace_data_refs(obj, dataset_map):
+        if isinstance(obj, dict):
+            # check if this is a data object with a name we know
+            if "name" in obj and obj["name"] in dataset_map:
+                return {"url": dataset_map[obj["name"]]}
+
+            # Recursive traversal
+            for k, v in obj.items():
+                # Special handling for "data" key to be safe?
+                if k == "data" and isinstance(v, dict) and "name" in v and v["name"] in dataset_map:
+                    obj[k] = {"url": dataset_map[v["name"]]}
+                else:
+                    obj[k] = replace_data_refs(v, dataset_map)
+            return obj
+        elif isinstance(obj, list):
+            return [replace_data_refs(x, dataset_map) for x in obj]
+        return obj
+
+    # 1. Handle datasets (High priority as this is what Altair uses for larger data)
+    dataset_map = {}
+    if "datasets" in pdict:
+        for k, v in pdict["datasets"].items():
+            df_temp = pd.DataFrame(v)
+            url = data_server.save_data(df_temp, name_prefix=f"{uid}_{i}_{j}_{k}")
+            if url:
+                dataset_map[k] = url
+
+        # Remove datasets as they are now external
+        del pdict["datasets"]
+
+        # Recursively replace in the spec
+        pdict = replace_data_refs(pdict, dataset_map)
+
+    # 2. Check for inline data values (simple case)
+    if "data" in pdict and "values" in pdict["data"]:
+        # It's inline data
+        df = pd.DataFrame(pdict["data"]["values"])
+        url = data_server.save_data(df, name_prefix=f"{uid}_{i}_{j}")
+        if url:
+            pdict["data"] = {"url": url}
+
+    # Debug: Dump processed spec
+    if debug_dump:
+        try:
+            with open(f".app_data/served_data/debug_{uid}_processed.json", "w") as f:
+                json.dump(pdict, f, indent=2)
+        except Exception:
+            pass
+
+    return pdict
+
+
 def plot_matrix_html(
     pmat: AltairChart | list[list[AltairChart]] | None,
     uid: str = "viz",
     width: int | None = None,
     responsive: bool = True,
+    serve_data: bool = True,
 ) -> str | None:
     """Generate HTML for a matrix of Altair plots.
 
@@ -1244,6 +1431,7 @@ def plot_matrix_html(
         uid: Unique identifier for HTML elements.
         width: Optional plot width in pixels.
         responsive: Whether plots should be responsive to container width.
+        serve_data: Whether to offload data to local server for debugging.
 
     Returns:
         HTML string containing the plots, or None if pmat is None.
@@ -1257,24 +1445,48 @@ def plot_matrix_html(
     # - replace all whitespace and non-alphanumeric characters with underscores
     uid = re.sub(r"\W+", "_", str(uid))
 
+    # Reload configs to pick up any changes
+    load_custom_configs()
+
     template = html_template.replace("UID", uid)
 
     rstring = "XYZresponsiveXZY"  # Something we can replace easy
     specs, ncols = [], len(pmat[0])
     for i, p in enumerate(pmat):
         for j, pp in enumerate(p):
-            pdict = json.loads(pp.to_json())
-            pdict["autosize"] = {"type": "fit-x", "contains": "padding"}
-            pdict["config"] = altair_default_config
+            # If altair_custom_chart is defined, use it as the entire chart_dict
+            if altair_custom_chart:
+                pdict = deepcopy(altair_custom_chart)
+                logger.info("Using custom chart override from altair_custom.json")
+            else:
+                pdict = json.loads(pp.to_json())
+
+                if serve_data:
+                    pdict = process_chart_data(pdict, uid, i, j)
+
+                # Apply config precedence: Default < Plot < Custom
+                # 1. Start with base defaults
+                full_config = deepcopy(_altair_base_config)
+
+                # 2. Merge plot-specific config (overwrites defaults)
+                if "config" in pdict:
+                    deep_merge(full_config, pdict["config"])
+
+                # 3. Merge custom user overrides (overwrites everything)
+                if altair_custom_config:
+                    deep_merge(full_config, altair_custom_config)
+
+                pdict["autosize"] = {"type": "fit-x", "contains": "padding"}
+                pdict["config"] = full_config
 
             if responsive:
                 cwidth = pdict["spec"]["width"] if "spec" in pdict else pdict["width"]
-                repl = f"(width-{uid}_delta/{ncols})/{width / cwidth}"
-                if "spec" in pdict:
-                    pdict["spec"]["width"] = rstring
+                if width is not None:
+                    repl = f"(width-{uid}_delta/{ncols})/{width / cwidth}"
+                    pjson = json.dumps(pdict).replace(f'"{rstring}"', repl)
                 else:
-                    pdict["width"] = rstring
-                pjson = json.dumps(pdict).replace(f'"{rstring}"', repl)
+                    repl = None
+                    pjson = json.dumps(pdict)
             else:
                 pjson = json.dumps(pdict)
             specs.append(pjson)
@@ -1293,6 +1505,6 @@ def plot_matrix_html(
     )
     html = html.replace("SUBDIVS", subdivs)
 
-    if responsive:
+    if responsive and width is not None:
         html = html.replace(f'"{rstring}"', repl)
     return html

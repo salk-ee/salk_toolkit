@@ -258,10 +258,6 @@ def boxplot_manual(p: PlotInput) -> AltairChart:
                     field=f1.col,
                     type="nominal",
                     scale=f1.colors,
-                    legend=alt.Legend(
-                        orient="top",
-                        columns=estimate_legend_columns_horiz(f1.order, p.width),
-                    ),
                 )
             }
         ),
@@ -270,7 +266,15 @@ def boxplot_manual(p: PlotInput) -> AltairChart:
     upper_plot = root.mark_rule().encode(x=alt.X("q3:Q"), x2=alt.X2("tmax:Q"))
     middle_tick = root.mark_tick(color="white", size=size).encode(x="mean:Q")
 
-    return lower_plot + middle_plot + upper_plot + middle_tick
+    plot = lower_plot + middle_plot + upper_plot + middle_tick
+
+    if f1:
+        plot = plot.configure_legend(
+            orient="top",
+            columns=estimate_legend_columns_horiz(f1.order, p.width),
+        )
+
+    return plot
 
 
 # Also create a raw version for the same plot
@@ -407,15 +411,16 @@ def columns(p: PlotInput) -> AltairChart:
                         field=f1.col,
                         type="nominal",
                         scale=f1.colors,
-                        legend=alt.Legend(
-                            orient="top",
-                            columns=estimate_legend_columns_horiz(f1.order, p.width),
-                        ),
                     ),
                 }
             ),
         )
     )
+    if f1:
+        plot = plot.configure_legend(
+            orient="top",
+            columns=estimate_legend_columns_horiz(f1.order, p.width),
+        )
     return plot
 
 
@@ -465,14 +470,14 @@ def stacked_columns(p: PlotInput, normalized: bool = False) -> AltairChart:
                         field=f1.col,
                         type="nominal",
                         scale=f1.colors,
-                        legend=alt.Legend(
-                            orient="top",
-                            columns=estimate_legend_columns_horiz(f1.order, p.width),
-                        ),
                     ),
                 }
             ),
         )
+    )
+    plot = plot.configure_legend(
+        orient="top",
+        columns=estimate_legend_columns_horiz(f1.order, p.width),
     )
     return plot
 
@@ -577,15 +582,16 @@ def massplot(p: PlotInput) -> AltairChart:
                         field=f1.col,
                         type="nominal",
                         scale=f1.colors,
-                        legend=alt.Legend(
-                            orient="top",
-                            columns=estimate_legend_columns_horiz(f1.order, p.width),
-                        ),
                     ),
                 }
             ),
         )
     )
+    if f1:
+        plot = plot.configure_legend(
+            orient="top",
+            columns=estimate_legend_columns_horiz(f1.order, p.width),
+        )
     return plot
 
 
@@ -695,15 +701,15 @@ def likert_bars(
             color=alt.Color(
                 field=f0.col,
                 type="nominal",
-                legend=alt.Legend(
-                    title=None,
-                    orient="bottom",
-                    columns=estimate_legend_columns_horiz(f0.order, p.width, extra_text=f1.order),
-                ),
                 scale=f0.colors,
             ),
             **({"yOffset": alt.YOffset(field=f2.col, type="nominal", title=None, sort=f2.order)} if f2 else {}),
         )
+    )
+    plot = plot.configure_legend(
+        title=None,
+        orient="bottom",
+        columns=estimate_legend_columns_horiz(f0.order, p.width, extra_text=f1.order),
     )
     return plot
 
@@ -792,10 +798,6 @@ def density(
                     field=f0.col,
                     type="nominal",
                     scale=f0.colors,
-                    legend=alt.Legend(
-                        orient="top",
-                        columns=estimate_legend_columns_horiz(f0.order, p.width),
-                    ),
                 ),
                 "order": alt.Order("order:O"),
                 "opacity": alt.condition(selection, alt.value(1), alt.value(0.15)),  # type: ignore[call-overload]
@@ -819,10 +821,6 @@ def density(
                     field=f0.col,
                     type="nominal",
                     scale=f0.colors,
-                    legend=alt.Legend(
-                        orient="top",
-                        columns=estimate_legend_columns_horiz(f0.order, p.width),
-                    ),
                 ),
                 "order": alt.Order("order:O"),
                 "opacity": alt.condition(selection, alt.value(1), alt.value(0.15)),  # type: ignore[call-overload]
@@ -841,6 +839,12 @@ def density(
 
     if selection is not None:
         plot = plot.add_params(selection)
+
+    if f0:
+        plot = plot.configure_legend(
+            orient="top",
+            columns=estimate_legend_columns_horiz(f0.order, p.width),
+        )
 
     return plot
 
@@ -918,10 +922,6 @@ def violin(
                         field=f1.col,
                         type="nominal",
                         scale=f1.colors,
-                        legend=alt.Legend(
-                            orient="top",
-                            columns=estimate_legend_columns_horiz(f1.order, p.width),
-                        ),
                     ),
                     "order": alt.Order("order:O"),
                 }
@@ -932,6 +932,11 @@ def violin(
         .properties(width=p.width, height=70)
     )
 
+    if f1:
+        plot = plot.configure_legend(
+            orient="top",
+            columns=estimate_legend_columns_horiz(f1.order, p.width),
+        )
     return plot
 
 
@@ -1315,10 +1320,6 @@ def lines(
                     type="nominal",
                     scale=fy.colors,
                     sort=fy.order,
-                    legend=alt.Legend(
-                        orient="top",
-                        columns=estimate_legend_columns_horiz(fy.order, chart_width),
-                    ),
                 )
             }
             if fy is not None
@@ -1336,6 +1337,12 @@ def lines(
         ),
         tooltip=p.tooltip,
     )
+
+    if fy is not None:
+        plot = plot.configure_legend(
+            orient="top",
+            columns=estimate_legend_columns_horiz(fy.order, chart_width),
+        )
 
     return plot
 
@@ -1506,16 +1513,17 @@ def area_smooth(
             color=alt.Color(
                 field=fy.col,
                 type="nominal",
-                legend=alt.Legend(
-                    orient="top",
-                    columns=estimate_legend_columns_horiz(fy.order, chart_width),
-                ),
                 sort=fy.order,
                 scale=fy.colors,
             ),
             tooltip=p.tooltip,
         )
     )
+    if fy:
+        plot = plot.configure_legend(
+            orient="top",
+            columns=estimate_legend_columns_horiz(fy.order, chart_width),
+        )
     return plot
 
 
@@ -1606,10 +1614,6 @@ def likert_rad_pol(
                         field=f1.col,
                         type="nominal",
                         scale=f1.colors,
-                        legend=alt.Legend(
-                            orient="top",
-                            columns=estimate_legend_columns_horiz(f1.order, chart_width),
-                        ),
                     ),
                     "opacity": alt.condition(selection, alt.value(1), alt.value(0.15)),
                 }
@@ -1621,6 +1625,11 @@ def likert_rad_pol(
     if f1:
         plot = plot.add_params(selection)
 
+    if f1:
+        plot = plot.configure_legend(
+            orient="top",
+            columns=estimate_legend_columns_horiz(f1.order, chart_width),
+        )
     return plot
 
 
@@ -1660,11 +1669,6 @@ def barbell(
             color=alt.Color(
                 field=f1.col,
                 type="nominal",
-                # legend=alt.Legend(orient='right', title=None),
-                legend=alt.Legend(
-                    orient="top",
-                    columns=estimate_legend_columns_horiz(f1.order, chart_width),
-                ),
                 scale=f1.colors,
                 sort=f1.order,
             ),
@@ -1674,6 +1678,11 @@ def barbell(
         .add_params(selection)
     )  # .interactive()
 
+    if f1:
+        chart = chart.configure_legend(
+            orient="top",
+            columns=estimate_legend_columns_horiz(f1.order, chart_width),
+        )
     return chart
 
 
@@ -1823,14 +1832,15 @@ def geobest(
                 field=f0.col,
                 type="nominal",
                 scale=f0.colors,
-                legend=alt.Legend(
-                    orient="top",
-                    columns=estimate_legend_columns_horiz(f0.order, chart_width),
-                ),
             ),
         )
         .project("mercator")
     )
+    if f0:
+        plot = plot.configure_legend(
+            orient="top",
+            columns=estimate_legend_columns_horiz(f0.order, chart_width),
+        )
     return plot
 
 
@@ -1925,12 +1935,12 @@ def facet_dist(
                 field=f0.col,
                 type="nominal",
                 scale=f0.colors,
-                legend=alt.Legend(orient="top"),
             ),
             # order=alt.Order('order:O')
         )
     )
 
+    plot = plot.configure_legend(orient="top")
     return plot
 
 
@@ -2285,18 +2295,7 @@ def marimekko(
         color=alt.Color(
             field=ycol,
             type="nominal",
-            legend=(
-                alt.Legend(
-                    orient="top",
-                    titleAlign="center",
-                    titleOrient="left",
-                    columns=estimate_legend_columns_horiz(f0.order, chart_width, f0.col),
-                )
-                if len(f0.order) <= 5
-                else alt.Legend(orient="right")
-            ),  # This plot needs the vertical space to be useful for 5+ cats
-            # legend=alt.Legend(orient='top',columns=estimate_legend_columns_horiz(f0['order'],width)),
-            # legend=alt.Legend(orient='top',titleOrient='left', symbolStrokeWidth=0), #title=f"{yvar}"),
+            # This plot needs the vertical space to be useful for 5+ cats
             scale=ycol_scale,
         ),
         tooltip=[
@@ -2335,4 +2334,16 @@ def marimekko(
         y=alt.datum(0),  # Anchor to the bottom
     )
 
-    return plot + text + custom_title
+    plot = plot + text + custom_title
+    kwargs = (
+        {
+            "orient": "top",
+            "titleAlign": "center",
+            "titleOrient": "left",
+            "columns": estimate_legend_columns_horiz(f0.order, chart_width, f0.col),
+        }
+        if len(f0.order) <= 5
+        else {"orient": "right"}
+    )
+    plot = plot.configure_legend(**kwargs)
+    return plot
