@@ -69,7 +69,7 @@ class TestPlots:
         full_df: Any | None = None,
         data_meta: DataMeta | None = None,
         recompute: bool = False,
-        float_tolerance: float = 5e-4,
+        float_tolerance: float = 1e-4,
         **kwargs: Any,
     ) -> alt.TopLevelMixin | list[list[AltairChart]]:
         """Run a plot test and compare against reference JSON."""

@@ -1790,10 +1790,13 @@ def create_plot(
             ]
         else:  # Use faceting
             if n_facet_cols == 1:
+                inner = _call_plot_fn().properties(**dims, **alt_properties)
+                conf = getattr(inner, "config", alt.Undefined)
+                if conf is not alt.Undefined:
+                    inner.config = alt.Undefined
+
                 plot = alt_wrapper(
-                    _call_plot_fn()
-                    .properties(**dims, **alt_properties)
-                    .facet(
+                    inner.facet(
                         row=alt.Row(
                             field=factor_cols[0],
                             type="ordinal",
@@ -1802,11 +1805,17 @@ def create_plot(
                         )
                     )
                 )
+                if conf is not alt.Undefined:
+                    plot.config = conf
+
             elif len(factor_cols) > 1:
+                inner = _call_plot_fn().properties(**dims, **alt_properties)
+                conf = getattr(inner, "config", alt.Undefined)
+                if conf is not alt.Undefined:
+                    inner.config = alt.Undefined
+
                 plot = alt_wrapper(
-                    _call_plot_fn()
-                    .properties(**dims, **alt_properties)
-                    .facet(
+                    inner.facet(
                         column=alt.Column(
                             field=factor_cols[1],
                             type="ordinal",
@@ -1820,11 +1829,17 @@ def create_plot(
                         ),
                     )
                 )
+                if conf is not alt.Undefined:
+                    plot.config = conf
+
             else:  # n_facet_cols!=1 but just one facet
+                inner = _call_plot_fn().properties(**dims, **alt_properties)
+                conf = getattr(inner, "config", alt.Undefined)
+                if conf is not alt.Undefined:
+                    inner.config = alt.Undefined
+
                 plot = alt_wrapper(
-                    _call_plot_fn()
-                    .properties(**dims, **alt_properties)
-                    .facet(
+                    inner.facet(
                         alt.Facet(
                             field=factor_cols[0],
                             type="ordinal",
@@ -1833,6 +1848,8 @@ def create_plot(
                         columns=n_facet_cols,
                     )
                 )
+                if conf is not alt.Undefined:
+                    plot.config = conf
             plot = plot.configure_view(discreteHeight={"step": 20})
     else:
         plot = alt_wrapper(

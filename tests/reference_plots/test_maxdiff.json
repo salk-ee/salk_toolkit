@@ -6,12 +6,12 @@
     "data-normalized": [
       {
         "kind": "Least important",
-        "mean": -54.114000000000004,
+        "mean": -54.114,
         "question": "EKRE"
       },
       {
         "kind": "Least important",
-        "mean": -15.190500000000002,
+        "mean": -15.190499999999997,
         "question": "Eesti 200"
       },
       {
@@ -51,12 +51,12 @@
       },
       {
         "kind": "Most important",
-        "mean": 23.579499999999992,
+        "mean": 23.579500000000003,
         "question": "Eesti 200"
       },
       {
         "kind": "Most important",
-        "mean": 13.765999999999996,
+        "mean": 13.766000000000002,
         "question": "Isamaa"
       },
       {
@@ -66,12 +66,12 @@
       },
       {
         "kind": "Most important",
-        "mean": 9.2375,
+        "mean": 9.237499999999997,
         "question": "Parempoolsed"
       },
       {
         "kind": "Most important",
-        "mean": 31.784499999999998,
+        "mean": 31.7845,
         "question": "Reformierakond"
       },
       {

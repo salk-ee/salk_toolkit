@@ -7,12 +7,12 @@
       {
         "index": "EKRE",
         "question": "Keskerakond",
-        "thermometer": 0.22557938731535385
+        "thermometer": 0.22557938731535382
       },
       {
         "index": "Eesti 200",
         "question": "EKRE",
-        "thermometer": -0.3775430089410574
+        "thermometer": -0.37754300894105736
       },
       {
         "index": "Eesti 200",
@@ -22,7 +22,7 @@
       {
         "index": "Eesti 200",
         "question": "Keskerakond",
-        "thermometer": 0.026305549072932963
+        "thermometer": 0.026305549072932987
       },
       {
         "index": "Eesti 200",
@@ -37,32 +37,32 @@
       {
         "index": "Eesti 200",
         "question": "SDE",
-        "thermometer": 0.6198520868295142
+        "thermometer": 0.619852086829514
       },
       {
         "index": "Isamaa",
         "question": "EKRE",
-        "thermometer": 0.07506764033167837
+        "thermometer": 0.07506764033167838
       },
       {
         "index": "Isamaa",
         "question": "Keskerakond",
-        "thermometer": 0.13126975899209703
+        "thermometer": 0.131269758992097
       },
       {
         "index": "Isamaa",
         "question": "Reformierakond",
-        "thermometer": 0.3432271190163237
+        "thermometer": 0.34322711901632386
       },
       {
         "index": "Parempoolsed",
         "question": "EKRE",
-        "thermometer": -0.10957941824917977
+        "thermometer": -0.10957941824917973
       },
       {
         "index": "Parempoolsed",
         "question": "Eesti 200",
-        "thermometer": 0.5150779868303462
+        "thermometer": 0.5150779868303461
       },
       {
         "index": "Parempoolsed",
@@ -77,37 +77,37 @@
       {
         "index": "Parempoolsed",
         "question": "Reformierakond",
-        "thermometer": 0.4087496701638742
+        "thermometer": 0.4087496701638741
       },
       {
         "index": "Parempoolsed",
         "question": "Rohelised",
-        "thermometer": 0.42779151313090935
+        "thermometer": 0.4277915131309093
       },
       {
         "index": "Parempoolsed",
         "question": "SDE",
-        "thermometer": 0.3918182650327505
+        "thermometer": 0.39181826503275047
       },
       {
         "index": "Reformierakond",
         "question": "EKRE",
-        "thermometer": -0.4880572955876322
+        "thermometer": -0.48805729558763217
       },
       {
         "index": "Reformierakond",
         "question": "Keskerakond",
-        "thermometer": -0.09348223976122853
+        "thermometer": -0.0934822397612285
       },
       {
         "index": "Rohelised",
         "question": "EKRE",
-        "thermometer": -0.08188057610033621
+        "thermometer": -0.08188057610033617
       },
       {
         "index": "Rohelised",
         "question": "Isamaa",
-        "thermometer": 0.29208861078114784
+        "thermometer": 0.2920886107811479
       },
       {
         "index": "Rohelised",
@@ -117,7 +117,7 @@
       {
         "index": "Rohelised",
         "question": "Reformierakond",
-        "thermometer": 0.31105819144434876
+        "thermometer": 0.3110581914443488
       },
       {
         "index": "Rohelised",
@@ -127,22 +127,22 @@
       {
         "index": "SDE",
         "question": "EKRE",
-        "thermometer": -0.32381489065291597
+        "thermometer": -0.3238148906529158
       },
       {
         "index": "SDE",
         "question": "Isamaa",
-        "thermometer": 0.3079232794419582
+        "thermometer": 0.30792327944195813
       },
       {
         "index": "SDE",
         "question": "Keskerakond",
-        "thermometer": 0.15309099664824585
+        "thermometer": 0.15309099664824583
       },
       {
         "index": "SDE",
         "question": "Reformierakond",
-        "thermometer": 0.5285182988626181
+        "thermometer": 0.5285182988626179
       }
     ]
   },

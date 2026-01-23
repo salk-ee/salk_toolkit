@@ -1365,7 +1365,7 @@ def process_chart_data(pdict: dict[str, Any], uid: str, i: int, j: int) -> dict[
         return pdict
 
     # Helper to replace data refs
-    def replace_data_refs(obj, dataset_map):
+    def replace_data_refs(obj: Any, dataset_map: dict[str, str]) -> Any:  # noqa: ANN401
         if isinstance(obj, dict):
             # check if this is a data object with a name we know
             if "name" in obj and obj["name"] in dataset_map:
@@ -1384,7 +1384,7 @@ def process_chart_data(pdict: dict[str, Any], uid: str, i: int, j: int) -> dict[
         return obj
 
     # 1. Handle datasets (High priority as this is what Altair uses for larger data)
-    dataset_map = {}
+    dataset_map: dict[str, str] = {}
     if "datasets" in pdict:
         for k, v in pdict["datasets"].items():
             df_temp = pd.DataFrame(v)
@@ -1396,7 +1396,7 @@ def process_chart_data(pdict: dict[str, Any], uid: str, i: int, j: int) -> dict[
         del pdict["datasets"]
 
         # Recursively replace in the spec
-        pdict = replace_data_refs(pdict, dataset_map)
+        pdict = cast(dict[str, Any], replace_data_refs(pdict, dataset_map))
 
     # 2. Check for inline data values (simple case)
     if "data" in pdict and "values" in pdict["data"]:

@@ -2117,7 +2117,7 @@ def draw_plot_matrix(pmat: list[list[object]] | object | None) -> None:
                     chart_dict["config"] = {}
 
                 # Simple recursive merge helper similar to utils.py
-                def _deep_merge(target, source) -> None:
+                def _deep_merge(target: dict[str, Any], source: dict[str, Any]) -> None:
                     for k, v in source.items():
                         if isinstance(v, dict) and k in target and isinstance(target[k], dict):
                             _deep_merge(target[k], v)
@@ -2126,9 +2126,9 @@ def draw_plot_matrix(pmat: list[list[object]] | object | None) -> None:
                 # This matches the precedence in utils.plot_matrix_html
 
                 # 1. Start with base defaults (not including custom config)
-                from salk_toolkit.utils import _altair_base_config, deep_merge
+                from salk_toolkit.utils import altair_default_config, deep_merge
 
-                full_config = deepcopy(_altair_base_config)
+                full_config = deepcopy(altair_default_config)
 
                 # 2. Merge plot-specific config (overwrites defaults)
                 if "config" in chart_dict:

@@ -2509,12 +2509,6 @@
         "encoding": {
           "color": {
             "field": "trust",
-            "legend": {
-              "columns": 3,
-              "orient": "top",
-              "titleAlign": "center",
-              "titleOrient": "left"
-            },
             "scale": {
               "domain": [
                 "Completely distrust",

@@ -1,9 +1,11 @@
+"""Local data server for Altair charts."""
+
 import http.server
 import os
 import threading
 import hashlib
 import pandas as pd
-from typing import Optional
+from typing import Any, Optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,14 +18,38 @@ except ImportError:
     st = None
     logger.debug("streamlit NOT imported in data_server")
 
+# Dummy decorator if streamlit is missing
+if st is None:
+
+    def cache_resource(**kwargs: Any) -> Any:  # noqa: ANN401
+        """Dummy cache_resource decorator."""
+
+        def decorator(f: Any) -> Any:  # noqa: ANN401
+            return f
+
+        return decorator
+
+    # Create a dummy object to hold the decorator if st is None
+    class DummySt:
+        """Dummy Streamlit module for when Streamlit is not installed."""
+
+        cache_resource = cache_resource
+
+    st_module = DummySt()
+else:
+    st_module = st
+
 
 class LocalDataServer:
+    """Server for hosting local data files for Altair charts."""
+
     # Remove class-level singleton in favor of external cache mechanisms
     # but keep a fallback for non-streamlit usage
     _fallback_instance: Optional["LocalDataServer"] = None
     _lock = threading.Lock()
 
     def __init__(self, port: int = 8001, data_dir: str = ".app_data/served_data") -> None:
+        """Initialize the data server."""
         self.port = port
         self.data_dir = data_dir
         self.base_url = f"http://localhost:{port}"
@@ -34,7 +60,7 @@ class LocalDataServer:
         os.makedirs(self.data_dir, exist_ok=True)
 
     @staticmethod
-    @st.cache_resource(show_spinner=False)
+    @st_module.cache_resource(show_spinner=False)
     def _get_cached_instance(port: int) -> "LocalDataServer":
         """Cached instance creator."""
         instance = LocalDataServer(port=port)

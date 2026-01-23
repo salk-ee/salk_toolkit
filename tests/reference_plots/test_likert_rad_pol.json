@@ -81,10 +81,6 @@
   "encoding": {
     "color": {
       "field": "electoral_district",
-      "legend": {
-        "columns": 4,
-        "orient": "top"
-      },
       "type": "nominal"
     },
     "opacity": {

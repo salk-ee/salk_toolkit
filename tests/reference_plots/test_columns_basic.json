@@ -59,10 +59,6 @@
   "encoding": {
     "color": {
       "field": "nationality",
-      "legend": {
-        "columns": 2,
-        "orient": "top"
-      },
       "scale": {
         "domain": [
           "Estonian",

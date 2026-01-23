@@ -455,10 +455,6 @@
       "encoding": {
         "color": {
           "field": "party_preference",
-          "legend": {
-            "columns": 4,
-            "orient": "top"
-          },
           "scale": {
             "domain": [
               "Keskerakond",

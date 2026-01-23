@@ -1914,11 +1914,6 @@
     "encoding": {
       "color": {
         "field": "trust",
-        "legend": {
-          "columns": 5,
-          "orient": "bottom",
-          "title": null
-        },
         "scale": {
           "domain": [
             "Completely distrust",

@@ -267,10 +267,6 @@
   "encoding": {
     "color": {
       "field": "EKRE",
-      "legend": {
-        "columns": 4,
-        "orient": "top"
-      },
       "scale": {
         "domain": [
           "20% - 40%",

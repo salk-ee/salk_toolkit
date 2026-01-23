@@ -44,11 +44,6 @@
   "encoding": {
     "color": {
       "field": "valitsus",
-      "legend": {
-        "columns": 3,
-        "orient": "bottom",
-        "title": null
-      },
       "scale": {
         "domain": [
           "Completely distrust",

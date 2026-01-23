@@ -131,10 +131,6 @@
       "encoding": {
         "color": {
           "field": "question",
-          "legend": {
-            "columns": 4,
-            "orient": "top"
-          },
           "scale": {
             "domain": [
               "Keskerakond",

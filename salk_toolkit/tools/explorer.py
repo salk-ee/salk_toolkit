@@ -209,7 +209,7 @@ else:
         path = "./"
     else:
         path += "/"
-    
+
     # Set custom config path to the directory we are exploring
     set_custom_config_path(path)
 
