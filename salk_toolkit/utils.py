@@ -1214,30 +1214,20 @@ _altair_base_config = config = {
 
 
 altair_default_config = deepcopy(_altair_base_config)
-altair_custom_config: Dict[str, Any] = {}
-altair_custom_chart: Dict[str, Any] | None = None
-_custom_config_path: str | None = None
 
 
-def set_custom_config_path(path: str) -> None:
-    """Set the directory to look for custom config files."""
-    global _custom_config_path
-    _custom_config_path = path
-    load_custom_configs()
+def find_custom_config_files(search_paths: list[str] | None = None) -> tuple[str | None, str | None]:
+    """Find custom Altair config files in search paths.
 
+    Args:
+        search_paths: List of directories to search. If None, uses [cwd, package parent].
 
-def load_custom_configs() -> None:
-    """Load or reload custom Altair configurations from JSON files."""
-    global altair_custom_config, altair_custom_chart
+    Returns:
+        Tuple of (custom_config_path, custom_chart_path), either may be None.
+    """
+    if search_paths is None:
+        search_paths = [os.getcwd(), os.path.join(os.path.dirname(__file__), "..")]
 
-    # Determine search paths
-    search_paths = []
-    if _custom_config_path:
-        search_paths.append(_custom_config_path)
-    search_paths.append(os.getcwd())
-    search_paths.append(os.path.join(os.path.dirname(__file__), ".."))
-
-    # Helper to find file in search paths
     def find_file(filename: str) -> str | None:
         for p in search_paths:
             fp = os.path.join(p, filename)
@@ -1245,40 +1235,44 @@ def load_custom_configs() -> None:
                 return fp
         return None
 
-    # 1. Load custom chart override
-    custom_chart_path = find_file("altair_custom.json")
-    if custom_chart_path:
-        try:
-            with open(custom_chart_path, "r") as f:
-                altair_custom_chart = json.load(f)
-                logger.warning(f"Loaded custom Altair chart override from {os.path.abspath(custom_chart_path)}")
-        except Exception as e:
-            logger.warning(f"Failed to load custom Altair chart: {e}")
-            altair_custom_chart = None
-    else:
-        altair_custom_chart = None
+    return find_file("altair_custom_config.json"), find_file("altair_custom.json")
 
-    # 2. Load custom config (ALWAYS try to load, regardless of chart presence)
-    custom_config_path = find_file("altair_custom_config.json")
+
+def load_custom_configs(search_paths: list[str] | None = None) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """Load custom Altair configurations from JSON files.
+
+    Args:
+        search_paths: List of directories to search for config files.
+
+    Returns:
+        Tuple of (custom_config_dict, custom_chart_dict). custom_chart_dict is None if not found.
+        custom_config_dict is empty dict if not found.
+    """
+    custom_config_path, custom_chart_path = find_custom_config_files(search_paths)
+
+    custom_config: dict[str, Any] = {}
+    custom_chart: dict[str, Any] | None = None
+
+    # Load custom config
     if custom_config_path:
         try:
             with open(custom_config_path, "r") as f:
-                altair_custom_config = json.load(f)
-                logger.warning(f"Loaded custom Altair config from {os.path.abspath(custom_config_path)}")
+                custom_config = json.load(f)
+                logger.info(f"Loaded custom Altair config from {os.path.abspath(custom_config_path)}")
         except Exception as e:
             logger.warning(f"Failed to load custom Altair config: {e}")
-            altair_custom_config = {}
-    else:
-        altair_custom_config = {}
 
-    # Check for both files and warn
-    if altair_custom_chart and altair_custom_config:
-        # We only warn once per session/reload to avoid spamming validity checks
-        pass
+    # Load custom chart override
+    if custom_chart_path:
+        try:
+            with open(custom_chart_path, "r") as f:
+                custom_chart = json.load(f)
+                logger.info(f"Loaded custom Altair chart override from {os.path.abspath(custom_chart_path)}")
+        except Exception as e:
+            logger.warning(f"Failed to load custom Altair chart: {e}")
 
+    return custom_config, custom_chart
 
-# Initial load
-load_custom_configs()
 
 # HTML template for embedding Altair plots
 html_template = """
@@ -1327,6 +1321,42 @@ except ImportError:
         get_data_server = None
 
 
+def apply_chart_config(
+    chart_dict: dict[str, Any],
+    custom_config: dict[str, Any] | None = None,
+    custom_chart: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Apply configuration to chart with precedence: Default < Plot < Custom.
+
+    Args:
+        chart_dict: The chart specification dictionary.
+        custom_config: Custom config overrides to merge.
+        custom_chart: If provided, replaces entire chart_dict.
+
+    Returns:
+        Modified chart specification dictionary.
+    """
+    # If custom_chart override exists, use it and ignore everything else
+    if custom_chart:
+        return deepcopy(custom_chart)
+
+    # Apply config precedence
+    full_config = deepcopy(_altair_base_config)
+
+    # Merge plot-specific config (overwrites defaults)
+    if "config" in chart_dict:
+        deep_merge(full_config, chart_dict["config"])
+
+    # Merge custom user overrides (overwrites everything)
+    if custom_config:
+        deep_merge(full_config, custom_config)
+
+    chart_dict["autosize"] = {"type": "fit-x", "contains": "padding"}
+    chart_dict["config"] = full_config
+
+    return chart_dict
+
+
 def process_chart_data(pdict: dict[str, Any], uid: str, i: int, j: int) -> dict[str, Any]:
     """Process chart dictionary to offload data to local server if available.
 
@@ -1357,9 +1387,8 @@ def process_chart_data(pdict: dict[str, Any], uid: str, i: int, j: int) -> dict[
     if get_data_server:
         try:
             data_server = get_data_server()
-        except Exception:
-            # print(f"Failed to start data server: {e}")
-            pass
+        except Exception as e:
+            logger.exception(f"Failed to start data server: {e}")
 
     if not data_server:
         return pdict
@@ -1423,6 +1452,7 @@ def plot_matrix_html(
     width: int | None = None,
     responsive: bool = True,
     serve_data: bool = True,
+    config_search_paths: list[str] | None = None,
 ) -> str | None:
     """Generate HTML for a matrix of Altair plots.
 
@@ -1432,6 +1462,7 @@ def plot_matrix_html(
         width: Optional plot width in pixels.
         responsive: Whether plots should be responsive to container width.
         serve_data: Whether to offload data to local server for debugging.
+        config_search_paths: List of directories to search for custom config files.
 
     Returns:
         HTML string containing the plots, or None if pmat is None.
@@ -1442,42 +1473,24 @@ def plot_matrix_html(
         pmat = [[pmat]]
 
     # Sanitize uid so it can be used as a variable name in JavaScript
-    # - replace all whitespace and non-alphanumeric characters with underscores
     uid = re.sub(r"\W+", "_", str(uid))
 
-    # Reload configs to pick up any changes
-    load_custom_configs()
+    # Load custom configs if search paths provided
+    custom_config, custom_chart = load_custom_configs(config_search_paths)
 
     template = html_template.replace("UID", uid)
-
-    rstring = "XYZresponsiveXZY"  # Something we can replace easy
+    rstring = "XYZresponsiveXZY"  # Placeholder for responsive width
     specs, ncols = [], len(pmat[0])
+
+    # Process each chart in the matrix
     for i, p in enumerate(pmat):
         for j, pp in enumerate(p):
-            # If altair_custom_chart is defined, use it as the entire chart_dict
-            if altair_custom_chart:
-                pdict = deepcopy(altair_custom_chart)
-                logger.info("Using custom chart override from altair_custom.json")
-            else:
-                pdict = json.loads(pp.to_json())
+            pdict = json.loads(pp.to_json())
 
-                if serve_data:
-                    pdict = process_chart_data(pdict, uid, i, j)
+            if serve_data:
+                pdict = process_chart_data(pdict, uid, i, j)
 
-                # Apply config precedence: Default < Plot < Custom
-                # 1. Start with base defaults
-                full_config = deepcopy(_altair_base_config)
-
-                # 2. Merge plot-specific config (overwrites defaults)
-                if "config" in pdict:
-                    deep_merge(full_config, pdict["config"])
-
-                # 3. Merge custom user overrides (overwrites everything)
-                if altair_custom_config:
-                    deep_merge(full_config, altair_custom_config)
-
-                pdict["autosize"] = {"type": "fit-x", "contains": "padding"}
-                pdict["config"] = full_config
+            pdict = apply_chart_config(pdict, custom_config, custom_chart)
 
             if responsive:
                 cwidth = pdict["spec"]["width"] if "spec" in pdict else pdict["width"]

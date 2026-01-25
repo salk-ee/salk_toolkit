@@ -134,7 +134,7 @@ with st.spinner("Loading libraries.."):
         matching_plots,
         pp_transform_data,
     )
-    from salk_toolkit.utils import plot_matrix_html, replace_constants, set_custom_config_path
+    from salk_toolkit.utils import plot_matrix_html, replace_constants
     from salk_toolkit.validation import DataMeta, PlotDescriptor, soft_validate
 
     T = TypeVar("T")
@@ -209,9 +209,6 @@ else:
         path = "./"
     else:
         path += "/"
-
-    # Set custom config path to the directory we are exploring
-    set_custom_config_path(path)
 
     input_file_choices = default_inputs + sorted([f for f in os.listdir(path) if f[-8:] == ".parquet"])
 
@@ -582,7 +579,9 @@ else:
                 c1, c2, c3 = export_ct.columns(3)
                 c1.download_button(
                     "HTML",
-                    plot_matrix_html(plot, uid=name, width=cur_width, responsive=not custom_size),
+                    plot_matrix_html(
+                        plot, uid=name, width=cur_width, responsive=not custom_size, config_search_paths=[path]
+                    ),
                     f"{name}.html",
                 )
                 c2.download_button("Data CSV", pi.data.to_csv().encode("utf-8"), f"{name}.csv")
@@ -590,7 +589,9 @@ else:
                 @st.dialog("iframe Code")
                 def show_iframe_modal() -> None:
                     """Display iframe embed code in a modal dialog."""
-                    content = plot_matrix_html(plot, uid=name, width=cur_width, responsive=not custom_size)
+                    content = plot_matrix_html(
+                        plot, uid=name, width=cur_width, responsive=not custom_size, config_search_paths=[path]
+                    )
                     if content is None:
                         st.error("Failed to generate HTML content")
                         return

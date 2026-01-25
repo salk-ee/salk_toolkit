@@ -2074,89 +2074,49 @@ def draw_plot_matrix(pmat: list[list[object]] | object | None) -> None:
     else:
         ucw = True  # If we are drawing more than one plot, we want to use the container width
 
-    # Reload configs to ensure we have the latest
-    utils.load_custom_configs()
+    # Load custom configs
+    custom_config, custom_chart = utils.load_custom_configs()
 
-    # Check for both config files and warn user via Streamlit
-    import os
-
-    custom_chart_path = os.path.join(os.getcwd(), "altair_custom.json")
-    if not os.path.exists(custom_chart_path):
-        custom_chart_path = os.path.join(os.path.dirname(utils.__file__), "..", "altair_custom.json")
-
-    custom_config_path = os.path.join(os.getcwd(), "altair_custom_config.json")
-    if not os.path.exists(custom_config_path):
-        custom_config_path = os.path.join(os.path.dirname(utils.__file__), "..", "altair_custom_config.json")
-
-    if os.path.exists(custom_chart_path) and os.path.exists(custom_config_path):
+    # Check for both config files and warn user
+    custom_config_path, custom_chart_path = utils.find_custom_config_files()
+    if custom_config_path and custom_chart_path:
         st.warning(
             "⚠️ Both `altair_custom.json` and `altair_custom_config.json` exist. "
             "`altair_custom.json` takes precedence and will replace the entire chart. "
             "Consider merging or deleting/renaming one of the files."
         )
 
+    # Render charts in columns
     cols = st.columns(len(pmat[0])) if len(pmat[0]) > 1 else [st]
     for j, c in enumerate(cols):
         for i, row in enumerate(pmat):
             if j >= len(pmat[i]):
                 continue
 
-            # If altair_custom_chart is defined, use it as the entire chart_dict
-            if utils.altair_custom_chart:
-                chart_dict = deepcopy(utils.altair_custom_chart)
-                logger.info("Using custom chart override from altair_custom.json")
-            else:
-                # print(pmat[i][j].to_json()) # to debug json
-                chart_dict = pmat[i][j].to_dict() if hasattr(pmat[i][j], "to_dict") else pmat[i][j]
-                chart_dict = deepcopy(chart_dict)
-                chart_dict = cast(dict[str, Any], chart_dict)
+            # Convert chart to dict and apply configs
+            chart_dict = pmat[i][j].to_dict() if hasattr(pmat[i][j], "to_dict") else pmat[i][j]
+            chart_dict = deepcopy(chart_dict)
+            chart_dict = cast(dict[str, Any], chart_dict)
 
-                # Inject global Altair configuration (including custom overrides)
-                # We need to deep merge this with existing config in chart_dict if any
-                if "config" not in chart_dict:
-                    chart_dict["config"] = {}
+            # Apply configuration and data processing
+            chart_dict = utils.apply_chart_config(chart_dict, custom_config, custom_chart)
 
-                # Simple recursive merge helper similar to utils.py
-                def _deep_merge(target: dict[str, Any], source: dict[str, Any]) -> None:
-                    for k, v in source.items():
-                        if isinstance(v, dict) and k in target and isinstance(target[k], dict):
-                            _deep_merge(target[k], v)
+            # Offload data to local server if available
+            uid = f"st_plot_{i}_{j}_{hash(str(chart_dict.keys()))}"
+            try:
+                chart_dict = utils.process_chart_data(chart_dict, uid=uid, i=i, j=j)
+            except Exception as e:
+                logger.warning(f"Failed to process chart data: {e}")
 
-                # Apply config precedence: Default < Plot < Custom
-                # This matches the precedence in utils.plot_matrix_html
-
-                # 1. Start with base defaults (not including custom config)
-                from salk_toolkit.utils import altair_default_config, deep_merge
-
-                full_config = deepcopy(altair_default_config)
-
-                # 2. Merge plot-specific config (overwrites defaults)
-                if "config" in chart_dict:
-                    deep_merge(full_config, chart_dict["config"])
-
-                # 3. Merge custom user overrides (overwrites everything)
-                if utils.altair_custom_config:
-                    deep_merge(full_config, utils.altair_custom_config)
-
-                chart_dict["autosize"] = {"type": "fit-x", "contains": "padding"}
-                chart_dict["config"] = full_config
-
-                # Offload data to local server if available
-                # We use a unique ID derived from the plot content or position for caching
-                uid = f"st_plot_{i}_{j}_{hash(str(chart_dict.keys()))}"
-                try:
-                    chart_dict = utils.process_chart_data(chart_dict, uid=uid, i=i, j=j)
-                except Exception as e:
-                    logger.warning(f"Failed to process chart data: {e}")
-
+            # Handle stretch width
             if "width" in chart_dict and chart_dict["width"] == "stretch":
                 del chart_dict["width"]
 
+            # Set embed options for high-quality rendering
             chart_dict.setdefault("usermeta", {}).setdefault("embedOptions", {})
-            # Set scaleFactor for higher resolution PNG (High PPI)
             chart_dict["usermeta"]["embedOptions"]["scaleFactor"] = 10
-            # Force canvas instead of SVG
             chart_dict["usermeta"]["embedOptions"]["renderer"] = "canvas"
+
             c.vega_lite_chart(spec=chart_dict, width="stretch" if ucw else "content")
 
 

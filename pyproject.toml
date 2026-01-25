@@ -21,7 +21,7 @@ classifiers = [
   "License :: OSI Approved :: Apache Software License",
 ]
 dependencies = [
-  "altair",
+  "altair>=6.0.0",
   "arviz",
   "authlib",
   "frontegg",
