@@ -1217,8 +1217,10 @@ def apply_standard_chart_config(chart_dict: dict[str, Any]) -> dict[str, Any]:
 
     # Apply embed options for high-quality rendering
     chart_dict.setdefault("usermeta", {}).setdefault("embedOptions", {})
-    chart_dict["usermeta"]["embedOptions"]["scaleFactor"] = 10  # High PPI for PNG exports
-    chart_dict["usermeta"]["embedOptions"]["renderer"] = "canvas"  # Force canvas instead of SVG
+    embedOptions = chart_dict["usermeta"]["embedOptions"]
+    embedOptions["scaleFactor"] = 10  # High PPI for PNG exports
+    embedOptions["renderer"] = "canvas"  # Force canvas instead of SVG
+    embedOptions["actions"] = {"export": True, "source": False, "editor": False, "compiled": False}
 
     return chart_dict
 
@@ -1238,15 +1240,7 @@ html_template = """
     function draw_plot() {
         width = document.getElementById("UID").parentElement.clientWidth;
         var specs = %s;
-        var opt = {
-          "renderer": "canvas",
-          "actions": {
-            "export": true,
-            "source": false,
-            "editor": false,
-            "compiled": false
-          }
-        };
+        var opt = {"renderer": "canvas", "actions": false};
         specs.forEach(function(spec,i){ vegaEmbed("#UID-"+i, spec, opt); });
     };
     draw_plot();
