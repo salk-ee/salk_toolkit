@@ -102,7 +102,7 @@ def test_plot_matrix_html_generates_embed_block() -> None:
     """`plot_matrix_html` should emit a Vega embed block."""
     chart = alt.Chart(pd.DataFrame({"x": [0, 1], "y": [1, 2]})).mark_line().encode(x="x", y="y").properties(width=200)
 
-    html = dashboard.plot_matrix_html(chart, uid="test", width=400, responsive=True)
+    html = dashboard.plot_matrix_html([[chart]], uid="test", width=400, responsive=True)
 
     assert html is not None
     assert "https://cdn.jsdelivr.net/npm/vega@5" in html
@@ -110,7 +110,7 @@ def test_plot_matrix_html_generates_embed_block() -> None:
     assert "test-0" in html
 
     # Test that uid with spaces is sanitized
-    html_with_spaces = dashboard.plot_matrix_html(chart, uid="test plot with spaces", width=400, responsive=True)
+    html_with_spaces = dashboard.plot_matrix_html([[chart]], uid="test plot with spaces", width=400, responsive=True)
     assert html_with_spaces is not None
     assert "test_plot_with_spaces" in html_with_spaces
     assert "test plot with spaces" not in html_with_spaces
@@ -118,7 +118,7 @@ def test_plot_matrix_html_generates_embed_block() -> None:
 
     # Test that uid with special characters is sanitized
     html_with_special = dashboard.plot_matrix_html(
-        chart, uid="test@plot#with$special%chars", width=400, responsive=True
+        [[chart]], uid="test@plot#with$special%chars", width=400, responsive=True
     )
     assert html_with_special is not None
     assert "test_plot_with_special_chars" in html_with_special

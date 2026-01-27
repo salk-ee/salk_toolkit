@@ -1265,7 +1265,7 @@ html_template = """
 
 
 def plot_matrix_html(
-    pmat: AltairChart | dict[str, Any] | Sequence[Sequence[AltairChart | dict[str, Any]]] | None,
+    pmat: list[list[AltairChart | dict[str, Any]]] | None,
     uid: str = "viz",
     width: int | None = None,
     responsive: bool = True,
@@ -1285,14 +1285,8 @@ def plot_matrix_html(
     """
     if not pmat:
         return None
-    # Normalize to a 2D matrix
-    matrix: Sequence[Sequence[AltairChart | dict[str, Any]]]
-    if isinstance(pmat, dict) or not isinstance(pmat, Sequence):
-        # Single chart or dict - wrap in 2D structure
-        matrix = [[pmat]]
-    else:
-        # Already a sequence - should be 2D
-        matrix = pmat
+
+    matrix = pmat
 
     # Sanitize uid so it can be used as a variable name in JavaScript
     # - replace all whitespace and non-alphanumeric characters with underscores

@@ -171,13 +171,7 @@ def chart_to_url_with_config(chart: alt.Chart | alt.LayerChart | alt.FacetChart 
     Returns:
         URL string for opening the chart in the Vega editor.
     """
-    try:
-        from altair.utils._importers import import_vl_convert
-
-        vlc = import_vl_convert()
-    except ImportError:
-        # Fallback if vl-convert is not available - return regular URL
-        return chart.to_url()  # type: ignore[attr-defined]
+    vlc = import_vl_convert()
 
     # Convert chart to dict and apply standard configuration
     chart_dict = json.loads(chart.to_json())  # type: ignore[attr-defined]
@@ -650,13 +644,8 @@ else:
 
                     if custom_spec:
                         spec_str = json.dumps(custom_spec)
-                        try:
-                            vlc = import_vl_convert()
-                            edit_url = vlc.vegalite_to_url(custom_spec, fullscreen=False)
-                        except ImportError:
-                            # Fallback manual construction
-                            edit_url = "https://vega.github.io/editor/#/custom/vega-lite"
-
+                        vlc = import_vl_convert()
+                        edit_url = vlc.vegalite_to_url(custom_spec, fullscreen=False)
                         st.link_button("Vega Editor", edit_url, width="stretch")
                     else:
                         st.link_button("Vega Editor", chart_to_url_with_config(plot), width="stretch")
