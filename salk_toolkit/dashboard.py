@@ -70,7 +70,7 @@ import __main__  # to get name of py file
 
 
 from salk_toolkit import utils
-from salk_toolkit.utils import plot_matrix_html
+from salk_toolkit.utils import apply_standard_chart_config, plot_matrix_html
 from salk_toolkit.io import (
     read_parquet_with_metadata,
     fix_df_with_meta,
@@ -2082,11 +2082,9 @@ def draw_plot_matrix(pmat: list[list[object]] | object | None) -> None:
             if "width" in chart_dict and chart_dict["width"] == "stretch":
                 del chart_dict["width"]
 
-            chart_dict.setdefault("usermeta", {}).setdefault("embedOptions", {})
-            # Set scaleFactor for higher resolution PNG (High PPI)
-            chart_dict["usermeta"]["embedOptions"]["scaleFactor"] = 10
-            # Force canvas instead of SVG
-            chart_dict["usermeta"]["embedOptions"]["renderer"] = "canvas"
+            # Apply standard configuration (visual styling + embed options)
+            chart_dict = apply_standard_chart_config(chart_dict)
+
             c.vega_lite_chart(spec=chart_dict, width="stretch" if ucw else "content")
 
 

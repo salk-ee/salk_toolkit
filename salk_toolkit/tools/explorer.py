@@ -103,6 +103,7 @@ with st.spinner("Loading libraries.."):
     import os
     import sys
     import warnings
+    from altair.utils._importers import import_vl_convert
     from collections import defaultdict
     from copy import deepcopy
     from typing import TypeVar
@@ -134,7 +135,7 @@ with st.spinner("Loading libraries.."):
         matching_plots,
         pp_transform_data,
     )
-    from salk_toolkit.utils import plot_matrix_html, replace_constants
+    from salk_toolkit.utils import apply_standard_chart_config, plot_matrix_html, replace_constants
     from salk_toolkit.validation import DataMeta, PlotDescriptor, soft_validate
 
     T = TypeVar("T")
@@ -155,6 +156,35 @@ def get_plot_width(width_str: str, ncols: int = 1) -> int:
     Calculate plot width based on number of columns.
     """
     return min(800, int(1200 / ncols))
+
+
+def chart_to_url_with_config(chart: alt.Chart | alt.LayerChart | alt.FacetChart | object) -> str:
+    """Convert an Altair chart to a Vega editor URL with standard configuration.
+
+    This ensures the Vega editor shows the same styling and configuration
+    as the Streamlit display and HTML exports.
+
+    Args:
+        chart: Altair chart object (Chart, LayerChart, FacetChart, etc.).
+
+    Returns:
+        URL string for opening the chart in the Vega editor.
+    """
+    try:
+        from altair.utils._importers import import_vl_convert
+
+        vlc = import_vl_convert()
+    except ImportError:
+        # Fallback if vl-convert is not available - return regular URL
+        return chart.to_url()  # type: ignore[attr-defined]
+
+    # Convert chart to dict and apply standard configuration
+    chart_dict = json.loads(chart.to_json())  # type: ignore[attr-defined]
+    chart_dict = apply_standard_chart_config(chart_dict)
+
+    # Use vl-convert to build the URL with our configured spec
+    # This avoids validation issues and matches Altair's encoding
+    return vlc.vegalite_to_url(chart_dict, fullscreen=False)
 
 
 if "ls_loaded" not in st.session_state:
@@ -448,6 +478,7 @@ with st.sidebar:  # .expander("Select dimensions"):
         height = None
         # Toggle export options because generating them is slow
         export = st.toggle("Show export options", value=False)
+        export_ct = None
         if export:
             custom_size = st.toggle("Custom size", value=False)
             if custom_size:
@@ -455,6 +486,9 @@ with st.sidebar:  # .expander("Select dimensions"):
                 height = st.slider("Height", value=600, min_value=100, max_value=2500, step=50)
             st.subheader("Export")
             export_ct = st.container()
+
+    with st.expander("Vega editor"):
+        vega_editor = st.container()
 
     # print(list(st.session_state.keys()))
 
@@ -573,34 +607,36 @@ else:
                 return_matrix_of_plots=matrix_form,
             )
 
-            # Add export buttons for first data source
-            if export and i == 0:
-                name = f"{args['res_col']}_{'_'.join(args['factor_cols']) if args['factor_cols'] else 'all'}"
-                c1, c2, c3 = export_ct.columns(3)
-                c1.download_button(
-                    "HTML",
-                    plot_matrix_html(plot, uid=name, width=cur_width, responsive=not custom_size),
-                    f"{name}.html",
-                )
-                c2.download_button("Data CSV", pi.data.to_csv().encode("utf-8"), f"{name}.csv")
+            if i == 0:
+                # Check for custom spec - affecting both Edit link and exports
+                custom_spec = st.session_state.get("custom_spec")
+                chart_obj = custom_spec if custom_spec else plot
 
-                @st.dialog("iframe Code")
-                def show_iframe_modal() -> None:
-                    """Display iframe embed code in a modal dialog."""
-                    content = plot_matrix_html(plot, uid=name, width=cur_width, responsive=not custom_size)
-                    if content is None:
-                        st.error("Failed to generate HTML content")
-                        return
-                    encoded_html = base64.b64encode(content.encode("utf-8")).decode("utf-8")
-                    iframe_code = (
-                        f'<iframe src="data:text/html;base64,{encoded_html}" width="700" '
-                        'height="525" frameborder="0" allowfullscreen style="aspect-ratio: 4/3;">'
-                        "</iframe>"
-                    )
-                    st.code(iframe_code, language="html")
+                if custom_spec:
+                    spec_str = json.dumps(custom_spec)
+                    try:
+                        vlc = import_vl_convert()
+                        edit_url = vlc.vegalite_to_url(custom_spec, fullscreen=False)
+                    except ImportError:
+                        # Fallback manual construction
+                        edit_url = "https://vega.github.io/editor/#/custom/vega-lite"
 
-                if c3.button("iframe"):
-                    show_iframe_modal()
+                    vega_editor.link_button("Vega Editor", edit_url, width="stretch")
+                else:
+                    vega_editor.link_button("Vega Editor", chart_to_url_with_config(plot), width="stretch")
+
+                @st.dialog("Import Vega-Lite Spec")
+                def _import_modal() -> None:
+                    spec = st.text_area("Paste JSON Spec", height=300)
+                    if st.button("Apply"):
+                        try:
+                            st.session_state["custom_spec"] = json.loads(spec)
+                            st.rerun()
+                        except json.JSONDecodeError:
+                            st.error("Invalid JSON")
+
+                if vega_editor.button("Import Spec", width="stretch"):
+                    _import_modal()
 
             # n_questions = pi['data']['question'].nunique() if 'question' in pi['data'] else 1
             # st.write('Based on %.1f%% of data' %
@@ -608,8 +644,73 @@ else:
             total_size = loaded[ifile]["total_size"]
             denominator = float(total_size) if total_size is not None else 1.0
             st.write("Based on %.1f%% of data" % (100 * pi.filtered_size / denominator))
-            # st.altair_chart(plot)#, use_container_width=(len(input_files)>1))
-            draw_plot_matrix(plot)
+
+            if i == 0 and st.session_state.get("custom_spec"):
+                custom_spec = st.session_state["custom_spec"]
+                # Check if the spec has autosize set to "none" - if so, don't stretch
+                autosize = custom_spec.get("autosize", {})
+                autosize_type = autosize.get("type") if isinstance(autosize, dict) else None
+                if autosize_type == "none":
+                    st.vega_lite_chart(custom_spec, use_container_width=False)
+                else:
+                    st.vega_lite_chart(custom_spec, use_container_width=True)
+                if st.button("Clear Override"):
+                    del st.session_state["custom_spec"]
+                    st.rerun()
+            else:
+                draw_plot_matrix(plot)
+
+            if i == 0 and export and export_ct:  # Re-render export buttons if they exist
+                # We need to clear the old export container first?
+                # Actually, we are in the loop, so just re-populating it for i==0
+                export_ct.empty()  # clear previous buttons
+                with export_ct:  # use the container
+                    name = f"{args['res_col']}_{'_'.join(args['factor_cols']) if args['factor_cols'] else 'all'}"
+                    # Determine source for HTML export
+                    chart_source = st.session_state.get("custom_spec", plot)
+                    apply_cfg = not bool(st.session_state.get("custom_spec"))  # Don't apply config if custom spec
+
+                    # Check if custom spec has autosize: "none" - if so, don't be responsive
+                    responsive = not custom_size
+                    if isinstance(chart_source, dict):
+                        autosize = chart_source.get("autosize", {})
+                        if isinstance(autosize, dict) and autosize.get("type") == "none":
+                            responsive = False
+
+                    st.download_button(
+                        "HTML",
+                        plot_matrix_html(
+                            chart_source, uid=name, width=cur_width, responsive=responsive, apply_config=apply_cfg
+                        ),
+                        f"{name}.html",
+                        width="stretch",
+                    )
+                    st.download_button(
+                        "Data CSV",
+                        pi.data.to_csv().encode("utf-8"),
+                        f"{name}.csv",
+                        width="stretch",
+                    )
+
+                    @st.dialog("iframe Code")
+                    def show_iframe_modal() -> None:
+                        """Display iframe embed code in a modal dialog."""
+                        content = plot_matrix_html(
+                            chart_source, uid=name, width=cur_width, responsive=responsive, apply_config=apply_cfg
+                        )
+                        if content is None:
+                            st.error("Failed to generate HTML content")
+                            return
+                        encoded_html = base64.b64encode(content.encode("utf-8")).decode("utf-8")
+                        iframe_code = (
+                            f'<iframe src="data:text/html;base64,{encoded_html}" width="700" '
+                            'height="525" frameborder="0" allowfullscreen style="aspect-ratio: 4/3;">'
+                            "</iframe>"
+                        )
+                        st.code(iframe_code, language="html")
+
+                    if st.button("iframe", width="stretch"):
+                        show_iframe_modal()
 
             print(type(loaded[ifile]["data_meta"]))
 
