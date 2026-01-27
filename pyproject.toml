@@ -50,6 +50,7 @@ dependencies = [
   "streamlit-js",
   "streamlit_option_menu",
   "streamlit_dimensions",
+  "vl-convert-python",
 ]
 
 [project.optional-dependencies]

@@ -1076,7 +1076,7 @@ altair_default_config = {
         "align": "left",
         "anchor": "start",
         "color": "#31333F",
-        "titleFontStyle": "normal",
+        "fontStyle": "normal",  # Fixed: was titleFontStyle
         "fontWeight": 600,
         "fontSize": 16,
         "orient": "top",
@@ -1198,6 +1198,33 @@ altair_default_config = {
     "axisXBand": {"grid": False},
 }
 
+
+def apply_standard_chart_config(chart_dict: dict[str, Any]) -> dict[str, Any]:
+    """Apply standard configuration to an Altair chart dictionary.
+
+    This applies both visual styling (altair_default_config) and embed options
+    for consistent rendering across all display contexts (Streamlit, HTML export,
+    Vega editor).
+
+    Args:
+        chart_dict: Dictionary representation of an Altair chart.
+
+    Returns:
+        Modified chart dictionary with standard configuration applied.
+    """
+    # Apply visual styling configuration
+    chart_dict["config"] = altair_default_config
+
+    # Apply embed options for high-quality rendering
+    chart_dict.setdefault("usermeta", {}).setdefault("embedOptions", {})
+    embedOptions = chart_dict["usermeta"]["embedOptions"]
+    embedOptions["scaleFactor"] = 10  # High PPI for PNG exports
+    embedOptions["renderer"] = "canvas"  # Force canvas instead of SVG
+    embedOptions["actions"] = {"export": True, "source": False, "editor": False, "compiled": False}
+
+    return chart_dict
+
+
 # HTML template for embedding Altair plots
 html_template = """
 <!DOCTYPE html>
@@ -1232,26 +1259,39 @@ html_template = """
 
 
 def plot_matrix_html(
-    pmat: AltairChart | list[list[AltairChart]] | None,
+    pmat: AltairChart | dict[str, Any] | list[list[AltairChart | dict[str, Any]]] | None,
     uid: str = "viz",
     width: int | None = None,
     responsive: bool = True,
+    apply_config: bool = True,
 ) -> str | None:
     """Generate HTML for a matrix of Altair plots.
 
     Args:
-        pmat: Matrix of plots (list of lists) or single plot, or None.
+        pmat: Matrix of plots (list of lists), single plot/dict, or None.
+              Single charts/dicts will be automatically wrapped in [[chart]] format.
         uid: Unique identifier for HTML elements.
         width: Optional plot width in pixels.
         responsive: Whether plots should be responsive to container width.
+        apply_config: Whether to apply standard configuration.
 
     Returns:
         HTML string containing the plots, or None if pmat is None.
     """
     if not pmat:
         return None
-    if not isinstance(pmat, list):
-        pmat = [[pmat]]
+
+    # Normalize to 2D list structure: [[chart1, chart2], [chart3, chart4], ...]
+    # Single charts/dicts are wrapped as [[chart]]
+    if isinstance(pmat, dict):
+        # Single dict (Vega-Lite spec)
+        matrix: list[list[AltairChart | dict[str, Any]]] = [[pmat]]
+    elif isinstance(pmat, list) and len(pmat) > 0 and isinstance(pmat[0], list):
+        # Already a 2D list structure
+        matrix = pmat
+    else:
+        # Single Altair chart object - wrap it
+        matrix = [[pmat]]  # type: ignore[list-item]
 
     # Sanitize uid so it can be used as a variable name in JavaScript
     # - replace all whitespace and non-alphanumeric characters with underscores
@@ -1260,16 +1300,43 @@ def plot_matrix_html(
     template = html_template.replace("UID", uid)
 
     rstring = "XYZresponsiveXZY"  # Something we can replace easy
-    specs, ncols = [], len(pmat[0])
-    for i, p in enumerate(pmat):
+    specs, ncols = [], len(matrix[0])
+    for i, p in enumerate(matrix):
         for j, pp in enumerate(p):
-            pdict = json.loads(pp.to_json())
-            pdict["autosize"] = {"type": "fit-x", "contains": "padding"}
-            pdict["config"] = altair_default_config
+            if isinstance(pp, dict):
+                pdict = pp
+            else:
+                pdict = json.loads(pp.to_json())
 
-            if responsive:
-                cwidth = pdict["spec"]["width"] if "spec" in pdict else pdict["width"]
-                repl = f"(width-{uid}_delta/{ncols})/{width / cwidth}"
+            pdict = deepcopy(pdict)
+            autosize = pdict.get("autosize", {})
+            autosize_type = autosize.get("type") if isinstance(autosize, dict) else None
+
+            if "autosize" not in pdict:
+                pdict["autosize"] = {"type": "fit-x", "contains": "padding"}
+
+            if apply_config:
+                pdict = apply_standard_chart_config(pdict)
+
+            # Ensure config.autosize matches top-level when type is "none"
+            if autosize_type == "none" and autosize and "config" in pdict:
+                if isinstance(pdict["config"], dict):
+                    pdict["config"]["autosize"] = dict(autosize)
+
+            should_be_responsive = responsive and autosize_type != "none"
+
+            if should_be_responsive:
+                cwidth = pdict["spec"]["width"] if "spec" in pdict else pdict.get("width", 800)
+                # Handle case where width might be a string like "container"
+                if isinstance(cwidth, str):
+                    cwidth = 800  # Use default width if it's not numeric
+                else:
+                    cwidth = float(cwidth) if cwidth else 800
+                # Only use width in calculation if it's numeric
+                if width and isinstance(width, (int, float)):
+                    repl = f"(width-{uid}_delta/{ncols})/{float(width) / cwidth}"
+                else:
+                    repl = "1"
                 if "spec" in pdict:
                     pdict["spec"]["width"] = rstring
                 else:
@@ -1283,13 +1350,13 @@ def plot_matrix_html(
         goal_width = f'document.getElementById("{uid}").parentElement.clientWidth'
         resp_code = 'window.addEventListener("resize", draw_plot);'
     else:
-        goal_width, resp_code = str(width), ""
+        goal_width, resp_code = str(width) if width is not None else "0", ""
 
     html = template % (f"[{','.join(specs)}]", goal_width, resp_code)
 
     # Add subdivs after the plots - otherwise width% needs complex escaping
     subdivs = "".join(
-        [f'<div id="{uid}-{i}" style="width: {0.99 / ncols:.3%}"></div>' for i in range(sum(map(len, pmat)))]
+        [f'<div id="{uid}-{i}" style="width: {0.99 / ncols:.3%}"></div>' for i in range(sum(map(len, matrix)))]
     )
     html = html.replace("SUBDIVS", subdivs)
 
