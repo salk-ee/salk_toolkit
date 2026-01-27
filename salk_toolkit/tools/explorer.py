@@ -112,6 +112,7 @@ with st.spinner("Loading libraries.."):
     import pandas as pd
     import polars as pl
     import psutil
+    import streamlit.components.v1 as components
     from streamlit_js import st_js, st_js_blocking  # type: ignore[import-untyped]
 
     from salk_toolkit.dashboard import (
@@ -487,9 +488,6 @@ with st.sidebar:  # .expander("Select dimensions"):
             st.subheader("Export")
             export_ct = st.container()
 
-    with st.expander("Vega editor"):
-        vega_editor = st.container()
-
     # print(list(st.session_state.keys()))
 
     # print(f"localStorage.setItem('args','{json.dumps(args)}');")
@@ -607,37 +605,6 @@ else:
                 return_matrix_of_plots=matrix_form,
             )
 
-            if i == 0:
-                # Check for custom spec - affecting both Edit link and exports
-                custom_spec = st.session_state.get("custom_spec")
-                chart_obj = custom_spec if custom_spec else plot
-
-                if custom_spec:
-                    spec_str = json.dumps(custom_spec)
-                    try:
-                        vlc = import_vl_convert()
-                        edit_url = vlc.vegalite_to_url(custom_spec, fullscreen=False)
-                    except ImportError:
-                        # Fallback manual construction
-                        edit_url = "https://vega.github.io/editor/#/custom/vega-lite"
-
-                    vega_editor.link_button("Vega Editor", edit_url, width="stretch")
-                else:
-                    vega_editor.link_button("Vega Editor", chart_to_url_with_config(plot), width="stretch")
-
-                @st.dialog("Import Vega-Lite Spec")
-                def _import_modal() -> None:
-                    spec = st.text_area("Paste JSON Spec", height=300)
-                    if st.button("Apply"):
-                        try:
-                            st.session_state["custom_spec"] = json.loads(spec)
-                            st.rerun()
-                        except json.JSONDecodeError:
-                            st.error("Invalid JSON")
-
-                if vega_editor.button("Import Spec", width="stretch"):
-                    _import_modal()
-
             # n_questions = pi['data']['question'].nunique() if 'question' in pi['data'] else 1
             # st.write('Based on %.1f%% of data' %
             #   (100*pi['n_datapoints']/(len(loaded[ifile]['data_n'])*n_questions)))
@@ -646,41 +613,85 @@ else:
             st.write("Based on %.1f%% of data" % (100 * pi.filtered_size / denominator))
 
             if i == 0 and st.session_state.get("custom_spec"):
-                custom_spec = st.session_state["custom_spec"]
-                # Check if the spec has autosize set to "none" - if so, don't stretch
+                custom_spec = deepcopy(st.session_state["custom_spec"])
                 autosize = custom_spec.get("autosize", {})
                 autosize_type = autosize.get("type") if isinstance(autosize, dict) else None
+
+                # Render specs with autosize="none" as HTML to preserve exact width
                 if autosize_type == "none":
-                    st.vega_lite_chart(custom_spec, use_container_width=False)
+                    if autosize and "config" in custom_spec and isinstance(custom_spec.get("config"), dict):
+                        custom_spec["config"]["autosize"] = dict(autosize)
+                    spec_html = plot_matrix_html(
+                        custom_spec, uid="custom_preview", width=None, responsive=False, apply_config=False
+                    )
+                    if spec_html:
+                        components.html(spec_html, height=600, scrolling=True)
                 else:
-                    st.vega_lite_chart(custom_spec, use_container_width=True)
+                    # Inline datasets for st.vega_lite_chart (doesn't support named datasets)
+                    if "datasets" in custom_spec and "data" in custom_spec:
+                        data_ref = custom_spec["data"]
+                        if isinstance(data_ref, dict) and "name" in data_ref:
+                            dataset_name = data_ref["name"]
+                            if dataset_name in custom_spec["datasets"]:
+                                custom_spec["data"] = {"values": custom_spec["datasets"][dataset_name]}
+                                del custom_spec["datasets"]
+                    st.vega_lite_chart(custom_spec, width="stretch")
                 if st.button("Clear Override"):
                     del st.session_state["custom_spec"]
                     st.rerun()
             else:
                 draw_plot_matrix(plot)
 
-            if i == 0 and export and export_ct:  # Re-render export buttons if they exist
-                # We need to clear the old export container first?
-                # Actually, we are in the loop, so just re-populating it for i==0
-                export_ct.empty()  # clear previous buttons
-                with export_ct:  # use the container
-                    name = f"{args['res_col']}_{'_'.join(args['factor_cols']) if args['factor_cols'] else 'all'}"
-                    # Determine source for HTML export
-                    chart_source = st.session_state.get("custom_spec", plot)
-                    apply_cfg = not bool(st.session_state.get("custom_spec"))  # Don't apply config if custom spec
+            if i == 0 and export and export_ct:
+                export_ct.empty()
+                with export_ct:
+                    custom_spec = st.session_state.get("custom_spec")
+                    chart_obj = custom_spec if custom_spec else plot
 
-                    # Check if custom spec has autosize: "none" - if so, don't be responsive
+                    if custom_spec:
+                        spec_str = json.dumps(custom_spec)
+                        try:
+                            vlc = import_vl_convert()
+                            edit_url = vlc.vegalite_to_url(custom_spec, fullscreen=False)
+                        except ImportError:
+                            # Fallback manual construction
+                            edit_url = "https://vega.github.io/editor/#/custom/vega-lite"
+
+                        st.link_button("Vega Editor", edit_url, width="stretch")
+                    else:
+                        st.link_button("Vega Editor", chart_to_url_with_config(plot), width="stretch")
+
+                    @st.dialog("Import Vega-Lite Spec")
+                    def _import_modal() -> None:
+                        spec = st.text_area("Paste JSON Spec", height=300)
+                        if st.button("Apply"):
+                            try:
+                                st.session_state["custom_spec"] = json.loads(spec)
+                                st.rerun()
+                            except json.JSONDecodeError:
+                                st.error("Invalid JSON")
+
+                    if st.button("Import Spec", width="stretch"):
+                        _import_modal()
+
+                    name = f"{args['res_col']}_{'_'.join(args['factor_cols']) if args['factor_cols'] else 'all'}"
+                    chart_source = (
+                        deepcopy(st.session_state["custom_spec"]) if st.session_state.get("custom_spec") else plot
+                    )
+                    apply_cfg = not bool(st.session_state.get("custom_spec"))
+
                     responsive = not custom_size
+                    export_width = cur_width
                     if isinstance(chart_source, dict):
                         autosize = chart_source.get("autosize", {})
                         if isinstance(autosize, dict) and autosize.get("type") == "none":
                             responsive = False
+                            export_width = None
 
                     st.download_button(
                         "HTML",
                         plot_matrix_html(
-                            chart_source, uid=name, width=cur_width, responsive=responsive, apply_config=apply_cfg
+                            chart_source, uid=name, width=export_width, responsive=responsive, apply_config=apply_cfg
                         ),
                         f"{name}.html",
                         width="stretch",
@@ -696,7 +707,7 @@ else:
                     def show_iframe_modal() -> None:
                         """Display iframe embed code in a modal dialog."""
                         content = plot_matrix_html(
-                            chart_source, uid=name, width=cur_width, responsive=responsive, apply_config=apply_cfg
+                            chart_source, uid=name, width=export_width, responsive=responsive, apply_config=apply_cfg
                         )
                         if content is None:
                             st.error("Failed to generate HTML content")

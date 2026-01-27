@@ -1238,7 +1238,15 @@ html_template = """
     function draw_plot() {
         width = document.getElementById("UID").parentElement.clientWidth;
         var specs = %s;
-        var opt = {"renderer": "canvas", "actions": false};
+        var opt = {
+          "renderer": "canvas",
+          "actions": {
+            "export": true,
+            "source": false,
+            "editor": false,
+            "compiled": false
+          }
+        };
         specs.forEach(function(spec,i){ vegaEmbed("#UID-"+i, spec, opt); });
     };
     draw_plot();
@@ -1302,21 +1310,34 @@ def plot_matrix_html(
                 pdict = json.loads(pp.to_json())
 
             pdict = deepcopy(pdict)
+            autosize = pdict.get("autosize", {})
+            autosize_type = autosize.get("type") if isinstance(autosize, dict) else None
+
             if "autosize" not in pdict:
                 pdict["autosize"] = {"type": "fit-x", "contains": "padding"}
 
-            # Apply standard configuration (visual styling + embed options)
             if apply_config:
                 pdict = apply_standard_chart_config(pdict)
 
-            # Check if autosize is explicitly set to "none" - if so, don't override width
-            autosize = pdict.get("autosize", {})
-            autosize_type = autosize.get("type") if isinstance(autosize, dict) else None
+            # Ensure config.autosize matches top-level when type is "none"
+            if autosize_type == "none" and autosize and "config" in pdict:
+                if isinstance(pdict["config"], dict):
+                    pdict["config"]["autosize"] = dict(autosize)
+
             should_be_responsive = responsive and autosize_type != "none"
 
             if should_be_responsive:
                 cwidth = pdict["spec"]["width"] if "spec" in pdict else pdict.get("width", 800)
-                repl = f"(width-{uid}_delta/{ncols})/{width / cwidth}" if width else "1"
+                # Handle case where width might be a string like "container"
+                if isinstance(cwidth, str):
+                    cwidth = 800  # Use default width if it's not numeric
+                else:
+                    cwidth = float(cwidth) if cwidth else 800
+                # Only use width in calculation if it's numeric
+                if width and isinstance(width, (int, float)):
+                    repl = f"(width-{uid}_delta/{ncols})/{float(width) / cwidth}"
+                else:
+                    repl = "1"
                 if "spec" in pdict:
                     pdict["spec"]["width"] = rstring
                 else:
@@ -1330,7 +1351,7 @@ def plot_matrix_html(
         goal_width = f'document.getElementById("{uid}").parentElement.clientWidth'
         resp_code = 'window.addEventListener("resize", draw_plot);'
     else:
-        goal_width, resp_code = str(width), ""
+        goal_width, resp_code = str(width) if width is not None else "0", ""
 
     html = template % (f"[{','.join(specs)}]", goal_width, resp_code)
 
