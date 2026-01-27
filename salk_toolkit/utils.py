@@ -1265,7 +1265,7 @@ html_template = """
 
 
 def plot_matrix_html(
-    pmat: list[list[AltairChart | dict[str, Any]]] | None,
+    pmat: AltairChart | dict[str, Any] | list[list[AltairChart | dict[str, Any]]] | None,
     uid: str = "viz",
     width: int | None = None,
     responsive: bool = True,
@@ -1274,7 +1274,8 @@ def plot_matrix_html(
     """Generate HTML for a matrix of Altair plots.
 
     Args:
-        pmat: Matrix of plots (list of lists) or single plot, or None.
+        pmat: Matrix of plots (list of lists), single plot/dict, or None.
+              Single charts/dicts will be automatically wrapped in [[chart]] format.
         uid: Unique identifier for HTML elements.
         width: Optional plot width in pixels.
         responsive: Whether plots should be responsive to container width.
@@ -1286,7 +1287,17 @@ def plot_matrix_html(
     if not pmat:
         return None
 
-    matrix = pmat
+    # Normalize to 2D list structure: [[chart1, chart2], [chart3, chart4], ...]
+    # Single charts/dicts are wrapped as [[chart]]
+    if isinstance(pmat, dict):
+        # Single dict (Vega-Lite spec)
+        matrix: list[list[AltairChart | dict[str, Any]]] = [[pmat]]
+    elif isinstance(pmat, list) and len(pmat) > 0 and isinstance(pmat[0], list):
+        # Already a 2D list structure
+        matrix = pmat
+    else:
+        # Single Altair chart object - wrap it
+        matrix = [[pmat]]  # type: ignore[list-item]
 
     # Sanitize uid so it can be used as a variable name in JavaScript
     # - replace all whitespace and non-alphanumeric characters with underscores
