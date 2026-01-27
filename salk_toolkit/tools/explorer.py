@@ -612,6 +612,8 @@ else:
                 autosize_type = autosize.get("type") if isinstance(autosize, dict) else None
 
                 # Render specs with autosize="none" as HTML to preserve exact width
+                # This helps us with the config of PUBLISH mode where the graph is not interactive
+                # Streamlit overrides some configs otherwise
                 if autosize_type == "none":
                     if autosize and "config" in custom_spec and isinstance(custom_spec.get("config"), dict):
                         custom_spec["config"]["autosize"] = dict(autosize)
