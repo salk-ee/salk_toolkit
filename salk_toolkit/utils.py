@@ -67,6 +67,8 @@ __all__ = [
     "unescape_vega_label",
     "warn",
     "plot_matrix_html",
+    "chart_to_url_with_config",
+    "recursive_dict_merge",
 ]
 
 import json
@@ -105,6 +107,8 @@ import scipy
 from scipy.optimize import linear_sum_assignment
 from scipy.spatial.distance import cdist
 
+from altair.utils._importers import import_vl_convert
+
 import altair as alt
 import matplotlib.colors as mpc
 import hsluv  # type: ignore[import-untyped]
@@ -142,6 +146,15 @@ def merge_pydantic_models(
     overrides_dict = {k: getattr(overrides, k) for k in overrides.model_fields_set}
     merged_dict = {**defaults_dict, **overrides_dict}
     return overrides.__class__.model_validate(merged_dict, context=context)
+
+
+def recursive_dict_merge(d1: object, d2: object) -> object:
+    """Recursively merge two nested dict-like structures, preferring values from `d2`."""
+    if isinstance(d1, dict) and isinstance(d2, dict):
+        comb = {**d1, **d2}
+        return {k: (recursive_dict_merge(d1[k], d2[k]) if k in d1 and k in d2 else v) for k, v in comb.items()}
+    else:
+        return d2
 
 
 # convenience for warnings that gives a more useful stack frame (fn calling the warning, not warning fn itself)
@@ -1212,8 +1225,8 @@ def apply_standard_chart_config(chart_dict: dict[str, Any]) -> dict[str, Any]:
     Returns:
         Modified chart dictionary with standard configuration applied.
     """
-    # Apply visual styling configuration
-    chart_dict["config"] = altair_default_config
+    # Apply visual styling configuration without overriding existing config if present
+    chart_dict["config"] = recursive_dict_merge(altair_default_config, chart_dict.get("config", {}))
 
     # Apply embed options for high-quality rendering
     chart_dict.setdefault("usermeta", {}).setdefault("embedOptions", {})
@@ -1223,6 +1236,29 @@ def apply_standard_chart_config(chart_dict: dict[str, Any]) -> dict[str, Any]:
     embedOptions["actions"] = {"export": True, "source": False, "editor": False, "compiled": False}
 
     return chart_dict
+
+
+def chart_to_url_with_config(chart: alt.Chart | alt.LayerChart | alt.FacetChart | object) -> str:
+    """Convert an Altair chart to a Vega editor URL with standard configuration.
+
+    This ensures the Vega editor shows the same styling and configuration
+    as the Streamlit display and HTML exports.
+
+    Args:
+        chart: Altair chart object (Chart, LayerChart, FacetChart, etc.).
+
+    Returns:
+        URL string for opening the chart in the Vega editor.
+    """
+    vlc = import_vl_convert()
+
+    # Convert chart to dict and apply standard configuration
+    chart_dict = json.loads(chart.to_json())  # type: ignore[attr-defined]
+    chart_dict = apply_standard_chart_config(chart_dict)
+
+    # Use vl-convert to build the URL with our configured spec
+    # This avoids validation issues and matches Altair's encoding
+    return vlc.vegalite_to_url(chart_dict, fullscreen=False)
 
 
 # HTML template for embedding Altair plots
