@@ -68,6 +68,7 @@ __all__ = [
     "warn",
     "plot_matrix_html",
     "chart_to_url_with_config",
+    "recursive_dict_merge",
 ]
 
 import json
@@ -145,6 +146,15 @@ def merge_pydantic_models(
     overrides_dict = {k: getattr(overrides, k) for k in overrides.model_fields_set}
     merged_dict = {**defaults_dict, **overrides_dict}
     return overrides.__class__.model_validate(merged_dict, context=context)
+
+
+def recursive_dict_merge(d1: object, d2: object) -> object:
+    """Recursively merge two nested dict-like structures, preferring values from `d2`."""
+    if isinstance(d1, dict) and isinstance(d2, dict):
+        comb = {**d1, **d2}
+        return {k: (recursive_dict_merge(d1[k], d2[k]) if k in d1 and k in d2 else v) for k, v in comb.items()}
+    else:
+        return d2
 
 
 # convenience for warnings that gives a more useful stack frame (fn calling the warning, not warning fn itself)
@@ -1215,8 +1225,8 @@ def apply_standard_chart_config(chart_dict: dict[str, Any]) -> dict[str, Any]:
     Returns:
         Modified chart dictionary with standard configuration applied.
     """
-    # Apply visual styling configuration
-    chart_dict["config"] = altair_default_config
+    # Apply visual styling configuration without overriding existing config if present
+    chart_dict["config"] = recursive_dict_merge(altair_default_config, chart_dict.get("config", {}))
 
     # Apply embed options for high-quality rendering
     chart_dict.setdefault("usermeta", {}).setdefault("embedOptions", {})

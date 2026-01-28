@@ -445,6 +445,7 @@ with st.sidebar:  # .expander("Select dimensions"):
     )
 
     # Export options
+    publish_mode = False
     with st.expander("Export"):
         width = None
         height = None
@@ -457,6 +458,7 @@ with st.sidebar:  # .expander("Select dimensions"):
                 width = st.slider("Width", value=800, min_value=100, max_value=1200, step=50)
                 height = st.slider("Height", value=600, min_value=100, max_value=2500, step=50)
             st.subheader("Export")
+            publish_mode = st.toggle("Publish mode", value=False)
             export_ct = st.container()
 
     # print(list(st.session_state.keys()))
@@ -537,6 +539,7 @@ elif input_files_facet:
         width=(width or get_plot_width("full", 1)),
         height=height,
         return_matrix_of_plots=matrix_form,
+        publish_mode=publish_mode,
     )
 
     draw_plot_matrix(plot)
@@ -574,6 +577,7 @@ else:
                 width=cur_width,
                 height=height,
                 return_matrix_of_plots=matrix_form,
+                publish_mode=publish_mode,
             )
 
             # n_questions = pi['data']['question'].nunique() if 'question' in pi['data'] else 1
