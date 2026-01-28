@@ -78,7 +78,7 @@ from salk_toolkit.io import (
     group_columns_dict,
     list_aliases,
 )
-from salk_toolkit.pp import e2e_plot
+from salk_toolkit.pp import AltairChart, e2e_plot
 from salk_toolkit.validation import DataMeta, GroupOrColumnMeta, FilterSpec
 
 import streamlit as st
@@ -885,7 +885,12 @@ class SalkDashboardBuilder:
 
     # pos_id is for plot_width to work in columns
     def plot(
-        self, pp_desc: dict[str, object], pos_id: str = "main", width: int | None = None, **kwargs: object
+        self,
+        pp_desc: dict[str, object],
+        pos_id: str = "main",
+        width: int | None = None,
+        export: bool = False,
+        **kwargs: object,
     ) -> None:
         """Render a plot using the plot pipeline.
 
@@ -903,7 +908,7 @@ class SalkDashboardBuilder:
         pp_desc["data"] = self.data_source
 
         # Draw plot
-        st_plot(
+        plot = st_plot(
             pp_desc,
             width=width,
             translate=lambda s: self.tf(s, context="data"),
@@ -912,6 +917,10 @@ class SalkDashboardBuilder:
             data_meta=self.meta,
             **kwargs,
         )
+
+        if export:  # Add an "Edit for export" button if export is True
+            pd = plot[0][0] if isinstance(plot, list) else plot
+            st.link_button("Edit for export", utils.chart_to_url_with_config(pd))
 
     def filter_ui(
         self,
@@ -2088,15 +2097,20 @@ def draw_plot_matrix(pmat: list[list[object]] | object | None) -> None:
             c.vega_lite_chart(spec=chart_dict, width="stretch" if ucw else "content")
 
 
-def st_plot(pp_desc: dict[str, object], **kwargs: object) -> None:
+def st_plot(pp_desc: dict[str, object], **kwargs: object) -> AltairChart | list[list[AltairChart]] | pd.DataFrame:
     """Draw a plot using the end-to-end plot pipeline.
 
     Args:
         pp_desc: Plot descriptor dictionary.
         **kwargs: Additional arguments passed to e2e_plot.
+
+    Returns:
+        The created plot(s), or the aggregated data if `return_data=True`.
     """
     plots = e2e_plot(pp_desc, **kwargs)
     draw_plot_matrix(plots)
+
+    return plots  # This can be useful to get edit link via .to_url(), for instance
 
 
 # Create a global plot cache

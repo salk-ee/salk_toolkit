@@ -103,7 +103,6 @@ with st.spinner("Loading libraries.."):
     import os
     import sys
     import warnings
-    from altair.utils._importers import import_vl_convert
     from collections import defaultdict
     from copy import deepcopy
     from typing import TypeVar
@@ -114,6 +113,7 @@ with st.spinner("Loading libraries.."):
     import psutil
     import streamlit.components.v1 as components
     from streamlit_js import st_js, st_js_blocking  # type: ignore[import-untyped]
+    from altair.utils._importers import import_vl_convert
 
     from salk_toolkit.dashboard import (
         default_translate,
@@ -136,7 +136,7 @@ with st.spinner("Loading libraries.."):
         matching_plots,
         pp_transform_data,
     )
-    from salk_toolkit.utils import apply_standard_chart_config, plot_matrix_html, replace_constants
+    from salk_toolkit.utils import chart_to_url_with_config, plot_matrix_html, replace_constants
     from salk_toolkit.validation import DataMeta, PlotDescriptor, soft_validate
 
     T = TypeVar("T")
@@ -157,29 +157,6 @@ def get_plot_width(width_str: str, ncols: int = 1) -> int:
     Calculate plot width based on number of columns.
     """
     return min(800, int(1200 / ncols))
-
-
-def chart_to_url_with_config(chart: alt.Chart | alt.LayerChart | alt.FacetChart | object) -> str:
-    """Convert an Altair chart to a Vega editor URL with standard configuration.
-
-    This ensures the Vega editor shows the same styling and configuration
-    as the Streamlit display and HTML exports.
-
-    Args:
-        chart: Altair chart object (Chart, LayerChart, FacetChart, etc.).
-
-    Returns:
-        URL string for opening the chart in the Vega editor.
-    """
-    vlc = import_vl_convert()
-
-    # Convert chart to dict and apply standard configuration
-    chart_dict = json.loads(chart.to_json())  # type: ignore[attr-defined]
-    chart_dict = apply_standard_chart_config(chart_dict)
-
-    # Use vl-convert to build the URL with our configured spec
-    # This avoids validation issues and matches Altair's encoding
-    return vlc.vegalite_to_url(chart_dict, fullscreen=False)
 
 
 if "ls_loaded" not in st.session_state:

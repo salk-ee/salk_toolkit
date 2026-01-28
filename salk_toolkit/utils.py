@@ -67,6 +67,7 @@ __all__ = [
     "unescape_vega_label",
     "warn",
     "plot_matrix_html",
+    "chart_to_url_with_config",
 ]
 
 import json
@@ -104,6 +105,8 @@ import pandas as pd
 import scipy
 from scipy.optimize import linear_sum_assignment
 from scipy.spatial.distance import cdist
+
+from altair.utils._importers import import_vl_convert
 
 import altair as alt
 import matplotlib.colors as mpc
@@ -1223,6 +1226,29 @@ def apply_standard_chart_config(chart_dict: dict[str, Any]) -> dict[str, Any]:
     embedOptions["actions"] = {"export": True, "source": False, "editor": False, "compiled": False}
 
     return chart_dict
+
+
+def chart_to_url_with_config(chart: alt.Chart | alt.LayerChart | alt.FacetChart | object) -> str:
+    """Convert an Altair chart to a Vega editor URL with standard configuration.
+
+    This ensures the Vega editor shows the same styling and configuration
+    as the Streamlit display and HTML exports.
+
+    Args:
+        chart: Altair chart object (Chart, LayerChart, FacetChart, etc.).
+
+    Returns:
+        URL string for opening the chart in the Vega editor.
+    """
+    vlc = import_vl_convert()
+
+    # Convert chart to dict and apply standard configuration
+    chart_dict = json.loads(chart.to_json())  # type: ignore[attr-defined]
+    chart_dict = apply_standard_chart_config(chart_dict)
+
+    # Use vl-convert to build the URL with our configured spec
+    # This avoids validation issues and matches Altair's encoding
+    return vlc.vegalite_to_url(chart_dict, fullscreen=False)
 
 
 # HTML template for embedding Altair plots
