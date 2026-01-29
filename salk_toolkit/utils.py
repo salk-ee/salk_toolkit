@@ -1080,6 +1080,7 @@ def read_yaml(model_desc_file: str) -> JSONValue:
 
 
 # Altair default configuration for plot styling
+# Largely borrowed from streamlit to match their styling
 altair_default_config = {
     "font": '"Source Sans Pro", sans-serif',
     "background": "#ffffff",
@@ -1136,11 +1137,11 @@ altair_default_config = {
         "titleFontWeight": 400,
         "titleFontStyle": "normal",
         "titleColor": "#808495",
-        "titlePadding": 5,
-        "labelPadding": 16,
+        "titlePadding": 4,
+        "labelPadding": 9,
         "columnPadding": 8,
         "rowPadding": 4,
-        "padding": 7,
+        "padding": 8,
         "symbolStrokeWidth": 4,
     },
     "range": {
@@ -1203,13 +1204,72 @@ altair_default_config = {
     },
     "concat": {"columns": 1},
     "facet": {"columns": 1},
-    "mark": {"tooltip": True, "color": "#0068c9"},
+    "mark": {"tooltip": {"content": "encoding"}, "color": "#0068c9"},
     "bar": {"binSpacing": 4, "discreteBandSize": {"band": 0.85}},
     "axisDiscrete": {"grid": False},
     "axisXPoint": {"grid": False},
     "axisTemporal": {"grid": False},
     "axisXBand": {"grid": False},
 }
+
+# Dark mode: overrides for `altair_default_config` (apply via `recursive_dict_merge`).
+altair_dark_config = recursive_dict_merge(
+    altair_default_config,
+    {
+        "background": "#0e1117",
+        "title": {"color": "#fafafa"},
+        "header": {"titleColor": "#e6eaf1", "labelColor": "#e6eaf1"},
+        "axis": {
+            "labelColor": "#e6eaf1",
+            "titleColor": "#e6eaf1",
+            "gridColor": "#31333F",
+            "domainColor": "#31333F",
+        },
+        "legend": {
+            "labelColor": "#e6eaf1",
+            "titleColor": "#e6eaf1",
+        },
+        "range": {
+            "category": [
+                "#83c9ff",
+                "#0068c9",
+                "#ffabab",
+                "#ff2b2b",
+                "#7defa1",
+                "#29b09d",
+                "#ffd16a",
+                "#ff8700",
+                "#6d3fc0",
+                "#d5dae5",
+            ],
+            "ramp": [
+                "#004280",
+                "#0054a3",
+                "#0068c9",
+                "#1c83e1",
+                "#3d9df3",
+                "#60b4ff",
+                "#83c9ff",
+                "#a6dcff",
+                "#c7ebff",
+                "#e4f5ff",
+            ],
+            "heatmap": [
+                "#004280",
+                "#0054a3",
+                "#0068c9",
+                "#1c83e1",
+                "#3d9df3",
+                "#60b4ff",
+                "#83c9ff",
+                "#a6dcff",
+                "#c7ebff",
+                "#e4f5ff",
+            ],
+        },
+        "mark": {"color": "#83c9ff"},
+    },
+)
 
 
 def apply_standard_chart_config(chart_dict: dict[str, Any]) -> dict[str, Any]:
@@ -1225,8 +1285,14 @@ def apply_standard_chart_config(chart_dict: dict[str, Any]) -> dict[str, Any]:
     Returns:
         Modified chart dictionary with standard configuration applied.
     """
+
+    import streamlit as st
+
+    config = altair_default_config
+    if st.context.theme.type == "dark":
+        config = altair_dark_config
     # Apply visual styling configuration without overriding existing config if present
-    chart_dict["config"] = recursive_dict_merge(altair_default_config, chart_dict.get("config", {}))
+    chart_dict["config"] = recursive_dict_merge(config, chart_dict.get("config", {}))
 
     # Apply embed options for high-quality rendering
     chart_dict.setdefault("usermeta", {}).setdefault("embedOptions", {})
