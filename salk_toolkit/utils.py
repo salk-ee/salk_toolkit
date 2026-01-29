@@ -67,6 +67,8 @@ __all__ = [
     "unescape_vega_label",
     "warn",
     "plot_matrix_html",
+    "chart_to_url_with_config",
+    "recursive_dict_merge",
 ]
 
 import json
@@ -105,6 +107,8 @@ import scipy
 from scipy.optimize import linear_sum_assignment
 from scipy.spatial.distance import cdist
 
+from altair.utils._importers import import_vl_convert
+
 import altair as alt
 import matplotlib.colors as mpc
 import hsluv  # type: ignore[import-untyped]
@@ -142,6 +146,15 @@ def merge_pydantic_models(
     overrides_dict = {k: getattr(overrides, k) for k in overrides.model_fields_set}
     merged_dict = {**defaults_dict, **overrides_dict}
     return overrides.__class__.model_validate(merged_dict, context=context)
+
+
+def recursive_dict_merge(d1: object, d2: object) -> object:
+    """Recursively merge two nested dict-like structures, preferring values from `d2`."""
+    if isinstance(d1, dict) and isinstance(d2, dict):
+        comb = {**d1, **d2}
+        return {k: (recursive_dict_merge(d1[k], d2[k]) if k in d1 and k in d2 else v) for k, v in comb.items()}
+    else:
+        return d2
 
 
 # convenience for warnings that gives a more useful stack frame (fn calling the warning, not warning fn itself)
@@ -1067,6 +1080,7 @@ def read_yaml(model_desc_file: str) -> JSONValue:
 
 
 # Altair default configuration for plot styling
+# Largely borrowed from streamlit to match their styling
 altair_default_config = {
     "font": '"Source Sans Pro", sans-serif',
     "background": "#ffffff",
@@ -1123,11 +1137,11 @@ altair_default_config = {
         "titleFontWeight": 400,
         "titleFontStyle": "normal",
         "titleColor": "#808495",
-        "titlePadding": 5,
-        "labelPadding": 16,
+        "titlePadding": 4,
+        "labelPadding": 9,
         "columnPadding": 8,
         "rowPadding": 4,
-        "padding": 7,
+        "padding": 8,
         "symbolStrokeWidth": 4,
     },
     "range": {
@@ -1190,13 +1204,72 @@ altair_default_config = {
     },
     "concat": {"columns": 1},
     "facet": {"columns": 1},
-    "mark": {"tooltip": True, "color": "#0068c9"},
+    "mark": {"tooltip": {"content": "encoding"}, "color": "#0068c9"},
     "bar": {"binSpacing": 4, "discreteBandSize": {"band": 0.85}},
     "axisDiscrete": {"grid": False},
     "axisXPoint": {"grid": False},
     "axisTemporal": {"grid": False},
     "axisXBand": {"grid": False},
 }
+
+# Dark mode: overrides for `altair_default_config` (apply via `recursive_dict_merge`).
+altair_dark_config = recursive_dict_merge(
+    altair_default_config,
+    {
+        "background": "#0e1117",
+        "title": {"color": "#fafafa"},
+        "header": {"titleColor": "#e6eaf1", "labelColor": "#e6eaf1"},
+        "axis": {
+            "labelColor": "#e6eaf1",
+            "titleColor": "#e6eaf1",
+            "gridColor": "#31333F",
+            "domainColor": "#31333F",
+        },
+        "legend": {
+            "labelColor": "#e6eaf1",
+            "titleColor": "#e6eaf1",
+        },
+        "range": {
+            "category": [
+                "#83c9ff",
+                "#0068c9",
+                "#ffabab",
+                "#ff2b2b",
+                "#7defa1",
+                "#29b09d",
+                "#ffd16a",
+                "#ff8700",
+                "#6d3fc0",
+                "#d5dae5",
+            ],
+            "ramp": [
+                "#004280",
+                "#0054a3",
+                "#0068c9",
+                "#1c83e1",
+                "#3d9df3",
+                "#60b4ff",
+                "#83c9ff",
+                "#a6dcff",
+                "#c7ebff",
+                "#e4f5ff",
+            ],
+            "heatmap": [
+                "#004280",
+                "#0054a3",
+                "#0068c9",
+                "#1c83e1",
+                "#3d9df3",
+                "#60b4ff",
+                "#83c9ff",
+                "#a6dcff",
+                "#c7ebff",
+                "#e4f5ff",
+            ],
+        },
+        "mark": {"color": "#83c9ff"},
+    },
+)
 
 
 def apply_standard_chart_config(chart_dict: dict[str, Any]) -> dict[str, Any]:
@@ -1212,8 +1285,14 @@ def apply_standard_chart_config(chart_dict: dict[str, Any]) -> dict[str, Any]:
     Returns:
         Modified chart dictionary with standard configuration applied.
     """
-    # Apply visual styling configuration
-    chart_dict["config"] = altair_default_config
+
+    import streamlit as st
+
+    config = altair_default_config
+    if st.context.theme.type == "dark":
+        config = altair_dark_config
+    # Apply visual styling configuration without overriding existing config if present
+    chart_dict["config"] = recursive_dict_merge(config, chart_dict.get("config", {}))
 
     # Apply embed options for high-quality rendering
     chart_dict.setdefault("usermeta", {}).setdefault("embedOptions", {})
@@ -1223,6 +1302,29 @@ def apply_standard_chart_config(chart_dict: dict[str, Any]) -> dict[str, Any]:
     embedOptions["actions"] = {"export": True, "source": False, "editor": False, "compiled": False}
 
     return chart_dict
+
+
+def chart_to_url_with_config(chart: alt.Chart | alt.LayerChart | alt.FacetChart | object) -> str:
+    """Convert an Altair chart to a Vega editor URL with standard configuration.
+
+    This ensures the Vega editor shows the same styling and configuration
+    as the Streamlit display and HTML exports.
+
+    Args:
+        chart: Altair chart object (Chart, LayerChart, FacetChart, etc.).
+
+    Returns:
+        URL string for opening the chart in the Vega editor.
+    """
+    vlc = import_vl_convert()
+
+    # Convert chart to dict and apply standard configuration
+    chart_dict = json.loads(chart.to_json())  # type: ignore[attr-defined]
+    chart_dict = apply_standard_chart_config(chart_dict)
+
+    # Use vl-convert to build the URL with our configured spec
+    # This avoids validation issues and matches Altair's encoding
+    return vlc.vegalite_to_url(chart_dict, fullscreen=False)
 
 
 # HTML template for embedding Altair plots

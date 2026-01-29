@@ -1568,6 +1568,7 @@ def create_plot(
     height: int | None = None,
     return_matrix_of_plots: bool = False,
     translate: Callable[[str], str] | None = None,
+    publish_mode: bool = False,
 ) -> AltairChart | List[List[AltairChart]] | PlotInput:
     """Produce an Altair plot (or matrix of plots) from prepared parameters.
 
@@ -1759,6 +1760,10 @@ def create_plot(
     if alt_wrapper is None:
         alt_wrapper = lambda p: p
 
+    if publish_mode:
+        old_alt_wrapper = alt_wrapper
+        alt_wrapper = lambda p: old_alt_wrapper(_apply_publish_mode(p))
+
     plot_arg_payload = clean_kwargs(plot_fn, plot_args)
 
     def _call_plot_fn(
@@ -1843,6 +1848,16 @@ def create_plot(
             plot = [[plot]]
 
     return plot
+
+
+# Extra configuration for plots in publish mode
+publish_spec = {"config": {"legend": {"labelLimit": 0}, "axis": {"labelLimit": 0}}}
+
+
+def _apply_publish_mode(plot: AltairChart) -> AltairChart:
+    """Apply publish mode to the plot."""
+    spec = utils.recursive_dict_merge(plot.to_dict(), publish_spec)
+    return type(plot).from_dict(spec)
 
 
 def impute_factor_cols(
