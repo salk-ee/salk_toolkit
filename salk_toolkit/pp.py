@@ -1850,9 +1850,14 @@ def create_plot(
     return plot
 
 
+# Extra configuration for plots in publish mode
+publish_spec = {"config": {"legend": {"labelLimit": 0}, "axis": {"labelLimit": 0}}}
+
+
 def _apply_publish_mode(plot: AltairChart) -> AltairChart:
     """Apply publish mode to the plot."""
-    return plot.configure_legend(labelLimit=0).configure_axis(labelLimit=0)
+    spec = utils.recursive_dict_merge(plot.to_dict(), publish_spec)
+    return type(plot).from_dict(spec)
 
 
 def impute_factor_cols(
