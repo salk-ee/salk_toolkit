@@ -1,7 +1,7 @@
 # DEV-37: Secrets-based auth bypass
 
 **Last Updated**: 2026-02-04  
-**Status**: ⏳ In Progress  
+**Status**: Done
 **Module**: Dashboard  
 **Tags**: `#feature`, `#auth`, `#dev`  
 **Dependencies**: None  
@@ -64,10 +64,10 @@ Add a secrets-driven local dev login bypass that constructs a user from `auth.by
 
 ## Definition of Done
 
-- [ ] `BypassAuthenticationManager` is used when `auth.bypass_user` exists in secrets.
-- [ ] Bypass user defaults and required fields behave as specified.
-- [ ] Dummy admin methods are present and do not perform side effects.
-- [ ] Tests for bypass behavior pass.
+- [X] `BypassAuthenticationManager` is used when `auth.bypass_user` exists in secrets.
+- [X] Bypass user defaults and required fields behave as specified.
+- [X] Dummy admin methods are present and do not perform side effects.
+- [X] Tests for bypass behavior pass.
 
 ## Implementation Notes
 
