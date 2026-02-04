@@ -1,4 +1,4 @@
-# DEV-XXX: Secrets-based auth bypass
+# DEV-37: Secrets-based auth bypass
 
 **Last Updated**: 2026-02-04  
 **Status**: ⏳ In Progress  
