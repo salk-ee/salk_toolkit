@@ -4,6 +4,7 @@ Tests for the Streamlit dashboard helper utilities.
 
 from __future__ import annotations
 
+import contextlib
 import csv
 from pathlib import Path
 
@@ -74,6 +75,101 @@ def test_log_missing_translations_records() -> None:
     changed = dashboard.log_missing_translations(lambda s: s.upper(), captured)
     changed("translated")
     assert "translated" not in captured
+
+
+def test_bypass_user_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Bypass user defaults should apply when optional fields are missing."""
+    monkeypatch.setattr(dashboard.st, "secrets", {"auth": {"bypass_user": {"name": "Dev User"}}})
+
+    user = dashboard._get_bypass_user_from_secrets()
+
+    assert user is not None
+    assert user["uid"] == "Dev User"
+    assert user["lang"] == "en"
+    assert user["organization"] == "SALK"
+    assert user["group"] == "admin"
+
+
+def test_bypass_user_requires_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Bypass user must specify a name."""
+    monkeypatch.setattr(dashboard.st, "secrets", {"auth": {"bypass_user": {"lang": "et"}}})
+
+    with pytest.raises(ValueError, match="auth\\.bypass_user\\.name"):
+        dashboard._get_bypass_user_from_secrets()
+
+
+def test_bypass_auth_manager_language_change(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Bypass auth manager should persist language changes in session state."""
+    session_state: dict[str, object] = {}
+    monkeypatch.setattr(dashboard.st, "session_state", session_state)
+    bypass_user = {
+        "uid": "dev-user",
+        "name": "Dev User",
+        "lang": "en",
+        "organization": "SALK",
+        "group": "admin",
+    }
+
+    manager = dashboard.BypassAuthenticationManager(
+        groups=["guest", "admin"],
+        bypass_user=bypass_user,
+        org_whitelist=None,
+        info=object(),
+        logger=lambda *_: None,
+        languages={"en": None},
+        translate_func=lambda s: s,
+    )
+
+    assert manager.authenticated is True
+    assert manager.user["lang"] == "en"
+
+    manager.change_user("dev-user", {"lang": "et"})
+
+    assert manager.user["lang"] == "et"
+    assert session_state["bypass_user"]["lang"] == "et"
+
+
+def test_sdb_prefers_bypass_over_oauth(monkeypatch: pytest.MonkeyPatch) -> None:
+    """SalkDashboardBuilder should prefer bypass auth when configured."""
+    session_state: dict[str, object] = {}
+    monkeypatch.setattr(dashboard.st, "session_state", session_state)
+    monkeypatch.setattr(
+        dashboard.st,
+        "secrets",
+        {"auth": {"bypass_user": {"name": "Dev User"}, "use_oauth": True}},
+    )
+
+    class DummyContainer:
+        def empty(self) -> "DummyContainer":
+            return self
+
+        def info(self, *args: object, **kwargs: object) -> None:
+            return None
+
+        def warning(self, *args: object, **kwargs: object) -> None:
+            return None
+
+    class DummySidebar(DummyContainer):
+        def empty(self) -> DummyContainer:
+            return DummyContainer()
+
+    monkeypatch.setattr(dashboard.st, "sidebar", DummySidebar())
+    monkeypatch.setattr(dashboard.st, "empty", lambda: DummyContainer())
+    monkeypatch.setattr(dashboard.st, "spinner", lambda *args, **kwargs: contextlib.nullcontext())
+    monkeypatch.setattr(dashboard, "_po_template_updater", lambda: (lambda s, **kwargs: s))
+    monkeypatch.setattr(dashboard, "_load_po_translations", lambda: {"en": None})
+    monkeypatch.setattr(dashboard, "_load_translate", lambda *_: (lambda s: s))
+    monkeypatch.setattr(dashboard, "_wrap_all_st_functions", lambda obj, *args, **kwargs: obj)
+    monkeypatch.setattr(dashboard.s3fs, "S3FileSystem", lambda anon=False: object())
+
+    def _fail(*args: object, **kwargs: object) -> None:
+        raise AssertionError("Frontegg manager should not be used when bypass enabled")
+
+    monkeypatch.setattr(dashboard, "FronteggAuthenticationManager", _fail)
+
+    sdb = dashboard.SalkDashboardBuilder("data.parquet", public=True)
+
+    assert isinstance(sdb.uam, dashboard.BypassAuthenticationManager)
 
 
 def test_clean_missing_translations_filters_numbers() -> None:
