@@ -30,6 +30,7 @@ __all__ = [
     "SalkDashboardBuilder",
     "sqlite_client",
     "StreamlitAuthenticationManager",
+    "BypassAuthenticationManager",
     "frontegg_client",
     "FronteggAuthenticationManager",
     "admin_page",
@@ -677,6 +678,8 @@ class SalkDashboardBuilder:
             header_fn: Optional function to render header (receives sdb, returns shared dict).
             footer_fn: Optional function to render footer (receives sdb, shared dict).
         """
+        bypass_user = _get_bypass_user_from_secrets()
+        bypass_enabled = bypass_user is not None
         if groups is None:
             groups = ["guest", "user", "admin"]
         # Allow deployment.json to redirect files from local to s3 if local missing (i.e. in deployment scenario)
@@ -718,7 +721,7 @@ class SalkDashboardBuilder:
             st.session_state["lang"] = next(iter(self.cc_translations.keys()))
 
         # Don't ask for language in public dashboards
-        if not public and not st.secrets.get("auth", {}).get("use_oauth"):
+        if not public and not st.secrets.get("auth", {}).get("use_oauth") and not bypass_enabled:
             # This for language select during login page, which is unnecessar
             # Set language from session state if present
             if st.session_state.get("lang"):
@@ -751,7 +754,17 @@ class SalkDashboardBuilder:
 
         # Set up authentication
         with st.spinner(self.tf("Setting up authentication...", context="ui")):
-            if st.secrets.get("auth", {}).get("use_oauth"):
+            if bypass_enabled:
+                self.uam = BypassAuthenticationManager(
+                    groups,
+                    bypass_user=cast(JsonDict, bypass_user),
+                    org_whitelist=org_whitelist,
+                    info=self.info,
+                    logger=self.log_event,
+                    languages=self.cc_translations,
+                    translate_func=lambda t: self.tf(t, context="ui"),
+                )
+            elif st.secrets.get("auth", {}).get("use_oauth"):
                 self.uam = FronteggAuthenticationManager(
                     groups,
                     org_whitelist=org_whitelist,
@@ -1323,6 +1336,100 @@ def sqlite_client(url: str, token: str) -> libsql_client.ClientSync:
 # --------------------------------------------------------
 #          AUTHENTICATION
 # --------------------------------------------------------
+
+
+def _get_bypass_user_from_secrets() -> JsonDict | None:
+    """Return bypass user settings from secrets, if configured."""
+    auth_config = st.secrets.get("auth", {})
+    bypass_raw = auth_config.get("bypass_user")
+    if bypass_raw is None:
+        return None
+    if not hasattr(bypass_raw, "get"):
+        raise ValueError("auth.bypass_user must be a mapping")
+    name = bypass_raw.get("name")
+    if not name:
+        raise ValueError("auth.bypass_user.name is required for bypass auth")
+    user = {
+        "uid": bypass_raw.get("uid") or name,
+        "name": name,
+        "lang": bypass_raw.get("lang") or "en",
+        "organization": bypass_raw.get("organization") or "SALK",
+        "group": bypass_raw.get("group") or "admin",
+    }
+    for key, value in bypass_raw.items():
+        if key not in user:
+            user[key] = value
+    return user
+
+
+class BypassAuthenticationManager(UserAuthenticationManager):
+    """Authentication manager that bypasses login using secrets config."""
+
+    def __init__(
+        self,
+        groups: list[str],
+        bypass_user: JsonDict,
+        org_whitelist: list[str] | None,
+        info: object,
+        logger: Callable[[str, str | None], None],
+        languages: dict[str, Callable[[str], str] | None],
+        translate_func: Callable[[str], str],
+    ) -> None:
+        """Initialize bypass authentication manager."""
+        super().__init__(groups, info, org_whitelist, logger, languages, translate_func)
+        if "bypass_user" not in st.session_state:
+            st.session_state["bypass_user"] = bypass_user
+        self.passwordless = True
+
+    @property
+    def authenticated(self) -> bool:
+        """Always authenticate for bypass mode."""
+        return True
+
+    def uam_user(self) -> dict[str, object]:
+        """Get user data from the bypass session."""
+        user = st.session_state.get("bypass_user")
+        if isinstance(user, dict):
+            return user
+        return {}
+
+    def login_screen(self) -> None:
+        """No-op login screen for bypass mode."""
+        return None
+
+    def logout_button(self, text: str, location: str = "sidebar") -> None:
+        """No-op logout for bypass mode."""
+        return None
+
+    def add_user(self, user_data: dict[str, object]) -> bool:
+        """No-op user creation in bypass mode."""
+        return False
+
+    def change_user(self, uid: str, user_data: dict[str, object]) -> None:
+        """Update bypass session user language when requested."""
+        current = self.uam_user()
+        if not current or uid != current.get("uid"):
+            return
+        new_lang = user_data.get("lang") or current.get("lang")
+        if new_lang != current.get("lang"):
+            updated = current.copy()
+            updated["lang"] = new_lang
+            st.session_state["bypass_user"] = updated
+
+    def delete_user(self, uid: str) -> None:
+        """No-op user deletion in bypass mode."""
+        return None
+
+    def list_users(self) -> dict[str, dict[str, object]]:
+        """List only the bypass session user."""
+        user = self.uam_user()
+        if not user:
+            return {}
+        return {cast(str, user.get("uid", "")): cast(dict[str, object], user)}
+
+    def update_user(self, uid: str) -> None:
+        """No-op persistent update in bypass mode."""
+        return None
 
 
 class StreamlitAuthenticationManager(UserAuthenticationManager):
