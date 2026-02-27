@@ -305,10 +305,23 @@ def _ensure_plot_args_sync(func: Callable[..., Any], decorator_kwargs: Dict[str,
         )
 
 
+def style(style_name: str) -> Callable[[Callable[..., object]], Callable[..., object]]:
+    """Decorator to attach a style configuration to a plot function."""
+
+    def _decorator(gfunc: Callable[..., object]) -> Callable[..., object]:
+        if not hasattr(gfunc, "_stk_style"):
+            gfunc._stk_style = []  # type: ignore[attr-defined]
+        gfunc._stk_style.append(style_name)  # type: ignore[attr-defined]
+        return gfunc
+
+    return _decorator
+
+
 def stk_plot(plot_name: str, **r_kwargs: object) -> Callable[[Callable[..., object]], Callable[..., object]]:
     """Register a plotting function inside the global plot registry."""
 
     def _decorator(gfunc: Callable[..., object]) -> Callable[..., object]:
+        _ensure_plot_args_sync(gfunc, r_kwargs)
         _ensure_plot_args_sync(gfunc, r_kwargs)
         registry[plot_name] = gfunc
         meta_payload = {"name": plot_name, **stk_plot_defaults, **r_kwargs}
@@ -1846,6 +1859,16 @@ def create_plot(
 
         if return_matrix_of_plots:
             plot = [[plot]]
+
+    if hasattr(plot, "to_dict"):
+        if hasattr(plot_fn, "_stk_style"):
+            for style_name in getattr(plot_fn, "_stk_style", []):
+                s_dict = utils.get_style(style_name)
+                if s_dict:
+                    plot_dict = plot.to_dict()
+                    merged = utils.recursive_dict_merge(plot_dict, s_dict)
+                    plot = (type(plot)).from_dict(merged)
+
 
     return plot
 

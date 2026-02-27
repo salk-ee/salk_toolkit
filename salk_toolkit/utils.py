@@ -148,7 +148,7 @@ def merge_pydantic_models(
     return overrides.__class__.model_validate(merged_dict, context=context)
 
 
-def recursive_dict_merge(d1: object, d2: object) -> object:
+def recursive_dict_merge(d1: dict[str, Any], d2: dict[str, Any]) -> dict[str, Any]:
     """Recursively merge two nested dict-like structures, preferring values from `d2`."""
     if isinstance(d1, dict) and isinstance(d2, dict):
         comb = {**d1, **d2}

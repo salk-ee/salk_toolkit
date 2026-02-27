@@ -1284,7 +1284,6 @@ def lines(
         raise ValueError("lines plot requires at least one facet dimension")
 
     fmt = p.val_format or ".2f"
-    chart_width = p.width
     if len(p.facets) == 1:
         fx = p.facets[0]
         fy = None
@@ -1297,46 +1296,50 @@ def lines(
 
     # See if we should use a continous axis (if categoricals are actually numbers)
     x_axis, data = _cat_to_cont_axis(data, fx)
-
+    num_columns = estimate_legend_columns_horiz(fy.order, p.width) if fy else 1
     chart = alt.Chart(data)
-    plot = chart.mark_line(point=True, interpolate=smooth).encode(
-        x=x_axis,
-        y=alt.Y(
-            field=p.value_col,
-            type="quantitative",
-            title=(p.value_col if len(p.value_col) < 20 else None),
-            axis=alt.Axis(format=fmt),
-        ),
-        tooltip=p.tooltip,
-        **(
+    title = p.value_col if len(p.value_col) < 20 else None
+
+    color_spec = {
+        "field": fy.col if fy else None,
+        "type": "nominal",
+        "legend": {"orient": "top", "columns": num_columns},
+    }
+    if fy and (colors := fy.colors) is not None and hasattr(colors, "domain"):
+        color_spec["scale"] = colors.to_dict() if hasattr(colors, "to_dict") else colors
+        color_spec["sort"] = fy.order
+
+    tooltip = [t.to_dict() if hasattr(t, "to_dict") else t for t in p.tooltip]
+    lines_plot_spec = {
+        "config": {
+            "line": {"point": True},
+        },
+        "layer": [
             {
-                "color": alt.Color(
-                    field=fy.col,
-                    type="nominal",
-                    scale=fy.colors,
-                    sort=fy.order,
-                    legend=alt.Legend(
-                        orient="top",
-                        columns=estimate_legend_columns_horiz(fy.order, chart_width),
-                    ),
-                )
-            }
-            if fy is not None
-            else {}
-        ),
-    )
+                "mark": {"type": "line", "interpolate": smooth, "point": True},
+                "encoding": {
+                    "x": x_axis.to_dict(),
+                    "y": {"field": p.value_col, "type": "quantitative", "axis": {"format": fmt}, "title": title},
+                    "color": color_spec,
+                    "tooltip": tooltip,
+                },
+            },
+            {
+                "mark": {"type": "point", "size": 200, "opacity": 0},
+                "encoding": {
+                    "x": x_axis.to_dict(),
+                    "y": {"field": p.value_col, "type": "quantitative", "title": None},
+                    "tooltip": tooltip,
+                },
+            },
+        ],
+    }
 
-    # Add larger area for tooltip
-    plot += chart.mark_point(size=200, opacity=0).encode(
-        x=x_axis,
-        y=alt.Y(
-            field=p.value_col,
-            type="quantitative",
-            title=None,
-        ),
-        tooltip=p.tooltip,
-    )
-
+    # Use validate=False to avoid error due to missing mark/layer in base chart
+    plot_dict = chart.to_dict(validate=False)
+    merged_spec = utils.recursive_dict_merge(plot_dict, lines_plot_spec)
+    plot = alt.LayerChart.from_dict(merged_spec)
+    assert plot.to_dict(validate=True)
     return plot
 
 
