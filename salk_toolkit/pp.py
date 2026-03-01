@@ -234,6 +234,7 @@ class PlotMeta(PBase):
     continuous: bool = False
     n_facets: Optional[Tuple[int, int]] = None
     requires: List[Dict[str, Any]] = DF(list)
+    requires_factor: bool = False
     no_question_facet: bool = False
     agg_fn: Optional[str] = None
     sample: Optional[int] = None
