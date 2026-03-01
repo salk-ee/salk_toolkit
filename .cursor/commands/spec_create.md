@@ -1,9 +1,3 @@
----
-description: How to create a proper spec
-globs: specs/**
-alwaysApply: false
----
-
 ## Workflow
 
 **Pre-work**
