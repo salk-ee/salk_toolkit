@@ -2019,7 +2019,7 @@ def _linevals(
     data_format="raw",
     factor_columns=3,
     aspect_ratio=(1.0 / 1.0),
-    plot_args={"group_categories": "bool", "full_data": "bool"},
+    args={"group_categories": "bool", "full_data": "bool"},
     n_facets=(0, 1),
     no_question_facet=True,
 )

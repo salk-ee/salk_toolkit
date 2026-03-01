@@ -31,6 +31,7 @@ from utils.plot_comparison import (
     pretty_print_json_differences,
     save_plot_comparison_html,
     save_plot_matrix_comparison_html,
+    save_single_result_html,
 )
 
 # Disable Altair max rows limit for testing
@@ -151,6 +152,20 @@ class TestPlots:
             if matching_plots_dict:
                 with open(reference_matching_plots_file, "w") as f:
                     json.dump(matching_plots_dict, f, indent=2, sort_keys=True)
+            # Create HTML of result and print file:// URI (same as when comparison fails)
+            diff_dir = self.reference_dir / "diff_html"
+            diff_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                html_path = save_single_result_html(
+                    chart,
+                    result_spec,
+                    diff_dir / f"{test_name}_recomputed.html",
+                    f"{test_name} - Reference Updated",
+                )
+                if html_path is not None:
+                    print(f"Reference HTML saved to {html_path.resolve().as_uri()}")
+            except Exception as exc:  # pragma: no cover - best effort artifact
+                print(f"Failed to save reference HTML for {test_name}: {exc}")
             print(f"{'Updated' if already_exists else 'Created'} reference for test {test_name}")
             return
 
@@ -160,46 +175,14 @@ class TestPlots:
             diff_dir.mkdir(parents=True, exist_ok=True)
             plot_html_path = diff_dir / f"{test_name}_missing_reference.html"
 
-            if isinstance(chart, list):
-                # Matrix of plots - use plot_matrix_html
-                from salk_toolkit.utils import plot_matrix_html
-
-                actual_html = plot_matrix_html(chart, uid="actual", width=400, responsive=False)
-                if actual_html:
-                    # Wrap in a simple HTML page
-                    full_html = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>{test_name} - Missing Reference</title>
-  <style>
-    body {{ font-family: system-ui, sans-serif; margin: 24px; background: #fafafa; }}
-    h1 {{ font-size: 1.4rem; margin-bottom: 16px; color: #d00; }}
-    .plot-container {{ padding: 16px; background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }}
-  </style>
-</head>
-<body>
-  <h1>Missing Reference - {test_name}</h1>
-  <p>Reference file not found. This is the actual plot output.</p>
-  <div class="plot-container">
-    {actual_html}
-  </div>
-</body>
-</html>"""
-                    plot_html_path.write_text(full_html, encoding="utf-8")
-            else:
-                # Single chart - use save_plot_comparison_html with dummy reference
-                # save_plot_comparison_html imported at module scope (avoid shadowing it here)
-                # Create a dummy reference spec for display (same as actual)
-                dummy_reference = result_spec.copy()
-                save_plot_comparison_html(
-                    dummy_reference,
-                    result_spec,
-                    plot_html_path,
-                    page_title=f"{test_name} - Missing Reference",
-                    reference_title="Missing Reference (showing actual only)",
-                    actual_title="Actual",
-                )
+            save_single_result_html(
+                chart,
+                result_spec,
+                plot_html_path,
+                f"Missing Reference - {test_name}",
+                subtitle="Reference file not found. This is the actual plot output.",
+                h1_color="#d00",
+            )
 
             plot_uri = plot_html_path.resolve().as_uri()
             recompute_cmd = f"pytest tests/test_plots.py::TestPlots::{test_name} --recompute"

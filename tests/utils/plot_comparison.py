@@ -11,6 +11,32 @@ from typing import Any, Sequence
 import altair as alt
 
 Records = Sequence[dict[str, Any]] | None
+SINGLE_PLOT_HTML_TEMPLATE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>{page_title}</title>
+  <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+  <style>
+    body {{ font-family: system-ui, sans-serif; margin: 24px; background: #fafafa; }}
+    h1 {{ font-size: 1.4rem; margin-bottom: 16px; }}
+    .plot-container {{ padding: 16px; background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }}
+  </style>
+</head>
+<body>
+  <h1>{page_title}</h1>
+  <div class="plot-container">
+    <div id="plot"></div>
+  </div>
+  <script>
+    const spec = {spec};
+    vegaEmbed('#plot', spec, {{actions: false}});
+  </script>
+</body>
+</html>
+"""
 HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -353,6 +379,77 @@ def _spec_to_dict(spec: Any) -> dict[str, Any]:
     if isinstance(spec, str):
         return json.loads(spec)
     return copy.deepcopy(spec)
+
+
+def save_single_plot_html(spec: Any, output_path: str | Path, *, page_title: str = "Plot") -> Path:
+    """Create an HTML file that renders a single plot spec."""
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    spec_dict = _spec_to_dict(spec)
+    spec_dict.pop("config", None)
+    spec_dict.setdefault("$schema", "https://vega.github.io/schema/vega-lite/v5.json")
+    html = SINGLE_PLOT_HTML_TEMPLATE.format(
+        page_title=page_title,
+        spec=json.dumps(spec_dict),
+    )
+    output.write_text(html, encoding="utf-8")
+    return output
+
+
+SINGLE_RESULT_PAGE_TEMPLATE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>{page_title}</title>
+  <style>
+    body {{ font-family: system-ui, sans-serif; margin: 24px; background: #fafafa; }}
+    h1 {{ font-size: 1.4rem; margin-bottom: 16px; {h1_style} }}
+    .plot-container {{ padding: 16px; background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }}
+  </style>
+</head>
+<body>
+  <h1>{page_title}</h1>
+  {subtitle}
+  <div class="plot-container">
+    {plot_html}
+  </div>
+</body>
+</html>
+"""
+
+
+def save_single_result_html(
+    chart: alt.TopLevelMixin | list,
+    result_spec: dict[str, Any],
+    output_path: str | Path,
+    page_title: str,
+    *,
+    subtitle: str | None = None,
+    h1_color: str | None = None,
+    width: int = 400,
+) -> Path | None:
+    """Save a single plot or matrix to HTML. Returns Path for single/matrix, None if matrix empty."""
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+
+    if isinstance(chart, list):
+        from salk_toolkit.utils import plot_matrix_html
+
+        plot_html = plot_matrix_html(chart, uid="plot", width=width, responsive=False)
+        if not plot_html:
+            return None
+        sub = f"<p>{subtitle}</p>\n  " if subtitle else ""
+        h1_style = f"color: {h1_color};" if h1_color else ""
+        html = SINGLE_RESULT_PAGE_TEMPLATE.format(
+            page_title=page_title,
+            h1_style=h1_style,
+            subtitle=sub,
+            plot_html=plot_html,
+        )
+        output.write_text(html, encoding="utf-8")
+        return output
+    else:
+        return save_single_plot_html(result_spec, output, page_title=page_title)
 
 
 def save_plot_comparison_html(

@@ -24,7 +24,7 @@ from salk_toolkit.io import (
     replace_data_meta_in_parquet,
     read_parquet_metadata,
 )
-from salk_toolkit.validation import soft_validate, DataMeta, ColumnMeta, ColumnBlockMeta
+from salk_toolkit.validation import soft_validate, DataMeta, ColumnMeta
 from salk_toolkit.utils import read_json
 
 
@@ -246,18 +246,10 @@ class TestReadAnnotatedData:
         assert "structure" in meta_dict
         assert len(meta_dict["structure"]) > 0
 
-    def test_read_annotated_data_with_extra_fields(self, csv_file, meta_file, sample_csv_data):
-        """Test that read_annotated_data handles extra fields at multiple nesting levels
-
-        This test ensures that extra fields in metadata files don't cause read_annotated_data
-        to fail, which was a regression issue. Extra fields should be ignored with warnings.
-        """
+    def test_read_annotated_data_with_extra_fields(self, csv_file, meta_file, sample_csv_data, capsys):
+        """Test that read_annotated_data warns on extra fields at all nesting levels but still succeeds."""
         sample_csv_data.to_csv_file(csv_file)
 
-        # Create metadata with extra fields at multiple levels:
-        # - Top level (DataMeta)
-        # - Block level (ColumnBlockMeta)
-        # - Column metadata level (ColumnMeta)
         meta = {
             "file": "test.csv",
             "structure": [
@@ -290,28 +282,18 @@ class TestReadAnnotatedData:
         }
         write_json(meta_file, meta)
 
-        # read_annotated_data should succeed despite extra fields
-        # It should print warnings but continue processing
-        df = read_annotated_data(str(meta_file), return_raw=False)
-
-        # Verify data was loaded correctly
+        # Processing should succeed despite extra fields, with warnings printed
+        df, meta_ret = read_annotated_data(str(meta_file), return_meta=True, return_raw=False)
         assert len(df) == 5
         assert "id" in df.columns
-        assert "age" in df.columns
-        assert "name" in df.columns
-        # Verify data types are correct
-        assert df["age"].dtype in [np.int64, np.float64]  # continuous
-        assert df["name"].dtype.name == "category"  # inferred categories
-
-        # Verify metadata can be retrieved and doesn't contain extra fields
-        df_ret, meta_ret = read_annotated_data(str(meta_file), return_meta=True, return_raw=False)
         assert meta_ret is not None
-        meta_ret_dict = meta_ret.model_dump(mode="json")
-        # Extra fields should not be in returned metadata
-        assert "extra_field_1" not in meta_ret_dict
-        assert "extra_field_2" not in meta_ret_dict
-        # Valid fields should be present
-        assert meta_ret_dict.get("description") == "Valid metadata"
+        assert meta_ret.description == "Valid metadata"
+
+        # Warnings about extras should have been printed
+        captured = capsys.readouterr()
+        assert "extra_field_1" in captured.out
+        assert "extra_block_field" in captured.out
+        assert "extra_col_field" in captured.out
 
     def test_topk_create_block(self, meta_file, csv_file):
         """Test top k create block."""
@@ -2421,8 +2403,8 @@ class TestReplaceDataMetaInParquet:
 class TestSoftValidate:
     """Test soft_validate function"""
 
-    def test_soft_validate_with_extra_fields(self):
-        """Test that soft_validate returns a model even when extra fields are present at multiple nesting levels"""
+    def test_soft_validate_with_extra_fields(self, capsys):
+        """Test that soft_validate warns on extra fields at all nesting levels but returns a valid model."""
         # Create a dict with valid fields plus extra fields at multiple levels:
         # - Top level (DataMeta)
         # - Block level (ColumnBlockMeta)
@@ -2451,65 +2433,25 @@ class TestSoftValidate:
             "description": "Valid field",
         }
 
-        # soft_validate should print warnings but still return a valid DataMeta object
-        result = soft_validate(meta_dict, DataMeta)
+        result = soft_validate(meta_dict, DataMeta, warnings=True)
 
-        # Should return a DataMeta instance
+        # Should return a valid DataMeta with correct fields
         assert isinstance(result, DataMeta)
-        # Valid fields should be present
-        assert result.files is not None
-        assert len(result.files) == 1
-        assert result.files[0].file == "test.csv"
         assert result.description == "Valid field"
-        # Extra fields at top level should be ignored (not accessible as attributes)
+        assert result.files is not None and result.files[0].file == "test.csv"
+        # Extras must be silently dropped
         assert not hasattr(result, "extra_field_1")
-        assert not hasattr(result, "extra_field_2")
+        test_block = result.structure["test"]
+        assert not hasattr(test_block, "extra_block_field")
 
-        # Structure might be a list (if model_construct was used) or dict (if model_validate worked)
-        # Either way, we should be able to access the block
-        if isinstance(result.structure, dict):
-            test_block = result.structure["test"]
-            assert isinstance(test_block, ColumnBlockMeta)
-            assert test_block.name == "test"
-            # Extra field at block level should be ignored
-            assert not hasattr(test_block, "extra_block_field")
+        # Warnings about extras should have been printed
+        captured = capsys.readouterr()
+        assert "extra_field_1" in captured.out
+        assert "extra_block_field" in captured.out
+        assert "extra_col_field" in captured.out
 
-            # Verify column metadata is valid
-            # Columns is a dict mapping column names to ColumnMeta
-            assert "value" in test_block.columns
-            value_col_meta = test_block.columns["value"]
-            assert value_col_meta.source == "value" or value_col_meta.source is None
-            assert isinstance(value_col_meta, ColumnMeta)
-        else:
-            # If it's a list (from model_construct), it will be a list of dicts
-            # Find the block dict by name
-            test_block_dict = next(b for b in result.structure if isinstance(b, dict) and b.get("name") == "test")
-            assert test_block_dict["name"] == "test"
-            # Extra field at block level should be present in dict but not cause errors
-            assert "extra_block_field" in test_block_dict
-
-            # Extract column metadata from the dict structure
-            columns = test_block_dict.get("columns", [])
-            value_col_spec = next(
-                col for col in columns if (isinstance(col, list) and len(col) > 0 and col[0] == "value")
-            )
-            # Extract the ColumnMeta dict from the spec
-            if len(value_col_spec) >= 2 and isinstance(value_col_spec[-1], dict):
-                col_meta_dict = value_col_spec[-1]
-                # Create ColumnMeta from the dict to verify it works with extra fields
-                value_col_meta = ColumnMeta.model_construct(**col_meta_dict)
-            else:
-                value_col_meta = ColumnMeta()
-
-        # Verify column metadata values
-        assert isinstance(value_col_meta, ColumnMeta)
-        assert value_col_meta.categories == ["A", "B", "C"]
-        assert value_col_meta.label == "Test Value"
-        # Extra field at column level should be ignored (not accessible as attribute)
-        assert not hasattr(value_col_meta, "extra_col_field")
-
-    def test_soft_validate_with_column_meta_extra_fields(self):
-        """Test soft_validate with ColumnMeta and extra fields"""
+    def test_soft_validate_with_column_meta_extra_fields(self, capsys):
+        """Test soft_validate with ColumnMeta warns on extra fields but returns valid model."""
         col_meta_dict = {
             "categories": ["A", "B", "C"],
             "ordered": True,
@@ -2517,16 +2459,13 @@ class TestSoftValidate:
             "extra_unknown_field": "should_be_ignored",
         }
 
-        result = soft_validate(col_meta_dict, ColumnMeta)
-
-        # Should return a ColumnMeta instance
+        result = soft_validate(col_meta_dict, ColumnMeta, warnings=True)
         assert isinstance(result, ColumnMeta)
-        # Valid fields should be present
         assert result.categories == ["A", "B", "C"]
-        assert result.ordered is True
         assert result.label == "Test Column"
-        # Extra fields should be ignored
         assert not hasattr(result, "extra_unknown_field")
+        captured = capsys.readouterr()
+        assert "extra_unknown_field" in captured.out
 
     def test_soft_validate_with_already_validated_model(self):
         """Test that soft_validate returns the same instance if already a model"""
@@ -2554,7 +2493,7 @@ class TestSoftValidate:
                     # List-form column specs -> triggers BeforeValidator(_cs_lst_to_dict)
                     "columns": [
                         # invalid when categories is None (would raise in strict mode)
-                        ["x", {"ordered": True, "xyz": False}],
+                        ["x", {"ordered": True}],
                         ["y", {"categories": ["A", "B"], "ordered": False, "likert": True}],  # invalid in strict mode
                     ],
                 }

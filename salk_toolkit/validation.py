@@ -55,6 +55,9 @@ from typing import (
     TypeVar,
     Union,
     cast,
+    get_args,
+    get_origin,
+    get_type_hints,
     TypeAlias,
 )
 from pydantic import (
@@ -77,8 +80,7 @@ DF = lambda dc: Field(default_factory=dc)
 Scalar: TypeAlias = str | int | float | bool | None
 
 
-# Define a new base that ignores extra fields by default (for backward compatibility)
-# Warnings about extra fields are generated via soft_validate
+# Base model that ignores extra fields; strict checking is done via soft_validate warning pass.
 class PBase(BaseModel):
     model_config = ConfigDict(extra="ignore", protected_namespaces=(), arbitrary_types_allowed=True)
 
@@ -164,6 +166,7 @@ class ColumnMeta(PBase):
     topo_feature: Optional[Tuple[str, str, str]] = None  # Link to a geojson/topojson [url,type,col_name inside geodata]
     electoral_system: Optional[ElectoralSystem] = None  # Information about electoral system
     mandates: Optional[MandatesDict] = None  # Mandate count mapping for the electoral system
+    col_prefix: Optional[str] = None  # Prefix prepended to column names in data (from scale block)
 
     @model_serializer(mode="wrap")
     def _serialize_model(
@@ -203,13 +206,10 @@ class GroupOrColumnMeta(ColumnMeta):
     """Column metadata that can optionally describe a grouped question."""
 
     columns: Optional[List[str]] = None
-    col_prefix: Optional[str] = None
 
 
 # This is for the block-level 'scale' group - basically same as ColumnMeta but with a few extras
 class BlockScaleMeta(ColumnMeta):
-    # Only useful in 'scale' block
-    col_prefix: Optional[str] = None  # If column name should have the prefix added. Usually used in scale block
     question_colors: Dict[str, Color] = DF(dict)  # Dict mapping columns to different colors
 
 
@@ -457,6 +457,33 @@ def hard_validate(m: dict[str, object] | DataMeta) -> None:
 T = TypeVar("T", bound=BaseModel)
 
 
+def _strictify_type(ann: object) -> object:  # noqa: ANN401  # annotation types are inherently dynamic
+    """Recursively replace PBase subclasses with their strict twins inside a type annotation."""
+    if isinstance(ann, type) and issubclass(ann, PBase):
+        return _strict_model_class_cached(ann)
+
+    origin = get_origin(ann)
+    if origin is None:
+        return ann
+
+    args = get_args(ann)
+    if not args:
+        return ann
+
+    new_args = tuple(_strictify_type(a) for a in args)
+    if new_args == args:
+        return ann
+
+    if origin is Annotated:
+        # Annotated[type, *metadata] — keep metadata unchanged, replace the base type only
+        return Annotated.__class_getitem__((new_args[0],) + new_args[1:])
+
+    # Generic types: List[X], Dict[K,V], Optional[X], Union[X,Y], Tuple[X,...], etc.
+    if len(new_args) == 1:
+        return origin[new_args[0]]
+    return origin[new_args]
+
+
 def _create_strict_model_class(base_model: type[BaseModel]) -> type[BaseModel]:
     """Create a strict version of a model class with extra='forbid' for validation warnings."""
     return _strict_model_class_cached(base_model)
@@ -464,20 +491,49 @@ def _create_strict_model_class(base_model: type[BaseModel]) -> type[BaseModel]:
 
 @lru_cache(maxsize=None)
 def _strict_model_class_cached(base_model: type[BaseModel]) -> type[BaseModel]:
-    """Cached strict-model wrapper to avoid repeated dynamic class creation."""
-    # If it's already strict, don't wrap again.
-    if getattr(base_model, "model_config", None) and (
-        cast(dict[str, Any], base_model.model_config).get("extra") == "forbid"
-    ):
-        return base_model
+    """Recursively build a strict twin of base_model where every nested PBase field is also strict.
 
+    Creates a parallel strict hierarchy so that soft_validate's warning pass catches extra fields
+    at all nesting levels, not just the top level.
+    """
     if not issubclass(base_model, PBase):
         return base_model
+    if cast(dict[str, Any], base_model.model_config).get("extra") == "forbid":
+        return base_model
 
-    class StrictModel(base_model):  # type: ignore[valid-type, misc]
-        model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
+    # Collect field annotations that contain PBase subclasses and need strict twins.
+    try:
+        hints = get_type_hints(base_model, include_extras=True)
+    except Exception:
+        hints = {}
 
-    return StrictModel
+    new_annotations: dict[str, Any] = {}
+    for fname in base_model.model_fields:
+        ann = hints.get(fname)
+        if ann is None:
+            continue
+        strict_ann = _strictify_type(ann)
+        if strict_ann is not ann:
+            new_annotations[fname] = strict_ann
+
+    namespace: dict[str, Any] = {
+        "model_config": ConfigDict(extra="forbid", arbitrary_types_allowed=True),
+    }
+    if new_annotations:
+        namespace["__annotations__"] = new_annotations
+        # Preserve defaults so overridden fields don't become required in the strict twin.
+        for fname in new_annotations:
+            fi = base_model.model_fields.get(fname)
+            if fi is None or fi.is_required():
+                continue
+            if fi.default_factory is not None:
+                namespace[fname] = Field(default_factory=fi.default_factory)
+            else:
+                namespace[fname] = fi.default
+
+    strict_class = type(f"Strict{base_model.__name__}", (base_model,), namespace)
+    strict_class.model_rebuild(force=True)  # type: ignore[union-attr]
+    return strict_class
 
 
 def soft_validate(
@@ -488,7 +544,9 @@ def soft_validate(
     context: dict[str, object] | None = None,
 ) -> T:
     """Validate dict/model against a pydantic model, printing warnings, then returning validated object.
-    Validates with the normal model (extra='ignore') which allows extra fields but runs all validators.
+    When warnings=True, validates against a recursively strict twin first (extra='forbid' at all levels)
+    to surface unknown keys as printed warnings, then validates with the normal model (extra='ignore')
+    which allows extra fields and runs all validators so processing can continue.
 
     Args:
         m: Dictionary or Pydantic model instance to validate.
@@ -522,8 +580,7 @@ def soft_validate(
                 msg = error["msg"]
                 print(f"  {loc}: {msg}")
 
-    # Now validate with the normal model (extra='ignore') which runs all validators
-    # and allows extra fields at all nesting levels
+    # Now validate with the normal model, which runs all validators and forbids extra fields.
     soft_context = dict(context or {})
     soft_context["validation_mode"] = "soft"
     inst = cast(T, model.model_validate(m_dict, strict=False, context=soft_context))

@@ -136,7 +136,10 @@ def merge_pydantic_models(
     if defaults is None:
         return overrides
 
-    defaults_dict = defaults.model_dump(mode="python")
+    target_fields = overrides.__class__.model_fields
+    # Only carry over defaults fields that exist on the target model; this prevents
+    # scale-only fields (e.g. question_colors) from leaking into ColumnMeta instances.
+    defaults_dict = {k: v for k, v in defaults.model_dump(mode="python").items() if k in target_fields}
     # Important semantic: fields explicitly set on the override should replace defaults,
     # including explicit `None` (JSON `null`) which should clear inherited values.
     #
