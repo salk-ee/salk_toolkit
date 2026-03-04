@@ -49,13 +49,22 @@ def serialize_pbase(
             else:
                 default_values[field_name] = default_val
 
-    # Remove keys where values match defaults, are None, or are empty collections
+    # Remove keys where values match defaults or are None
     result: dict[str, Any] = {}
     for key, value in serialized.items():
         default_val = default_values.get(key)
-        # Exclude if value matches default, is None, or is empty collection
-        if value != default_val and value is not None and value != {} and value != []:
-            result[key] = value
+        if value is None:
+            continue  # Always skip None
+        if value == default_val:
+            continue  # Skip if matches default
+        # For optional fields (those that have a declared default), also strip
+        # empty collections — e.g. scale:{} (BlockScaleMeta with all defaults)
+        # should serialize as absent, just like scale:None would.
+        # Required fields (not in default_values) are kept even when empty, so
+        # that round-tripping preserves the required `columns:{}` entry.
+        if key in default_values and (value == {} or value == []):
+            continue
+        result[key] = value
 
     return result
 

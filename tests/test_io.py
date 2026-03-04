@@ -448,6 +448,7 @@ class TestReadAnnotatedData:
         structure = {
             "maxdiff": ColumnBlockMeta(
                 name="maxdiff",
+                scale=BlockScaleMeta(categories=topics),
                 columns={},
                 create=None,
             ),
@@ -502,13 +503,13 @@ class TestReadAnnotatedData:
                 {
                     "name": "maxdiff",
                     "columns": [],
+                    "scale": {"categories": "topics"},
                     "create": {
                         "type": "maxdiff",
                         "best_columns": r"Q2_(\d+?)best",
                         "worst_columns": r"Q2_(\d+?)worst",
                         "set_columns": r"Q2_\1set",
                         "setindex_column": ["Q2_Version", {"continuous": True, "categories": None}],
-                        "scale": {"categories": "topics"},
                     },
                 }
             ],
@@ -628,12 +629,12 @@ class TestReadAnnotatedData:
                 {
                     "name": "maxdiff",
                     "columns": [],
+                    "scale": {"categories": "topics"},
                     "create": {
                         "type": "maxdiff",
                         "best_columns": r"Q2_(\d+?)best",
                         "worst_columns": r"Q2_(\d+?)worst",
                         "set_columns": r"Q2_\1set",
-                        "scale": {"categories": "topics"},
                     },
                 }
             ],
