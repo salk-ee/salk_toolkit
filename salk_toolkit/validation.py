@@ -233,7 +233,6 @@ class MaxDiffBlock(PBase):
     setindex_column: Optional[Union[str, List[object]]] = None  # Keeps metadata tuple used in annotations.
     topics: Optional[List[str]] = None
     sets: Optional[List[List[int]]] = None
-    scale: Optional[Dict[str, Any]] = None
 
 
 # Import _cs_lst_to_dict for BeforeValidator (needs to be at runtime)

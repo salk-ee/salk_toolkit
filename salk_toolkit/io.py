@@ -738,7 +738,7 @@ def _create_maxdiff_metas_and_dfs(
     return [df], [
         {
             "name": generated_name,
-            "scale": deepcopy(create.scale or {}),
+            "scale": deepcopy(group.scale.model_dump(mode="python") if group.scale else {}),
             "columns": columns_spec,
         }
     ]
