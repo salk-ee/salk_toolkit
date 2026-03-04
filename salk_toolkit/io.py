@@ -546,6 +546,14 @@ def _create_topk_metas_and_dfs_regex(
         }
         if create.translate_after is not None:
             sdf = sdf.replace(create.translate_after)
+        # Apply scale.translate to cell values (e.g. Lithuanian party names → English short codes)
+        scale_translate = (
+            dict(block_with_create.scale.translate)
+            if block_with_create.scale and block_with_create.scale.translate
+            else {}
+        )
+        if scale_translate:
+            sdf = sdf.replace(scale_translate)
         meta_subgroup = soft_validate(meta_subgroup, ColumnBlockMeta)
         topk_dfs.append(sdf)
         subgroup_metas.append(meta_subgroup)
@@ -790,6 +798,12 @@ def _create_topk_metas_and_dfs_list(
 
     if create.translate_after is not None:
         sdf = sdf.replace(create.translate_after)
+    # Apply scale.translate to cell values (e.g. Lithuanian party names → English short codes)
+    scale_translate = (
+        dict(block_with_create.scale.translate) if block_with_create.scale and block_with_create.scale.translate else {}
+    )
+    if scale_translate:
+        sdf = sdf.replace(scale_translate)
     sdf.columns = res_cols
 
     _throw_vals_left(sdf)  # changes df in place, Nones go to rightmost side
