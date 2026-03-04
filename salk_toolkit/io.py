@@ -636,6 +636,9 @@ def _create_maxdiff_metas_and_dfs(
         worst_cols = list(worst_cols)
         set_cols = list(set_cols)
 
+    # Extract translate dict from scale to apply to topic values in the data
+    translate = dict(group.scale.translate) if group.scale is not None and group.scale.translate else {}
+
     def _maybe_json_load(value: str | None) -> list[object] | None:
         try:
             parsed = json.loads(value)
@@ -678,7 +681,8 @@ def _create_maxdiff_metas_and_dfs(
         if not tokens:
             return []
         if all(isinstance(token, str) for token in tokens) and not all(_is_int_like(token) for token in tokens):
-            return [token.strip() for token in tokens]
+            stripped = [token.strip() for token in tokens]
+            return [translate.get(t, t) for t in stripped] if translate else stripped  # type: ignore[return-value]
         if all(_is_int_like(token) for token in tokens):
             if topics is None:
                 raise ValueError("Explicit maxdiff set columns with indices require 'topics' to be defined.")
@@ -698,7 +702,10 @@ def _create_maxdiff_metas_and_dfs(
         df = df[ordered_cols + [setindex_col_name]]
         if topics is None or sets is None:
             raise ValueError("Maxdiff definitions using 'setindex_column' must also define 'topics' and 'sets'.")
-        topics_arr = np.array(["", *topics], dtype=object)
+        effective_topics: list[str] = [translate.get(t, t) for t in topics] if translate else list(topics)  # type: ignore[misc]
+        topics_arr = np.array(
+            ["", *effective_topics], dtype=object
+        )  # "" at index 0: survey sets are 1-indexed (subject to change)
         sets_arr = np.asarray(sets, dtype=int)
         lsets = topics_arr[sets_arr]
 
@@ -720,6 +727,11 @@ def _create_maxdiff_metas_and_dfs(
                 else:
                     converted_values.append(None)
             df[col] = converted_values  # type: ignore[assignment]
+
+    # Apply translate to best/worst scalar topic values
+    if translate:
+        for col in best_cols + worst_cols:
+            df[col] = df[col].map(lambda x, _t=translate: _t.get(x, x) if isinstance(x, str) else x)
 
     generated_name = create.name or f"{group.name}_maxdiff"
     df = df.sort_index(axis=1)  # sort columns
