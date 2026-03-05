@@ -674,13 +674,7 @@ def is_date_str_series(s: pd.Series) -> bool:
     nonnull = s.dropna()
     if len(nonnull) == 0 or not nonnull.map(lambda v: isinstance(v, str)).all() or is_numeric_str_series(s):
         return False
-    with warnings.catch_warnings():
-        warnings.filterwarnings(
-            "ignore",
-            message=r"Could not infer format, so each element will be parsed individually.*",
-            category=UserWarning,
-        )
-        parsed = pd.to_datetime(nonnull, errors="coerce")
+    parsed = pd.to_datetime(nonnull, errors="coerce", format="mixed")
     return bool(parsed.notna().all())
 
 
