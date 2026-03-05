@@ -578,6 +578,10 @@ def _create_topk_metas_and_dfs_regex(
         )
         if scale_translate:
             sdf = sdf.replace(scale_translate)
+            effective_cats = list(dict.fromkeys(scale_translate.values()))
+            for col in sdf.columns:
+                sdf[col] = pd.Categorical(sdf[col], categories=effective_cats)
+            meta_subgroup["scale"]["categories"] = effective_cats
         meta_subgroup = soft_validate(meta_subgroup, ColumnBlockMeta)
         topk_dfs.append(sdf)
         subgroup_metas.append(meta_subgroup)
@@ -730,11 +734,15 @@ def _create_maxdiff_metas_and_dfs(
         raise ValueError(f"Unsupported token types in maxdiff set definition: {tokens}")
 
     ordered_cols = best_cols + worst_cols
+    # Compute effective (translated) topics once, used for both setindex columns and best/worst categorical dtypes
+    effective_topics: list[str] | None = None
+    if topics is not None:
+        effective_topics = [translate.get(t, t) for t in topics] if translate else list(topics)  # type: ignore[misc]
+
     if setindex_col_name:
         df = df[ordered_cols + [setindex_col_name]]
-        if topics is None or sets is None:
+        if topics is None or sets is None or effective_topics is None:
             raise ValueError("Maxdiff definitions using 'setindex_column' must also define 'topics' and 'sets'.")
-        effective_topics: list[str] = [translate.get(t, t) for t in topics] if translate else list(topics)  # type: ignore[misc]
         topics_arr = np.array(
             ["", *effective_topics], dtype=object
         )  # "" at index 0: survey sets are 1-indexed (subject to change)
@@ -760,21 +768,31 @@ def _create_maxdiff_metas_and_dfs(
                     converted_values.append(None)
             df[col] = converted_values  # type: ignore[assignment]
 
-    # Apply translate to best/worst scalar topic values
-    if translate:
-        for col in best_cols + worst_cols:
-            df[col] = df[col].map(lambda x, _t=translate: _t.get(x, x) if isinstance(x, str) else x)
+    # Apply translate to best/worst scalar topic values, then cast to categorical with full translated topic list.
+    # This ensures the column dtype carries only the translated categories, preventing pollution from partial
+    # observed values being appended to Lithuanian originals by _fix_meta_categories later.
+    for col in best_cols + worst_cols:
+        s = df[col]
+        if translate:
+            s = s.map(lambda x, _t=translate: _t.get(x, x) if isinstance(x, str) else x)
+        if effective_topics is not None:
+            s = pd.Categorical(s, categories=effective_topics)
+        df[col] = s
 
     generated_name = create.name or f"{group.name}_maxdiff"
     df = df.sort_index(axis=1)  # sort columns
 
     base_columns = sorted(best_cols + worst_cols + cast(list[str], set_cols))
-    columns_spec: dict[str, ColumnMeta] = {col: ColumnMeta() for col in base_columns}
+    # Carry the full translated topic list as categories in the column meta so _fix_meta_categories
+    # does not need to infer them from the (potentially partial) dtype.
+    best_worst_col_meta = ColumnMeta(categories=effective_topics) if effective_topics is not None else ColumnMeta()
+    columns_spec: dict[str, ColumnMeta] = {col: best_worst_col_meta for col in base_columns}
     if setindex_col_name is not None:
         if setindex_col_meta is None:
             setindex_col_meta = ColumnMeta()
-        if topics is not None and setindex_col_meta.categories is None:
-            setindex_col_meta = setindex_col_meta.model_copy(update={"categories": list(topics)})
+        if effective_topics is not None and setindex_col_meta.categories is None:
+            # Use translated topic names for the setindex categories
+            setindex_col_meta = setindex_col_meta.model_copy(update={"categories": effective_topics})
         if setindex_col_meta.continuous is False:
             setindex_col_meta = setindex_col_meta.model_copy(update={"continuous": True})
         columns_spec = {setindex_col_name: setindex_col_meta} | columns_spec
