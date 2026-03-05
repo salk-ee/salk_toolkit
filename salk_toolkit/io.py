@@ -143,6 +143,7 @@ def set_file_map(file_map: dict[str, str]) -> None:
 def _reconcile_categories(
     raw_data_dict: dict[str, pd.DataFrame],
     initial_cat_dtypes: dict[str, pd.CategoricalDtype | None] | None = None,
+    warnings: bool = True,
 ) -> dict[str, pd.CategoricalDtype]:
     """Detect and reconcile categorical dtypes across multiple files, preserving all categories.
 
@@ -210,7 +211,8 @@ def _reconcile_categories(
             _, cats = _deterministic_categories_and_values(fdf[c].dropna())
             reconciled[c] = pd.Categorical([], cats).dtype
             n_cats = len(utils.get_categories(reconciled[c]))
-            warn(f"Categories for {c} are different between files - merging to total {n_cats} cats")
+            if warnings:
+                warn(f"Categories for {c} are different between files - merging to total {n_cats} cats")
         else:
             reconciled[c] = dtype
 
@@ -236,6 +238,18 @@ def _load_data_files(
     metas, einfo = [], {}
     if read_opts is None:
         read_opts = {}
+
+    # Pre-scan extra FileDesc fields across all files so we can inject them as Categoricals
+    # with a consistent category list (in file order, deduped) right at injection time.
+    extra_field_categories: dict[str, list] = {}
+    for fd in data_files:
+        pydantic_extra = getattr(fd, "__pydantic_extra__", None) or {}
+        for k, v in pydantic_extra.items():
+            if k not in extra_field_categories:
+                extra_field_categories[k] = []
+            if v not in extra_field_categories[k]:
+                extra_field_categories[k].append(v)
+
     for fi, fd in enumerate(data_files):
         data_file = fd.file
         opts = fd.opts or read_opts
@@ -317,12 +331,22 @@ def _load_data_files(
         for k, v in pydantic_extra.items():
             if len(data_files) <= 1 and k == "file":
                 continue
-            raw_data[k] = v
+            cats = extra_field_categories[k]
+            raw_data[k] = pd.Categorical([v] * len(raw_data), categories=cats)
 
         raw_data_dict[file_code] = raw_data
 
     if metas:  # Do we have any metainfo?
         meta = metas[-1]
+
+        # Reconcile categoricals across files: pd.concat collapses categoricals with
+        # different category lists to object dtype, so we need to re-unify them first.
+        if len(raw_data_dict) > 1:
+            reconciled_dtypes = _reconcile_categories(raw_data_dict, warnings=False)
+            for fc, rdf in raw_data_dict.items():
+                for col, dtype in reconciled_dtypes.items():
+                    if col in rdf.columns:
+                        raw_data_dict[fc][col] = rdf[col].astype("object").astype(dtype)
 
         # This will fix categories inside meta too - use concatenated view for this
         fdf = pd.concat(raw_data_dict.values())
@@ -1209,6 +1233,9 @@ def _process_annotated_data(
                         raise ValueError(f"Categories for {cn} must be a list")
 
                 if isinstance(cats, list):
+                    dropped = set(s.dropna().unique()) - set(cats)
+                    if dropped:
+                        warn(f"Values for {cn} not in categories and will be dropped: {dropped}")
                     # Use updated ordered flag if we modified it during inference
                     final_ordered = mcm.ordered if mcm.ordered is not None else False
                     s = pd.Series(
@@ -2111,15 +2138,6 @@ def read_and_process_data(
             only_fix_categories=only_fix_categories,
             add_original_inds=add_original_inds,
         )
-
-        # Reconcile categories across files (only for read_and_process_data)
-        reconciled_dtypes = _reconcile_categories(raw_data_dict, None)
-
-        # Apply reconciled dtypes to each file's dataframe
-        for file_code, df in raw_data_dict.items():
-            for c, dtype in reconciled_dtypes.items():
-                if c in df.columns:
-                    df[c] = pd.Categorical(df[c], dtype=dtype)
 
         # Concatenate for backward compatibility
         df = pd.concat(raw_data_dict.values())

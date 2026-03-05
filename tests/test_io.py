@@ -2137,6 +2137,44 @@ class TestReadAndProcessData:
         assert df["t"].dropna().unique().tolist() == ["-3", "0"]
         assert m.structure["survey"].columns["t"].categories == ["-3", "0"]
 
+    def test_categorical_preserved_when_combining_json_metafiles(self, temp_dir):
+        """Categoricals inferred per-file must stay categorical after combining two JSON metafiles.
+
+        Regression: pd.concat on two Categoricals with different category lists produces
+        dtype=object; _reconcile_categories must re-unify them after loading.
+        """
+        csv1 = temp_dir / "f1.csv"
+        csv2 = temp_dir / "f2.csv"
+        # Each file has a disjoint set of region values — the union must be the final categories.
+        pd.DataFrame({"id": [1, 2], "region": ["North", "South"]}).to_csv_file(csv1)
+        pd.DataFrame({"id": [3, 4], "region": ["East", "West"]}).to_csv_file(csv2)
+
+        meta1 = temp_dir / "m1.json"
+        meta2 = temp_dir / "m2.json"
+        for meta_path, csv_name in [(meta1, "f1.csv"), (meta2, "f2.csv")]:
+            write_json(
+                meta_path,
+                {
+                    "file": csv_name,
+                    "structure": [
+                        {
+                            "name": "main",
+                            "columns": [
+                                "id",
+                                ["region", {"categories": "infer"}],
+                            ],
+                        }
+                    ],
+                },
+            )
+
+        desc = {"files": [{"file": str(meta1)}, {"file": str(meta2)}]}
+        df = read_and_process_data(desc)
+
+        assert df["region"].dtype.name == "category", "region should be categorical after combining files"
+        assert set(df["region"].cat.categories) == {"North", "South", "East", "West"}
+        assert set(df["region"].dropna()) == {"North", "South", "East", "West"}
+
 
 class TestFileTracking:
     """Test file tracking functionality"""
