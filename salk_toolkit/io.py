@@ -2256,8 +2256,9 @@ def read_parquet_metadata(file_name: str) -> ParquetMeta | None:
         ParquetMeta bundle, or None if no metadata found.
     """
     schema = pq.read_schema(file_name)
-    if custom_meta_key.encode() in schema.metadata:
-        restored_meta_json = schema.metadata[custom_meta_key.encode()]
+    schema_metadata = schema.metadata or {}
+    if custom_meta_key.encode() in schema_metadata:
+        restored_meta_json = schema_metadata[custom_meta_key.encode()]
         restored_meta = cast(dict[str, object], json.loads(restored_meta_json))
         return soft_validate(restored_meta, ParquetMeta)
     return None
@@ -2296,8 +2297,9 @@ def read_parquet_with_metadata(
     # Read it as a normal pandas dataframe
     restored_table = pq.read_table(file_name, **kwargs)
     restored_df = restored_table.to_pandas()
-    if custom_meta_key.encode() in restored_table.schema.metadata:
-        restored_meta_json = restored_table.schema.metadata[custom_meta_key.encode()]
+    schema_metadata = restored_table.schema.metadata or {}
+    if custom_meta_key.encode() in schema_metadata:
+        restored_meta_json = schema_metadata[custom_meta_key.encode()]
         restored_meta_payload = cast(dict[str, object], json.loads(restored_meta_json))
         restored_meta = soft_validate(restored_meta_payload, ParquetMeta)
     else:

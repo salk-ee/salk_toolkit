@@ -8,6 +8,8 @@ import pandas as pd
 import numpy as np
 import json
 import tempfile
+import pyarrow as pa
+import pyarrow.parquet as pq
 from pathlib import Path
 from pandas.testing import assert_frame_equal
 from pydantic import ValidationError
@@ -15,6 +17,7 @@ from pydantic import ValidationError
 from salk_toolkit.io import (
     read_annotated_data,
     read_and_process_data,
+    read_parquet_with_metadata,
     write_parquet_with_metadata,
     reset_file_tracking,
     get_loaded_files,
@@ -2504,6 +2507,18 @@ class TestMetadataUtilities:
             "col3": "col3",
         }
         assert result_multi == expected_multi
+
+    def test_read_parquet_with_metadata_handles_missing_schema_metadata(self, temp_dir):
+        """Parquet files without schema metadata should return None meta without error."""
+        parquet_file = temp_dir / "no_schema_metadata.parquet"
+        expected_df = pd.DataFrame({"id": [1, 2], "value": ["a", "b"]})
+        table = pa.Table.from_pandas(expected_df).replace_schema_metadata(None)
+        pq.write_table(table, parquet_file)
+
+        restored_df, restored_meta = read_parquet_with_metadata(str(parquet_file))
+
+        assert_frame_equal(restored_df, expected_df)
+        assert restored_meta is None
 
 
 class TestReplaceDataMetaInParquet:
