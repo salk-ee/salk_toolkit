@@ -728,6 +728,8 @@ def kde_1d(
     """Evaluate a 1D Gaussian KDE over ``ls`` for a single series."""
 
     ar = vc.to_numpy()
+    if ar.size == 0:
+        return pd.DataFrame({"density": np.zeros_like(ls, dtype=float), value_col: ls})
     if bw is None:
         bw = kde_bw(ar)  # This can be problematic in small segments, so best calculated globally
     y = FFTKDE(kernel="gaussian", bw=bw).fit(ar).evaluate(ls)
@@ -760,7 +762,9 @@ def density(
     lims = list(data[p.value_col].quantile([0.005, 0.995]))
     data = data[(data[p.value_col] >= lims[0]) & (data[p.value_col] <= lims[1])]
 
-    ls = np.linspace(data[p.value_col].min() - 1e-10, data[p.value_col].max() + 1e-10, 101)
+    vmin, vmax = data[p.value_col].min(), data[p.value_col].max()
+    # FFTKDE requires grid to strictly encompass all data; nextafter avoids float precision issues
+    ls = np.linspace(np.nextafter(vmin, -np.inf), np.nextafter(vmax, np.inf), 101)
     if bw is None:
         bw = kde_bw(data[[p.value_col]].sample(10000, replace=True).to_numpy())
     ndata = utils.gb_in_apply(
