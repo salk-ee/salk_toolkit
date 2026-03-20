@@ -48,6 +48,7 @@ __all__ = [
     "match_data",
     "match_sum_round",
     "merge_pydantic_models",
+    "merge_pydantic_models_recursive",
     "merge_series",
     "min_diff",
     "multicol_to_vals_cats",
@@ -149,6 +150,51 @@ def merge_pydantic_models(
     overrides_dict = {k: getattr(overrides, k) for k in overrides.model_fields_set}
     merged_dict = {**defaults_dict, **overrides_dict}
     return overrides.__class__.model_validate(merged_dict, context=context)
+
+
+def merge_pydantic_models_recursive(
+    defaults: ModelT | None, overrides: ModelT, *, context: dict[str, object] | None = None
+) -> ModelT:
+    """Like :func:`merge_pydantic_models` but recursively merges nested ``BaseModel`` fields.
+
+    Use when nested objects should inherit unspecified subfields from the defaults instance
+    (e.g. merging global :class:`ModelSettings` into a step). For plot-pipeline column meta,
+    prefer :func:`merge_pydantic_models` so nested models rely on their class defaults only.
+    """
+
+    if defaults is None:
+        return overrides
+
+    cls = overrides.__class__
+    merged: dict[str, object] = {}
+    default_fields = defaults.__class__.model_fields
+
+    for name in cls.model_fields:
+        if name not in overrides.model_fields_set:
+            # Only copy defaults for fields that exist on the defaults model; otherwise
+            # leave unset so subclass defaults apply (e.g. ModelSettings → ModelStep).
+            if name in default_fields:
+                merged[name] = getattr(defaults, name)
+            continue
+
+        o_val = getattr(overrides, name)
+        if o_val is None:
+            merged[name] = None
+            continue
+
+        d_val = getattr(defaults, name, None) if name in default_fields else None
+        if isinstance(d_val, BaseModel):
+            if isinstance(o_val, BaseModel) and type(d_val) is type(o_val):
+                merged[name] = merge_pydantic_models_recursive(d_val, o_val, context=context)
+            elif isinstance(o_val, dict):
+                nested = type(d_val).model_validate(o_val, context=context)
+                merged[name] = merge_pydantic_models_recursive(d_val, nested, context=context)
+            else:
+                merged[name] = o_val
+        else:
+            merged[name] = o_val
+
+    return cls.model_validate(merged, context=context)
 
 
 def recursive_dict_merge(d1: object, d2: object) -> object:

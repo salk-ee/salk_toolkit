@@ -37,9 +37,9 @@ import os
 import warnings
 import re
 from collections import defaultdict
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from copy import deepcopy
-from typing import Any, Callable, Literal, TypeAlias, cast, overload
+from typing import Any, Callable, Literal, TypeAlias, TypeVar, cast, overload
 
 import numpy as np
 import pandas as pd
@@ -54,6 +54,7 @@ import pyreadstat  # type: ignore[import-untyped]
 import salk_toolkit as stk
 from salk_toolkit import utils
 from salk_toolkit.utils import (
+    JSONValue,
     replace_constants,
     is_date_str_series,
     is_datetime,
@@ -1525,13 +1526,16 @@ def group_columns_dict(data_meta: DataMeta) -> dict[str, list[str]]:
     # return { g['name'] : [(t[0] if type(t)!=str else t) for t in g['columns']] for g in data_meta['structure'] }
 
 
-def list_aliases(lst: list[str], da: dict[str, list[str]]) -> list[str]:
+T_list_alias = TypeVar("T_list_alias")
+
+
+def list_aliases(lst: Sequence[T_list_alias], da: dict[str, list[str]]) -> list[T_list_alias | str]:
     """Take a list and a dict and replace all dict keys in list with their corresponding lists in-place.
 
     Expand aliases in a list using a dictionary mapping.
 
     Args:
-        lst: List of strings that may contain aliases.
+        lst: List of strings (or other res-col tokens) that may contain aliases.
         da: Dictionary mapping aliases to lists of expanded values.
 
     Returns:
@@ -2019,7 +2023,7 @@ def _data_with_inferred_meta(data_file: str, **kwargs: object) -> tuple[pd.DataF
 def _perform_merges(
     df: pd.DataFrame,
     merges: SingleMergeSpec | list[SingleMergeSpec],
-    constants: dict[str, object] | None = None,
+    constants: Mapping[str, JSONValue] | None = None,
     data_meta: DataMeta | None = None,
 ) -> pd.DataFrame:
     """Perform merge operations on a DataFrame.
@@ -2085,7 +2089,7 @@ def _perform_merges(
 def read_and_process_data(
     desc: str | dict[str, Any] | DataDescription,
     return_meta: Literal[False] = False,
-    constants: dict[str, object] | None = ...,
+    constants: Mapping[str, JSONValue] | None = ...,
     skip_postprocessing: bool = ...,
     **kwargs: object,
 ) -> pd.DataFrame: ...
@@ -2095,7 +2099,7 @@ def read_and_process_data(
 def read_and_process_data(
     desc: str | dict[str, Any] | DataDescription,
     return_meta: Literal[True],
-    constants: dict[str, object] | None = ...,
+    constants: Mapping[str, JSONValue] | None = ...,
     skip_postprocessing: bool = ...,
     **kwargs: object,
 ) -> tuple[pd.DataFrame, DataMeta]: ...
@@ -2104,7 +2108,7 @@ def read_and_process_data(
 def read_and_process_data(
     desc: str | dict[str, Any] | DataDescription,
     return_meta: bool = False,
-    constants: dict[str, object] | None = None,
+    constants: Mapping[str, JSONValue] | None = None,
     skip_postprocessing: bool = False,
     **kwargs: Any,
 ) -> pd.DataFrame | tuple[pd.DataFrame, DataMeta]:

@@ -39,6 +39,7 @@ __all__ = [
     "MandatesDict",
 ]
 
+from collections.abc import Mapping
 from datetime import date, datetime
 from functools import lru_cache
 from typing import (
@@ -73,7 +74,7 @@ from pydantic import (
 )
 from pydantic_extra_types.color import Color
 
-from salk_toolkit.utils import replace_constants
+from salk_toolkit.utils import JSONValue, replace_constants
 
 DF = lambda dc: Field(default_factory=dc)
 
@@ -329,15 +330,11 @@ class FileDesc(BaseModel):
     code: Optional[str] = None  # Short code identifier for the file (e.g., 'F1', 'F2' or 'wave1', 'wave2')
 
 
-def _normalize_files_dict(meta: Any, read_opts_key: str = "read_opts") -> Any:  # noqa: ANN401
-    """Normalize file → files list, ensuring all FileDesc entries have codes based on index.
+def _normalize_data_desc_input(meta: Any, read_opts_key: str = "read_opts") -> Any:  # noqa: ANN401
+    """Dict payload only: fold ``file`` and (for DataMeta) ``read_opts`` into ``files``,
+        coerce FileDesc, default ``code`` to F0, F1, ….
 
-    Args:
-        meta: Dictionary or object to normalize (will be converted to dict if needed).
-        read_opts_key: Key name for read options (default "read_opts" for DataMeta, not used for DataDescription).
-
-    Returns:
-        Normalized dictionary with files list and codes set based on index (F0, F1, F2, ...).
+    Non-dicts pass through unchanged.
     """
     if isinstance(meta, dict):
         # If file is provided, convert to first entry in files list
@@ -350,17 +347,20 @@ def _normalize_files_dict(meta: Any, read_opts_key: str = "read_opts") -> Any:  
                 meta.pop("read_opts", None)  # read_opts is now in files
             if not meta.get("files"):
                 meta["files"] = []
-            meta["files"].insert(0, {"file": file_value, "opts": read_opts})
+            meta["files"].insert(0, FileDesc(file=file_value, opts=read_opts))
 
         # Ensure all files have codes based on their index in the list
         if meta.get("files") is not None:
             files = list(meta["files"])
-            normalized_files = []
+            normalized_files: list[FileDesc] = []
             for i, fd in enumerate(files):
-                assert isinstance(fd, dict), "Files entries must be dicts"
-                if fd.get("code") is None:
-                    fd["code"] = f"F{i}"  # Set code based on index: F0, F1, F2, ...
-                normalized_files.append(fd)
+                try:
+                    file_desc = FileDesc.model_validate(fd)
+                except (ValidationError, TypeError) as exc:
+                    raise TypeError("Files entries must be FileDesc-compatible objects") from exc
+                if file_desc.code is None:
+                    file_desc = file_desc.model_copy(update={"code": f"F{i}"})  # F0, F1, F2, ...
+                normalized_files.append(file_desc)
             meta["files"] = normalized_files
 
     return meta
@@ -417,8 +417,8 @@ class DataMeta(PBase):
     @model_validator(mode="before")
     @classmethod
     def normalize_files(cls, meta: Any) -> Any:  # noqa: ANN401  # pydantic validators require Any
-        """Normalize file + read_opts → files list, ensuring all FileDesc entries have a code."""
-        return _normalize_files_dict(meta, read_opts_key="read_opts")
+        """Expand ``file``/``read_opts`` shorthands and coerce ``files`` to :class:`FileDesc`."""
+        return _normalize_data_desc_input(meta, read_opts_key="read_opts")
 
     @model_validator(mode="before")
     @classmethod
@@ -441,7 +441,7 @@ class DataMeta(PBase):
 # --------------------------------------------------------
 
 
-def hard_validate(m: dict[str, object] | DataMeta) -> None:
+def hard_validate(m: Mapping[str, JSONValue] | DataMeta) -> None:
     """Validate a DataMeta object with strict checking, raising errors on failure.
 
     Uses a strict model (extra='forbid') to ensure no extra fields are allowed.
@@ -453,7 +453,8 @@ def hard_validate(m: dict[str, object] | DataMeta) -> None:
         ValidationError: If validation fails (including extra fields).
     """
     StrictDataMeta = _create_strict_model_class(DataMeta)
-    StrictDataMeta.model_validate(m if isinstance(m, dict) else m.model_dump(mode="python"))
+    payload = m.model_dump(mode="python") if isinstance(m, DataMeta) else dict(m)
+    StrictDataMeta.model_validate(payload)
 
 
 T = TypeVar("T", bound=BaseModel)
@@ -539,11 +540,11 @@ def _strict_model_class_cached(base_model: type[BaseModel]) -> type[BaseModel]:
 
 
 def soft_validate(
-    m: dict[str, object] | BaseModel,
+    m: Mapping[str, JSONValue] | BaseModel,
     model: type[T],
     warnings: bool = False,
     *,
-    context: dict[str, object] | None = None,
+    context: Mapping[str, JSONValue] | None = None,
 ) -> T:
     """Validate dict/model against a pydantic model, printing warnings, then returning validated object.
     When warnings=True, validates against a recursively strict twin first (extra='forbid' at all levels)
@@ -566,7 +567,7 @@ def soft_validate(
     if isinstance(m, BaseModel):
         m_dict = m.model_dump(mode="python")
     else:
-        m_dict = m
+        m_dict = dict(m)
 
     if warnings:
         # First, validate with a temporary strict model (extra='forbid') to catch extra fields
@@ -583,7 +584,7 @@ def soft_validate(
                 print(f"  {loc}: {msg}")
 
     # Now validate with the normal model, which runs all validators and forbids extra fields.
-    soft_context = dict(context or {})
+    soft_context = dict(context) if context is not None else {}
     soft_context["validation_mode"] = "soft"
     inst = cast(T, model.model_validate(m_dict, strict=False, context=soft_context))
     return inst
@@ -653,9 +654,8 @@ class DataDescription(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def normalize_files(cls, meta: Any) -> Any:  # noqa: ANN401  # pydantic validators require Any
-        """Normalize file → files list, ensuring all FileDesc entries have a code based on index."""
-        # DataDescription doesn't have read_opts, so use a non-existent key
-        return _normalize_files_dict(meta, read_opts_key="__no_read_opts__")
+        """Expand ``file`` shorthand and coerce ``files`` to :class:`FileDesc` (no top-level ``read_opts``)."""
+        return _normalize_data_desc_input(meta, read_opts_key="__no_read_opts__")
 
 
 # Filter spec:
