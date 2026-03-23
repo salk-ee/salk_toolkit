@@ -77,10 +77,14 @@ def _meta_to_plain(meta: ColumnMeta) -> Dict[str, Any]:
 
 
 def _question_meta_clone(base_meta: GroupOrColumnMeta, categories: Sequence[str] | None = None) -> GroupOrColumnMeta:
-    """Produce a categorical copy of ``base_meta`` for the synthetic ``question`` column."""
+    """Produce a categorical copy of ``base_meta`` for the synthetic ``question`` column.
+
+    ``continuous`` and ``ordered`` are cleared so question identity is nominal, not inherited from the group.
+    """
 
     clone = base_meta.model_copy(deep=True)
     clone.continuous = False
+    clone.ordered = False
     if categories is not None:
         clone.categories = list(categories)
     return clone

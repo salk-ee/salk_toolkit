@@ -395,6 +395,7 @@ class TestPlots:
             "factor_cols": ["party_preference"],
             "filter": {},
             "plot": "violin-raw",
+            "sort": {"question": False},
             "internal_facet": True,
         }
         self._run_plot_test("test_violin_raw", config, recompute=recompute, width=650)

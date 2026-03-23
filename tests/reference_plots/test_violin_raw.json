@@ -62270,14 +62270,14 @@
         "title": null
       },
       "sort": [
-        "Keskerakond",
-        "EKRE",
-        "Reformierakond",
-        "Isamaa",
-        "SDE",
-        "Rohelised",
         "Eesti 200",
-        "Parempoolsed"
+        "Reformierakond",
+        "Keskerakond",
+        "SDE",
+        "Isamaa",
+        "Rohelised",
+        "Parempoolsed",
+        "EKRE"
       ],
       "spacing": 5,
       "type": "nominal"
