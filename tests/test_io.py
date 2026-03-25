@@ -371,6 +371,28 @@ class TestReadAnnotatedData:
         assert "q1_R2" not in data_df2.columns  # Testing for top 1
         assert data_df2["q1_R1"].tolist() == ["USA", "Canada", "Mexico"]
 
+    def test_topk_create_block_errors_when_na_vals_never_match(self, meta_file, csv_file):
+        """topk must error if na_vals never appear (same guard as aggregate_multiselect)."""
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "name": "topkcols",
+                    "columns": ["id", "a1", "a2"],
+                    "create": {
+                        "type": "topk",
+                        "from_columns": r"a(\d+)",
+                        "na_vals": ["this_string_is_not_in_the_data"],
+                        "res_columns": r"a_R\1",
+                    },
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        pd.DataFrame({"a1": ["yes", "no"], "a2": ["no", "yes"], "id": [1, 2]}).to_csv_file(csv_file)
+        with pytest.raises(ValueError, match="No na_vals found"):
+            read_and_process_data(str(meta_file), return_meta=True)
+
     @staticmethod
     def _assert_structure_matches(
         actual_structure: dict[str, ColumnBlockMeta],

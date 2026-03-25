@@ -446,6 +446,20 @@ def _throw_vals_left(df: pd.DataFrame) -> None:
     df.iloc[:, :] = df.apply(lambda row: sorted(row, key=pd.isna), axis=1).to_list()
 
 
+def _check_topk_na_vals_after_replace(sdf: pd.DataFrame, *, block_name: str) -> None:
+    """Require na_vals to match somewhere overall; warn on columns with no NA after replace."""
+    if not sdf.isna().to_numpy().any():
+        raise ValueError(f"No na_vals found in topk block {block_name!r}")
+
+    cols_no_na = [c for c in sdf.columns if not sdf[c].isna().any()]
+    if cols_no_na:
+        listed = ", ".join(map(str, cols_no_na))
+        warn(
+            f"Topk block {block_name!r}: no NA in column(s) after na_vals replace ({listed})",
+            UserWarning,
+        )
+
+
 def _create_topk_metas_and_dfs(
     df: pd.DataFrame,
     block_with_create: ColumnBlockMeta,
@@ -530,6 +544,10 @@ def _create_topk_metas_and_dfs_regex(
 
     for subgroup in subgroups:
         sdf = df[subgroup].astype("object").replace(na_vals, None)
+        subgroup_block_name = name
+        if has_subgroups:
+            subgroup_block_name = name + "_" + "_".join(map(str, _get_subgroup_id(subgroup[0])))
+        _check_topk_na_vals_after_replace(sdf, block_name=subgroup_block_name)
 
         def _expand_col(col: str) -> str:
             match = regex_from.match(col)
@@ -835,6 +853,8 @@ def _create_topk_metas_and_dfs_list(
         df.columns = [without_prefix.get(col, col) for col in df.columns]
 
     sdf = df[from_cols].replace(na_vals, None)
+    _check_topk_na_vals_after_replace(sdf, block_name=name)
+
     sdf = sdf.mask(
         ~sdf.isna(), other=pd.Series(sdf.columns, index=sdf.columns), axis=1
     )  # replace cell with column name where not NA
