@@ -758,6 +758,12 @@ def density(
     data = p.data.copy()
     f0 = p.facets[0] if p.facets else None
     gb_cols = [c for c in p.outer_factors + [f.col for f in p.facets] if c is not None]
+    for t in p.tooltip:
+        if hasattr(t, "to_dict"):
+            fld = t.to_dict().get("field")
+            if fld and fld != p.value_col and fld in data.columns and fld not in gb_cols:
+                gb_cols.append(fld)
+
 
     lims = list(data[p.value_col].quantile([0.005, 0.995]))
     data = data[(data[p.value_col] >= lims[0]) & (data[p.value_col] <= lims[1])]
@@ -876,6 +882,12 @@ def violin(
     f0 = p.facets[0]
     f1 = p.facets[1] if len(p.facets) > 1 else None
     gb_cols = p.outer_factors + [f.col for f in p.facets]
+    for t in p.tooltip:
+        if hasattr(t, "to_dict"):
+            fld = t.to_dict().get("field")
+            if fld and fld != p.value_col and fld in data.columns and fld not in gb_cols:
+                gb_cols.append(fld)
+
 
     ls = np.linspace(data[p.value_col].min() - 1e-10, data[p.value_col].max() + 1e-10, 101)
     if bw is None:
@@ -1909,6 +1921,12 @@ def facet_dist(
     gb_cols = [
         c for c in p.outer_factors if c is not None
     ]  # There can be other extra cols (like labels) that should be ignored
+    for t in p.tooltip:
+        if hasattr(t, "to_dict"):
+            fld = t.to_dict().get("field")
+            if fld and fld != p.value_col and fld != f0.col and fld in data.columns and fld not in gb_cols:
+                gb_cols.append(fld)
+
     ndata = utils.gb_in_apply(
         data,
         gb_cols,
