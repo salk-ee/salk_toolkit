@@ -33,7 +33,7 @@ dependencies = [
   "numpy",
   "pandas",
   "pillow",
-  "polars==1.27.1",
+  "polars>=1.39.0,<2",
   "polib",
   "psutil",
   "pyarrow",

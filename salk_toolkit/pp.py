@@ -1366,13 +1366,9 @@ def _wrangle_data(
     if gb_dims == ["dummy_col"]:
         data = data.drop("dummy_col")
 
-    # For old streaming, the query does not generally seem to stream
-    # For new_stream, polars 1.23 considers categoricals to still be broken
-    # TODO: Check back here when they fix unpivot in streaming!
-    # print("final\n",data.explain(streaming=True))
-    # data = data.collect(engine='streaming').to_pandas() # New streaming - does not stream unpivot and is slow
-    # Polars collect with streaming parameter - type stubs may not include this
-    data = data.collect(streaming=True).to_pandas()  # type: ignore[call-overload]
+    # Streaming collect keeps memory down on large lazy pipelines; `streaming=` kwarg
+    # was renamed to `engine="streaming"` in polars 1.25+.
+    data = data.collect(engine="streaming").to_pandas()
     # Force immediate garbage collection
     gc.collect()  # Does not help much, but unlikely to hurt either
 

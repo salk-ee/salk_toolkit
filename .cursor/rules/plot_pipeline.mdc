@@ -53,7 +53,6 @@ globs: salk_toolkit/pp.py, salk_toolkit/plots.py, salk_toolkit/validation.py, te
 
 ## Development Tips
 - Pipeline is built assuming the Altair plotting library (which is a wrapper for Vega Lite)
-- We are locked on polars==1.27.1 to use the old streaming engine, as the new engine does not stream `unpivot` and it is critical. 
 - Keep descriptor mutations local—`e2e_plot` copies the input dict, but downstream code may assume ownership of nested structures.
 - When adding new plot metadata flags, update both `matching_plots` and `calculate_priority` so auto-selection keeps working.
 - Any new column-level requirements should extend the metadata extracted by `update_data_meta_with_pp_desc` to keep dashboards and filters in sync.
