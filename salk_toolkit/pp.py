@@ -1483,6 +1483,9 @@ def _create_tooltip(
 
     # Determine the columns we need tooltips for:
     tcols = [f.col for f in pi.facets if f.col in data.columns]
+    for c in pi.outer_factors:
+        if c in data.columns and c not in tcols:
+            tcols.append(c)
 
     # Find labels mappings for regular columns
     for cn in tcols:
