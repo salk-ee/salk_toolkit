@@ -62284,6 +62284,11 @@
     },
     "tooltip": [
       {
+        "field": "thermometer",
+        "format": ".1f",
+        "type": "quantitative"
+      },
+      {
         "field": "question",
         "type": "nominal"
       },

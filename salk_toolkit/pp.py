@@ -1479,19 +1479,14 @@ def _create_tooltip(
 ) -> tuple[list[alt.Tooltip], pd.DataFrame]:
     """Build tooltip metadata (labels + formatted values) for plots and return with modified data."""
 
-    label_dict = {}
-
-    # Determine the columns we need tooltips for:
-    tcols = [f.col for f in pi.facets if f.col in data.columns]
-
     # Find labels mappings for regular columns
-    for cn in tcols:
+    label_dict = {}
+    for cn in data.columns:
         meta = c_meta.get(cn)
         if meta and meta.labels:
             label_dict[cn] = dict(meta.labels)
 
     # Find a mapping for multi-column questions
-
     if "question" in data.columns and "question" in c_meta:
         prefix = c_meta["question"].col_prefix or ""
         qvals = [prefix + c for c in data["question"].unique()]
@@ -1502,6 +1497,12 @@ def _create_tooltip(
                 q_labels[c.removeprefix(prefix)] = meta.label
         if q_labels:
             label_dict["question"] = q_labels
+
+    # Determine the columns we need tooltips for:
+    tcols = [f.col for f in pi.facets if f.col in data.columns]
+    for c in pi.outer_factors:  # Add outer factors with detailed labels
+        if c in label_dict and c in data.columns and c not in tcols:
+            tcols.append(c)
 
     # Create the tooltips
     tooltips = [
@@ -1666,14 +1667,17 @@ def create_plot(
                         plot_args[k] = _meta_to_plain(facet_meta).get(k)
 
         factor_cols = factor_cols[n_inner:]  # Leave rest for external faceting
+    pi.outer_factors = factor_cols
 
-    if plot_meta.no_faceting and len(factor_cols) > 0:
+    if plot_meta.no_faceting and len(pi.outer_factors) > 0:
         return_matrix_of_plots = True
 
     pi.value_range = tuple(data[pi.value_col].agg(["min", "max"]))
 
     pi.outer_colors = (
-        _normalize_color_dict(col_meta.get(factor_cols[0], GroupOrColumnMeta()).colors or {}) if factor_cols else {}
+        _normalize_color_dict(col_meta.get(pi.outer_factors[0], GroupOrColumnMeta()).colors or {})
+        if pi.outer_factors
+        else {}
     )
 
     # Rename res_col if label provided (or remove prefix if present)
@@ -1713,23 +1717,23 @@ def create_plot(
 
     data = _translate_df(data, _tfunc)
     pi.value_col = _tfunc(pi.value_col)
-    factor_cols = [_tfunc(c) for c in factor_cols]
+    pi.outer_factors = [_tfunc(c) for c in pi.outer_factors]
 
     # If we still have more than 1 factor left, merge the rest into one so we have a 2d facet
-    if len(factor_cols) > 1:
-        n_facet_cols = len(utils.get_categories(data[factor_cols[-1]].dtype))
-        if not return_matrix_of_plots and len(factor_cols) > 2:
+    if len(pi.outer_factors) > 1:
+        n_facet_cols = len(utils.get_categories(data[pi.outer_factors[-1]].dtype))
+        if not return_matrix_of_plots and len(pi.outer_factors) > 2:
             # Preserve ordering of categories we combine
-            cat_lists = [utils.get_categories(data[c].dtype) for c in factor_cols[1:]]
+            cat_lists = [utils.get_categories(data[c].dtype) for c in pi.outer_factors[1:]]
             nf_order = [", ".join(str(x) for x in t) for t in it.product(*cat_lists)]
-            factor_col = ", ".join(factor_cols[1:])
-            jfs = data[factor_cols[1:]].agg(", ".join, axis=1)
+            factor_col = ", ".join(pi.outer_factors[1:])
+            jfs = data[pi.outer_factors[1:]].agg(", ".join, axis=1)
             data.loc[:, factor_col] = pd.Categorical(jfs, nf_order)
-            factor_cols = [factor_cols[0], factor_col]
+            pi.outer_factors = [pi.outer_factors[0], factor_col]
 
-        if len(factor_cols) >= 2:
-            factor_cols = list(reversed(factor_cols))
-            n_facet_cols = len(utils.get_categories(data[factor_cols[1]].dtype))
+        if len(pi.outer_factors) >= 2:
+            pi.outer_factors = list(reversed(pi.outer_factors))
+            n_facet_cols = len(utils.get_categories(data[pi.outer_factors[1]].dtype))
     else:
         n_facet_cols = plot_meta.factor_columns or 1
 
@@ -1743,9 +1747,9 @@ def create_plot(
     pi.data = data
 
     # Do width/height calculations
-    if factor_cols:
+    if pi.outer_factors:
         n_facet_cols = pp_desc.n_facet_cols or n_facet_cols  # Allow pp_desc to override col nr
-    dims = {"width": width // n_facet_cols if factor_cols else width}
+    dims = {"width": width // n_facet_cols if pi.outer_factors else width}
 
     if height is not None:
         dims["height"] = int(height)
@@ -1755,7 +1759,6 @@ def create_plot(
     # Make plot properties available to plot function (mostly useful for as_is plots)
     pi.width = width
     pi.alt_properties = alt_properties
-    pi.outer_factors = factor_cols
 
     # Create the plot using it's function
     if dry_run:
@@ -1781,15 +1784,15 @@ def create_plot(
 
     if plot_meta.as_is:  # if as_is set, just return the plot as-is
         return _call_plot_fn()
-    elif factor_cols:
+    elif pi.outer_factors:
         if return_matrix_of_plots:  # return a 2d list of plots which can be rendeed one plot at a time
-            combs = it.product(*[utils.get_categories(data[fc].dtype) for fc in factor_cols])
+            combs = it.product(*[utils.get_categories(data[fc].dtype) for fc in pi.outer_factors])
             return [
                 list(batch_item)
                 for batch_item in batch(
                     [
                         alt_wrapper(
-                            _call_plot_fn(data[(data[factor_cols] == c).all(axis=1)])
+                            _call_plot_fn(data[(data[pi.outer_factors] == c).all(axis=1)])
                             .properties(title="-".join(map(str, c)), **dims, **alt_properties)
                             .configure_view(discreteHeight={"step": 20})
                         )
@@ -1805,27 +1808,27 @@ def create_plot(
                     .properties(**dims, **alt_properties)
                     .facet(
                         row=alt.Row(
-                            field=factor_cols[0],
+                            field=pi.outer_factors[0],
                             type="ordinal",
-                            sort=utils.get_categories(data[factor_cols[0]].dtype),
+                            sort=utils.get_categories(data[pi.outer_factors[0]].dtype),
                             header=alt.Header(labelOrient="top"),
                         )
                     )
                 )
-            elif len(factor_cols) > 1:
+            elif len(pi.outer_factors) > 1:
                 plot = alt_wrapper(
                     _call_plot_fn()
                     .properties(**dims, **alt_properties)
                     .facet(
                         column=alt.Column(
-                            field=factor_cols[1],
+                            field=pi.outer_factors[1],
                             type="ordinal",
-                            sort=utils.get_categories(data[factor_cols[1]].dtype),
+                            sort=utils.get_categories(data[pi.outer_factors[1]].dtype),
                         ),
                         row=alt.Row(
-                            field=factor_cols[0],
+                            field=pi.outer_factors[0],
                             type="ordinal",
-                            sort=utils.get_categories(data[factor_cols[0]].dtype),
+                            sort=utils.get_categories(data[pi.outer_factors[0]].dtype),
                             header=alt.Header(labelOrient="top"),
                         ),
                     )
@@ -1836,9 +1839,9 @@ def create_plot(
                     .properties(**dims, **alt_properties)
                     .facet(
                         alt.Facet(
-                            field=factor_cols[0],
+                            field=pi.outer_factors[0],
                             type="ordinal",
-                            sort=utils.get_categories(data[factor_cols[0]].dtype),
+                            sort=utils.get_categories(data[pi.outer_factors[0]].dtype),
                         ),
                         columns=n_facet_cols,
                     )

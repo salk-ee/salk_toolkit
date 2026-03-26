@@ -33,6 +33,7 @@ __all__ = [
     "factorize_w_codes",
     "gb_in",
     "gb_in_apply",
+    "gb_cols_with_tooltip_fields",
     "get_categories",
     "get_ordered",
     "get_size",
@@ -925,6 +926,24 @@ def deaggregate_multiselect(df: pd.DataFrame, prefix: str, out_prefix: str = "")
         df[out_prefix + oc] = (df[cols] == oc).any(axis=1)
 
     return df
+
+
+def gb_cols_with_tooltip_fields(
+    base_cols: Iterable[str | None],
+    tooltip: Iterable[Any],
+    data_columns: pd.Index | Sequence[str],
+    value_col: str,
+    exclude: Iterable[str] = (),
+) -> list[str]:
+    """Build groupby columns from ``base_cols``, adding tooltip label fields present in ``data_columns``."""
+    out: list[str] = [c for c in base_cols if c is not None]
+    skip = set(out) | {value_col} | set(exclude)
+    for t in tooltip:
+        fld = t.to_dict().get("field") if hasattr(t, "to_dict") else None
+        if fld and fld in data_columns and fld not in skip:
+            skip.add(fld)
+            out.append(fld)
+    return out
 
 
 def gb_in(df: pd.DataFrame, gb_cols: Sequence[str]) -> pd.core.groupby.generic.DataFrameGroupBy | pd.DataFrame:
