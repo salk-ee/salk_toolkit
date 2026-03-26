@@ -811,7 +811,7 @@ def density(
             .encode(
                 x=alt.X(field=p.value_col, type="quantitative"),
                 y=alt.Y("density:Q", axis=alt.Axis(title=None, format="%"), stack="zero"),
-                tooltip=p.tooltip[1:],
+                tooltip=p.tooltip,
                 **enc_kwargs,
             )
         )
@@ -838,7 +838,7 @@ def density(
             .encode(
                 x=alt.X(field=p.value_col, type="quantitative"),
                 y=alt.Y("density:Q", axis=alt.Axis(title=None, format="%")),
-                tooltip=p.tooltip[1:],
+                tooltip=p.tooltip,
                 **enc_kwargs,
             )
         )
@@ -914,7 +914,7 @@ def violin(
                 spacing=5,
                 sort=f0.order,
             ),
-            tooltip=p.tooltip[1:],
+            tooltip=p.tooltip,
             # color=alt.Color(f'{question_col}:N'),
             **(
                 {
