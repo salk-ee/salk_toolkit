@@ -44,6 +44,7 @@ from salk_toolkit.utils import (
     deaggregate_multiselect,
     gb_in,
     gb_in_apply,
+    gb_cols_with_tooltip_fields,
     stk_defaultdict,
     cached_fn,
     scores_to_ordinal_rankings,
@@ -611,6 +612,29 @@ class TestHelperFunctions:
         # Without groupby
         result = gb_in_apply(df, [], lambda x: x.mean(), cols=["value"])
         assert len(result) == 1  # Single result
+
+    def test_gb_cols_with_tooltip_fields(self):
+        """Append Altair tooltip fields present in data; skip value_col and exclude_fields."""
+        import altair as alt
+
+        cols = pd.Index(["region", "extra", "weight", "y"])
+        tooltip = [
+            alt.Tooltip("extra:N"),
+            alt.Tooltip("not_in_df:N"),
+            alt.Tooltip("weight:Q"),
+        ]
+        assert gb_cols_with_tooltip_fields(["region"], tooltip, cols, "y") == [
+            "region",
+            "extra",
+            "weight",
+        ]
+        assert gb_cols_with_tooltip_fields(
+            ["region"],
+            [alt.Tooltip("likert:N")],
+            cols,
+            "y",
+            exclude=("likert",),
+        ) == ["region"]
 
     def test_stk_defaultdict(self):
         """Test stk_defaultdict function."""

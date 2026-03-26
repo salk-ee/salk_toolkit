@@ -132,7 +132,7 @@ def estimate_legend_columns_horiz(
     max_cols = max(max_cols, 1)
 
     # distribute them roughly equally to avoid last row being awkwardly shorter
-    n_rows = int(math.ceil(len(cats) / max_cols))
+    n_rows = int(math.ceil(len(cats) / max_cols)) + 1e-6
     return int(math.ceil(len(cats) / n_rows))
 
 
@@ -709,9 +709,22 @@ def likert_bars(
 
 
 # Calculate the bandwidth for KDE
-def kde_bw(ar: np.ndarray) -> float:
-    """Lower-bound Silverman's rule to keep categorical densities stable."""
+def kde_bw(
+    ar: np.ndarray | pd.DataFrame,
+    *,
+    max_samples: int = 10000,
+) -> float:
+    """Lower-bound Silverman's rule to keep categorical densities stable.
 
+    If there are more than ``max_samples`` rows, a random subset of that size
+    is taken without replacement. Empty input returns ``1.0``."""
+    if isinstance(ar, pd.DataFrame):
+        ar = ar.to_numpy()
+    n = ar.shape[0]
+    if n == 0:
+        return 1.0
+    if n > max_samples:
+        ar = ar[np.random.choice(n, size=max_samples, replace=False)]
     return max(silvermans_rule(ar) or 0.0, 0.75 * utils.min_diff(ar[:, 0]))
 
 
@@ -731,7 +744,7 @@ def kde_1d(
     if ar.size == 0:
         return pd.DataFrame({"density": np.zeros_like(ls, dtype=float), value_col: ls})
     if bw is None:
-        bw = kde_bw(ar)  # This can be problematic in small segments, so best calculated globally
+        bw = kde_bw(ar)
     y = FFTKDE(kernel="gaussian", bw=bw).fit(ar).evaluate(ls)
     if scale:
         y *= len(vc)
@@ -757,13 +770,12 @@ def density(
 
     data = p.data.copy()
     f0 = p.facets[0] if p.facets else None
-    gb_cols = [c for c in p.outer_factors + [f.col for f in p.facets] if c is not None]
-    for t in p.tooltip:
-        if hasattr(t, "to_dict"):
-            fld = t.to_dict().get("field")
-            if fld and fld != p.value_col and fld in data.columns and fld not in gb_cols:
-                gb_cols.append(fld)
-
+    gb_cols = utils.gb_cols_with_tooltip_fields(
+        p.outer_factors + [f.col for f in p.facets],
+        p.tooltip,
+        data.columns,
+        p.value_col,
+    )
 
     lims = list(data[p.value_col].quantile([0.005, 0.995]))
     data = data[(data[p.value_col] >= lims[0]) & (data[p.value_col] <= lims[1])]
@@ -772,7 +784,7 @@ def density(
     # FFTKDE requires grid to strictly encompass all data; nextafter avoids float precision issues
     ls = np.linspace(np.nextafter(vmin, -np.inf), np.nextafter(vmax, np.inf), 101)
     if bw is None:
-        bw = kde_bw(data[[p.value_col]].sample(10000, replace=True).to_numpy())
+        bw = kde_bw(data[[p.value_col]])
     ndata = utils.gb_in_apply(
         data,
         gb_cols,
@@ -881,17 +893,16 @@ def violin(
 
     f0 = p.facets[0]
     f1 = p.facets[1] if len(p.facets) > 1 else None
-    gb_cols = p.outer_factors + [f.col for f in p.facets]
-    for t in p.tooltip:
-        if hasattr(t, "to_dict"):
-            fld = t.to_dict().get("field")
-            if fld and fld != p.value_col and fld in data.columns and fld not in gb_cols:
-                gb_cols.append(fld)
-
+    gb_cols = utils.gb_cols_with_tooltip_fields(
+        p.outer_factors + [f.col for f in p.facets],
+        p.tooltip,
+        data.columns,
+        p.value_col,
+    )
 
     ls = np.linspace(data[p.value_col].min() - 1e-10, data[p.value_col].max() + 1e-10, 101)
     if bw is None:
-        bw = kde_bw(data[[p.value_col]].sample(10000, replace=True).to_numpy())
+        bw = kde_bw(data[[p.value_col]])
     ndata = utils.gb_in_apply(
         data,
         gb_cols,
@@ -1582,9 +1593,13 @@ def likert_rad_pol(
 
     # gb_cols = list(set(data.columns)-{ f0["col"], value_col })
     # Assume all other cols still in data will be used for factoring
-    gb_cols = p.outer_factors + [
-        f.col for f in p.facets[1:]
-    ]  # There can be other extra cols (like labels) that should be ignored
+    gb_cols = utils.gb_cols_with_tooltip_fields(
+        p.outer_factors + [f.col for f in p.facets[1:]],
+        p.tooltip,
+        data.columns,
+        p.value_col,
+        exclude=(f0.col,),
+    )
     likert_indices = utils.gb_in_apply(
         data,
         gb_cols,
@@ -1918,14 +1933,13 @@ def facet_dist(
         raise ValueError("facet_dist requires at least one facet dimension")
 
     f0 = p.facets[0]
-    gb_cols = [
-        c for c in p.outer_factors if c is not None
-    ]  # There can be other extra cols (like labels) that should be ignored
-    for t in p.tooltip:
-        if hasattr(t, "to_dict"):
-            fld = t.to_dict().get("field")
-            if fld and fld != p.value_col and fld != f0.col and fld in data.columns and fld not in gb_cols:
-                gb_cols.append(fld)
+    gb_cols = utils.gb_cols_with_tooltip_fields(
+        p.outer_factors,
+        p.tooltip,
+        data.columns,
+        p.value_col,
+        exclude=(f0.col,),
+    )
 
     ndata = utils.gb_in_apply(
         data,
