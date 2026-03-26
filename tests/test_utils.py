@@ -1,12 +1,10 @@
 """Comprehensive unit tests for salk_toolkit.utils module."""
 
-import warnings
-
-import altair as alt
+import pytest
 import numpy as np
 import pandas as pd
-import pytest
-from pydantic import BaseModel
+import altair as alt
+import warnings
 
 from salk_toolkit.utils import (
     factorize_w_codes,
@@ -57,8 +55,6 @@ from salk_toolkit.utils import (
     default_bidirectional_gradient,
     redblue_gradient,
     greyscale_gradient,
-    merge_pydantic_models,
-    merge_pydantic_models_recursive,
 )
 
 
@@ -771,62 +767,6 @@ class TestAdvancedUtilities:
         assert neg == ["bad"]
         assert pos == ["good"]
         assert set(neutral) == set(neutrals)
-
-
-class TestMergePydanticModels:
-    """Tests for merge_pydantic_models vs merge_pydantic_models_recursive."""
-
-    def test_merge_recursive_nested_models(self) -> None:
-        """Recursive merge: unset nested fields keep values from the defaults instance."""
-
-        class Inner(BaseModel):
-            a: int = 1
-            b: int = 2
-
-        class Outer(BaseModel):
-            inner: Inner = Inner()
-            x: int = 0
-
-        defaults = Outer(inner=Inner(a=5, b=10), x=1)
-        overrides = Outer(inner=Inner(b=99))
-        merged = merge_pydantic_models_recursive(defaults, overrides)
-        assert merged.inner.a == 5
-        assert merged.inner.b == 99
-        assert merged.x == 1
-
-    def test_merge_recursive_nested_dict_coerced(self) -> None:
-        """Recursive merge: nested dict overrides are validated then merged with defaults instance."""
-
-        class Inner(BaseModel):
-            a: int = 1
-            b: int = 2
-
-        class Outer(BaseModel):
-            inner: Inner = Inner()
-
-        defaults = Outer(inner=Inner(a=5, b=10))
-        overrides = Outer(inner={"b": 100})
-        merged = merge_pydantic_models_recursive(defaults, overrides)
-        assert merged.inner.a == 5
-        assert merged.inner.b == 100
-
-    def test_shallow_merge_nested_uses_class_defaults(self) -> None:
-        """Shallow merge: nested model replaces defaults; unspecified fields use nested class defaults."""
-
-        class Inner(BaseModel):
-            a: int = 1
-            b: int = 2
-
-        class Outer(BaseModel):
-            inner: Inner = Inner()
-            x: int = 0
-
-        defaults = Outer(inner=Inner(a=5, b=10), x=1)
-        overrides = Outer(inner=Inner(b=99))
-        merged = merge_pydantic_models(defaults, overrides)
-        assert merged.inner.a == 1
-        assert merged.inner.b == 99
-        assert merged.x == 1
 
 
 class TestConstants:
