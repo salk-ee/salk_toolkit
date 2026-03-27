@@ -1,9 +1,3 @@
----
-description: How to validate spec has been implemented
-globs: specs/**
-alwaysApply: false
----
-
 ## Workflow
 
 - Go down the list of tasks

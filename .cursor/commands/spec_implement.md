@@ -1,15 +1,9 @@
----
-description: How to implement a feature according to a spec
-globs: specs/**
-alwaysApply: false
----
-
 **Workflow:**
 
 - Mark the spec status as "In progress"
 
 - Read the WHOLE spec, as it contains important context
-  - Read the relevant domain rules .mdc files
+  - Read the relevant domain rules .mdc files listed in spec
   - Note the other files it links to, read on as-needed basis
 
 - Go down the **Implementation Plan** list ONE TASK at a time

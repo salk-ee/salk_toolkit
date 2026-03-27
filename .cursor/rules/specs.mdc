@@ -66,15 +66,18 @@ What and why in 2-3 sentences.
 
 ## Requirements
 
+**Relevant rules files and documentation**
+- @salk_toolkit.mdc for whole-project rules
+- ...
+
 **Important context functions/files**
-- Files/functions that this implementation relies on heavily
+- Functions that this implementation relies on heavily - with filenames and row numbers
 
 **Files to Create/Modify:**
 
+- Existing functions that need to be modified
+  - With file names and row numbers
 - New files being created
-- Existing files that need to be modified
-  - Edit the `.py` modules (e.g. `salk_toolkit/io.py`, `salk_toolkit/pp.py`) directly
-- Exact file paths with purpose and established pattern reference
 
 **Functionality:**
 
