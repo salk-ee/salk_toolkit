@@ -1,4 +1,4 @@
-# Pre-commit hooks configuration for salk_internal_package
+# Pre-commit hooks configuration for salk_toolkit
 # See https://pre-commit.com for more information
 
 repos:
@@ -23,17 +23,17 @@ repos:
       - id: ruff-format
         exclude: '\.ipynb$'
 
-  # Static type checking
+  # Static type checking (changed Python files only; full tree: pyright salk_toolkit)
   - repo: local
     hooks:
       - id: pyright
         name: pyright
-        entry: pyright salk_toolkit
+        entry: pyright
         language: system
-        pass_filenames: false
-        always_run: true
+        pass_filenames: true
+        files: ^salk_toolkit/.*\.py$
         stages: [pre-commit]
-        description: "Run Pyright type checker"
+        description: "Run Pyright on staged salk_toolkit Python files"
 
   # Pytest
   - repo: local
