@@ -746,10 +746,22 @@ def _transform_cont(
         )
     elif transform in custom_row_transforms:
         _tfunc, fmt = custom_row_transforms[transform]
+        # Probe the transform with a dummy 1-row input to determine the output dtype.
+        # This lets us declare an explicit schema on map_batches so the streaming engine
+        # can initialise array builders for downstream group_by/agg without hitting the
+        # OPAQUE_PYTHON schema boundary.  validate_output_schema stays False because the
+        # actual column dtypes change (e.g. Float32 → Int64 for topbot1).
+        input_schema = data.collect_schema()
+        set_cols = set(cols)
+        _probe = _tfunc(np.zeros((1, len(cols))))
+        col_dtype = pl.Series(_probe[0]).dtype
+        output_schema = pl.Schema({c: (col_dtype if c in set_cols else input_schema[c]) for c in input_schema})
         data = data.map_batches(
             lambda bdf: _apply_npf_on_pl_df(bdf, cols, _tfunc),
             streamable=True,
             validate_output_schema=False,
+            schema=output_schema,
+            projection_pushdown=False,  # Keeps batch columns consistent with declared schema
         )  # NB! Set validate to true if debugging this
         return data, fmt, None
 
