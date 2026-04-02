@@ -1,4 +1,7 @@
-"""Regression test to reproduce Polars panic in pp_transform_data."""
+"""Regression test to reproduce Polars panic in pp_transform_data.
+
+TODO: temporary until a more valid input parquet is used on plot tests
+which has calculated_draws, currently test suite does not and test suite isn't failing."""
 
 import os
 
