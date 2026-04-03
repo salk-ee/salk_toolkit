@@ -1866,6 +1866,23 @@ def _is_categorical(col: pd.Series) -> bool:
 max_cats = 50
 
 
+def _make_deepl_translate_fn(deepl_key: str, source_lang: str) -> Callable[[str], str]:
+    """Build a cached DeepL translation function (source_lang → EN)."""
+    import deepl
+
+    translator = deepl.Translator(deepl_key)
+
+    def _translate(txt: str) -> str:
+        if not txt:
+            return ""
+        result = translator.translate_text(txt, source_lang=source_lang, target_lang="EN-US")
+        if isinstance(result, list):
+            return result[0].text
+        return result.text
+
+    return _translate
+
+
 def infer_meta(
     data_file: str | None = None,
     meta_file: bool | str = True,
@@ -1873,6 +1890,8 @@ def infer_meta(
     df: pd.DataFrame | None = None,
     translate_fn: Callable[[str], str] | None = None,
     translation_blacklist: list[str] | None = None,
+    deepl_key: str | None = None,
+    source_lang: str | None = None,
 ) -> dict[str, object]:
     """Create a very basic metafile for a dataset based on its contents.
 
@@ -1886,10 +1905,25 @@ def infer_meta(
         df: Pre-loaded DataFrame (alternative to data_file).
         translate_fn: Function to translate column/category names.
         translation_blacklist: List of column names to skip translation.
+        deepl_key: DeepL API key. When provided, builds a translate_fn automatically.
+            Requires source_lang to be set explicitly.
+        source_lang: Source language code for DeepL (e.g. 'LT', 'ET', 'RO').
+            Required when deepl_key is provided.
 
     Returns:
         Inferred metadata dictionary.
     """
+    if deepl_key is not None and source_lang is None:
+        raise ValueError("source_lang is required when deepl_key is provided (e.g. 'LT', 'ET', 'RO')")
+    if source_lang is not None and deepl_key is None:
+        raise ValueError("deepl_key is required when source_lang is provided")
+    if deepl_key is not None and translate_fn is not None:
+        raise ValueError("Cannot specify both deepl_key and translate_fn")
+
+    if deepl_key is not None:
+        assert source_lang is not None  # guaranteed by check above
+        translate_fn = _make_deepl_translate_fn(deepl_key, source_lang)
+
     if read_opts is None:
         read_opts = {}
     if translation_blacklist is None:

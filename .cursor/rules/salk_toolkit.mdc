@@ -15,6 +15,7 @@ Set of tools to help in analysing and visualizing polling data
   - Modules io (code) and validation (pydantic model)
   - Main function: read_and_process_data in io
   - If working on that, follow [data_annotations.mdc](mdc:.cursor/rules/data_annotations.mdc).
+  - There is also a skill at `.cursor/skills/stk-data-annotations/SKILL.md` for creating/validating/aligning annotations — keep it in sync when changing annotation syntax or behaviour.
 - **Plotting**: an efficient plotting framework on large datasets
   - Modules pp (plot pipeline) and plots (Altair plot code for pipleine)
     - Other related files: explorer.py, election_models

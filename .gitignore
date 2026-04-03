@@ -158,3 +158,5 @@ samples/
 data/
 !tests/reference_plots/*.json
 tests/reference_plots/diff_html
+!.cursor/skills/**/*.json
+!.cursor/skills/**/*.csv
