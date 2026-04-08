@@ -1,0 +1,109 @@
+{
+  "description": "Example CATI survey — political attitudes (5-point likert)",
+  "collection_start": "2026-03-01",
+  "collection_end": "2026-03-15",
+  "constants": {
+    "party_colors": {
+      "TS-LKD": "#49a39b",
+      "LSDP": "#ce2e26",
+      "LVŽS": "#4aa35a",
+      "Other": "lightgrey",
+      "Don't know": "grey"
+    }
+  },
+  "files": [{ "file": "example_cati_data.csv", "code": "C" }],
+  "structure": [
+    {
+      "name": "main",
+      "columns": [
+        ["gender", "D1", {
+          "categories": ["Female", "Male"],
+          "translate": { "Moteris": "Female", "Vyras": "Male" },
+          "label": "Gender"
+        }],
+        ["age", "D2", { "continuous": true, "label": "Age" }],
+        ["age_group", "D2", {
+          "categories": "infer",
+          "transform": "stk.cut_nice(s, [18, 30, 45, 60, 75])",
+          "ordered": true,
+          "label": "Age group"
+        }],
+        ["education", "D3", {
+          "categories": ["Primary", "Secondary", "Higher"],
+          "translate": {
+            "Žemas": "Primary",
+            "Vidutinis": "Secondary",
+            "Aukštas": "Higher"
+          },
+          "ordered": true,
+          "num_values": [1, 2, 3],
+          "label": "Highest education level"
+        }],
+        ["method", "D1", {
+          "categories": ["web", "cati"],
+          "transform": "pd.Series('cati', index=s.index)"
+        }],
+        ["party_preference", "Q1", {
+          "categories": "infer",
+          "translate": {
+            "Tėvynės sąjunga": "TS-LKD",
+            "Socialdemokratai": "LSDP",
+            "Valstiečiai": "LVŽS",
+            "Kita partija": "Other",
+            "Nežinau": "Don't know"
+          },
+          "label": "Which party would you vote for?",
+          "colors": "party_colors"
+        }]
+      ]
+    },
+    {
+      "name": "attitudes",
+      "scale": {
+        "col_prefix": "attitude_",
+        "categories": ["-2", "-1", "0", "1", "2"],
+        "translate": {
+          "1 - visiškai nesutinku": 1, "1": 1,
+          "2": 2,
+          "3 - neutraliai": 3, "3": 3,
+          "4": 4,
+          "5 - visiškai sutinku": 5, "5": 5
+        },
+        "transform": "(s.astype('int')-3).astype('str')",
+        "ordered": true,
+        "likert": true
+      },
+      "columns": [
+        ["pol_interest_p", "Q2r1", {
+          "label": "I follow politics closely — I rarely follow politics"
+        }],
+        ["future_p", "Q2r2", {
+          "label": "Optimistic about the future — Pessimistic about the future"
+        }]
+      ]
+    },
+    {
+      "name": "issue_importance",
+      "create": {
+        "type": "topk",
+        "from_columns": "Q3r(\\d+)",
+        "res_columns": "Q3_R\\1",
+        "agg_index": 1,
+        "na_vals": [
+          "NO TO: Ekonomika",
+          "NO TO: Sveikata",
+          "NO TO: Gynyba",
+          "NO TO: Švietimas"
+        ],
+        "translate_after": {
+          "1": "Economy",
+          "2": "Healthcare",
+          "3": "Defence",
+          "4": "Education"
+        }
+      },
+      "scale": { "categories": "infer" },
+      "columns": []
+    }
+  ]
+}

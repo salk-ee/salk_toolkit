@@ -25,6 +25,7 @@ from salk_toolkit.io import (
     group_columns_dict,
     replace_data_meta_in_parquet,
     read_parquet_metadata,
+    infer_meta,
 )
 from salk_toolkit.validation import soft_validate, DataMeta, ColumnMeta, ColumnBlockMeta, BlockScaleMeta
 from salk_toolkit.utils import read_json
@@ -3257,6 +3258,54 @@ class TestMultiSourceColumns:
         # data_df may contain additional system columns (file_ind, file_name) in multi-file mode
         assert_frame_equal(data_df[edf.columns], edf, check_dtype=False, check_categorical=False)
         assert {"file_name"}.issubset(data_df.columns)
+
+
+class TestInferMetaDeepL:
+    """Tests for infer_meta deepl_key / source_lang parameters."""
+
+    def test_deepl_key_without_source_lang_raises(self):
+        """deepl_key without source_lang must raise."""
+        df = pd.DataFrame({"a": ["x", "y"]})
+        with pytest.raises(ValueError, match="source_lang is required"):
+            infer_meta(df=df, meta_file=False, deepl_key="fake-key")
+
+    def test_source_lang_without_deepl_key_raises(self):
+        """source_lang without deepl_key must raise."""
+        df = pd.DataFrame({"a": ["x", "y"]})
+        with pytest.raises(ValueError, match="deepl_key is required"):
+            infer_meta(df=df, meta_file=False, source_lang="LT")
+
+    def test_deepl_key_and_translate_fn_raises(self):
+        """deepl_key and translate_fn together must raise."""
+        df = pd.DataFrame({"a": ["x", "y"]})
+        with pytest.raises(ValueError, match="Cannot specify both"):
+            infer_meta(df=df, meta_file=False, deepl_key="fake-key", source_lang="LT", translate_fn=str)
+
+    def test_deepl_key_builds_translate_fn(self, tmp_path):
+        """When deepl_key + source_lang are given, translations appear in output."""
+        from unittest.mock import patch, MagicMock
+
+        mock_result = MagicMock()
+        mock_result.text = "Translated"
+
+        mock_translator = MagicMock()
+        mock_translator.translate_text.return_value = mock_result
+
+        df = pd.DataFrame({"color": pd.Categorical(["Raudona", "Mėlyna", "Raudona"])})
+
+        with patch("deepl.Translator", return_value=mock_translator) as mock_cls:
+            meta = infer_meta(df=df, meta_file=False, deepl_key="test-key", source_lang="LT")
+
+        mock_cls.assert_called_once_with("test-key")
+        assert mock_translator.translate_text.call_count > 0
+        call_kwargs = mock_translator.translate_text.call_args_list[0]
+        assert call_kwargs.kwargs.get("source_lang") == "LT"
+        assert call_kwargs.kwargs.get("target_lang") == "EN-US"
+        # Check that translate dicts are present in the output
+        main_block = meta["structure"][0]
+        col_entry = main_block["columns"][0]
+        col_meta = col_entry[2] if len(col_entry) > 2 else col_entry[1]
+        assert "translate" in col_meta
 
 
 if __name__ == "__main__":

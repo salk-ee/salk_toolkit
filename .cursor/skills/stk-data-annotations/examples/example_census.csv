@@ -1,0 +1,31 @@
+gender,education,age_group,N
+Female,Primary,18 - 29,826
+Female,Primary,30 - 44,4039
+Female,Primary,45 - 59,3140
+Female,Primary,60 - 74,2551
+Female,Primary,75+,711
+Female,Secondary,18 - 29,1248
+Female,Secondary,30 - 44,2375
+Female,Secondary,45 - 59,669
+Female,Secondary,60 - 74,2707
+Female,Secondary,75+,829
+Female,Higher,18 - 29,1935
+Female,Higher,30 - 44,4354
+Female,Higher,45 - 59,4751
+Female,Higher,60 - 74,4122
+Female,Higher,75+,2778
+Male,Primary,18 - 29,1986
+Male,Primary,30 - 44,4070
+Male,Primary,45 - 59,4528
+Male,Primary,60 - 74,1247
+Male,Primary,75+,4350
+Male,Secondary,18 - 29,3350
+Male,Secondary,30 - 44,3845
+Male,Secondary,45 - 59,3230
+Male,Secondary,60 - 74,3130
+Male,Secondary,75+,1356
+Male,Higher,18 - 29,1817
+Male,Higher,30 - 44,3201
+Male,Higher,45 - 59,3872
+Male,Higher,60 - 74,4558
+Male,Higher,75+,2861
