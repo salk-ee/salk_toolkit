@@ -1196,12 +1196,13 @@ def pp_transform_data(
                 if c in draws_data:
                     uid, ndraws = draws_data[c]
                     if (uid, ndraws) not in ddf_cache:
-                        draws = utils.stable_draws(total_n, ndraws, uid)
-                        ddf_cache[(uid, ndraws)] = pl.DataFrame(
-                            {"draw": draws, "question": c, "id": np.arange(0, total_n)}
-                        )
-                    ddf = ddf_cache[(uid, ndraws)]
-                    draw_dfs.append(ddf)
+                        ddf_cache[(uid, ndraws)] = utils.stable_draws(total_n, ndraws, uid)
+                    # Build a fresh DataFrame with this column's question label each time,
+                    # so that columns sharing the same (uid, ndraws) get distinct question
+                    # values and don't cause row multiplication in the post-unpivot join.
+                    draw_dfs.append(
+                        pl.DataFrame({"draw": ddf_cache[(uid, ndraws)], "question": c, "id": np.arange(0, total_n)})
+                    )
 
             # Check if they all have the same draws. If yes (very common), perform a single merge
             # This is a lot more memory efficient than merging one by one post-unpivot
