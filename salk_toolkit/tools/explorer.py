@@ -631,7 +631,8 @@ else:
                         edit_url = vlc.vegalite_to_url(custom_spec, fullscreen=False)
                         st.link_button("Vega Editor", edit_url, width="stretch")
                     else:
-                        st.link_button("Vega Editor", chart_to_url_with_config(plot), width="stretch")
+                        first_chart = plot[0][0] if isinstance(plot, list) else plot
+                        st.link_button("Vega Editor", chart_to_url_with_config(first_chart), width="stretch")
 
                     @st.dialog("Import Vega-Lite Spec")
                     def _import_modal() -> None:
