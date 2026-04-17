@@ -545,11 +545,28 @@ def _create_topk_metas_and_dfs_regex(
         assert match is not None, f"Column {s} should match regex {regex_from.pattern}"
         return match.groups()[agg_ind]
 
+    # Map subgroup_id tuple positions back to their 1-based regex group numbers,
+    # skipping the agg group. Used to look up labels in `groups`.
+    non_agg_group_numbers = [i + 1 for i in range(n_groups) if i != agg_ind]
+
+    def _subgroup_label(subgroup_id: tuple[str, ...]) -> str:
+        if create.groups is None:
+            return "_".join(map(str, subgroup_id))
+        labels = []
+        for pos, val in enumerate(subgroup_id):
+            group_key = str(non_agg_group_numbers[pos])
+            group_map = create.groups.get(group_key)
+            if group_map is not None and val in group_map:
+                labels.append(group_map[val])
+            else:
+                labels.append(val)
+        return "_".join(labels)
+
     for subgroup in subgroups:
         sdf = df[subgroup].astype("object").replace(na_vals, None)
         subgroup_block_name = name
         if has_subgroups:
-            subgroup_block_name = name + "_" + "_".join(map(str, _get_subgroup_id(subgroup[0])))
+            subgroup_block_name = name + "_" + _subgroup_label(_get_subgroup_id(subgroup[0]))
         _check_topk_na_vals_after_replace(sdf, block_name=subgroup_block_name)
 
         def _expand_col(col: str) -> str:
@@ -584,23 +601,16 @@ def _create_topk_metas_and_dfs_regex(
             sdf = sdf.iloc[:, :kmax]  # up to kmax columns if spec-d
         sname = name
         if has_subgroups:
-            sname += "_" + "_".join(map(str, _get_subgroup_id(subgroup[0])))
+            sname += "_" + _subgroup_label(_get_subgroup_id(subgroup[0]))
         meta_subgroup = {
             "name": sname,
             "scale": deepcopy(block_with_create.scale.model_dump(mode="python") if block_with_create.scale else {}),
             "columns": sdf.columns.tolist(),
+            "create": create.model_dump(mode="python"),
         }
-        if create.translate_after is not None:
-            sdf = sdf.replace(create.translate_after)
-        # Apply scale.translate to cell values (e.g. Lithuanian party names → English short codes)
-        scale_translate = (
-            dict(block_with_create.scale.translate)
-            if block_with_create.scale and block_with_create.scale.translate
-            else {}
-        )
-        if scale_translate:
-            sdf = sdf.replace(scale_translate)
-            effective_cats = list(dict.fromkeys(scale_translate.values()))
+        if create.translate_values:
+            sdf = sdf.replace(create.translate_values)
+            effective_cats = list(dict.fromkeys(create.translate_values.values()))
             for col in sdf.columns:
                 sdf[col] = pd.Categorical(sdf[col], categories=effective_cats)
             meta_subgroup["scale"]["categories"] = effective_cats
@@ -613,35 +623,25 @@ def _create_topk_metas_and_dfs_regex(
 def _create_maxdiff_metas_and_dfs(
     df: pd.DataFrame,
     group: ColumnBlockMeta,
-    topics: Sequence[str] | None = None,
-    sets: Sequence[Sequence[int]] | None = None,
     **kwargs: dict[str, str],
 ) -> tuple[list[pd.DataFrame], list[dict[str, object]]]:
     """
     Create metas and dfs for maxdiff.
 
+    Reads `items` (1-based index -> item name in original language) and optional
+    `translate` (original-language item name -> display name) from the create block.
+
     Meta args:
         best_columns (Union[str,List[str]]): Regex template with groups to select df cols from OR just a list of cols.
         worst_columns (Union[str,List[str]]): Regex template with groups to select df cols from OR just a list of cols.
-        setindex (int): The index of the column to use as the set index.
-        topics (Optional[List[str]]): The topics used in maxdiffs. If `None`, then `constants` is used.
-        sets (Optional[List[List[int]]]): The sets of indices per each version. If `None`, then `constants` is used.
-
-    Args:
-        df (pd.DataFrame): The dataframe to create metas and dfs for.
-        group (dict): The create block in meta with meta args.
-        topics (list): The topics used in maxdiffs. Is not none if constants have defined such a variable.
-        sets (list): The sets of indices per each version. Is not none if constants have defined such a variable.
-            E.g. sets[j][k] = k-th topics subset permutation in j-th version. 1:1 mapping between k and best_columns.
-
-    Returns:
-        Tuple[List[dict], List[pd.DataFrame]]: A tuple of 1-list of meta and df with added/translated topics sets.
+        setindex_column: The index of the column to use as the set index.
     """
     df = df.copy(deep=True)
     create = group.create
     assert create is not None and create.type == "maxdiff", "Create block type must be 'maxdiff'"
-    topics = create.topics or topics
-    sets = create.sets or sets
+    items = create.items
+    topics: list[str] | None = [items[k] for k in sorted(items, key=int)] if items else None
+    sets = create.choice_sets
     best_cols: Sequence[str] | str = create.best_columns
     worst_cols: Sequence[str] | str = create.worst_columns
     set_cols: Sequence[str] | str | None = create.set_columns
@@ -694,8 +694,8 @@ def _create_maxdiff_metas_and_dfs(
         worst_cols = list(worst_cols)
         set_cols = list(set_cols)
 
-    # Extract translate dict from scale to apply to topic values in the data
-    translate = dict(group.scale.translate) if group.scale is not None and group.scale.translate else {}
+    # Translate dict maps original-language item names to display names; applied to cell values and categories.
+    translate = dict(create.translate) if create.translate else {}
 
     def _maybe_json_load(value: str | None) -> list[object] | None:
         try:
@@ -819,11 +819,16 @@ def _create_maxdiff_metas_and_dfs(
             setindex_col_meta = setindex_col_meta.model_copy(update={"continuous": True})
         columns_spec = {setindex_col_name: setindex_col_meta} | columns_spec
 
+    scale_dict = deepcopy(group.scale.model_dump(mode="python") if group.scale else {})
+    if effective_topics is not None:
+        scale_dict["categories"] = effective_topics
+
     return [df], [
         {
             "name": generated_name,
-            "scale": deepcopy(group.scale.model_dump(mode="python") if group.scale else {}),
+            "scale": scale_dict,
             "columns": columns_spec,
+            "create": create.model_dump(mode="python"),
         }
     ]
 
@@ -862,14 +867,8 @@ def _create_topk_metas_and_dfs_list(
         ~sdf.isna(), other=pd.Series(sdf.columns, index=sdf.columns), axis=1
     )  # replace cell with column name where not NA
 
-    if create.translate_after is not None:
-        sdf = sdf.replace(create.translate_after)
-    # Apply scale.translate to cell values (e.g. Lithuanian party names → English short codes)
-    scale_translate = (
-        dict(block_with_create.scale.translate) if block_with_create.scale and block_with_create.scale.translate else {}
-    )
-    if scale_translate:
-        sdf = sdf.replace(scale_translate)
+    if create.translate_values:
+        sdf = sdf.replace(create.translate_values)
     sdf.columns = res_cols
 
     _throw_vals_left(sdf)  # changes df in place, Nones go to rightmost side
@@ -879,10 +878,18 @@ def _create_topk_metas_and_dfs_list(
     if kmax and kmax != "max" and isinstance(kmax, int):
         sdf = sdf.iloc[:, :kmax]  # up to kmax columns if spec-d
 
+    scale_dict = deepcopy(block_with_create.scale.model_dump(mode="python") if block_with_create.scale else {})
+    if create.translate_values:
+        effective_cats = list(dict.fromkeys(create.translate_values.values()))
+        for col in sdf.columns:
+            sdf[col] = pd.Categorical(sdf[col], categories=effective_cats)
+        scale_dict["categories"] = effective_cats
+
     meta_subgroup = {
         "name": name,
-        "scale": deepcopy(block_with_create.scale.model_dump(mode="python") if block_with_create.scale else {}),
+        "scale": scale_dict,
         "columns": sdf.columns.tolist(),
+        "create": create.model_dump(mode="python"),
     }
     meta_subgroup = soft_validate(meta_subgroup, ColumnBlockMeta)
 
@@ -1324,8 +1331,6 @@ def _process_annotated_data(
             for newdf, newmeta_dict in _create_new_columns_and_metas(
                 create_source_df,
                 group,
-                topics=constants.get("topics", None),
-                sets=constants.get("sets", None),
             ):
                 ndf_df = ndf_df.combine_first(newdf)
                 new_group_meta = soft_validate(newmeta_dict, ColumnBlockMeta)
