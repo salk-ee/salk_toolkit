@@ -85,6 +85,9 @@ Scalar: TypeAlias = str | int | float | bool | None
 class PBase(BaseModel):
     model_config = ConfigDict(extra="ignore", protected_namespaces=(), arbitrary_types_allowed=True)
 
+    # Free-form human annotation; never consumed by code. A single string or list of lines.
+    comment: Optional[Union[str, List[str]]] = None
+
     @model_serializer(mode="wrap")
     def _serialize_model(
         self, handler: Callable[[BaseModel], dict[str, Any]], info: SerializationInfo
