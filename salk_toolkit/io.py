@@ -465,17 +465,12 @@ def _check_topk_na_vals_after_replace(sdf: pd.DataFrame, *, block_name: str) -> 
 
 def _create_topk_metas_and_dfs(
     df: pd.DataFrame,
-    block_with_create: ColumnBlockMeta,
+    block: TopKBlock,
     **kwargs: dict[str, str],  # used by other create blocks
-) -> tuple[list[pd.DataFrame], list[ColumnBlockMeta]]:
+) -> tuple[list[pd.DataFrame], list[TopKBlock]]:
     """Create top K aggregations from DataFrame."""
-    if block_with_create.create is None:
-        raise ValueError("ColumnBlockMeta must have a create block")
-    create = block_with_create.create
-    if not isinstance(create, TopKBlock):
-        raise ValueError("Expecting TopKBlock create block")
-    name = f"{block_with_create.name}_{create.type}"
-    from_columns = create.from_columns
+    name = f"{block.name}_{block.type}"
+    from_columns = block.from_columns
     if from_columns is None:
         raise ValueError("TopKBlock must have from_columns specified")
 
@@ -483,20 +478,20 @@ def _create_topk_metas_and_dfs(
     has_list = isinstance(from_columns, list)
 
     if has_regex:
-        return _create_topk_metas_and_dfs_regex(df, block_with_create, create, name)
+        return _create_topk_metas_and_dfs_regex(df, block, name)
     elif has_list:
-        return _create_topk_metas_and_dfs_list(df, block_with_create, create, name)
+        return _create_topk_metas_and_dfs_list(df, block, name)
     else:
         raise ValueError(f"from_columns must be either str (regex) or list, got {type(from_columns)}")
 
 
 def _create_topk_metas_and_dfs_regex(
     df: pd.DataFrame,
-    block_with_create: ColumnBlockMeta,
-    create: TopKBlock,
+    block: TopKBlock,
     name: str,
-) -> tuple[list[pd.DataFrame], list[ColumnBlockMeta]]:
+) -> tuple[list[pd.DataFrame], list[TopKBlock]]:
     """Create top K aggregations from DataFrame using regex pattern matching."""
+    create = block  # legacy alias retained to minimize diff below
     from_columns = create.from_columns
     assert isinstance(from_columns, str), "from_columns must be str for regex mode"
 
@@ -602,44 +597,72 @@ def _create_topk_metas_and_dfs_regex(
         sname = name
         if has_subgroups:
             sname += "_" + _subgroup_label(_get_subgroup_id(subgroup[0]))
-        meta_subgroup = {
-            "name": sname,
-            "scale": deepcopy(block_with_create.scale.model_dump(mode="python") if block_with_create.scale else {}),
-            "columns": sdf.columns.tolist(),
-            "create": create.model_dump(mode="python"),
-        }
+        scale_dict = deepcopy(block.scale.model_dump(mode="python") if block.scale else {})
         if create.translate_values:
             sdf = sdf.replace(create.translate_values)
             effective_cats = list(dict.fromkeys(create.translate_values.values()))
             for col in sdf.columns:
                 sdf[col] = pd.Categorical(sdf[col], categories=effective_cats)
-            meta_subgroup["scale"]["categories"] = effective_cats
-        meta_subgroup = soft_validate(meta_subgroup, ColumnBlockMeta)
+            scale_dict["categories"] = effective_cats
+        meta_subgroup = _build_topk_output_block(
+            name=sname,
+            scale_dict=scale_dict,
+            columns=sdf.columns.tolist(),
+            from_cols=list(subgroup),
+            res_cols=newcols,
+            block=create,
+        )
         topk_dfs.append(sdf)
         subgroup_metas.append(meta_subgroup)
     return topk_dfs, subgroup_metas  # note: each df has one meta for zip later
 
 
+def _build_topk_output_block(
+    *,
+    name: str,
+    scale_dict: dict[str, object],
+    columns: list[str],
+    from_cols: list[str],
+    res_cols: list[str],
+    block: TopKBlock,
+) -> TopKBlock:
+    """Assemble a resolved output ``TopKBlock`` for one subgroup. Input-only directives
+    (``groups``, ``translate_values``) are cleared; the narrowed ``from_columns`` /
+    ``res_columns`` encode the subgroup identity."""
+    return soft_validate(
+        {
+            "type": "topk",
+            "name": name,
+            "scale": scale_dict,
+            "columns": list(columns),
+            "from_columns": list(from_cols),
+            "res_columns": list(res_cols),
+            "agg_index": block.agg_index,
+            "na_vals": list(block.na_vals) if block.na_vals is not None else [],
+            "k": block.k,
+            "from_prefix": block.from_prefix,
+        },
+        TopKBlock,
+    )
+
+
 def _create_maxdiff_metas_and_dfs(
     df: pd.DataFrame,
-    group: ColumnBlockMeta,
+    block: MaxDiffBlock,
     **kwargs: dict[str, str],
-) -> tuple[list[pd.DataFrame], list[dict[str, object]]]:
+) -> tuple[list[pd.DataFrame], list[MaxDiffBlock]]:
     """
     Create metas and dfs for maxdiff.
 
     Reads `items` (1-based index -> item name in original language) and optional
-    `translate` (original-language item name -> display name) from the create block.
-
-    Meta args:
-        best_columns (Union[str,List[str]]): Regex template with groups to select df cols from OR just a list of cols.
-        worst_columns (Union[str,List[str]]): Regex template with groups to select df cols from OR just a list of cols.
-        setindex_column: The index of the column to use as the set index.
+    `translate` (original-language item name -> display name) from the input block.
     """
     df = df.copy(deep=True)
-    create = group.create
-    assert create is not None and create.type == "maxdiff", "Create block type must be 'maxdiff'"
+    create = block  # legacy alias retained to minimize diff below
+    group = block
     items = create.items
+    if items is None:
+        raise ValueError("MaxDiffBlock requires 'items' to be defined.")
     topics: list[str] | None = [items[k] for k in sorted(items, key=int)] if items else None
     sets = create.choice_sets
     best_cols: Sequence[str] | str = create.best_columns
@@ -801,7 +824,7 @@ def _create_maxdiff_metas_and_dfs(
             s = pd.Categorical(s, categories=effective_topics)
         df[col] = s
 
-    generated_name = create.name or f"{group.name}_maxdiff"
+    generated_name = f"{group.name}_maxdiff"
     df = df.sort_index(axis=1)  # sort columns
 
     base_columns = sorted(best_cols + worst_cols + cast(list[str], set_cols))
@@ -823,23 +846,30 @@ def _create_maxdiff_metas_and_dfs(
     if effective_topics is not None:
         scale_dict["categories"] = effective_topics
 
-    return [df], [
+    output_block = soft_validate(
         {
+            "type": "maxdiff",
             "name": generated_name,
             "scale": scale_dict,
             "columns": columns_spec,
-            "create": create.model_dump(mode="python"),
-        }
-    ]
+            "best_columns": list(best_cols),
+            "worst_columns": list(worst_cols),
+            "set_columns": list(cast(list[str], set_cols)),
+            "setindex_column": create.setindex_column,
+        },
+        MaxDiffBlock,
+    )
+    return [df], [output_block]
 
 
 def _create_topk_metas_and_dfs_list(
     df: pd.DataFrame,
-    block_with_create: ColumnBlockMeta,
-    create: TopKBlock,
+    block: TopKBlock,
     name: str,
-) -> tuple[list[pd.DataFrame], list[ColumnBlockMeta]]:
+) -> tuple[list[pd.DataFrame], list[TopKBlock]]:
     """Create top K aggregations from DataFrame using explicit column lists."""
+    create = block  # legacy alias retained to minimize diff below
+    block_with_create = block  # scale accessor parity with the regex path
     from_columns = create.from_columns
     assert isinstance(from_columns, list), "from_columns must be list for list mode"
 
@@ -885,14 +915,14 @@ def _create_topk_metas_and_dfs_list(
             sdf[col] = pd.Categorical(sdf[col], categories=effective_cats)
         scale_dict["categories"] = effective_cats
 
-    meta_subgroup = {
-        "name": name,
-        "scale": scale_dict,
-        "columns": sdf.columns.tolist(),
-        "create": create.model_dump(mode="python"),
-    }
-    meta_subgroup = soft_validate(meta_subgroup, ColumnBlockMeta)
-
+    meta_subgroup = _build_topk_output_block(
+        name=name,
+        scale_dict=scale_dict,
+        columns=sdf.columns.tolist(),
+        from_cols=list(from_cols),
+        res_cols=list(res_cols),
+        block=create,
+    )
     return [sdf], [meta_subgroup]
 
 
@@ -906,12 +936,21 @@ create_block_type_to_create_fn: dict[str, Callable] = {
 
 def _create_new_columns_and_metas(
     df: pd.DataFrame, group: ColumnBlockMeta, **kwargs: dict[str, str]
-) -> Iterator[tuple[pd.DataFrame, dict[str, object]]]:
-    """Create new columns and metadata from a group definition."""
-    if group.create is None:
-        raise ValueError("Group must have a create block")
-    dfs, metas = create_block_type_to_create_fn[group.create.type](df, group, **kwargs)
+) -> Iterator[tuple[pd.DataFrame, ColumnBlockMeta]]:
+    """Create new columns and metadata from a specialized block (TopKBlock / MaxDiffBlock)."""
+    if not isinstance(group, (TopKBlock, MaxDiffBlock)):
+        raise ValueError("Group must be a TopKBlock or MaxDiffBlock to generate new columns")
+    dfs, metas = create_block_type_to_create_fn[group.type](df, group, **kwargs)
     return zip(dfs, metas)
+
+
+def _demote_to_plain(block: ColumnBlockMeta) -> ColumnBlockMeta:
+    """Demote a specialized block (TopKBlock / MaxDiffBlock) to a plain ColumnBlockMeta,
+    preserving every field declared on ``ColumnBlockMeta`` and dropping subclass-specific
+    ones. Using ``model_fields`` instead of a hand-enumerated list means new fields added
+    to ``ColumnBlockMeta`` are carried over automatically."""
+    kwargs = {k: getattr(block, k) for k in ColumnBlockMeta.model_fields if k != "type"}
+    return ColumnBlockMeta(**kwargs)
 
 
 # Default usage with mature metafile: _process_annotated_data(<metafile name>)
@@ -1325,18 +1364,18 @@ def _process_annotated_data(
                 # Concatenate and assign back
                 transformed_combined = pd.concat(subgroup_transformed_parts).reset_index(drop=True)
                 ndf_df[sg] = transformed_combined[sg].values
-        # Handle create blocks - may add new groups to structure
-        if group.create is not None:
+        # Handle specialized blocks (topk / maxdiff) — may add new groups to structure
+        if isinstance(group, (TopKBlock, MaxDiffBlock)):
             create_source_df = ndf_df.combine_first(raw_data_concat) if not raw_data_concat.empty else ndf_df
-            for newdf, newmeta_dict in _create_new_columns_and_metas(
+            for newdf, new_group_meta in _create_new_columns_and_metas(
                 create_source_df,
                 group,
             ):
                 ndf_df = ndf_df.combine_first(newdf)
-                new_group_meta = soft_validate(newmeta_dict, ColumnBlockMeta)
                 new_structure[new_group_meta.name] = new_group_meta
-            # Create a copy of group without the create field
-            group = group.model_copy(update={"create": None})
+            # Demote the input specialized block to a plain ColumnBlockMeta: its raw columns
+            # are preserved under the original name, but processing directives are dropped.
+            group = _demote_to_plain(group)
 
         # Add processed group to structure
         new_structure[group.name] = group

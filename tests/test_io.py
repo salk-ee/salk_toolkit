@@ -33,6 +33,8 @@ from salk_toolkit.validation import (
     ColumnMeta,
     ColumnBlockMeta,
     BlockScaleMeta,
+    TopKBlock,
+    MaxDiffBlock,
 )
 from salk_toolkit.utils import read_json
 
@@ -310,15 +312,13 @@ class TestReadAnnotatedData:
             "file": "test.csv",
             "structure": [
                 {
+                    "type": "topk",
                     "name": "topkcols",
                     "columns": ["id", "q1_1", "q1_2", "q1_3", "q2_1", "q2_2", "q2_3"],
-                    "create": {
-                        "type": "topk",
-                        "from_columns": r"q(\d+)_(\d+)",
-                        "na_vals": ["not_selected"],
-                        "res_columns": r"q\1_R\2",
-                        "translate_values": {"1": "USA", "2": "Canada", "3": "Mexico"},
-                    },
+                    "from_columns": r"q(\d+)_(\d+)",
+                    "na_vals": ["not_selected"],
+                    "res_columns": r"q\1_R\2",
+                    "translate_values": {"1": "USA", "2": "Canada", "3": "Mexico"},
                 }
             ],
         }
@@ -369,19 +369,24 @@ class TestReadAnnotatedData:
             expected_structure, key=lambda x: x["name"]
         )
 
-        # Generated topk blocks preserve their create definition for downstream consumers.
+        # Generated topk blocks are themselves TopKBlock instances; `type` survives,
+        # input-only directives (`translate_values`) are cleared on the output siblings.
         topk_block = data_meta.structure["topkcols_topk_1"]
-        assert topk_block.create is not None
-        assert topk_block.create.type == "topk"
-        assert topk_block.create.translate_values == {"1": "USA", "2": "Canada", "3": "Mexico"}
+        assert isinstance(topk_block, TopKBlock)
+        assert topk_block.type == "topk"
+        assert topk_block.translate_values is None
+        # Resolved column lists replace regex patterns on output
+        assert isinstance(topk_block.from_columns, list)
+        assert isinstance(topk_block.res_columns, list)
+        assert topk_block.segments() == [(list(topk_block.columns.keys()), None, False)]
 
         # Also test that we can give from_columns and res_cols as lists (no subgroups possible here)
         # TODO: Can be a separate test, but there'd be a lot of boilerplate code.
         from_cols = ["q1_1", "q1_2", "q1_3"]  # Note the parentheses to specify the regex group for translate
         res_cols = ["q1_R1", "q1_R2", "q1_R3"]
-        meta["structure"][0]["create"]["from_columns"] = from_cols
-        meta["structure"][0]["create"]["res_columns"] = res_cols
-        meta["structure"][0]["create"]["from_prefix"] = "q1_"
+        meta["structure"][0]["from_columns"] = from_cols
+        meta["structure"][0]["res_columns"] = res_cols
+        meta["structure"][0]["from_prefix"] = "q1_"
         write_json(meta_file, meta)
         data_df2, data_meta2 = read_and_process_data(str(meta_file), return_meta=True)
         assert "q1_R1" in data_df2.columns
@@ -394,14 +399,12 @@ class TestReadAnnotatedData:
             "file": "test.csv",
             "structure": [
                 {
+                    "type": "topk",
                     "name": "topkcols",
                     "columns": ["id", "a1", "a2"],
-                    "create": {
-                        "type": "topk",
-                        "from_columns": r"a(\d+)",
-                        "na_vals": ["this_string_is_not_in_the_data"],
-                        "res_columns": r"a_R\1",
-                    },
+                    "from_columns": r"a(\d+)",
+                    "na_vals": ["this_string_is_not_in_the_data"],
+                    "res_columns": r"a_R\1",
                 }
             ],
         }
@@ -492,13 +495,11 @@ class TestReadAnnotatedData:
                 name="maxdiff",
                 scale=BlockScaleMeta(categories=topics),
                 columns={},
-                create=None,
             ),
             "maxdiff_maxdiff": ColumnBlockMeta(
                 name="maxdiff_maxdiff",
                 scale=BlockScaleMeta(categories=topics),
                 columns={col: ColumnMeta() for col in all_columns},
-                create=None,
             ),
         }
 
@@ -540,18 +541,16 @@ class TestReadAnnotatedData:
             "file": "test.csv",
             "structure": [
                 {
+                    "type": "maxdiff",
                     "name": "maxdiff",
                     "columns": [],
                     "scale": {"categories": topics.tolist()},
-                    "create": {
-                        "type": "maxdiff",
-                        "best_columns": r"Q2_(\d+?)best",
-                        "worst_columns": r"Q2_(\d+?)worst",
-                        "set_columns": r"Q2_\1set",
-                        "setindex_column": ["Q2_Version", {"continuous": True, "categories": None}],
-                        "items": items,
-                        "choice_sets": sets.tolist(),
-                    },
+                    "best_columns": r"Q2_(\d+?)best",
+                    "worst_columns": r"Q2_(\d+?)worst",
+                    "set_columns": r"Q2_\1set",
+                    "setindex_column": ["Q2_Version", {"continuous": True, "categories": None}],
+                    "items": items,
+                    "choice_sets": sets.tolist(),
                 }
             ],
         }
@@ -666,16 +665,14 @@ class TestReadAnnotatedData:
             "file": "test.csv",
             "structure": [
                 {
+                    "type": "maxdiff",
                     "name": "maxdiff",
                     "columns": [],
                     "scale": {"categories": topics},
-                    "create": {
-                        "type": "maxdiff",
-                        "best_columns": r"Q2_(\d+?)best",
-                        "worst_columns": r"Q2_(\d+?)worst",
-                        "set_columns": r"Q2_\1set",
-                        "items": items,
-                    },
+                    "best_columns": r"Q2_(\d+?)best",
+                    "worst_columns": r"Q2_(\d+?)worst",
+                    "set_columns": r"Q2_\1set",
+                    "items": items,
                 }
             ],
         }
@@ -728,19 +725,17 @@ class TestReadAnnotatedData:
             "file": "test.csv",
             "structure": [
                 {
+                    "type": "topk",
                     "name": "issue_importance",
                     "columns": ["Q6r1", "Q6r2", "Q6r3"],
-                    "create": {
-                        "type": "topk",
-                        "from_columns": r"Q6r(\d+)",
-                        "res_columns": r"Q6p_R\1",
-                        "agg_index": 1,
-                        "na_vals": ["NO TO: Cost of living", "NO TO: Healthcare", "NO TO: Pensions"],
-                        "translate_values": {
-                            "1": "Cost of living",
-                            "2": "Healthcare",
-                            "3": "Pensions",
-                        },
+                    "from_columns": r"Q6r(\d+)",
+                    "res_columns": r"Q6p_R\1",
+                    "agg_index": 1,
+                    "na_vals": ["NO TO: Cost of living", "NO TO: Healthcare", "NO TO: Pensions"],
+                    "translate_values": {
+                        "1": "Cost of living",
+                        "2": "Healthcare",
+                        "3": "Pensions",
                     },
                     "scale": {"categories": "infer"},
                 }
@@ -762,9 +757,11 @@ class TestReadAnnotatedData:
         assert data_df["Q6p_R1"].tolist() == ["Cost of living", "Healthcare", "Cost of living"]
 
         block = data_meta.structure["issue_importance_topk"]
+        assert isinstance(block, TopKBlock)
         assert set(block.columns.keys()) == {"Q6p_R1", "Q6p_R2"}
-        assert block.create is not None
-        assert block.create.translate_values == {"1": "Cost of living", "2": "Healthcare", "3": "Pensions"}
+        # translate_values is an input-only directive, cleared on output; result is observable in cell values.
+        assert block.translate_values is None
+        assert isinstance(block.from_columns, list) and isinstance(block.res_columns, list)
 
     def test_topk_one_subgroup(self, meta_file, csv_file):
         """TopK with 2 regex groups (1 subgroup dim).
@@ -775,17 +772,15 @@ class TestReadAnnotatedData:
             "file": "test.csv",
             "structure": [
                 {
+                    "type": "topk",
                     "name": "issue ownership",
                     "columns": ["Q7r1c1", "Q7r1c2", "Q7r2c1", "Q7r2c2"],
-                    "create": {
-                        "type": "topk",
-                        "from_columns": r"Q7r(\d+)c(\d+)",
-                        "res_columns": r"Q7r\1_R\2",
-                        "agg_index": 2,
-                        "groups": {"1": {"1": "economics", "2": "healthcare"}},
-                        "na_vals": ["not_selected"],
-                        "translate_values": {"1": "Party A", "2": "Party B"},
-                    },
+                    "from_columns": r"Q7r(\d+)c(\d+)",
+                    "res_columns": r"Q7r\1_R\2",
+                    "agg_index": 2,
+                    "groups": {"1": {"1": "economics", "2": "healthcare"}},
+                    "na_vals": ["not_selected"],
+                    "translate_values": {"1": "Party A", "2": "Party B"},
                     "scale": {"categories": "infer"},
                 }
             ],
@@ -806,13 +801,19 @@ class TestReadAnnotatedData:
         assert "issue ownership_topk_healthcare" in data_meta.structure
 
         econ_block = data_meta.structure["issue ownership_topk_economics"]
+        assert isinstance(econ_block, TopKBlock)
         assert all(c.startswith("Q7r1_R") for c in econ_block.columns)
         assert data_df["Q7r1_R1"].tolist() == ["Party A", "Party B", "Party A"]
 
-        # Generated block preserves create for downstream inspection
-        assert econ_block.create is not None
-        assert econ_block.create.type == "topk"
-        assert econ_block.create.groups == {"1": {"1": "economics", "2": "healthcare"}}
+        # Subgroup siblings are independent TopKBlocks with narrowed resolved column lists.
+        # Input-only directives (`groups`, `translate_values`) are cleared on output — the
+        # block's `name` suffix is the only subgroup identifier.
+        assert econ_block.type == "topk"
+        assert econ_block.groups is None
+        assert econ_block.translate_values is None
+        assert econ_block.from_columns == ["Q7r1c1", "Q7r1c2"]
+        assert econ_block.res_columns == ["Q7r1_R1", "Q7r1_R2"]
+        assert econ_block.segments() == [(list(econ_block.columns.keys()), None, False)]
 
     def test_topk_two_subgroup_dimensions(self, meta_file, csv_file):
         """TopK with 3 regex groups, 2 subgroup dimensions.
@@ -823,6 +824,7 @@ class TestReadAnnotatedData:
             "file": "test.csv",
             "structure": [
                 {
+                    "type": "topk",
                     "name": "survey",
                     "columns": [
                         "Q_A_1_1",
@@ -834,18 +836,15 @@ class TestReadAnnotatedData:
                         "Q_B_2_1",
                         "Q_B_2_2",
                     ],
-                    "create": {
-                        "type": "topk",
-                        "from_columns": r"Q_(\w+)_(\d+)_(\d+)",
-                        "res_columns": r"Q_\1_\2_R\3",
-                        "agg_index": 3,
-                        "groups": {
-                            "1": {"A": "Estonia", "B": "Latvia"},
-                            "2": {"1": "economics", "2": "healthcare"},
-                        },
-                        "na_vals": ["no"],
-                        "translate_values": {"1": "Party X", "2": "Party Y"},
+                    "from_columns": r"Q_(\w+)_(\d+)_(\d+)",
+                    "res_columns": r"Q_\1_\2_R\3",
+                    "agg_index": 3,
+                    "groups": {
+                        "1": {"A": "Estonia", "B": "Latvia"},
+                        "2": {"1": "economics", "2": "healthcare"},
                     },
+                    "na_vals": ["no"],
+                    "translate_values": {"1": "Party X", "2": "Party Y"},
                     "scale": {"categories": "infer"},
                 }
             ],
@@ -871,7 +870,58 @@ class TestReadAnnotatedData:
             assert f"survey_topk_{combo}" in data_meta.structure
 
         ee_block = data_meta.structure["survey_topk_Estonia_economics"]
+        assert isinstance(ee_block, TopKBlock)
         assert all(c.startswith("Q_A_1_R") for c in ee_block.columns)
+        # Each sibling is an independent TopKBlock with its own narrowed from_columns.
+        assert ee_block.from_columns == ["Q_A_1_1", "Q_A_1_2"]
+        assert ee_block.segments() == [(list(ee_block.columns.keys()), None, False)]
+
+    def test_maxdiff_segments_shape(self, meta_file, csv_file):
+        """MaxDiff output block exposes leedu-compatible ordinal ranking segments."""
+        items = {"1": "A", "2": "B", "3": "C"}
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "maxdiff",
+                    "name": "maxdiff",
+                    "columns": [],
+                    "best_columns": r"Q_(\d+)best",
+                    "worst_columns": r"Q_(\d+)worst",
+                    "set_columns": r"Q_\1set",
+                    "items": items,
+                    "scale": {"categories": "infer"},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        df = pd.DataFrame(
+            {
+                "Q_1best": ["A", "B"],
+                "Q_1worst": ["C", "A"],
+                "Q_1set": [["A", "B", "C"], ["A", "B", "C"]],
+                "Q_2best": ["B", "C"],
+                "Q_2worst": ["A", "B"],
+                "Q_2set": [["A", "B", "C"], ["A", "B", "C"]],
+            }
+        )
+        df.to_csv_file(csv_file)
+        _data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
+        block = data_meta.structure["maxdiff_maxdiff"]
+        assert isinstance(block, MaxDiffBlock)
+        # Question-aligned lists with the same order, two segments per question (best>set, set>worst).
+        best_columns = block.best_columns
+        worst_columns = block.worst_columns
+        set_columns = block.set_columns
+        assert isinstance(best_columns, list)
+        assert isinstance(worst_columns, list)
+        assert isinstance(set_columns, list)
+        q = len(best_columns)
+        segs = block.segments()
+        assert len(segs) == 2 * q
+        for k in range(q):
+            assert segs[k] == ([best_columns[k]], [set_columns[k]], True)
+            assert segs[q + k] == ([set_columns[k]], [worst_columns[k]], True)
 
     def test_maxdiff_with_translate(self, meta_file, csv_file):
         """MaxDiff with `items` in original language and `translate` to display language."""
@@ -885,18 +935,16 @@ class TestReadAnnotatedData:
             "file": "test.csv",
             "structure": [
                 {
+                    "type": "maxdiff",
                     "name": "maxdiff",
                     "columns": [],
-                    "create": {
-                        "type": "maxdiff",
-                        "best_columns": r"Q_(\d+)best",
-                        "worst_columns": r"Q_(\d+)worst",
-                        "set_columns": r"Q_\1set",
-                        "setindex_column": ["Q_Version", {"continuous": True}],
-                        "items": items,
-                        "choice_sets": choice_sets,
-                        "translate": translate,
-                    },
+                    "best_columns": r"Q_(\d+)best",
+                    "worst_columns": r"Q_(\d+)worst",
+                    "set_columns": r"Q_\1set",
+                    "setindex_column": ["Q_Version", {"continuous": True}],
+                    "items": items,
+                    "choice_sets": choice_sets,
+                    "translate": translate,
                     "scale": {"categories": "infer"},
                 }
             ],
@@ -917,6 +965,7 @@ class TestReadAnnotatedData:
         data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
 
         block = data_meta.structure["maxdiff_maxdiff"]
+        assert isinstance(block, MaxDiffBlock)
         assert "Q_1best" in block.columns
         assert "Q_1set" in block.columns
 
@@ -924,11 +973,16 @@ class TestReadAnnotatedData:
         assert data_df["Q_1best"].tolist() == ["Economy", "Education", "Health"]
         assert set(data_df["Q_1best"].cat.categories) == {"Economy", "Health", "Education"}
 
-        # create preserved for downstream wiring
-        assert block.create is not None
-        assert block.create.type == "maxdiff"
-        assert block.create.items == items
-        assert block.create.translate == translate
+        # Output block is a MaxDiffBlock with resolved column lists; input-only directives cleared.
+        assert block.type == "maxdiff"
+        assert block.items is None
+        assert block.translate is None
+        assert block.choice_sets is None
+        assert isinstance(block.best_columns, list)
+        assert isinstance(block.worst_columns, list)
+        assert isinstance(block.set_columns, list)
+        # Translated vocabulary lives on the scale categories.
+        assert block.scale is not None and set(block.scale.categories or []) == set(translate.values())
 
     def test_maxdiff_items_no_translate(self, meta_file, csv_file):
         """MaxDiff with items already in target language (no translate)."""
@@ -937,15 +991,13 @@ class TestReadAnnotatedData:
             "file": "test.csv",
             "structure": [
                 {
+                    "type": "maxdiff",
                     "name": "maxdiff",
                     "columns": [],
-                    "create": {
-                        "type": "maxdiff",
-                        "best_columns": r"Q_(\d+)best",
-                        "worst_columns": r"Q_(\d+)worst",
-                        "set_columns": r"Q_\1set",
-                        "items": items,
-                    },
+                    "best_columns": r"Q_(\d+)best",
+                    "worst_columns": r"Q_(\d+)worst",
+                    "set_columns": r"Q_\1set",
+                    "items": items,
                     "scale": {"categories": "infer"},
                 }
             ],
@@ -966,8 +1018,10 @@ class TestReadAnnotatedData:
         data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
 
         block = data_meta.structure["maxdiff_maxdiff"]
-        assert block.create is not None
-        assert block.create.translate is None
+        assert isinstance(block, MaxDiffBlock)
+        # Input-only directives cleared on output
+        assert block.translate is None
+        assert block.items is None
         # Cell values are the item names directly (no translation happened)
         assert data_df["Q_1best"].tolist() == ["Economy", "Health", "Education"]
 
@@ -3453,6 +3507,7 @@ class TestMultiSourceColumns:
             ],
             "structure": [
                 {
+                    "type": "topk",
                     "name": "demographics",
                     "columns": {
                         "id": {},
@@ -3473,13 +3528,10 @@ class TestMultiSourceColumns:
                             "categories": "infer",
                         },
                     },
-                    "create": {
-                        "type": "topk",
-                        "from_columns": r"topk_(\d)",
-                        "na_vals": ["Not mentioned", "No", "False"],
-                        "res_columns": r"topk_R\1",
-                        "translate_values": {"1": "USA", "2": "Canada"},
-                    },
+                    "from_columns": r"topk_(\d)",
+                    "na_vals": ["Not mentioned", "No", "False"],
+                    "res_columns": r"topk_R\1",
+                    "translate_values": {"1": "USA", "2": "Canada"},
                 }
             ],
         }

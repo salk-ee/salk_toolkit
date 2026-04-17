@@ -58,7 +58,6 @@ DEFAULT_COLUMN_BLOCK_META_FIELDS = [
     "subgroup_transform",
     "generated",
     "hidden",
-    "create",
 ]
 
 

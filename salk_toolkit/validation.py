@@ -219,48 +219,6 @@ class BlockScaleMeta(ColumnMeta):
     question_colors: Dict[str, Color] = DF(dict)  # Dict mapping columns to different colors
 
 
-class TopKBlock(PBase):
-    """Create block for top-K aggregation of multi-select columns."""
-
-    type: Literal["topk"] = "topk"
-    k: Union[int, Literal["max"]] = "max"
-    from_columns: Union[str, List[str]]
-    res_columns: Union[str, List[str]]  # Has to be list if from_columns is list
-    agg_index: int = -1
-    na_vals: Optional[List[str]] = []
-    from_prefix: Optional[str] = None  # If from_columns is list, prefix will be removed to enable translation
-
-    # Subgroup naming: one entry per non-agg regex group.
-    # Key = 1-based regex group number (as string), excluding the agg group.
-    # Value = dict mapping each group value -> human-readable label used in the generated block name.
-    groups: Optional[Dict[str, Dict[str, str]]] = None
-
-    # Agg-axis value translation: maps the aggregation group value (after topk collapse)
-    # to a display name. Applied to cell values in the result DataFrame.
-    translate_values: Optional[Dict[str, str]] = None
-
-
-class MaxDiffBlock(PBase):
-    """Create block for MaxDiff best-worst scaling experiments."""
-
-    type: Literal["maxdiff"] = "maxdiff"
-    name: Optional[str] = None
-    best_columns: Union[str, List[str]]
-    worst_columns: Union[str, List[str]]
-    set_columns: Optional[Union[str, List[str]]] = None  # Mutually exclusive with setindex. Only one is specified.
-    setindex_column: Optional[Union[str, List[object]]] = None  # Keeps metadata tuple used in annotations.
-
-    # Item labeling: maps 1-based index (as string) to the item name in the original language.
-    items: Dict[str, str]
-
-    # Choice sets: choice_sets[version][question] = list of item indices shown.
-    choice_sets: Optional[List[List[List[int]]]] = None
-
-    # Translation: maps original-language item names -> display names.
-    # Applied to cell values (best/worst/set columns) and categories. If omitted, items are used as-is.
-    translate: Optional[Dict[str, str]] = None
-
-
 # Import _cs_lst_to_dict for BeforeValidator (needs to be at runtime)
 from salk_toolkit.serialization import _cs_lst_to_dict  # noqa: E402
 
@@ -268,6 +226,10 @@ ColSpec = Annotated[Dict[str, ColumnMeta], BeforeValidator(_cs_lst_to_dict)]
 
 
 class ColumnBlockMeta(PBase):
+    """Plain column block. Specialized blocks (`TopKBlock`, `MaxDiffBlock`) inherit from this
+    and are dispatched on the `type` discriminator in :data:`BlockSpec`."""
+
+    type: Literal["plain"] = "plain"
     name: str  # Name of the block
     scale: Optional[BlockScaleMeta] = None  # Shared column meta for all columns inside the block
 
@@ -279,7 +241,6 @@ class ColumnBlockMeta(PBase):
     # Block level flags
     generated: bool = False  # This block is for data that is generated, i.e. not initially in the file.
     hidden: bool = False  # Use this to hide the block in explorer.py
-    create: Union[TopKBlock, MaxDiffBlock, None] = None
 
     @model_validator(mode="after")
     def merge_scale_with_columns(self, info: ValidationInfo) -> Self:
@@ -324,25 +285,132 @@ class ColumnBlockMeta(PBase):
         return serialize_column_block_meta(self, handler, info)
 
 
-def _cb_lst_to_dict(lst: Sequence[dict[str, object]] | dict[str, dict[str, object]]) -> dict[str, dict[str, object]]:
-    """Again, convert list to dict for easier debugging in case errors get thrown.
+class TopKBlock(ColumnBlockMeta):
+    """Block for top-K aggregation of multi-select columns. The stored output block
+    is an instance of this class; its `*_columns` fields are resolved to `List[str]`
+    by :mod:`salk_toolkit.io` (no regex on output). Input-only directives (`groups`,
+    `translate_values`) are cleared on output — subgroup identity lives in the
+    narrowed `from_columns` / `res_columns` and in the block's `name`."""
 
-    Transform list of block specs to dictionary format.
-    """
-    # If already a dict, return as-is
+    type: Literal["topk"] = "topk"  # type: ignore[assignment]
+
+    columns: ColSpec = DF(dict)  # empty default for annotation form; io.py fills on output
+    k: Union[int, Literal["max"]] = "max"
+    from_columns: Union[str, List[str]]
+    res_columns: Union[str, List[str]]  # Has to be list if from_columns is list
+    agg_index: int = -1
+    na_vals: Optional[List[str]] = []
+    from_prefix: Optional[str] = None  # If from_columns is list, prefix will be removed to enable translation
+
+    # Subgroup naming (input-only): one entry per non-agg regex group.
+    # Key = 1-based regex group number (as string), excluding the agg group.
+    # Value = dict mapping each group value -> human-readable label used in the generated block name.
+    groups: Optional[Dict[str, Dict[str, str]]] = None
+
+    # Agg-axis value translation (input-only): maps the aggregation group value (after topk collapse)
+    # to a display name. Applied to cell values in the result DataFrame.
+    translate_values: Optional[Dict[str, str]] = None
+
+    def segments(self) -> List[Tuple[List[str], Optional[List[str]], bool]]:
+        """Return ordinal-ranking segments for this resolved TopK block.
+
+        Single segment per block: all `columns.keys()` are ranked above the full axis.
+        Called by downstream consumers (e.g. salk_internal_package's OrdinalRanking).
+        """
+        return [(list(self.columns.keys()), None, False)]
+
+
+class MaxDiffBlock(ColumnBlockMeta):
+    """Block for MaxDiff best-worst scaling experiments. The stored output block is
+    an instance of this class; `best_columns` / `worst_columns` / `set_columns` are
+    resolved to `List[str]` by :mod:`salk_toolkit.io`, index-aligned by question.
+    Input-only directives (`items`, `translate`, `choice_sets`) are cleared on output;
+    translated item vocabulary lives in `scale.categories`."""
+
+    type: Literal["maxdiff"] = "maxdiff"  # type: ignore[assignment]
+
+    columns: ColSpec = DF(dict)  # empty default for annotation form; io.py fills on output
+    best_columns: Union[str, List[str]]
+    worst_columns: Union[str, List[str]]
+    set_columns: Optional[Union[str, List[str]]] = None  # Mutually exclusive with setindex. Only one is specified.
+    setindex_column: Optional[Union[str, List[object]]] = None  # Keeps metadata tuple used in annotations.
+
+    # Item labeling (input-only): maps 1-based index (as string) to the item name in the original language.
+    items: Optional[Dict[str, str]] = None
+
+    # Choice sets (input-only): choice_sets[version][question] = list of item indices shown.
+    choice_sets: Optional[List[List[List[int]]]] = None
+
+    # Translation (input-only): maps original-language item names -> display names.
+    # Applied to cell values (best/worst/set columns) and categories. If omitted, items are used as-is.
+    translate: Optional[Dict[str, str]] = None
+
+    def segments(self) -> List[Tuple[List[str], List[str], bool]]:
+        """Return ordinal-ranking segments for this resolved MaxDiff block.
+
+        Two segments per question: `[best_k] > [set_k]` and `[set_k] > [worst_k]`.
+        Precondition: `best_columns` / `worst_columns` / `set_columns` are resolved
+        `List[str]` (io.py ensures this on output blocks), index-aligned by question.
+        """
+        best = self.best_columns
+        worst = self.worst_columns
+        sets = self.set_columns
+        if not (isinstance(best, list) and isinstance(worst, list) and isinstance(sets, list)):
+            raise TypeError(
+                "MaxDiffBlock.segments() requires best_columns/worst_columns/set_columns to be resolved lists, "
+                f"got best_columns={best!r}, worst_columns={worst!r}, set_columns={sets!r}"
+            )
+        return [([best[k]], [sets[k]], True) for k in range(len(best))] + [
+            ([sets[k]], [worst[k]], True) for k in range(len(best))
+        ]
+
+
+def _cb_lst_to_dict(lst: Sequence[object] | dict[str, object]) -> dict[str, object]:
+    """Transform list of block specs to dictionary format keyed by block name,
+    defaulting missing ``type`` to ``"plain"`` so the discriminated union validates
+    old-shape annotations without an explicit ``type`` field."""
     if isinstance(lst, dict):
-        return lst
+        return {k: _default_block_type(v) for k, v in lst.items()}
 
-    result: dict[str, dict[str, object]] = {}
+    result: dict[str, object] = {}
     for block in lst:
-        name = block.get("name")
-        if not isinstance(name, str):
+        if isinstance(block, BaseModel):
+            name_val = getattr(block, "name", None)
+        elif isinstance(block, dict):
+            name_val = block.get("name")
+        else:
+            raise TypeError("Block specification must be a dict or BaseModel instance.")
+        if not isinstance(name_val, str):
             raise TypeError("Each block specification must contain a 'name' field of type str.")
-        result[name] = block
+        result[name_val] = _default_block_type(block)
     return result
 
 
-BlockSpec = Annotated[Dict[str, ColumnBlockMeta], BeforeValidator(_cb_lst_to_dict)]
+def _default_block_type(block: object) -> object:
+    """Ensure a block dict carries a ``type`` discriminator (default ``"plain"``).
+    Passes Pydantic model instances through untouched. Raises on the legacy nested
+    ``create`` shape so silently-lost TopK/MaxDiff processing becomes a loud failure."""
+    if isinstance(block, BaseModel):
+        return block
+    if not isinstance(block, dict):
+        raise TypeError("Block specification must be a dict or BaseModel instance.")
+    if "create" in block and "type" not in block:
+        raise ValueError(
+            f"Block {block.get('name')!r} uses the legacy nested 'create' field, which is no "
+            "longer supported. Hoist create.type to the top level as 'type' and flatten the "
+            "create fields onto the block (e.g. {'type': 'topk', 'name': ..., 'from_columns': ...}). "
+            "See specs/2026-04-02-maxdiff-topk-schema-refactor.md."
+        )
+    if "type" not in block:
+        return {"type": "plain", **block}
+    return block
+
+
+_BlockUnion = Annotated[
+    Union[TopKBlock, MaxDiffBlock, ColumnBlockMeta],
+    Field(discriminator="type"),
+]
+BlockSpec = Annotated[Dict[str, _BlockUnion], BeforeValidator(_cb_lst_to_dict)]
 
 
 class FileDesc(BaseModel):
