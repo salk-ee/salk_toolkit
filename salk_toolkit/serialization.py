@@ -141,6 +141,13 @@ def serialize_column_block_meta(
         if "columns" in serialized and isinstance(serialized["columns"], dict):
             serialized["columns"] = _cs_dict_to_lst(serialized["columns"])
 
+    # Preserve the discriminator on specialized subclasses (topk/maxdiff) even when it
+    # matches the subclass's own default; otherwise discriminated-union re-validation
+    # can't recover the subclass. Plain blocks still omit "type" for visual stability.
+    block_type = getattr(model, "type", None)
+    if block_type and block_type != "plain":
+        serialized["type"] = block_type
+
     return serialized
 
 
