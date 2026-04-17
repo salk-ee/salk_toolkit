@@ -37,6 +37,8 @@ __all__ = [
     "GroupOrColumnMeta",
     "ElectoralSystem",
     "MandatesDict",
+    "MaxDiffBlock",
+    "TopKBlock",
 ]
 
 from collections.abc import Mapping
@@ -215,25 +217,45 @@ class BlockScaleMeta(ColumnMeta):
 
 
 class TopKBlock(PBase):
+    """Create block for top-K aggregation of multi-select columns."""
+
     type: Literal["topk"] = "topk"
     k: Union[int, Literal["max"]] = "max"
     from_columns: Union[str, List[str]]
     res_columns: Union[str, List[str]]  # Has to be list if from_columns is list
     agg_index: int = -1
     na_vals: Optional[List[str]] = []
-    translate_after: Dict[str, str] = DF(dict)
     from_prefix: Optional[str] = None  # If from_columns is list, prefix will be removed to enable translation
+
+    # Subgroup naming: one entry per non-agg regex group.
+    # Key = 1-based regex group number (as string), excluding the agg group.
+    # Value = dict mapping each group value -> human-readable label used in the generated block name.
+    groups: Optional[Dict[str, Dict[str, str]]] = None
+
+    # Agg-axis value translation: maps the aggregation group value (after topk collapse)
+    # to a display name. Applied to cell values in the result DataFrame.
+    translate_values: Optional[Dict[str, str]] = None
 
 
 class MaxDiffBlock(PBase):
+    """Create block for MaxDiff best-worst scaling experiments."""
+
     type: Literal["maxdiff"] = "maxdiff"
     name: Optional[str] = None
     best_columns: Union[str, List[str]]
     worst_columns: Union[str, List[str]]
     set_columns: Optional[Union[str, List[str]]] = None  # Mutually exclusive with setindex. Only one is specified.
     setindex_column: Optional[Union[str, List[object]]] = None  # Keeps metadata tuple used in annotations.
-    topics: Optional[List[str]] = None
-    sets: Optional[List[List[int]]] = None
+
+    # Item labeling: maps 1-based index (as string) to the item name in the original language.
+    items: Dict[str, str]
+
+    # Choice sets: choice_sets[version][question] = list of item indices shown.
+    choice_sets: Optional[List[List[List[int]]]] = None
+
+    # Translation: maps original-language item names -> display names.
+    # Applied to cell values (best/worst/set columns) and categories. If omitted, items are used as-is.
+    translate: Optional[Dict[str, str]] = None
 
 
 # Import _cs_lst_to_dict for BeforeValidator (needs to be at runtime)

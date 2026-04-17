@@ -27,7 +27,13 @@ from salk_toolkit.io import (
     read_parquet_metadata,
     infer_meta,
 )
-from salk_toolkit.validation import soft_validate, DataMeta, ColumnMeta, ColumnBlockMeta, BlockScaleMeta
+from salk_toolkit.validation import (
+    soft_validate,
+    DataMeta,
+    ColumnMeta,
+    ColumnBlockMeta,
+    BlockScaleMeta,
+)
 from salk_toolkit.utils import read_json
 
 
@@ -311,7 +317,7 @@ class TestReadAnnotatedData:
                         "from_columns": r"q(\d+)_(\d+)",
                         "na_vals": ["not_selected"],
                         "res_columns": r"q\1_R\2",
-                        "translate_after": {"1": "USA", "2": "Canada", "3": "Mexico"},
+                        "translate_values": {"1": "USA", "2": "Canada", "3": "Mexico"},
                     },
                 }
             ],
@@ -354,10 +360,20 @@ class TestReadAnnotatedData:
             check_categorical=False,
         )
         serialized_meta = data_meta.model_dump(mode="json")
-        structure_wo_files = [b for b in serialized_meta["structure"] if b.get("name") != "files"]
+        structure_wo_files = [
+            {"name": b["name"], "columns": b["columns"]}
+            for b in serialized_meta["structure"]
+            if b.get("name") != "files"
+        ]
         assert sorted(structure_wo_files, key=lambda x: x["name"]) == sorted(
             expected_structure, key=lambda x: x["name"]
         )
+
+        # Generated topk blocks preserve their create definition for downstream consumers.
+        topk_block = data_meta.structure["topkcols_topk_1"]
+        assert topk_block.create is not None
+        assert topk_block.create.type == "topk"
+        assert topk_block.create.translate_values == {"1": "USA", "2": "Canada", "3": "Mexico"}
 
         # Also test that we can give from_columns and res_cols as lists (no subgroups possible here)
         # TODO: Can be a separate test, but there'd be a lot of boilerplate code.
@@ -492,7 +508,7 @@ class TestReadAnnotatedData:
         return structure
 
     def test_maxdiff_create_block(self, meta_file, csv_file):
-        """Test max diff create block."""
+        """Reference example: maxdiff annotation with items and choice_sets in the create block."""
         np.random.seed(42)
 
         columns = [f"Q2_{k}best" for k in range(1, 11)]
@@ -519,23 +535,22 @@ class TestReadAnnotatedData:
         C = A[i, j, best]
         D = A[i, j, worst]
 
+        items = {str(i + 1): t for i, t in enumerate(topics.tolist())}
         meta = {
             "file": "test.csv",
-            "constants": {
-                "topics": topics.tolist(),
-                "sets": sets.tolist(),
-            },
             "structure": [
                 {
                     "name": "maxdiff",
                     "columns": [],
-                    "scale": {"categories": "topics"},
+                    "scale": {"categories": topics.tolist()},
                     "create": {
                         "type": "maxdiff",
                         "best_columns": r"Q2_(\d+?)best",
                         "worst_columns": r"Q2_(\d+?)worst",
                         "set_columns": r"Q2_\1set",
                         "setindex_column": ["Q2_Version", {"continuous": True, "categories": None}],
+                        "items": items,
+                        "choice_sets": sets.tolist(),
                     },
                 }
             ],
@@ -646,21 +661,20 @@ class TestReadAnnotatedData:
                 data[f"Q2_{col}set"] = [serialize(row_sets[row][block_idx], mode) for row in range(num_rows)]
             return pd.DataFrame(data)
 
+        items = {str(i + 1): t for i, t in enumerate(topics)}
         meta = {
             "file": "test.csv",
-            "constants": {
-                "topics": topics,
-            },
             "structure": [
                 {
                     "name": "maxdiff",
                     "columns": [],
-                    "scale": {"categories": "topics"},
+                    "scale": {"categories": topics},
                     "create": {
                         "type": "maxdiff",
                         "best_columns": r"Q2_(\d+?)best",
                         "worst_columns": r"Q2_(\d+?)worst",
                         "set_columns": r"Q2_\1set",
+                        "items": items,
                     },
                 }
             ],
@@ -704,6 +718,258 @@ class TestReadAnnotatedData:
                 expected_structure,
                 data_df=None,  # Don't check DataFrame columns for this test
             )
+
+    def test_topk_no_subgroups(self, meta_file, csv_file):
+        """TopK with a single regex group (= agg group) produces one block named {name}_topk.
+
+        translate_values maps the numeric agg-group value to the display name.
+        """
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "name": "issue_importance",
+                    "columns": ["Q6r1", "Q6r2", "Q6r3"],
+                    "create": {
+                        "type": "topk",
+                        "from_columns": r"Q6r(\d+)",
+                        "res_columns": r"Q6p_R\1",
+                        "agg_index": 1,
+                        "na_vals": ["NO TO: Cost of living", "NO TO: Healthcare", "NO TO: Pensions"],
+                        "translate_values": {
+                            "1": "Cost of living",
+                            "2": "Healthcare",
+                            "3": "Pensions",
+                        },
+                    },
+                    "scale": {"categories": "infer"},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        df = pd.DataFrame(
+            {
+                "Q6r1": ["Cost of living", "NO TO: Cost of living", "Cost of living"],
+                "Q6r2": ["NO TO: Healthcare", "Healthcare", "Healthcare"],
+                "Q6r3": ["Pensions", "Pensions", "NO TO: Pensions"],
+            }
+        )
+        df.to_csv_file(csv_file)
+        data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
+
+        assert "issue_importance_topk" in data_meta.structure
+        # Cell values are the translated issue names (R1 = lowest agg-group index selected)
+        assert data_df["Q6p_R1"].tolist() == ["Cost of living", "Healthcare", "Cost of living"]
+
+        block = data_meta.structure["issue_importance_topk"]
+        assert set(block.columns.keys()) == {"Q6p_R1", "Q6p_R2"}
+        assert block.create is not None
+        assert block.create.translate_values == {"1": "Cost of living", "2": "Healthcare", "3": "Pensions"}
+
+    def test_topk_one_subgroup(self, meta_file, csv_file):
+        """TopK with 2 regex groups (1 subgroup dim).
+
+        `groups` labels the non-agg group; produces one block per group value.
+        """
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "name": "issue ownership",
+                    "columns": ["Q7r1c1", "Q7r1c2", "Q7r2c1", "Q7r2c2"],
+                    "create": {
+                        "type": "topk",
+                        "from_columns": r"Q7r(\d+)c(\d+)",
+                        "res_columns": r"Q7r\1_R\2",
+                        "agg_index": 2,
+                        "groups": {"1": {"1": "economics", "2": "healthcare"}},
+                        "na_vals": ["not_selected"],
+                        "translate_values": {"1": "Party A", "2": "Party B"},
+                    },
+                    "scale": {"categories": "infer"},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        df = pd.DataFrame(
+            {
+                "Q7r1c1": ["selected", "not_selected", "selected"],
+                "Q7r1c2": ["not_selected", "selected", "not_selected"],
+                "Q7r2c1": ["selected", "not_selected", "selected"],
+                "Q7r2c2": ["selected", "selected", "not_selected"],
+            }
+        )
+        df.to_csv_file(csv_file)
+        data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
+
+        assert "issue ownership_topk_economics" in data_meta.structure
+        assert "issue ownership_topk_healthcare" in data_meta.structure
+
+        econ_block = data_meta.structure["issue ownership_topk_economics"]
+        assert all(c.startswith("Q7r1_R") for c in econ_block.columns)
+        assert data_df["Q7r1_R1"].tolist() == ["Party A", "Party B", "Party A"]
+
+        # Generated block preserves create for downstream inspection
+        assert econ_block.create is not None
+        assert econ_block.create.type == "topk"
+        assert econ_block.create.groups == {"1": {"1": "economics", "2": "healthcare"}}
+
+    def test_topk_two_subgroup_dimensions(self, meta_file, csv_file):
+        """TopK with 3 regex groups, 2 subgroup dimensions.
+
+        Block labels concatenate non-agg group labels with `_`.
+        """
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "name": "survey",
+                    "columns": [
+                        "Q_A_1_1",
+                        "Q_A_1_2",
+                        "Q_A_2_1",
+                        "Q_A_2_2",
+                        "Q_B_1_1",
+                        "Q_B_1_2",
+                        "Q_B_2_1",
+                        "Q_B_2_2",
+                    ],
+                    "create": {
+                        "type": "topk",
+                        "from_columns": r"Q_(\w+)_(\d+)_(\d+)",
+                        "res_columns": r"Q_\1_\2_R\3",
+                        "agg_index": 3,
+                        "groups": {
+                            "1": {"A": "Estonia", "B": "Latvia"},
+                            "2": {"1": "economics", "2": "healthcare"},
+                        },
+                        "na_vals": ["no"],
+                        "translate_values": {"1": "Party X", "2": "Party Y"},
+                    },
+                    "scale": {"categories": "infer"},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        df = pd.DataFrame(
+            {
+                "Q_A_1_1": ["yes", "no"],
+                "Q_A_1_2": ["no", "yes"],
+                "Q_A_2_1": ["yes", "yes"],
+                "Q_A_2_2": ["no", "no"],
+                "Q_B_1_1": ["no", "yes"],
+                "Q_B_1_2": ["yes", "no"],
+                "Q_B_2_1": ["yes", "no"],
+                "Q_B_2_2": ["no", "yes"],
+            }
+        )
+        df.to_csv_file(csv_file)
+        _data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
+
+        # Four blocks: all country × issue combinations
+        for combo in ["Estonia_economics", "Estonia_healthcare", "Latvia_economics", "Latvia_healthcare"]:
+            assert f"survey_topk_{combo}" in data_meta.structure
+
+        ee_block = data_meta.structure["survey_topk_Estonia_economics"]
+        assert all(c.startswith("Q_A_1_R") for c in ee_block.columns)
+
+    def test_maxdiff_with_translate(self, meta_file, csv_file):
+        """MaxDiff with `items` in original language and `translate` to display language."""
+        items = {"1": "Ekonomika", "2": "Sveikata", "3": "Svietimas"}
+        translate = {"Ekonomika": "Economy", "Sveikata": "Health", "Svietimas": "Education"}
+        choice_sets = [
+            [[1, 2, 3], [2, 3, 1], [1, 3, 2]],  # version 1
+            [[3, 1, 2], [1, 2, 3], [3, 2, 1]],  # version 2
+        ]
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "name": "maxdiff",
+                    "columns": [],
+                    "create": {
+                        "type": "maxdiff",
+                        "best_columns": r"Q_(\d+)best",
+                        "worst_columns": r"Q_(\d+)worst",
+                        "set_columns": r"Q_\1set",
+                        "setindex_column": ["Q_Version", {"continuous": True}],
+                        "items": items,
+                        "choice_sets": choice_sets,
+                        "translate": translate,
+                    },
+                    "scale": {"categories": "infer"},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        df = pd.DataFrame(
+            {
+                "Q_Version": [1, 2, 1],
+                "Q_1best": ["Ekonomika", "Svietimas", "Sveikata"],
+                "Q_1worst": ["Sveikata", "Ekonomika", "Ekonomika"],
+                "Q_2best": ["Svietimas", "Ekonomika", "Svietimas"],
+                "Q_2worst": ["Ekonomika", "Sveikata", "Ekonomika"],
+                "Q_3best": ["Ekonomika", "Svietimas", "Ekonomika"],
+                "Q_3worst": ["Svietimas", "Ekonomika", "Svietimas"],
+            }
+        )
+        df.to_csv_file(csv_file)
+        data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
+
+        block = data_meta.structure["maxdiff_maxdiff"]
+        assert "Q_1best" in block.columns
+        assert "Q_1set" in block.columns
+
+        # Cell values translated into display language
+        assert data_df["Q_1best"].tolist() == ["Economy", "Education", "Health"]
+        assert set(data_df["Q_1best"].cat.categories) == {"Economy", "Health", "Education"}
+
+        # create preserved for downstream wiring
+        assert block.create is not None
+        assert block.create.type == "maxdiff"
+        assert block.create.items == items
+        assert block.create.translate == translate
+
+    def test_maxdiff_items_no_translate(self, meta_file, csv_file):
+        """MaxDiff with items already in target language (no translate)."""
+        items = {"1": "Economy", "2": "Health", "3": "Education"}
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "name": "maxdiff",
+                    "columns": [],
+                    "create": {
+                        "type": "maxdiff",
+                        "best_columns": r"Q_(\d+)best",
+                        "worst_columns": r"Q_(\d+)worst",
+                        "set_columns": r"Q_\1set",
+                        "items": items,
+                    },
+                    "scale": {"categories": "infer"},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        df = pd.DataFrame(
+            {
+                "Q_1best": ["Economy", "Health", "Education"],
+                "Q_1worst": ["Education", "Economy", "Health"],
+                "Q_1set": [
+                    ["Economy", "Health", "Education"],
+                    ["Economy", "Health", "Education"],
+                    ["Economy", "Health", "Education"],
+                ],
+            }
+        )
+        df.to_csv_file(csv_file)
+        data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
+
+        block = data_meta.structure["maxdiff_maxdiff"]
+        assert block.create is not None
+        assert block.create.translate is None
+        # Cell values are the item names directly (no translation happened)
+        assert data_df["Q_1best"].tolist() == ["Economy", "Health", "Education"]
 
 
 class TestColumnTransformations:
@@ -3212,7 +3478,7 @@ class TestMultiSourceColumns:
                         "from_columns": r"topk_(\d)",
                         "na_vals": ["Not mentioned", "No", "False"],
                         "res_columns": r"topk_R\1",
-                        "translate_after": {"1": "USA", "2": "Canada"},
+                        "translate_values": {"1": "USA", "2": "Canada"},
                     },
                 }
             ],
@@ -3228,7 +3494,9 @@ class TestMultiSourceColumns:
             {"file": "file3.csv", "opts": {}, "code": "F2"},
         ]
         # Core structure entries should match (additional system blocks may also be present)
-        assert {"name": "demographics_topk", "columns": ["topk_R1", "topk_R2"]} in dumped["structure"]
+        topk_block = next((b for b in dumped["structure"] if b.get("name") == "demographics_topk"), None)
+        assert topk_block is not None
+        assert topk_block["columns"] == ["topk_R1", "topk_R2"]
         assert {
             "name": "demographics",
             "columns": [
