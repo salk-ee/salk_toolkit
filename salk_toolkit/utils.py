@@ -662,7 +662,9 @@ def split_to_neg_neutral_pos(
     """Partition Likert categories into negative/neutral/positive lists."""
 
     cats, mid = list(cats), len(cats) // 2
-    neutrals_list = list(neutrals)  # Make a copy to avoid modifying input down the line
+    # Only consider neutrals that actually exist in `cats` - downstream code
+    # (e.g. likert_bars) looks them up in the category order.
+    neutrals_list = [n for n in neutrals if n in cats]
     if not neutrals_list:
         if len(cats) % 2 == 1:
             return cats[:mid], [cats[mid]], cats[mid + 1 :]
