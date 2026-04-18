@@ -1624,7 +1624,9 @@ def create_plot(
 
             # Some plots (like likert_bars) need a more complex sort
             # This converts the categorical into numeric values and then sorts by the mean of the value
-            if plot_meta.sort_numeric_first_facet:
+            # If the sort column IS the first facet, the numeric-scale sort is incoherent -
+            # fall through to the plain mean-of-value_col sort below.
+            if plot_meta.sort_numeric_first_facet and cn != factor_cols[0]:
                 f0 = factor_cols[0]
                 nvals = _get_cat_num_vals(col_meta[f0], pp_desc)
                 cats = col_meta[f0].categories or []

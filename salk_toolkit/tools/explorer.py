@@ -430,6 +430,16 @@ with st.sidebar:  # .expander("Select dimensions"):
             args["factor_cols"] = [c for c in args["factor_cols"] if c != "question"]
             args["factor_cols"].insert(int(qpos) - 1, "question")
 
+        # Drop a now-incoherent sort: if the sort target ended up as the first facet
+        # and the plot uses sort_numeric_first_facet, the numeric-scale sort is meaningless.
+        if (
+            plot_meta_dict.get("sort_numeric_first_facet")
+            and args.get("sort")
+            and args["factor_cols"]
+            and next(iter(args["sort"])) == args["factor_cols"][0]
+        ):
+            args.pop("sort", None)
+
         override = st.text_area("Override keys", "{}", key="override")
         if override:
             args.update(eval(override))
