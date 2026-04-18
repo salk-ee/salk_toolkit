@@ -1794,38 +1794,19 @@ class FronteggAuthenticationManager(UserAuthenticationManager):
         assert isinstance(user, dict), "Expected OAUser to be a dict"
         return user
 
-    # Use the silent login profile to just refresh the user info if prompt config is present
-
     def refresh_user(self) -> None:
-        """Refresh user information by triggering OAuth re-authentication."""
-        # If prompr config present, assume default conf is silent login
-        # In that case, logout + silent login can be used to refresh the user info
-        if "prompt" in st.secrets["auth"]:
-            st.logout()
-        else:
-            print("User refresh needs [auth.prompt] segment in secrets.toml")
+        """No-op: silent-login hack stopped working in 1.53.0.
+           New refresh logic has not yet been merged (https://github.com/streamlit/streamlit/pull/14437)"""
+        pass
 
     def login_screen(self) -> None:
         """Display Frontegg OAuth login screen."""
         if not self.authenticated:
             st.login()
-            st.session_state["OA_fresh"] = True  # just logged in, so no need to refresh
             if st.user["is_logged_in"] and not st.session_state.get("OAUser"):
                 st.session_state["OAUser"] = self.reform_user(st.user)
             elif not st.user["is_logged_in"] and "OAUser" in st.session_state:
                 del st.session_state["OAUser"]
-        elif (
-            not st.session_state.get("OA_fresh")
-            and isinstance(st.user.get("iat"), (int, float))
-            and time.time() - float(st.user["iat"]) > 60
-        ):
-            # IF authenticated, but token not refreshed this session and is at least 60 sec old
-            # This is to ensure that settings changes are also visible if logging in on another device
-            # Also good for keeping users logged in for a while as it refreshes the access token
-            print("Refreshing user info")
-            self.refresh_user()
-        else:
-            st.session_state["OA_fresh"] = True
 
         # Record the login event to the log file
         if self.authenticated and "login_recorded" not in st.session_state:
@@ -1833,15 +1814,14 @@ class FronteggAuthenticationManager(UserAuthenticationManager):
             st.session_state["login_recorded"] = True  # Only log once per session, even if user logs in multiple times
 
     def logout_button(self, text: str, location: str = "sidebar") -> None:
-        """Display logout button that triggers OAuth re-login.
+        """Display logout button.
 
         Args:
             text: Button text.
             location: Where to display button (default: "sidebar").
         """
-        if "prompt" in st.secrets["auth"] and st.button(text):
-            st.login("prompt")
-        # st.write(self.reform_user(st.user)) # Debug: show sdb.user
+        if st.button(text):
+            st.logout()
 
     def add_user(self, user_data: dict[str, object]) -> bool:
         """Add a new user via Frontegg API.
@@ -2496,6 +2476,7 @@ def filter_ui(
                 filters[cn] = stc.multiselect(tf(cn), all_vals, all_vals, key=key)
                 if set(filters[cn]) == set(all_vals):
                     del filters[cn]
+                    stss.pop(key, None)  # Don't persist a no-op filter
                 else:
                     stc.button(
                         tf("Reset"),
@@ -2516,6 +2497,7 @@ def filter_ui(
                 filters[cn] = stc.selectbox(tf(cn), choices, key=key)
                 if filters[cn] == tf("All"):
                     del filters[cn]
+                    stss.pop(key, None)  # Don't persist a no-op filter
                 else:
                     filters[cn] = r_map[filters[cn]]
 
@@ -2524,8 +2506,13 @@ def filter_ui(
             # to distinguish them from list of values
             elif limits[cn].get("categories") and limits[cn].get("ordered"):  # Ordered categorical - slider
                 key = f"filter_{uid}_{cn}_ocat"
-                if key in stss and not set(stss[key]) <= set(all_vals):
-                    del stss[key]
+                if key in stss:
+                    # localStorage-persisted tuples come back as lists; coerce so
+                    # Streamlit renders a range slider (not a single-value one).
+                    if isinstance(stss[key], list):
+                        stss[key] = tuple(stss[key])
+                    if not set(stss[key]) <= set(all_vals):
+                        del stss[key]
                 f_res = stc.select_slider(tf(cn), all_vals, value=(all_vals[0], all_vals[-1]), key=key)
                 if f_res != (all_vals[0], all_vals[-1]):
                     miv, mav = r_map[f_res[0]], r_map[f_res[1]]
@@ -2538,17 +2525,24 @@ def filter_ui(
                             miv,
                             mav,
                         ]  # Just use the range syntax for better legibility
+                else:
+                    stss.pop(key, None)  # Don't persist a no-op filter
 
             # Numeric values - slider
             elif limits[cn].get("continuous"):  # Continuous
                 mima = limits[cn]["min"], limits[cn]["max"]
                 if mima[0] == mima[1]:
                     continue
-                f_res = stc.slider(tf(cn), *mima, value=mima, key=f"filter_{uid}_{cn}_cont")
+                cont_key = f"filter_{uid}_{cn}_cont"
+                if cont_key in stss and isinstance(stss[cont_key], list):
+                    stss[cont_key] = tuple(stss[cont_key])
+                f_res = stc.slider(tf(cn), *mima, value=mima, key=cont_key)
                 if f_res[0] > mima[0] or f_res[1] < mima[1]:
                     filters[cn] = (
                         [None] + [f_res[0] if f_res[0] > mima[0] else None] + [f_res[1] if f_res[1] < mima[1] else None]
                     )
+                else:
+                    stss.pop(cont_key, None)  # Don't persist a no-op filter
 
     # Only leave the question group filter on if that is the current observation
     if obs_dim:
