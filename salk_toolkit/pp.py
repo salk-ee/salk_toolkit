@@ -746,14 +746,17 @@ def _transform_cont(
         )
     elif transform in custom_row_transforms:
         _tfunc, fmt = custom_row_transforms[transform]
-        # Probe the transform with a dummy 1-row input to determine the output dtype.
-        # This lets us declare an explicit schema on map_batches so the streaming engine
-        # can initialise array builders for downstream group_by/agg without hitting the
-        # OPAQUE_PYTHON schema boundary.  validate_output_schema stays False because the
-        # actual column dtypes change (e.g. Float32 → Int64 for topbot1).
+        # Probe the transform with a 1-row dummy to derive an explicit map_batches schema,
+        # so the streaming engine can initialise array builders for downstream group_by/agg
+        # without hitting the OPAQUE_PYTHON boundary. The probe must use the same numpy
+        # dtype `df[cols].to_numpy()` will yield at runtime: dtype-preserving transforms
+        # (softmax-avgrank) would otherwise declare Float64 over a Float32 batch and panic
+        # in the reducer (`values.dtype() == &self.in_dtype`). validate_output_schema stays
+        # False because dtype-changing transforms (e.g. Float32 → Int64 for topbot1) are OK.
         input_schema = data.collect_schema()
         set_cols = set(cols)
-        _probe = _tfunc(np.zeros((1, len(cols))))
+        in_np_dtype = np.result_type(*(pl.Series([], dtype=input_schema[c]).to_numpy().dtype for c in cols))
+        _probe = _tfunc(np.zeros((1, len(cols)), dtype=in_np_dtype))
         col_dtype = pl.Series(_probe[0]).dtype
         output_schema = pl.Schema({c: (col_dtype if c in set_cols else input_schema[c]) for c in input_schema})
         data = data.map_batches(

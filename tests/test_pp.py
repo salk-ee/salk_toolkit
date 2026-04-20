@@ -5,12 +5,15 @@ Unit tests for plot pipeline utilities in salk_toolkit.pp.
 from copy import deepcopy
 from typing import Any
 
+import numpy as np
 import pandas as pd
+import polars as pl
 import pytest
 import altair as alt
 
 from salk_toolkit.pp import (
     _calculate_priority as calculate_priority,
+    _transform_cont,
     get_plot_fn,
     impute_factor_cols,
     matching_plots,
@@ -223,6 +226,82 @@ def test_impute_factor_cols_handles_categorical_and_continuous_cases() -> None:
     }
     continuous_factors = impute_factor_cols(continuous_desc, col_meta)
     assert continuous_factors == ["question", "region"]
+
+
+@pytest.mark.parametrize(
+    "in_dtype",
+    [pl.Float32, pl.Float64],
+)
+def test_transform_cont_custom_row_transform_streaming_dtype_match(in_dtype: pl.DataType) -> None:
+    """Custom row transforms must declare a schema whose dtype matches the actual batch output.
+
+    softmax-avgrank preserves its input dtype. If the probe always used float64 zeros,
+    real Float32 input would produce Float32 batches while the schema declared Float64,
+    causing a streaming-engine panic (`values.dtype() == &self.in_dtype`) in
+    downstream group_by/agg. This test runs the full streaming path.
+    """
+    cols = [f"opt{i}" for i in range(4)]
+    rng = np.random.default_rng(0)
+    df = pl.DataFrame(
+        {
+            **{c: pl.Series(rng.normal(size=200).astype(np.float64), dtype=in_dtype) for c in cols},
+            "group": rng.integers(0, 3, size=200),
+        }
+    )
+
+    lf, _fmt, _rng = _transform_cont(df.lazy(), cols, transform="softmax-avgrank")
+    lf = lf.unpivot(index=["group"], on=cols, variable_name="q", value_name="rank")
+    lf = lf.group_by(["group", "q"]).agg(pl.col("rank").mean())
+
+    result = lf.collect(engine="streaming")
+    assert result.shape == (12, 3)
+    assert result["rank"].dtype in (pl.Float32, pl.Float64)
+
+
+def test_transform_cont_full_streaming_pipeline(tmp_path) -> None:
+    """Integration smoke test reproducing the original panic fixed by commit 0359860.
+
+    Pipeline: scan_parquet → with_row_index → map_batches (via _transform_cont with
+    ordered-topbot1) → join → unpivot → Enum cast → reverse_/res weight split →
+    group_by → collect(streaming). Without the explicit schema on map_batches the
+    streaming engine panics with `Option::unwrap() on a None value` in
+    polars-arrow/src/array/builder.rs when initialising builders for the multi-
+    column aggregation after the OPAQUE_PYTHON boundary.
+    """
+    cols = ["A", "B", "C", "D"]
+    n_rows = 200
+    rng = np.random.default_rng(0)
+    parquet = tmp_path / "data.parquet"
+    pl.DataFrame(
+        {
+            **{c: pl.Series(rng.normal(size=n_rows).astype(np.float32), dtype=pl.Float32) for c in cols},
+            "pop_group_size": pl.Series(rng.integers(1000, 9999, size=n_rows), dtype=pl.UInt32),
+        }
+    ).write_parquet(parquet)
+
+    lf = pl.scan_parquet(parquet)
+    lf = lf.with_columns(pl.col("pop_group_size").cast(pl.Float64).fill_null(1.0))
+    lf = lf.with_row_index("id").with_columns(pl.col("id").cast(pl.Int64))
+    lf, _fmt, _rng = _transform_cont(lf, cols, transform="ordered-topbot1")
+
+    draws = pl.DataFrame(
+        {"id": pl.Series(range(n_rows), dtype=pl.Int64), "draw": pl.Series([0] * n_rows, dtype=pl.Int64)}
+    ).lazy()
+    lf = lf.join(draws, on="id", how="left")
+    lf = lf.unpivot(index=["id", "draw", "pop_group_size"], on=cols, variable_name="question", value_name="score")
+    lf = lf.with_columns(pl.col("question").cast(pl.Enum(cols)))
+    # Mirror _wrangle_data's weight split for top/bot transforms.
+    lf = lf.with_columns(((pl.col("score") == -1) * pl.col("pop_group_size")).alias("reverse_score"))
+    lf = lf.with_columns(((pl.col("score") == 1) * pl.col("pop_group_size")).alias("score"))
+    lf = lf.group_by(["question", "draw"]).agg(
+        [
+            pl.col(["score", "pop_group_size"]).sum(),
+            pl.col(["reverse_score", "pop_group_size"]).sum().name.prefix("reverse_"),
+        ]
+    )
+
+    result = lf.collect(engine="streaming")
+    assert result.shape == (len(cols), 6)
 
 
 def test_get_plot_fn_legacy_wrapper_builds_chart() -> None:
