@@ -93,6 +93,19 @@
       ]
     },
     {
+      "name": "thermometer",
+      "comment": "Demonstrates `scale.question_colors` — coloring each column (party) with its brand color when the block is unpivoted in plots. The likert `colors` gradient for the scale values is derived automatically; `question_colors` handles the orthogonal dimension (which party). Thermometer column names must match keys in `party_colors`. Marked `generated: true` so no raw data is required in this example.",
+      "generated": true,
+      "scale": {
+        "categories": ["Strongly dislike", "Dislike", "Like", "Strongly like"],
+        "ordered": true,
+        "likert": true,
+        "num_values": [-2, -1, 1, 2],
+        "question_colors": "party_colors"
+      },
+      "columns": [["TS-LKD"], ["LSDP"], ["LVŽS"]]
+    },
+    {
       "name": "attitudes_p",
       "generated": true,
       "scale": {

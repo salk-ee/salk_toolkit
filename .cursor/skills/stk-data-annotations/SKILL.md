@@ -13,6 +13,14 @@ Always read these two files before starting annotation work — the schema evolv
 
 **IMPORTANT**: When in doubt about the semantics of a survey question — what categories mean, whether something is ordered, topk or somethi— **always ask the user rather than assuming**. Wrong semantic assumptions (e.g. treating an unordered category as ordered, or merging categories that shouldn't be merged) produce silent errors that are extremely hard to detect later in the modeling pipeline.
 
+**NEVER edit the raw data file (VERY IMPORTANT).** The raw data (`.sav`, `.csv`, `.xlsx`, `.parquet`) is the immutable source of truth — never modify it, overwrite it, or save a "cleaned" copy over it. All corrections, recodings, merges, synthetic columns, filters and fix-ups happen inside the annotation, in this order of preference:
+
+1. **`translate` / `translate_after`** — for plain value → value remappings (e.g. merging `"Don't remember"` and `"Difficult to answer"` into `"Don't know"`, renaming categories, fixing typos).
+2. **`transform`** (per column) — for expression-level fixes that need the cell / column in scope (casting, regex, `stk.cut_nice`, rule-based recoding).
+3. **`preprocessing`** (top-level code block) — last resort, for changes that need multiple source columns at once, row filtering, or cross-column derivations before any column-level processing runs.
+
+If you think you need to edit the raw file, you're wrong — use translate/transform/preprocessing instead.
+
 ## Use Cases
 
 ### 1. Creating a new annotation
@@ -20,11 +28,13 @@ Always read these two files before starting annotation work — the schema evolv
 **Definition of done:**
 - [ ] Matches census in category names and granularity — ask for census file if not provided
 - [ ] All relevant columns annotated (demographics, opinions, scales, etc.)
-- [ ] Ordered categories correctly ordered; nonordered elements marked; `num_values` set for all ordered columns (centered on zero for likerts, 1–N otherwise, `null` for nonordered entries)
+- [ ] Ordered categories correctly ordered (likerts always go negative → positive pole, e.g. disagree → agree); nonordered elements marked; `num_values` set for all ordered columns (centered on zero for likerts, 1–N otherwise, `null` for nonordered entries)
 - [ ] All conventions followed (see below)
 - [ ] Loads cleanly via `read_annotated_data(meta_file)` with no warnings
 - [ ] Everything translated to English (exception: party acronyms)
 - [ ] If a questionnaire / data description is available, add `label` entries with the exact question wording (per-item text on individual columns, shared lead-in text on `scale.label` for item-battery blocks)
+- [ ] Region fields have a `topo_feature` attached — ask the user for a link to the map JSON if not provided
+- [ ] Party brand colors collected and wired up wherever parties appear (see Colors section) — search the web if not provided by user
 
 ### 2. Aligning to an existing annotation
 
@@ -169,7 +179,8 @@ Column-level `{ meta }` should only contain fields that **differ** from the bloc
 | Field | Type | Purpose |
 |-------|------|---------|
 | `label` | `str` | Column description for tooltips/headers |
-| `colors` | `dict \| str` | Category → color mapping (or constant name) |
+| `colors` | `dict \| str` | Category value → color mapping (or constant name). See Colors section. |
+| `question_colors` | `dict \| str` | Block-scale only: column name → color for unpivoted plots. See Colors section. |
 | `groups` | `dict` | Named category groupings for filtering |
 | `topo_feature` | `[url, type, col]` | Link to topojson for geographic columns |
 | `modifiers` | `list[str]` | Columns that modify responses (private inputs for modeling) |
@@ -192,6 +203,25 @@ Column-level `{ meta }` should only contain fields that **differ** from the bloc
 Any value in the structure can be a string matching a key in `constants`. It gets replaced at parse time. Use for colors, topic lists, and translation dicts shared across blocks.
 
 **Only define a constant if it is referenced two or more times.** Single-use constants add indirection and hurt readability — inline them at the use site instead. When auditing an annotation, remove any constant used zero or one times.
+
+### Colors
+
+Two fields, orthogonal dimensions:
+
+| Field | Where | Maps |
+|-------|-------|------|
+| `colors` | Column meta (or `scale` as default) | category value → hex |
+| `question_colors` | Block `scale` only | column name → hex; becomes `colors` on the synthetic `question` column after unpivot (see `pp.py::_question_meta_clone`, ~line 1110) |
+
+Both accept an inline dict or a string referencing a constant. For `question_colors`, the block's column **names must match the keys** in the referenced dict. If a block's `scale` is a string reference to a shared constant (e.g. `"scale": "trust_scale"`), inline the scale to add `question_colors` — string refs are whole-value replacements.
+
+**Party colors — always collect them.** Whenever an annotation has party data (`party_preference`, per-party `thermometer` / `ownership`), define a `party_colors` constant and reference it via `colors` on party-valued columns and via `scale.question_colors` on blocks whose columns are parties. If the user didn't supply colors, **search the web**:
+
+> Wikipedia's "Opinion polling for the [YEAR] [COUNTRY] parliamentary election" pages are the canonical source for exact hex codes. Open the page source on the polling table and look for `{{party color|PartyName}}` templates — these pull from a shared CSS database of hex codes used by news organizations. That gives you per-country, per-election, match-the-press colors in one place.
+
+Fall back to distinct placeholder hues (documented in a `comment`) only if a reliable hex can't be found. Use neutral greys for ballot meta-options (`other`, `spoil_ballot`, `Against_Everyone`, `none`, `Don't know`, `No answer`).
+
+See `examples/example_web_meta.json` for a worked pattern — `party_colors` constant, `colors: "party_colors"` on `party_preference`, and `scale.question_colors: "party_colors"` on the thermometer block.
 
 ### Comments
 
@@ -312,15 +342,32 @@ When using `setindex_column`, `topics` and `sets` must be defined (usually via c
 1. **English**: All category names, labels, and column names in English.
    - Exception: party names/acronyms kept as originals (e.g. "TS-LKD", "LSDP")
    - Exception: geographic names (counties, municipalities) may stay in the local language — match whatever the census uses
-2. **Column names**: short, lowercase `snake_case`, single identifier where possible (e.g. `putin`, `macron`, `armenia_alliance`, `civil_contract`). Prefer last name only for people; add a first-name prefix only to disambiguate (e.g. `aram_sargsyan` vs `serzh_sargsyan`). Put the full human-readable name in `label` whenever the column name is actually a shortening/change (not merely lowercase + underscores). **Exception:** party / organisation acronyms stay in full uppercase (e.g. `ARF`, `ANC`, `LSDP`, `TS-LKD`) — do not lowercase them.
-3. **`categories: "infer"`**: Only use together with `translate`. Order is derived from `translate` dict key order.
-4. **`translate`**: Only include if actually performing translation or value mapping. Don't add identity translations unless needed for order disambiguation with `categories: "infer"`.
-5. **Ordered categories**: Naturally ordered data (age, income, education, likerts) must be `ordered: true` with `nonordered` marking outliers ("Don't know", "No answer", "Other").
-6. **Party consistency**: Party names must be identical across `party_preference`, `thermometer`, and `issue_ownership` blocks.
-7. **Discrete scales**: Use categorical (not continuous) for scales with <20 values, even if numeric.
-8. **`col_prefix`**: Use to disambiguate columns that share names across blocks (e.g. `attitude_`, `issue_`, `therm_`).
-9. **Auto-inferred blocks from topk/maxdiff**: Delete any blocks that were auto-generated by `infer_meta` for columns that belong to topk/maxdiff `create` blocks — those get regenerated.
-10. **Document non-obvious decisions with `comment`**: Any choice that deviates from best practice or is non-obvious (unusual merges, ambiguous ordering calls, deliberate category mismatches, tricky transforms) must be noted in a `comment` field on the block, scale, or column where it applies. See the Comments subsection above.
+2. **Column names**: short, `snake_case`, single identifier where possible. Put the full human-readable name in `label` when the column name is a shortening/change.
+   - **Default**: lowercase (e.g. `age`, `gender`, `pol_interest`).
+   - **Proper nouns** (people, parties, organisations) stay capitalized (e.g. `Putin`, `Macron`, `Civil_Contract`, `Fidesz`). For people prefer last name only. If **any** name in a block needs a first-name prefix to disambiguate, use full `First_Last` names for **every** person in that block.
+   - **Acronyms** stay fully uppercase (e.g. `ARF`, `ANC`, `LSDP`, `TS-LKD`).
+3. **Standard block/column naming**: use these names whenever the concept applies, so blocks line up across surveys:
+   - `party_preference` — who the respondent would vote for (single column or block).
+   - `thermometer` — per-party rating / likability / trust scale (one likert-style column per party).
+   - `importance` — issue-importance ranking, usually pick-top-K or maxdiff.
+   - `ownership` — which party is trusted most to handle each issue.
+4. **`categories: "infer"`**: Only use together with `translate`. Order is derived from `translate` dict key order.
+5. **`translate`**: Only include if actually performing translation or value mapping. Don't add identity translations unless needed for order disambiguation with `categories: "infer"`.
+6. **Ordered categories**: Naturally ordered data (age, income, education, likerts) must be `ordered: true` with `nonordered` marking outliers ("Don't know", "No answer", "Other"). Any **bipolar** ordered scale — one with opposing poles (agree/disagree, trust/distrust, positive/negative, better/worse) — must be marked `likert: true` with `num_values` centred on zero, regardless of whether a neutral middle exists. Set `neutral_middle` when a middle category does exist.
+
+   **Dichotomous choices are likerts too.** Any 2-way choice — yes/no, for/against, approve/disapprove, support/oppose, stay/leave, EU/EAEU, etc. — must be marked `ordered: true, likert: true` with `num_values: [-1, 1]` (plus nulls for DK/NA), not left as unordered categorical. This applies to both opinion bipolars (agree vs disagree) and factual/choice binaries (yes vs no, A vs B).
+
+   **Pick the positive pole by this priority** (documented with a `comment` when non-obvious):
+   1. Explicit valence: trust, agree, approve, support, positive, better, more, yes → positive; distrust, disagree, disapprove, oppose, negative, worse, less, no → negative.
+   2. Affirmative / pro-action: yes, for, support, change-to-new > no, against, oppose, keep-status-quo.
+   3. For A vs B choices without explicit valence, pick the pole aligned with the survey's analytical reference direction (e.g. Western/EU orientation as positive in Eastern-European polling) and document with `comment`.
+
+   **Always order likert categories from the negative pole to the positive pole** (disagree → agree, distrust → trust, no → yes, against → for, leave → stay, EAEU → EU); `num_values` increase monotonically from negative to positive. Flip with `translate` if the source data codes the other way.
+7. **Party consistency**: Party names must be identical across `party_preference`, `thermometer`, and `ownership` blocks.
+8. **Discrete scales**: Use categorical (not continuous) for scales with <20 values, even if numeric.
+9. **`col_prefix`**: Use to disambiguate columns that share names across blocks (e.g. `attitude_`, `issue_`, `therm_`).
+10. **Auto-inferred blocks from topk/maxdiff**: Delete any blocks that were auto-generated by `infer_meta` for columns that belong to topk/maxdiff `create` blocks — those get regenerated.
+11. **Document non-obvious decisions with `comment`**: Any choice that deviates from best practice or is non-obvious (unusual merges, ambiguous ordering calls, deliberate category mismatches, tricky transforms) must be noted in a `comment` field on the block, scale, or column where it applies. See the Comments subsection above.
 
 ## Common Pitfalls
 
@@ -425,6 +472,7 @@ A complete minimal example lives in `.cursor/skills/stk-data-annotations/example
 - **`generated: true` for alignment**: WEB includes `attitudes_p` block with `generated: true` — this block has no matching data in the WEB file, but its schema lets the 5-point CATI columns carry through when loading both files together.
 - **TopK with `translate_after`**: `issue_importance` block uses regex `from_columns`, `na_vals` to filter unselected items, and `translate_after` to map numeric regex groups to English names.
 - **MaxDiff with `scale.translate`**: `maxdiff` block (WEB only) uses `setindex_column` + `topics`/`sets` constants (2 versions × 3 sets of 3 topics). `scale.translate` maps Lithuanian topic names to English — this single dict controls both cell values and the output category list.
+- **Colors — `colors` vs `question_colors`**: `party_colors` constant is referenced by `colors` on `party_preference` (values are parties) and by `scale.question_colors` on the `thermometer` block (columns are parties, so each party gets its brand color when the block is unpivoted into a `question` dimension). Thermometer column names must match the `party_colors` keys.
 
 ## For more details
 
