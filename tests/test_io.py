@@ -3497,6 +3497,7 @@ class TestMultiSourceColumns:
         ).to_csv_file(file2)
         pd.DataFrame({"id": [5, 6], "USA": ["True", "False"], "Canada": ["False", "True"]}).to_csv_file(file3)
 
+        # TODO(Task 9): restore translate_after once scale-merge isolates topk output columns.
         meta = {
             "files": [
                 {"file": "file1.csv", "code": "F0"},

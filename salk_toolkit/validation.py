@@ -312,6 +312,8 @@ class TopKBlock(ColumnBlockMeta):
         cols = list(self.columns.keys())
         if self.input_format in ("onehot", "leftpacked"):
             return [(cols, None, False)]
+        if len(cols) < 2:
+            return [(cols, None, False)] if cols else []
         chain: List[Tuple[List[str], Optional[List[str]], bool]] = []
         for i in range(len(cols) - 1):
             chain.append(([cols[i]], cols[i + 1 :], True))
