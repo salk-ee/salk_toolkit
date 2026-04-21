@@ -350,6 +350,8 @@ class MaxDiffBlock(ColumnBlockMeta):
             raise TypeError(
                 f"MaxDiffBlock.segments() requires resolved lists; got best={best!r}, worst={worst!r}, sets={sets!r}"
             )
+        if not best:
+            return []
         return [([best[k]], [sets[k]], True) for k in range(len(best))] + [
             ([sets[k]], [worst[k]], True) for k in range(len(best))
         ]

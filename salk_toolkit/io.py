@@ -667,8 +667,8 @@ def _create_maxdiff_metas_and_dfs(
     """
     Create metas and dfs for maxdiff.
 
-    Reads `items` (1-based index -> item name in original language) and optional
-    `translate` (original-language item name -> display name) from the input block.
+    Reads `choice_mapping` (1-based index -> item name) and applies scale-level
+    `translate_after` (via stop-gap helper) to output cells.
     """
     df = df.copy(deep=True)
     create = block  # legacy alias retained to minimize diff below
@@ -677,12 +677,14 @@ def _create_maxdiff_metas_and_dfs(
     if cm is None:
         raise ValueError("MaxDiffBlock requires 'choice_mapping' to be defined.")
     if not (isinstance(cm, dict) and all(isinstance(v, str) for v in cm.values())):
-        raise NotImplementedError("multi-subgroup maxdiff not yet implemented — see Task 10")
+        raise NotImplementedError(
+            "multi-subgroup maxdiff not yet implemented: choice_mapping is dict-keyed — see Task 10"
+        )
     items = cm
     topics: list[str] | None = [items[k] for k in sorted(items, key=int)] if items else None
     cs = create.choice_sets
     if cs is not None and not (isinstance(cs, list)):
-        raise NotImplementedError("multi-subgroup maxdiff not yet implemented — see Task 10")
+        raise NotImplementedError("multi-subgroup maxdiff not yet implemented: choice_sets is dict-keyed — see Task 10")
     sets = cs
     best_cols: Sequence[str] | str = create.best_columns
     worst_cols: Sequence[str] | str = create.worst_columns
