@@ -475,6 +475,75 @@ def _resolve_maxdiff_translate_stopgap(block: MaxDiffBlock) -> dict[str, str] | 
     return None
 
 
+def _match_columns(block: ColumnBlockMeta, df: pd.DataFrame) -> list[str]:
+    pattern = block.from_columns
+    if pattern is None:
+        cols = [c for c in block.columns.keys() if c in df.columns]
+    elif isinstance(pattern, list):
+        cols = list(pattern)
+    elif isinstance(pattern, str):
+        regex = re.compile(pattern)
+        cols = [c for c in df.columns if regex.match(c)]
+    else:
+        raise TypeError(f"from_columns must be str, list, or None; got {type(pattern)}")
+    if not cols:
+        raise ValueError(f"No columns matched for block {block.name!r} (from_columns={pattern!r})")
+    return cols
+
+
+def _narrow_sibling(block: ColumnBlockMeta, cols: list[str], *, label_suffix: str) -> ColumnBlockMeta:
+    new_name = block.name if not label_suffix else f"{block.name}_{label_suffix}"
+    return block.model_copy(
+        update={
+            "name": new_name,
+            "from_columns": cols,
+            "subgroup_labels": None,
+        }
+    )
+
+
+def _subgroup_explode(block: ColumnBlockMeta, df: pd.DataFrame) -> list[ColumnBlockMeta]:
+    matched_cols = _match_columns(block, df)
+    pattern = block.from_columns
+    if not isinstance(pattern, str):
+        return [_narrow_sibling(block, matched_cols, label_suffix="")]
+
+    regex = re.compile(pattern)
+    first = regex.match(matched_cols[0])
+    assert first is not None
+    n_groups = len(first.groups())
+
+    # TopK aggregates columns over the subgroup, should not explode
+    agg_idx = getattr(block, "agg_index", None)
+    agg_pos = None
+    if agg_idx is not None:
+        agg_pos = agg_idx - 1 if agg_idx > 0 else agg_idx
+    non_agg_positions = [i for i in range(n_groups) if i != agg_pos]
+
+    if not non_agg_positions:
+        return [_narrow_sibling(block, matched_cols, label_suffix="")]
+
+    def _key(col: str) -> tuple[str, ...]:
+        m = regex.match(col)
+        assert m is not None
+        g = m.groups()
+        return tuple(g[i] for i in non_agg_positions)
+
+    sibling_cols: dict[tuple[str, ...], list[str]] = {}
+    for c in matched_cols:
+        sibling_cols.setdefault(_key(c), []).append(c)
+
+    labels = block.subgroup_labels or {}
+
+    def _label(key: tuple[str, ...]) -> str:
+        parts = []
+        for val, pos in zip(key, non_agg_positions, strict=True):
+            parts.append(str(labels.get(str(pos + 1), {}).get(val, val)))
+        return "_".join(parts)
+
+    return [_narrow_sibling(block, cols, label_suffix=_label(key)) for key, cols in sibling_cols.items()]
+
+
 def _create_topk_metas_and_dfs(
     df: pd.DataFrame,
     block: TopKBlock,

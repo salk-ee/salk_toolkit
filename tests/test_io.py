@@ -3723,5 +3723,101 @@ class TestPipelineSchema:
         assert not hasattr(b, "segments")
 
 
+class TestInternalPipelineHelpers:
+    """Tests for _match_columns and _subgroup_explode internal helpers."""
+
+    def test_match_columns_regex(self):
+        """Regex pattern matches columns against DataFrame columns."""
+        import pandas as pd
+        from salk_toolkit.io import _match_columns
+        from salk_toolkit.validation import soft_validate, ColumnBlockMeta
+
+        df = pd.DataFrame(columns=["Q1_a", "Q1_b", "Q2_a", "other"])
+        b = soft_validate({"name": "t", "from_columns": r"Q(\d+)_(\w+)", "columns": {}}, ColumnBlockMeta)
+        assert _match_columns(b, df) == ["Q1_a", "Q1_b", "Q2_a"]
+
+    def test_match_columns_list(self):
+        """List pattern returns exactly the listed columns."""
+        import pandas as pd
+        from salk_toolkit.io import _match_columns
+        from salk_toolkit.validation import soft_validate, ColumnBlockMeta
+
+        df = pd.DataFrame(columns=["a", "b", "c"])
+        b = soft_validate({"name": "t", "from_columns": ["a", "c"], "columns": {}}, ColumnBlockMeta)
+        assert _match_columns(b, df) == ["a", "c"]
+
+    def test_match_columns_empty_raises(self):
+        """ValueError raised when no columns match the pattern."""
+        import pandas as pd
+        import pytest
+        from salk_toolkit.io import _match_columns
+        from salk_toolkit.validation import soft_validate, ColumnBlockMeta
+
+        b = soft_validate({"name": "t", "from_columns": r"X_(\w+)", "columns": {}}, ColumnBlockMeta)
+        with pytest.raises(ValueError, match="No columns matched"):
+            _match_columns(b, pd.DataFrame(columns=["Q2_a"]))
+
+    def test_explode_topk_one_nonagg_dim(self):
+        """TopK with one non-agg dimension produces one sibling per subgroup value."""
+        import pandas as pd
+        from salk_toolkit.io import _subgroup_explode
+        from salk_toolkit.validation import soft_validate, TopKBlock
+
+        df = pd.DataFrame(columns=["Q7r1c1", "Q7r1c2", "Q7r2c1", "Q7r2c2"])
+        b = soft_validate(
+            {
+                "type": "topk",
+                "name": "io",
+                "from_columns": r"Q7r(\d+)c(\d+)",
+                "res_columns": r"Q7r\1_R\2",
+                "agg_index": 2,
+                "subgroup_labels": {"1": {"1": "econ", "2": "health"}},
+            },
+            TopKBlock,
+        )
+        sibs = _subgroup_explode(b, df)
+        assert [s.name for s in sibs] == ["io_econ", "io_health"]
+        assert sibs[0].from_columns == ["Q7r1c1", "Q7r1c2"]
+
+    def test_explode_plain_multi_capture(self):
+        """Multi-capture regex with no agg_index produces one sibling per unique column."""
+        import pandas as pd
+        from salk_toolkit.io import _subgroup_explode
+        from salk_toolkit.validation import soft_validate, ColumnBlockMeta
+
+        df = pd.DataFrame(columns=["Q1_a", "Q1_b", "Q2_a", "Q2_b"])
+        b = soft_validate({"name": "p", "from_columns": r"Q(\d+)_(\w+)", "columns": {}}, ColumnBlockMeta)
+        sibs = _subgroup_explode(b, df)
+        assert {s.name for s in sibs} == {"p_1_a", "p_1_b", "p_2_a", "p_2_b"}
+
+    def test_explode_no_subgroups_bare_name(self):
+        """Single capture group that is the agg axis yields one sibling with block name unchanged."""
+        import pandas as pd
+        from salk_toolkit.io import _subgroup_explode
+        from salk_toolkit.validation import soft_validate, TopKBlock
+
+        df = pd.DataFrame(columns=["Qa", "Qb"])
+        b = soft_validate(
+            {"type": "topk", "name": "io", "from_columns": r"Q(\w)", "res_columns": r"R\1", "agg_index": 1}, TopKBlock
+        )
+        sibs = _subgroup_explode(b, df)
+        assert len(sibs) == 1
+        assert sibs[0].name == "io"
+        assert sibs[0].from_columns == ["Qa", "Qb"]
+
+    def test_explode_list_from_columns_single_sibling(self):
+        """List from_columns always yields exactly one sibling."""
+        import pandas as pd
+        from salk_toolkit.io import _subgroup_explode
+        from salk_toolkit.validation import soft_validate, ColumnBlockMeta
+
+        df = pd.DataFrame(columns=["a", "b"])
+        b = soft_validate({"name": "p", "from_columns": ["a", "b"], "columns": {}}, ColumnBlockMeta)
+        sibs = _subgroup_explode(b, df)
+        assert len(sibs) == 1
+        assert sibs[0].name == "p"
+        assert sibs[0].from_columns == ["a", "b"]
+
+
 if __name__ == "__main__":
     pytest.main([__file__])
