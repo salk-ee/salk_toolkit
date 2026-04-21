@@ -38,6 +38,7 @@ __all__ = [
     "ElectoralSystem",
     "MandatesDict",
     "MaxDiffBlock",
+    "OneHotBlock",
     "TopKBlock",
 ]
 
@@ -357,6 +358,24 @@ class MaxDiffBlock(ColumnBlockMeta):
         ]
 
 
+class OneHotBlock(ColumnBlockMeta):
+    """Block that widens leftpacked rank-position columns into one boolean
+    column per choice. If `choices` is None, the choice list is derived as
+    the sorted union of non-null cell values across matched columns
+    (excluding `na_vals`)."""
+
+    type: Literal["onehot"] = "onehot"  # type: ignore[assignment]
+
+    columns: ColSpec = DF(dict)
+    from_columns: Union[str, List[str]]  # type: ignore[assignment]
+
+    input_format: Literal["leftpacked", "wide"] = "leftpacked"
+
+    choices: Optional[Union[List[str], Dict[str, List[str]]]] = None
+    res_prefix: Optional[str] = None
+    na_vals: Optional[List[str]] = None
+
+
 def _cb_lst_to_dict(lst: Sequence[object] | dict[str, object]) -> dict[str, object]:
     """Transform list of block specs to dictionary format keyed by block name,
     defaulting missing ``type`` to ``"plain"`` so the discriminated union validates
@@ -399,7 +418,7 @@ def _default_block_type(block: object) -> object:
 
 
 _BlockUnion = Annotated[
-    Union[TopKBlock, MaxDiffBlock, ColumnBlockMeta],
+    Union[TopKBlock, MaxDiffBlock, OneHotBlock, ColumnBlockMeta],
     Field(discriminator="type"),
 ]
 BlockSpec = Annotated[Dict[str, _BlockUnion], BeforeValidator(_cb_lst_to_dict)]

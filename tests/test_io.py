@@ -3680,6 +3680,48 @@ class TestPipelineSchema:
         assert "items" not in MaxDiffBlock.model_fields
         assert "translate" not in MaxDiffBlock.model_fields
 
+    def test_onehot_block_dispatched_by_discriminator(self):
+        """Verify type=onehot is dispatched to OneHotBlock by the discriminated union."""
+        from salk_toolkit.validation import soft_validate, DataMeta, OneHotBlock
+
+        meta = soft_validate(
+            {
+                "structure": {
+                    "sm": {
+                        "type": "onehot",
+                        "name": "sm",
+                        "from_columns": r"M_(\d+)",
+                        "columns": {},
+                    }
+                }
+            },
+            DataMeta,
+        )
+        assert isinstance(meta.structure["sm"], OneHotBlock)
+        assert meta.structure["sm"].input_format == "leftpacked"
+
+    def test_onehot_block_fields(self):
+        """Verify OneHotBlock fields validate and default correctly."""
+        from salk_toolkit.validation import soft_validate, OneHotBlock
+
+        b = soft_validate(
+            {
+                "type": "onehot",
+                "name": "sm",
+                "from_columns": r"vQ12_M_(\d+)",
+                "input_format": "leftpacked",
+                "choices": ["Facebook", "TikTok"],
+                "res_prefix": "sm_",
+                "na_vals": ["99"],
+            },
+            OneHotBlock,
+        )
+        assert b.input_format == "leftpacked"
+        assert b.choices == ["Facebook", "TikTok"]
+        assert b.res_prefix == "sm_"
+        assert b.na_vals == ["99"]
+        assert not hasattr(b, "segments")
+
 
 if __name__ == "__main__":
     pytest.main([__file__])
