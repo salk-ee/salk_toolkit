@@ -518,6 +518,8 @@ def _subgroup_explode(block: ColumnBlockMeta, df: pd.DataFrame) -> list[ColumnBl
     agg_pos = None
     if agg_idx is not None:
         agg_pos = agg_idx - 1 if agg_idx > 0 else agg_idx
+        if agg_pos is not None and agg_pos < 0:
+            agg_pos = n_groups + agg_pos
     non_agg_positions = [i for i in range(n_groups) if i != agg_pos]
 
     if not non_agg_positions:
@@ -547,157 +549,118 @@ def _subgroup_explode(block: ColumnBlockMeta, df: pd.DataFrame) -> list[ColumnBl
 def _create_topk_metas_and_dfs(
     df: pd.DataFrame,
     block: TopKBlock,
-    **kwargs: dict[str, str],  # used by other create blocks
+    **_: object,
 ) -> tuple[list[pd.DataFrame], list[TopKBlock]]:
-    """Create top K aggregations from DataFrame."""
-    name = f"{block.name}_{block.type}"
-    from_columns = block.from_columns
-    if from_columns is None:
-        raise ValueError("TopKBlock must have from_columns specified")
-
-    has_regex = isinstance(from_columns, str)
-    has_list = isinstance(from_columns, list)
-
-    if has_regex:
-        return _create_topk_metas_and_dfs_regex(df, block, name)
-    elif has_list:
-        return _create_topk_metas_and_dfs_list(df, block, name)
-    else:
-        raise ValueError(f"from_columns must be either str (regex) or list, got {type(from_columns)}")
+    source_pattern = block.from_columns if isinstance(block.from_columns, str) else None
+    dfs: list[pd.DataFrame] = []
+    metas: list[TopKBlock] = []
+    for sib in _subgroup_explode(block, df):
+        assert isinstance(sib, TopKBlock)
+        sdf, out = _topk_apply_transform(sib, df, source_pattern=source_pattern, source_block=block)
+        dfs.append(sdf)
+        metas.append(out)
+    return dfs, metas
 
 
-def _create_topk_metas_and_dfs_regex(
-    df: pd.DataFrame,
+def _topk_apply_transform(
     block: TopKBlock,
-    name: str,
-) -> tuple[list[pd.DataFrame], list[TopKBlock]]:
-    """Create top K aggregations from DataFrame using regex pattern matching."""
-    create = block  # legacy alias retained to minimize diff below
-    from_columns = create.from_columns
-    assert isinstance(from_columns, str), "from_columns must be str for regex mode"
+    df: pd.DataFrame,
+    *,
+    source_pattern: str | None,
+    source_block: TopKBlock,
+) -> tuple[pd.DataFrame, TopKBlock]:
+    fmt = block.input_format
+    if fmt == "onehot":
+        return _topk_transform_onehot(block, df, source_pattern=source_pattern, source_block=source_block)
+    if fmt in ("leftpacked", "ranked_leftpack"):
+        raise NotImplementedError(f"TopK input_format={fmt!r} not yet implemented (Task 7)")
+    if fmt == "ranked_onehot":
+        raise NotImplementedError("ranked_onehot transform not yet implemented — no production user")
+    raise ValueError(f"unknown TopK input_format: {fmt!r}")
 
-    regex_from = re.compile(from_columns)
-    from_cols = list(filter(lambda s: regex_from.match(s), df.columns))
-    # agg_ind is index of the regex group that we want to aggregate over.
-    # All other indeces are unique identifiers for each subgroup
-    # e.g. ['A'] and ['B'] (that are also added to meta names)
-    # Recall that regex group 0 is the whole match.
-    # Note that re.Match.groups() does not include the whole match.
-    # This means that we need to subtract 1 from agg_ind.
-    agg_ind = create.agg_index
-    agg_ind = agg_ind - 1 if agg_ind > 0 else agg_ind
-    first_match = regex_from.match(from_cols[0])
-    assert first_match is not None, f"Column {from_cols[0]} should match regex {regex_from.pattern}"
-    n_groups = len(first_match.groups())
-    has_subgroups = n_groups >= 2  # Multiple aggregations needed?
-    regex_to = create.res_columns if isinstance(create.res_columns, str) else None
-    kmax = create.k
-    na_vals = create.na_vals if create.na_vals is not None else []
 
-    if has_subgroups:
-        # collect all subgroups, later aggregate each subgroup separately
-        def _get_subgroup_id(column: str) -> tuple[str, ...]:
-            """Discard the aggregation index and collect the rest as identifier."""
-            match = regex_from.match(column)
-            assert match is not None, f"Column {column} should match regex {regex_from.pattern}"
-            subgroup_id = list(match.groups())
-            subgroup_id.pop(agg_ind)
-            return tuple(subgroup_id)
+def _topk_transform_onehot(
+    block: TopKBlock,
+    df: pd.DataFrame,
+    *,
+    source_pattern: str | None,
+    source_block: TopKBlock,
+) -> tuple[pd.DataFrame, TopKBlock]:
+    assert isinstance(block.from_columns, list)
+    from_cols = list(block.from_columns)
+    na_vals = list(block.na_vals or [])
+    kmax = block.k
 
-        subgroups_ids = dict.fromkeys(map(_get_subgroup_id, from_cols))
-        subgroups = [
-            [col for col in from_cols if _get_subgroup_id(col) == subgroup_id] for subgroup_id in subgroups_ids
-        ]
-    else:
-        subgroups = [from_cols]
-    topk_dfs, subgroup_metas = [], []
+    sdf = df[from_cols].astype("object").replace(na_vals, None)
+    _check_topk_na_vals_after_replace(sdf, block_name=block.name)
 
-    # select group at agg_ind in col name to allow translate if spec-d in scale
-    # e.g. {A_11: selected} |-> {11: selected}, later by using mask |-> {11: 11}
-    # this fun is def-d in current fun, so agg_ind acts as global var
-    def _get_regex_group_at_agg_ind(s: str) -> str:
-        """Get regex group at aggregation index."""
-        match = regex_from.match(s)
-        assert match is not None, f"Column {s} should match regex {regex_from.pattern}"
-        return match.groups()[agg_ind]
+    res_template = source_block.res_columns if isinstance(source_block.res_columns, str) else None
 
-    # Map subgroup_id tuple positions back to their 1-based regex group numbers,
-    # skipping the agg group. Used to look up labels in `groups`.
-    non_agg_group_numbers = [i + 1 for i in range(n_groups) if i != agg_ind]
+    all_res_cols: list[str]
+    if source_pattern is not None:
+        regex_from = re.compile(source_pattern)
+        agg_ind = block.agg_index
+        agg_ind = agg_ind - 1 if agg_ind > 0 else agg_ind
 
-    def _subgroup_label(subgroup_id: tuple[str, ...]) -> str:
-        _groups = getattr(create, "subgroup_labels", None) or {}
-        if not _groups:
-            return "_".join(map(str, subgroup_id))
-        labels = []
-        for pos, val in enumerate(subgroup_id):
-            group_key = str(non_agg_group_numbers[pos])
-            group_map = _groups.get(group_key)
-            if group_map is not None and val in group_map:
-                labels.append(group_map[val])
-            else:
-                labels.append(val)
-        return "_".join(labels)
+        def _capture_at_agg(col: str) -> str:
+            m = regex_from.match(col)
+            assert m is not None
+            return m.groups()[agg_ind]
 
-    for subgroup in subgroups:
-        sdf = df[subgroup].astype("object").replace(na_vals, None)
-        subgroup_block_name = name
-        if has_subgroups:
-            subgroup_block_name = name + "_" + _subgroup_label(_get_subgroup_id(subgroup[0]))
-        _check_topk_na_vals_after_replace(sdf, block_name=subgroup_block_name)
-
-        def _expand_col(col: str) -> str:
-            match = regex_from.match(col)
-            assert match is not None, f"Column {col} should match regex {regex_from.pattern}"
-            return match.expand(regex_to)  # type: ignore[call-overload]
-
-        newcols = [
-            # from_cols names map to res_cols names
-            # note regex groups stay the same: e.g A_11 |-> A_R11
-            _expand_col(col)
-            for col in sdf.columns
-        ]
-
-        # Convert one-hot encoded columns into a list-of-selected format
-        if "|" in from_columns:
-            raise ValueError(sdf.columns)
-        sdf.columns = sdf.columns.map(_get_regex_group_at_agg_ind)
-
-        sdf = sdf.mask(
-            ~sdf.isna(), other=pd.Series(sdf.columns, index=sdf.columns), axis=1
-        )  # replace cell with column name where not NA
-        _throw_vals_left(sdf)  # changes df in place, Nones go to rightmost side
-        sdf.columns = newcols  # set column names per the regex_to template
-
-        if "|" in from_columns:
-            raise NotImplementedError("Regex symbol `|` is not supported yet.")
-
-        sdf = sdf.dropna(axis=1, how="all")  # drop rightmost cols that are all NA
-        # Handle kmax: if it's "max" or None, don't limit; otherwise limit to that number
-        if kmax and kmax != "max" and isinstance(kmax, int):
-            sdf = sdf.iloc[:, :kmax]  # up to kmax columns if spec-d
-        sname = name
-        if has_subgroups:
-            sname += "_" + _subgroup_label(_get_subgroup_id(subgroup[0]))
-        scale_dict = deepcopy(block.scale.model_dump(mode="python") if block.scale else {})
-        _translate_values = _resolve_translate_values_stopgap(create)
-        if _translate_values:
-            sdf = sdf.replace(_translate_values)
-            effective_cats = list(dict.fromkeys(_translate_values.values()))
+        if res_template is not None:
+            all_res_cols = []
             for col in sdf.columns:
-                sdf[col] = pd.Categorical(sdf[col], categories=effective_cats)
-            scale_dict["categories"] = effective_cats
-        meta_subgroup = _build_topk_output_block(
-            name=sname,
-            scale_dict=scale_dict,
-            columns=sdf.columns.tolist(),
-            from_cols=list(subgroup),
-            res_cols=newcols,
-            block=create,
-        )
-        topk_dfs.append(sdf)
-        subgroup_metas.append(meta_subgroup)
-    return topk_dfs, subgroup_metas  # note: each df has one meta for zip later
+                m = regex_from.match(col)
+                assert m is not None
+                all_res_cols.append(m.expand(res_template))
+        else:
+            all_res_cols = list(source_block.res_columns) if isinstance(source_block.res_columns, list) else []
+            if not all_res_cols:
+                raise ValueError(f"TopK block {block.name!r}: cannot expand res_columns")
+
+        sdf.columns = sdf.columns.map(_capture_at_agg)
+        sdf = sdf.mask(~sdf.isna(), other=pd.Series(sdf.columns, index=sdf.columns), axis=1)
+        _throw_vals_left(sdf)
+        sdf.columns = all_res_cols
+    else:
+        assert isinstance(source_block.res_columns, list)
+        all_res_cols = list(source_block.res_columns)
+        if len(all_res_cols) != len(from_cols):
+            raise ValueError(f"from_columns ({len(from_cols)}) and res_columns ({len(all_res_cols)}) must match")
+        if source_block.from_prefix:
+            prefix = source_block.from_prefix
+            rename = {c: c.removeprefix(prefix) for c in from_cols}
+            sdf = sdf.rename(columns=rename)
+        sdf = sdf.mask(~sdf.isna(), other=pd.Series(sdf.columns, index=sdf.columns), axis=1)
+        sdf.columns = all_res_cols
+        _throw_vals_left(sdf)
+
+    sdf = sdf.dropna(axis=1, how="all")
+
+    if kmax and kmax != "max" and isinstance(kmax, int):
+        sdf = sdf.iloc[:, :kmax]
+
+    scale_dict = deepcopy(block.scale.model_dump(mode="python") if block.scale else {})
+
+    # Stop-gap: block-level translate_values used to live here; now pulled from scale.translate_after
+    # (_resolve_translate_values_stopgap). Task 9 wires this through the pre-transform pipeline.
+    translate_values = _resolve_translate_values_stopgap(block)
+    if translate_values:
+        sdf = sdf.replace(translate_values)
+        effective_cats = list(dict.fromkeys(translate_values.values()))
+        for col in sdf.columns:
+            sdf[col] = pd.Categorical(sdf[col], categories=effective_cats)
+        scale_dict["categories"] = effective_cats
+
+    meta_out = _build_topk_output_block(
+        name=block.name,
+        scale_dict=scale_dict,
+        columns=sdf.columns.tolist(),
+        from_cols=from_cols,
+        res_cols=all_res_cols,
+        block=block,
+    )
+    return sdf, meta_out
 
 
 def _build_topk_output_block(
@@ -723,6 +686,7 @@ def _build_topk_output_block(
             "na_vals": list(block.na_vals) if block.na_vals is not None else [],
             "k": block.k,
             "from_prefix": block.from_prefix,
+            "input_format": block.input_format,
         },
         TopKBlock,
     )
@@ -950,71 +914,6 @@ def _create_maxdiff_metas_and_dfs(
         MaxDiffBlock,
     )
     return [df], [output_block]
-
-
-def _create_topk_metas_and_dfs_list(
-    df: pd.DataFrame,
-    block: TopKBlock,
-    name: str,
-) -> tuple[list[pd.DataFrame], list[TopKBlock]]:
-    """Create top K aggregations from DataFrame using explicit column lists."""
-    create = block  # legacy alias retained to minimize diff below
-    block_with_create = block  # scale accessor parity with the regex path
-    from_columns = create.from_columns
-    assert isinstance(from_columns, list), "from_columns must be list for list mode"
-
-    if not isinstance(create.res_columns, list):
-        raise ValueError("res_columns must be a list when from_columns is a list")
-
-    if len(from_columns) != len(create.res_columns):
-        raise ValueError(
-            f"from_columns ({len(from_columns)}) and res_columns ({len(create.res_columns)}) must have the same length"
-        )
-
-    from_cols = from_columns
-    res_cols = create.res_columns
-    kmax = create.k
-    na_vals = create.na_vals if create.na_vals is not None else []
-    if create.from_prefix:
-        without_prefix = {col: col.removeprefix(create.from_prefix) for col in from_cols}
-        from_cols = [without_prefix.get(col, col) for col in from_cols]
-        df.columns = [without_prefix.get(col, col) for col in df.columns]
-
-    sdf = df[from_cols].replace(na_vals, None)
-    _check_topk_na_vals_after_replace(sdf, block_name=name)
-
-    sdf = sdf.mask(
-        ~sdf.isna(), other=pd.Series(sdf.columns, index=sdf.columns), axis=1
-    )  # replace cell with column name where not NA
-
-    _translate_values = _resolve_translate_values_stopgap(create)
-    if _translate_values:
-        sdf = sdf.replace(_translate_values)
-    sdf.columns = res_cols
-
-    _throw_vals_left(sdf)  # changes df in place, Nones go to rightmost side
-    sdf = sdf.dropna(axis=1, how="all")  # drop rightmost cols that are all NA
-
-    # Handle kmax: if it's "max" or None, don't limit; otherwise limit to that number
-    if kmax and kmax != "max" and isinstance(kmax, int):
-        sdf = sdf.iloc[:, :kmax]  # up to kmax columns if spec-d
-
-    scale_dict = deepcopy(block_with_create.scale.model_dump(mode="python") if block_with_create.scale else {})
-    if _translate_values:
-        effective_cats = list(dict.fromkeys(_translate_values.values()))
-        for col in sdf.columns:
-            sdf[col] = pd.Categorical(sdf[col], categories=effective_cats)
-        scale_dict["categories"] = effective_cats
-
-    meta_subgroup = _build_topk_output_block(
-        name=name,
-        scale_dict=scale_dict,
-        columns=sdf.columns.tolist(),
-        from_cols=list(from_cols),
-        res_cols=list(res_cols),
-        block=create,
-    )
-    return [sdf], [meta_subgroup]
 
 
 CreateBlockModel = TopKBlock | MaxDiffBlock
@@ -1462,18 +1361,23 @@ def _process_annotated_data(
         # Handle specialized blocks (topk / maxdiff) — may add new groups to structure
         if isinstance(group, (TopKBlock, MaxDiffBlock)):
             create_source_df = ndf_df.combine_first(raw_data_concat) if not raw_data_concat.empty else ndf_df
+            pending_sibling_metas: list[ColumnBlockMeta] = []
             for newdf, new_group_meta in _create_new_columns_and_metas(
                 create_source_df,
                 group,
             ):
                 ndf_df = ndf_df.combine_first(newdf)
-                new_structure[new_group_meta.name] = new_group_meta
+                pending_sibling_metas.append(new_group_meta)
             # Demote the input specialized block to a plain ColumnBlockMeta: its raw columns
             # are preserved under the original name, but processing directives are dropped.
             group = _demote_to_plain(group)
-
-        # Add processed group to structure
-        new_structure[group.name] = group
+            # Add processed group to structure (demoted parent first so siblings win on name collision)
+            new_structure[group.name] = group
+            for sibling_meta in pending_sibling_metas:
+                new_structure[sibling_meta.name] = sibling_meta
+        else:
+            # Add processed group to structure
+            new_structure[group.name] = group
 
     if meta_obj.postprocessing is not None and not only_fix_categories:
         globs = {

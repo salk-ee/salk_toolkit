@@ -350,8 +350,8 @@ class TestReadAnnotatedData:
         )
         expected_structure = [
             {"name": "topkcols", "columns": ["id", "q1_1", "q1_2", "q1_3", "q2_1", "q2_2", "q2_3"]},
-            {"name": "topkcols_topk_1", "columns": ["q1_R1"]},
-            {"name": "topkcols_topk_2", "columns": ["q2_R1", "q2_R2", "q2_R3"]},
+            {"name": "topkcols_1", "columns": ["q1_R1"]},
+            {"name": "topkcols_2", "columns": ["q2_R1", "q2_R2", "q2_R3"]},
         ]
         assert_frame_equal(
             diffs.fillna(pd.NA),
@@ -370,7 +370,7 @@ class TestReadAnnotatedData:
         )
 
         # Generated topk blocks are themselves TopKBlock instances; `type` survives.
-        topk_block = data_meta.structure["topkcols_topk_1"]
+        topk_block = data_meta.structure["topkcols_1"]
         assert isinstance(topk_block, TopKBlock)
         assert topk_block.type == "topk"
         # Resolved column lists replace regex patterns on output
@@ -715,7 +715,7 @@ class TestReadAnnotatedData:
             )
 
     def test_topk_no_subgroups(self, meta_file, csv_file):
-        """TopK with a single regex group (= agg group) produces one block named {name}_topk.
+        """TopK with a single regex group (= agg group) produces one block named {name}.
 
         scale.translate_after maps the numeric agg-group value to the display name.
         """
@@ -752,11 +752,11 @@ class TestReadAnnotatedData:
         df.to_csv_file(csv_file)
         data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
 
-        assert "issue_importance_topk" in data_meta.structure
+        assert "issue_importance" in data_meta.structure
         # Cell values are the translated issue names (R1 = lowest agg-group index selected)
         assert data_df["Q6p_R1"].tolist() == ["Cost of living", "Healthcare", "Cost of living"]
 
-        block = data_meta.structure["issue_importance_topk"]
+        block = data_meta.structure["issue_importance"]
         assert isinstance(block, TopKBlock)
         assert set(block.columns.keys()) == {"Q6p_R1", "Q6p_R2"}
         assert isinstance(block.from_columns, list) and isinstance(block.res_columns, list)
@@ -797,10 +797,10 @@ class TestReadAnnotatedData:
         df.to_csv_file(csv_file)
         data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
 
-        assert "issue ownership_topk_economics" in data_meta.structure
-        assert "issue ownership_topk_healthcare" in data_meta.structure
+        assert "issue ownership_economics" in data_meta.structure
+        assert "issue ownership_healthcare" in data_meta.structure
 
-        econ_block = data_meta.structure["issue ownership_topk_economics"]
+        econ_block = data_meta.structure["issue ownership_economics"]
         assert isinstance(econ_block, TopKBlock)
         assert all(c.startswith("Q7r1_R") for c in econ_block.columns)
         assert data_df["Q7r1_R1"].tolist() == ["Party A", "Party B", "Party A"]
@@ -865,9 +865,9 @@ class TestReadAnnotatedData:
 
         # Four blocks: all country × issue combinations
         for combo in ["Estonia_economics", "Estonia_healthcare", "Latvia_economics", "Latvia_healthcare"]:
-            assert f"survey_topk_{combo}" in data_meta.structure
+            assert f"survey_{combo}" in data_meta.structure
 
-        ee_block = data_meta.structure["survey_topk_Estonia_economics"]
+        ee_block = data_meta.structure["survey_Estonia_economics"]
         assert isinstance(ee_block, TopKBlock)
         assert all(c.startswith("Q_A_1_R") for c in ee_block.columns)
         # Each sibling is an independent TopKBlock with its own narrowed from_columns.
@@ -3540,20 +3540,10 @@ class TestMultiSourceColumns:
             {"file": "file2.csv", "opts": {}, "code": "F1"},
             {"file": "file3.csv", "opts": {}, "code": "F2"},
         ]
-        # Core structure entries should match (additional system blocks may also be present)
-        topk_block = next((b for b in dumped["structure"] if b.get("name") == "demographics_topk"), None)
+        # Single-sibling topk: child uses bare block name, overwriting the demoted parent.
+        topk_block = next((b for b in dumped["structure"] if b.get("name") == "demographics"), None)
         assert topk_block is not None
         assert topk_block["columns"] == ["topk_R1", "topk_R2"]
-        demo_block = next((b for b in dumped["structure"] if b.get("name") == "demographics"), None)
-        assert demo_block is not None
-        demo_col_names = [c if isinstance(c, str) else c[0] for c in demo_block["columns"]]
-        assert demo_col_names == ["id", "topk_1", "topk_2"]
-        topk_1_entry = next(c for c in demo_block["columns"] if isinstance(c, list) and c[0] == "topk_1")
-        topk_1_meta = next(e for e in topk_1_entry[1:] if isinstance(e, dict) and "categories" in e)
-        assert topk_1_meta["categories"] == ["False", "Mentioned", "No", "True", "Yes"]
-        topk_2_entry = next(c for c in demo_block["columns"] if isinstance(c, list) and c[0] == "topk_2")
-        topk_2_meta = next(e for e in topk_2_entry[1:] if isinstance(e, dict) and "categories" in e)
-        assert topk_2_meta["categories"] == ["False", "Mentioned", "No", "Not mentioned", "True", "Yes"]
         # System file metadata block is injected implicitly for multi-file inputs
         sys_blocks = [b for b in dumped["structure"] if b.get("name") == "files"]
         assert len(sys_blocks) == 1
