@@ -242,6 +242,9 @@ class ColumnBlockMeta(PBase):
     generated: bool = False  # This block is for data that is generated, i.e. not initially in the file.
     hidden: bool = False  # Use this to hide the block in explorer.py
 
+    from_columns: Optional[Union[str, List[str]]] = None
+    subgroup_labels: Optional[Dict[str, Dict[str, str]]] = None
+
     @model_validator(mode="after")
     def merge_scale_with_columns(self, info: ValidationInfo) -> Self:
         """Merge scale metadata with each column's metadata automatically on read.
@@ -296,7 +299,7 @@ class TopKBlock(ColumnBlockMeta):
 
     columns: ColSpec = DF(dict)  # empty default for annotation form; io.py fills on output
     k: Union[int, Literal["max"]] = "max"
-    from_columns: Union[str, List[str]]
+    from_columns: Union[str, List[str]]  # type: ignore[assignment]
     res_columns: Union[str, List[str]]  # Has to be list if from_columns is list
     agg_index: int = -1
     na_vals: Optional[List[str]] = []

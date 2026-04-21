@@ -948,8 +948,12 @@ def _demote_to_plain(block: ColumnBlockMeta) -> ColumnBlockMeta:
     """Demote a specialized block (TopKBlock / MaxDiffBlock) to a plain ColumnBlockMeta,
     preserving every field declared on ``ColumnBlockMeta`` and dropping subclass-specific
     ones. Using ``model_fields`` instead of a hand-enumerated list means new fields added
-    to ``ColumnBlockMeta`` are carried over automatically."""
+    to ``ColumnBlockMeta`` are carried over automatically. Input-only directives
+    (from_columns, subgroup_labels) are cleared."""
     kwargs = {k: getattr(block, k) for k in ColumnBlockMeta.model_fields if k != "type"}
+    # Clear input-only directives that are not part of the demoted plain block
+    kwargs["from_columns"] = None
+    kwargs["subgroup_labels"] = None
     return ColumnBlockMeta(**kwargs)
 
 

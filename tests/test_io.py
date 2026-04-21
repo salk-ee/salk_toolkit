@@ -3628,5 +3628,20 @@ class TestInferMetaDeepL:
         assert "translate" in col_meta
 
 
+class TestPipelineSchema:
+    """Test pipeline schema validation for new block-processing fields."""
+
+    def test_plain_block_accepts_from_columns_and_subgroup_labels(self) -> None:
+        """Verify plain blocks accept from_columns and subgroup_labels without validation errors."""
+        from salk_toolkit.validation import soft_validate, ColumnBlockMeta
+
+        b = soft_validate(
+            {"name": "q", "from_columns": r"Q(\d+)_(\w+)", "subgroup_labels": {"1": {"1": "econ"}}, "columns": {}},
+            ColumnBlockMeta,
+        )
+        assert b.from_columns == r"Q(\d+)_(\w+)"
+        assert b.subgroup_labels == {"1": {"1": "econ"}}
+
+
 if __name__ == "__main__":
     pytest.main([__file__])
