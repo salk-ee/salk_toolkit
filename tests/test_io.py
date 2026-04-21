@@ -318,7 +318,7 @@ class TestReadAnnotatedData:
                     "from_columns": r"q(\d+)_(\d+)",
                     "na_vals": ["not_selected"],
                     "res_columns": r"q\1_R\2",
-                    "translate_values": {"1": "USA", "2": "Canada", "3": "Mexico"},
+                    "scale": {"translate_after": {"1": "USA", "2": "Canada", "3": "Mexico"}},
                 }
             ],
         }
@@ -369,12 +369,10 @@ class TestReadAnnotatedData:
             expected_structure, key=lambda x: x["name"]
         )
 
-        # Generated topk blocks are themselves TopKBlock instances; `type` survives,
-        # input-only directives (`translate_values`) are cleared on the output siblings.
+        # Generated topk blocks are themselves TopKBlock instances; `type` survives.
         topk_block = data_meta.structure["topkcols_topk_1"]
         assert isinstance(topk_block, TopKBlock)
         assert topk_block.type == "topk"
-        assert topk_block.translate_values is None
         # Resolved column lists replace regex patterns on output
         assert isinstance(topk_block.from_columns, list)
         assert isinstance(topk_block.res_columns, list)
@@ -719,7 +717,7 @@ class TestReadAnnotatedData:
     def test_topk_no_subgroups(self, meta_file, csv_file):
         """TopK with a single regex group (= agg group) produces one block named {name}_topk.
 
-        translate_values maps the numeric agg-group value to the display name.
+        scale.translate_after maps the numeric agg-group value to the display name.
         """
         meta = {
             "file": "test.csv",
@@ -732,12 +730,14 @@ class TestReadAnnotatedData:
                     "res_columns": r"Q6p_R\1",
                     "agg_index": 1,
                     "na_vals": ["NO TO: Cost of living", "NO TO: Healthcare", "NO TO: Pensions"],
-                    "translate_values": {
-                        "1": "Cost of living",
-                        "2": "Healthcare",
-                        "3": "Pensions",
+                    "scale": {
+                        "categories": "infer",
+                        "translate_after": {
+                            "1": "Cost of living",
+                            "2": "Healthcare",
+                            "3": "Pensions",
+                        },
                     },
-                    "scale": {"categories": "infer"},
                 }
             ],
         }
@@ -759,14 +759,12 @@ class TestReadAnnotatedData:
         block = data_meta.structure["issue_importance_topk"]
         assert isinstance(block, TopKBlock)
         assert set(block.columns.keys()) == {"Q6p_R1", "Q6p_R2"}
-        # translate_values is an input-only directive, cleared on output; result is observable in cell values.
-        assert block.translate_values is None
         assert isinstance(block.from_columns, list) and isinstance(block.res_columns, list)
 
     def test_topk_one_subgroup(self, meta_file, csv_file):
         """TopK with 2 regex groups (1 subgroup dim).
 
-        `groups` labels the non-agg group; produces one block per group value.
+        `subgroup_labels` labels the non-agg group; produces one block per group value.
         """
         meta = {
             "file": "test.csv",
@@ -778,10 +776,12 @@ class TestReadAnnotatedData:
                     "from_columns": r"Q7r(\d+)c(\d+)",
                     "res_columns": r"Q7r\1_R\2",
                     "agg_index": 2,
-                    "groups": {"1": {"1": "economics", "2": "healthcare"}},
+                    "subgroup_labels": {"1": {"1": "economics", "2": "healthcare"}},
                     "na_vals": ["not_selected"],
-                    "translate_values": {"1": "Party A", "2": "Party B"},
-                    "scale": {"categories": "infer"},
+                    "scale": {
+                        "categories": "infer",
+                        "translate_after": {"1": "Party A", "2": "Party B"},
+                    },
                 }
             ],
         }
@@ -806,11 +806,7 @@ class TestReadAnnotatedData:
         assert data_df["Q7r1_R1"].tolist() == ["Party A", "Party B", "Party A"]
 
         # Subgroup siblings are independent TopKBlocks with narrowed resolved column lists.
-        # Input-only directives (`groups`, `translate_values`) are cleared on output — the
-        # block's `name` suffix is the only subgroup identifier.
         assert econ_block.type == "topk"
-        assert econ_block.groups is None
-        assert econ_block.translate_values is None
         assert econ_block.from_columns == ["Q7r1c1", "Q7r1c2"]
         assert econ_block.res_columns == ["Q7r1_R1", "Q7r1_R2"]
         assert econ_block.segments() == [(list(econ_block.columns.keys()), None, False)]
@@ -839,13 +835,15 @@ class TestReadAnnotatedData:
                     "from_columns": r"Q_(\w+)_(\d+)_(\d+)",
                     "res_columns": r"Q_\1_\2_R\3",
                     "agg_index": 3,
-                    "groups": {
+                    "subgroup_labels": {
                         "1": {"A": "Estonia", "B": "Latvia"},
                         "2": {"1": "economics", "2": "healthcare"},
                     },
                     "na_vals": ["no"],
-                    "translate_values": {"1": "Party X", "2": "Party Y"},
-                    "scale": {"categories": "infer"},
+                    "scale": {
+                        "categories": "infer",
+                        "translate_after": {"1": "Party X", "2": "Party Y"},
+                    },
                 }
             ],
         }
@@ -3531,7 +3529,6 @@ class TestMultiSourceColumns:
                     "from_columns": r"topk_(\d)",
                     "na_vals": ["Not mentioned", "No", "False"],
                     "res_columns": r"topk_R\1",
-                    "translate_values": {"1": "USA", "2": "Canada"},
                 }
             ],
         }
@@ -3549,14 +3546,16 @@ class TestMultiSourceColumns:
         topk_block = next((b for b in dumped["structure"] if b.get("name") == "demographics_topk"), None)
         assert topk_block is not None
         assert topk_block["columns"] == ["topk_R1", "topk_R2"]
-        assert {
-            "name": "demographics",
-            "columns": [
-                "id",
-                ["topk_1", {"categories": ["False", "Mentioned", "No", "True", "Yes"]}],
-                ["topk_2", {"categories": ["False", "Mentioned", "No", "Not mentioned", "True", "Yes"]}],
-            ],
-        } in dumped["structure"]
+        demo_block = next((b for b in dumped["structure"] if b.get("name") == "demographics"), None)
+        assert demo_block is not None
+        demo_col_names = [c if isinstance(c, str) else c[0] for c in demo_block["columns"]]
+        assert demo_col_names == ["id", "topk_1", "topk_2"]
+        topk_1_entry = next(c for c in demo_block["columns"] if isinstance(c, list) and c[0] == "topk_1")
+        topk_1_meta = next(e for e in topk_1_entry[1:] if isinstance(e, dict) and "categories" in e)
+        assert topk_1_meta["categories"] == ["False", "Mentioned", "No", "True", "Yes"]
+        topk_2_entry = next(c for c in demo_block["columns"] if isinstance(c, list) and c[0] == "topk_2")
+        topk_2_meta = next(e for e in topk_2_entry[1:] if isinstance(e, dict) and "categories" in e)
+        assert topk_2_meta["categories"] == ["False", "Mentioned", "No", "Not mentioned", "True", "Yes"]
         # System file metadata block is injected implicitly for multi-file inputs
         sys_blocks = [b for b in dumped["structure"] if b.get("name") == "files"]
         assert len(sys_blocks) == 1
@@ -3567,12 +3566,12 @@ class TestMultiSourceColumns:
         sys_cols = {c[0] if isinstance(c, list) else c for c in sysb.get("columns", [])}
         assert {"file_code", "file_name"}.issubset(sys_cols)
         expected_data = [
-            ["F0", 1, "Yes", "No", "USA", None],
-            ["F0", 2, "No", "Yes", "Canada", None],
-            ["F1", 3, "Mentioned", "Mentioned", "USA", "Canada"],
-            ["F1", 4, "Mentioned", "Not mentioned", "USA", None],
-            ["F2", 5, "True", "False", "USA", None],
-            ["F2", 6, "False", "True", "Canada", None],
+            ["F0", 1, "Yes", "No", "1", None],
+            ["F0", 2, "No", "Yes", "2", None],
+            ["F1", 3, "Mentioned", "Mentioned", "1", "2"],
+            ["F1", 4, "Mentioned", "Not mentioned", "1", None],
+            ["F2", 5, "True", "False", "1", None],
+            ["F2", 6, "False", "True", "2", None],
         ]
         edf = pd.DataFrame(expected_data, columns=["file_code", "id", "topk_1", "topk_2", "topk_R1", "topk_R2"])
         # data_df may contain additional system columns (file_ind, file_name) in multi-file mode
@@ -3641,6 +3640,38 @@ class TestPipelineSchema:
         )
         assert b.from_columns == r"Q(\d+)_(\w+)"
         assert b.subgroup_labels == {"1": {"1": "econ"}}
+
+    def test_topk_schema_has_input_format_and_drops_old_fields(self):
+        """Verify TopKBlock has input_format and no longer has groups or translate_values."""
+        from salk_toolkit.validation import TopKBlock
+
+        assert "input_format" in TopKBlock.model_fields
+        assert "subgroup_labels" in TopKBlock.model_fields  # inherited
+        assert "groups" not in TopKBlock.model_fields
+        assert "translate_values" not in TopKBlock.model_fields
+
+    def test_topk_segments_ranked_and_unranked(self):
+        """Verify segments() returns chain for ranked formats and single entry for flat ones."""
+        from salk_toolkit.validation import soft_validate, TopKBlock
+
+        b = soft_validate(
+            {
+                "type": "topk",
+                "name": "t",
+                "from_columns": ["R1", "R2", "R3"],
+                "res_columns": ["R1", "R2", "R3"],
+                "input_format": "ranked_leftpack",
+                "columns": {"R1": {}, "R2": {}, "R3": {}},
+            },
+            TopKBlock,
+        )
+        assert b.segments() == [
+            (["R1"], ["R2", "R3"], True),
+            (["R2"], ["R3"], True),
+            (["R1", "R2", "R3"], None, False),
+        ]
+        b2 = b.model_copy(update={"input_format": "leftpacked"})
+        assert b2.segments() == [(["R1", "R2", "R3"], None, False)]
 
 
 if __name__ == "__main__":

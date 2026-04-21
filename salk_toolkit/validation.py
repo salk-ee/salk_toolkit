@@ -289,38 +289,34 @@ class ColumnBlockMeta(PBase):
 
 
 class TopKBlock(ColumnBlockMeta):
-    """Block for top-K aggregation of multi-select columns. The stored output block
-    is an instance of this class; its `*_columns` fields are resolved to `List[str]`
-    by :mod:`salk_toolkit.io` (no regex on output). Input-only directives (`groups`,
-    `translate_values`) are cleared on output — subgroup identity lives in the
-    narrowed `from_columns` / `res_columns` and in the block's `name`."""
+    """Block for top-K aggregation of multi-select columns. The stored output
+    block is an instance of this class; its `from_columns` / `res_columns`
+    fields are resolved to `List[str]` by :mod:`salk_toolkit.io` (no regex on
+    output). Input-only directives (`subgroup_labels` from the base class)
+    are cleared on output."""
 
     type: Literal["topk"] = "topk"  # type: ignore[assignment]
 
-    columns: ColSpec = DF(dict)  # empty default for annotation form; io.py fills on output
+    columns: ColSpec = DF(dict)
     k: Union[int, Literal["max"]] = "max"
     from_columns: Union[str, List[str]]  # type: ignore[assignment]
-    res_columns: Union[str, List[str]]  # Has to be list if from_columns is list
+    res_columns: Union[str, List[str]]
     agg_index: int = -1
-    na_vals: Optional[List[str]] = []
-    from_prefix: Optional[str] = None  # If from_columns is list, prefix will be removed to enable translation
+    na_vals: Optional[List[str]] = DF(list)
+    from_prefix: Optional[str] = None
 
-    # Subgroup naming (input-only): one entry per non-agg regex group.
-    # Key = 1-based regex group number (as string), excluding the agg group.
-    # Value = dict mapping each group value -> human-readable label used in the generated block name.
-    groups: Optional[Dict[str, Dict[str, str]]] = None
-
-    # Agg-axis value translation (input-only): maps the aggregation group value (after topk collapse)
-    # to a display name. Applied to cell values in the result DataFrame.
-    translate_values: Optional[Dict[str, str]] = None
+    input_format: Literal["onehot", "ranked_onehot", "leftpacked", "ranked_leftpack"] = "onehot"
 
     def segments(self) -> List[Tuple[List[str], Optional[List[str]], bool]]:
-        """Return ordinal-ranking segments for this resolved TopK block.
-
-        Single segment per block: all `columns.keys()` are ranked above the full axis.
-        Called by downstream consumers (e.g. salk_internal_package's OrdinalRanking).
-        """
-        return [(list(self.columns.keys()), None, False)]
+        """Return ordinal-ranking segments for this resolved TopKBlock."""
+        cols = list(self.columns.keys())
+        if self.input_format in ("onehot", "leftpacked"):
+            return [(cols, None, False)]
+        chain: List[Tuple[List[str], Optional[List[str]], bool]] = []
+        for i in range(len(cols) - 1):
+            chain.append(([cols[i]], cols[i + 1 :], True))
+        chain.append((cols, None, False))
+        return chain
 
 
 class MaxDiffBlock(ColumnBlockMeta):

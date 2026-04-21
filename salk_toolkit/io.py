@@ -463,6 +463,12 @@ def _check_topk_na_vals_after_replace(sdf: pd.DataFrame, *, block_name: str) -> 
         )
 
 
+def _resolve_translate_values_stopgap(block: TopKBlock) -> dict[str, str] | None:
+    if block.scale is not None and getattr(block.scale, "translate_after", None):
+        return block.scale.translate_after
+    return None
+
+
 def _create_topk_metas_and_dfs(
     df: pd.DataFrame,
     block: TopKBlock,
@@ -545,12 +551,13 @@ def _create_topk_metas_and_dfs_regex(
     non_agg_group_numbers = [i + 1 for i in range(n_groups) if i != agg_ind]
 
     def _subgroup_label(subgroup_id: tuple[str, ...]) -> str:
-        if create.groups is None:
+        _groups = getattr(create, "subgroup_labels", None) or {}
+        if not _groups:
             return "_".join(map(str, subgroup_id))
         labels = []
         for pos, val in enumerate(subgroup_id):
             group_key = str(non_agg_group_numbers[pos])
-            group_map = create.groups.get(group_key)
+            group_map = _groups.get(group_key)
             if group_map is not None and val in group_map:
                 labels.append(group_map[val])
             else:
@@ -598,9 +605,10 @@ def _create_topk_metas_and_dfs_regex(
         if has_subgroups:
             sname += "_" + _subgroup_label(_get_subgroup_id(subgroup[0]))
         scale_dict = deepcopy(block.scale.model_dump(mode="python") if block.scale else {})
-        if create.translate_values:
-            sdf = sdf.replace(create.translate_values)
-            effective_cats = list(dict.fromkeys(create.translate_values.values()))
+        _translate_values = _resolve_translate_values_stopgap(create)
+        if _translate_values:
+            sdf = sdf.replace(_translate_values)
+            effective_cats = list(dict.fromkeys(_translate_values.values()))
             for col in sdf.columns:
                 sdf[col] = pd.Categorical(sdf[col], categories=effective_cats)
             scale_dict["categories"] = effective_cats
@@ -626,9 +634,8 @@ def _build_topk_output_block(
     res_cols: list[str],
     block: TopKBlock,
 ) -> TopKBlock:
-    """Assemble a resolved output ``TopKBlock`` for one subgroup. Input-only directives
-    (``groups``, ``translate_values``) are cleared; the narrowed ``from_columns`` /
-    ``res_columns`` encode the subgroup identity."""
+    """Assemble a resolved output ``TopKBlock`` for one subgroup. The narrowed
+    ``from_columns`` / ``res_columns`` encode the subgroup identity."""
     return soft_validate(
         {
             "type": "topk",
@@ -897,8 +904,9 @@ def _create_topk_metas_and_dfs_list(
         ~sdf.isna(), other=pd.Series(sdf.columns, index=sdf.columns), axis=1
     )  # replace cell with column name where not NA
 
-    if create.translate_values:
-        sdf = sdf.replace(create.translate_values)
+    _translate_values = _resolve_translate_values_stopgap(create)
+    if _translate_values:
+        sdf = sdf.replace(_translate_values)
     sdf.columns = res_cols
 
     _throw_vals_left(sdf)  # changes df in place, Nones go to rightmost side
@@ -909,8 +917,8 @@ def _create_topk_metas_and_dfs_list(
         sdf = sdf.iloc[:, :kmax]  # up to kmax columns if spec-d
 
     scale_dict = deepcopy(block_with_create.scale.model_dump(mode="python") if block_with_create.scale else {})
-    if create.translate_values:
-        effective_cats = list(dict.fromkeys(create.translate_values.values()))
+    if _translate_values:
+        effective_cats = list(dict.fromkeys(_translate_values.values()))
         for col in sdf.columns:
             sdf[col] = pd.Categorical(sdf[col], categories=effective_cats)
         scale_dict["categories"] = effective_cats
