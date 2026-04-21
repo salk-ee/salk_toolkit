@@ -547,7 +547,7 @@ class TestReadAnnotatedData:
                     "worst_columns": r"Q2_(\d+?)worst",
                     "set_columns": r"Q2_\1set",
                     "setindex_column": ["Q2_Version", {"continuous": True, "categories": None}],
-                    "items": items,
+                    "choice_mapping": items,
                     "choice_sets": sets.tolist(),
                 }
             ],
@@ -670,7 +670,7 @@ class TestReadAnnotatedData:
                     "best_columns": r"Q2_(\d+?)best",
                     "worst_columns": r"Q2_(\d+?)worst",
                     "set_columns": r"Q2_\1set",
-                    "items": items,
+                    "choice_mapping": items,
                 }
             ],
         }
@@ -887,7 +887,7 @@ class TestReadAnnotatedData:
                     "best_columns": r"Q_(\d+)best",
                     "worst_columns": r"Q_(\d+)worst",
                     "set_columns": r"Q_\1set",
-                    "items": items,
+                    "choice_mapping": items,
                     "scale": {"categories": "infer"},
                 }
             ],
@@ -922,7 +922,7 @@ class TestReadAnnotatedData:
             assert segs[q + k] == ([set_columns[k]], [worst_columns[k]], True)
 
     def test_maxdiff_with_translate(self, meta_file, csv_file):
-        """MaxDiff with `items` in original language and `translate` to display language."""
+        """MaxDiff with `choice_mapping` in original language and `scale.translate_after` to display language."""
         items = {"1": "Ekonomika", "2": "Sveikata", "3": "Svietimas"}
         translate = {"Ekonomika": "Economy", "Sveikata": "Health", "Svietimas": "Education"}
         choice_sets = [
@@ -940,10 +940,9 @@ class TestReadAnnotatedData:
                     "worst_columns": r"Q_(\d+)worst",
                     "set_columns": r"Q_\1set",
                     "setindex_column": ["Q_Version", {"continuous": True}],
-                    "items": items,
+                    "choice_mapping": items,
                     "choice_sets": choice_sets,
-                    "translate": translate,
-                    "scale": {"categories": "infer"},
+                    "scale": {"categories": "infer", "translate_after": translate},
                 }
             ],
         }
@@ -973,8 +972,7 @@ class TestReadAnnotatedData:
 
         # Output block is a MaxDiffBlock with resolved column lists; input-only directives cleared.
         assert block.type == "maxdiff"
-        assert block.items is None
-        assert block.translate is None
+        assert block.choice_mapping is None
         assert block.choice_sets is None
         assert isinstance(block.best_columns, list)
         assert isinstance(block.worst_columns, list)
@@ -983,7 +981,7 @@ class TestReadAnnotatedData:
         assert block.scale is not None and set(block.scale.categories or []) == set(translate.values())
 
     def test_maxdiff_items_no_translate(self, meta_file, csv_file):
-        """MaxDiff with items already in target language (no translate)."""
+        """MaxDiff with choice_mapping already in target language (no translate)."""
         items = {"1": "Economy", "2": "Health", "3": "Education"}
         meta = {
             "file": "test.csv",
@@ -995,7 +993,7 @@ class TestReadAnnotatedData:
                     "best_columns": r"Q_(\d+)best",
                     "worst_columns": r"Q_(\d+)worst",
                     "set_columns": r"Q_\1set",
-                    "items": items,
+                    "choice_mapping": items,
                     "scale": {"categories": "infer"},
                 }
             ],
@@ -1018,8 +1016,7 @@ class TestReadAnnotatedData:
         block = data_meta.structure["maxdiff_maxdiff"]
         assert isinstance(block, MaxDiffBlock)
         # Input-only directives cleared on output
-        assert block.translate is None
-        assert block.items is None
+        assert block.choice_mapping is None
         # Cell values are the item names directly (no translation happened)
         assert data_df["Q_1best"].tolist() == ["Economy", "Health", "Education"]
 
@@ -3673,6 +3670,15 @@ class TestPipelineSchema:
         ]
         b2 = b.model_copy(update={"input_format": "leftpacked"})
         assert b2.segments() == [(["R1", "R2", "R3"], None, False)]
+
+    def test_maxdiff_schema_has_input_format_and_renamed_fields(self):
+        """Verify MaxDiffBlock has input_format and choice_mapping; items and translate removed."""
+        from salk_toolkit.validation import MaxDiffBlock
+
+        assert "input_format" in MaxDiffBlock.model_fields
+        assert "choice_mapping" in MaxDiffBlock.model_fields
+        assert "items" not in MaxDiffBlock.model_fields
+        assert "translate" not in MaxDiffBlock.model_fields
 
 
 if __name__ == "__main__":

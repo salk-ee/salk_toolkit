@@ -469,6 +469,12 @@ def _resolve_translate_values_stopgap(block: TopKBlock) -> dict[str, str] | None
     return None
 
 
+def _resolve_maxdiff_translate_stopgap(block: MaxDiffBlock) -> dict[str, str] | None:
+    if block.scale is not None and getattr(block.scale, "translate_after", None):
+        return block.scale.translate_after
+    return None
+
+
 def _create_topk_metas_and_dfs(
     df: pd.DataFrame,
     block: TopKBlock,
@@ -667,11 +673,17 @@ def _create_maxdiff_metas_and_dfs(
     df = df.copy(deep=True)
     create = block  # legacy alias retained to minimize diff below
     group = block
-    items = create.items
-    if items is None:
-        raise ValueError("MaxDiffBlock requires 'items' to be defined.")
+    cm = getattr(create, "choice_mapping", None)
+    if cm is None:
+        raise ValueError("MaxDiffBlock requires 'choice_mapping' to be defined.")
+    if not (isinstance(cm, dict) and all(isinstance(v, str) for v in cm.values())):
+        raise NotImplementedError("multi-subgroup maxdiff not yet implemented — see Task 10")
+    items = cm
     topics: list[str] | None = [items[k] for k in sorted(items, key=int)] if items else None
-    sets = create.choice_sets
+    cs = create.choice_sets
+    if cs is not None and not (isinstance(cs, list)):
+        raise NotImplementedError("multi-subgroup maxdiff not yet implemented — see Task 10")
+    sets = cs
     best_cols: Sequence[str] | str = create.best_columns
     worst_cols: Sequence[str] | str = create.worst_columns
     set_cols: Sequence[str] | str | None = create.set_columns
@@ -681,10 +693,10 @@ def _create_maxdiff_metas_and_dfs(
     if isinstance(create.setindex_column, str):
         setindex_col_name = create.setindex_column
     elif isinstance(create.setindex_column, list):
-        items = list(create.setindex_column)
-        setindex_col_name = str(items[0]) if items else None
-        if items and len(items) > 1 and isinstance(items[1], dict):
-            setindex_col_meta = soft_validate(items[1], ColumnMeta)
+        _setindex_parts = list(create.setindex_column)
+        setindex_col_name = str(_setindex_parts[0]) if _setindex_parts else None
+        if _setindex_parts and len(_setindex_parts) > 1 and isinstance(_setindex_parts[1], dict):
+            setindex_col_meta = soft_validate(_setindex_parts[1], ColumnMeta)
     best_is_str = isinstance(best_cols, str)
     set_is_str = isinstance(set_cols, str)
     if set_cols is None:
@@ -724,8 +736,8 @@ def _create_maxdiff_metas_and_dfs(
         worst_cols = list(worst_cols)
         set_cols = list(set_cols)
 
-    # Translate dict maps original-language item names to display names; applied to cell values and categories.
-    translate = dict(create.translate) if create.translate else {}
+    _t = _resolve_maxdiff_translate_stopgap(create)
+    translate = dict(_t) if _t else {}
 
     def _maybe_json_load(value: str | None) -> list[object] | None:
         try:

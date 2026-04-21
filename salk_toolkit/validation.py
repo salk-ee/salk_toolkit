@@ -322,44 +322,33 @@ class TopKBlock(ColumnBlockMeta):
 
 
 class MaxDiffBlock(ColumnBlockMeta):
-    """Block for MaxDiff best-worst scaling experiments. The stored output block is
-    an instance of this class; `best_columns` / `worst_columns` / `set_columns` are
-    resolved to `List[str]` by :mod:`salk_toolkit.io`, index-aligned by question.
-    Input-only directives (`items`, `translate`, `choice_sets`) are cleared on output;
-    translated item vocabulary lives in `scale.categories`."""
+    """Block for MaxDiff best-worst scaling experiments. The stored output
+    block is an instance of this class; `best_columns` / `worst_columns` /
+    `set_columns` are resolved to `List[str]` by :mod:`salk_toolkit.io`,
+    index-aligned by question. Input-only directives are cleared on output;
+    translated item vocabulary flows through `scale.translate_after`."""
 
     type: Literal["maxdiff"] = "maxdiff"  # type: ignore[assignment]
 
-    columns: ColSpec = DF(dict)  # empty default for annotation form; io.py fills on output
+    columns: ColSpec = DF(dict)
     best_columns: Union[str, List[str]]
     worst_columns: Union[str, List[str]]
-    set_columns: Optional[Union[str, List[str]]] = None  # Mutually exclusive with setindex. Only one is specified.
-    setindex_column: Optional[Union[str, List[object]]] = None  # Keeps metadata tuple used in annotations.
+    set_columns: Optional[Union[str, List[str]]] = None
+    setindex_column: Optional[Union[str, List[object]]] = None
 
-    # Item labeling (input-only): maps 1-based index (as string) to the item name in the original language.
-    items: Optional[Dict[str, str]] = None
+    input_format: Literal["choice_sets", "resolved"] = "choice_sets"
 
-    # Choice sets (input-only): choice_sets[version][question] = list of item indices shown.
-    choice_sets: Optional[List[List[List[int]]]] = None
-
-    # Translation (input-only): maps original-language item names -> display names.
-    # Applied to cell values (best/worst/set columns) and categories. If omitted, items are used as-is.
-    translate: Optional[Dict[str, str]] = None
+    choice_sets: Optional[Union[List[List[List[int]]], Dict[str, List[List[List[int]]]]]] = None
+    choice_mapping: Optional[Union[Dict[str, str], Dict[str, Dict[str, str]]]] = None
 
     def segments(self) -> List[Tuple[List[str], List[str], bool]]:
-        """Return ordinal-ranking segments for this resolved MaxDiff block.
-
-        Two segments per question: `[best_k] > [set_k]` and `[set_k] > [worst_k]`.
-        Precondition: `best_columns` / `worst_columns` / `set_columns` are resolved
-        `List[str]` (io.py ensures this on output blocks), index-aligned by question.
-        """
+        """Return ordinal-ranking segments for this resolved MaxDiff block."""
         best = self.best_columns
         worst = self.worst_columns
         sets = self.set_columns
         if not (isinstance(best, list) and isinstance(worst, list) and isinstance(sets, list)):
             raise TypeError(
-                "MaxDiffBlock.segments() requires best_columns/worst_columns/set_columns to be resolved lists, "
-                f"got best_columns={best!r}, worst_columns={worst!r}, set_columns={sets!r}"
+                f"MaxDiffBlock.segments() requires resolved lists; got best={best!r}, worst={worst!r}, sets={sets!r}"
             )
         return [([best[k]], [sets[k]], True) for k in range(len(best))] + [
             ([sets[k]], [worst[k]], True) for k in range(len(best))
