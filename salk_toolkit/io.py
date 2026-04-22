@@ -518,8 +518,10 @@ def _subgroup_explode(block: ColumnBlockMeta, df: pd.DataFrame) -> list[ColumnBl
     agg_pos = None
     if agg_idx is not None:
         agg_pos = agg_idx - 1 if agg_idx > 0 else agg_idx
-        if agg_pos is not None and agg_pos < 0:
+        if agg_pos < 0:
             agg_pos = n_groups + agg_pos
+        if not (0 <= agg_pos < n_groups):
+            raise ValueError(f"Block {block.name!r}: agg_index={agg_idx} out of range for {n_groups} capture group(s)")
     non_agg_positions = [i for i in range(n_groups) if i != agg_pos]
 
     if not non_agg_positions:
@@ -591,6 +593,7 @@ def _topk_transform_onehot(
     na_vals = list(block.na_vals or [])
     kmax = block.k
 
+    # astype('object') unifies list-mode with regex path; categorical/bool input rows go through mask uniformly.
     sdf = df[from_cols].astype("object").replace(na_vals, None)
     _check_topk_na_vals_after_replace(sdf, block_name=block.name)
 

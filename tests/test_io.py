@@ -3808,6 +3808,21 @@ class TestInternalPipelineHelpers:
         assert sibs[0].name == "p"
         assert sibs[0].from_columns == ["a", "b"]
 
+    def test_explode_agg_index_out_of_range_raises(self):
+        """agg_index beyond the regex group count hard-fails."""
+        import pandas as pd
+        import pytest
+        from salk_toolkit.io import _subgroup_explode
+        from salk_toolkit.validation import soft_validate, TopKBlock
+
+        df = pd.DataFrame(columns=["Qa", "Qb"])
+        b = soft_validate(
+            {"type": "topk", "name": "io", "from_columns": r"Q(\w)", "res_columns": r"R\1", "agg_index": 5},
+            TopKBlock,
+        )
+        with pytest.raises(ValueError, match="agg_index=5 out of range"):
+            _subgroup_explode(b, df)
+
 
 if __name__ == "__main__":
     pytest.main([__file__])
