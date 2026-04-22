@@ -475,6 +475,16 @@ def _resolve_maxdiff_translate_stopgap(block: MaxDiffBlock) -> dict[str, str] | 
     return None
 
 
+def _apply_pre_transform_translate(block: ColumnBlockMeta, df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
+    if block.scale is None or not block.scale.translate:
+        return df
+    df = df.copy()
+    for c in cols:
+        if c in df.columns:
+            df[c] = df[c].astype("object").replace(block.scale.translate)
+    return df
+
+
 def _match_columns(block: ColumnBlockMeta, df: pd.DataFrame) -> list[str]:
     pattern = block.from_columns
     if pattern is None:
@@ -584,6 +594,7 @@ def _topk_transform_skip(
     missing = [c for c in block.from_columns if c not in df.columns]
     if missing:
         raise ValueError(f"TopK block {block.name!r}: columns missing from dataframe: {missing}")
+    df = _apply_pre_transform_translate(block, df, list(block.from_columns))
     sdf = df[list(block.from_columns)].copy()
     scale_dict = deepcopy(block.scale.model_dump(mode="python") if block.scale else {})
     meta_out = _build_topk_output_block(
@@ -623,6 +634,7 @@ def _topk_transform_onehot(
 ) -> tuple[pd.DataFrame, TopKBlock]:
     assert isinstance(block.from_columns, list)
     from_cols = list(block.from_columns)
+    df = _apply_pre_transform_translate(block, df, from_cols)
     na_vals = list(block.na_vals or [])
     kmax = block.k
 
@@ -876,6 +888,7 @@ def _create_maxdiff_metas_and_dfs(
         raise ValueError(f"Unsupported token types in maxdiff set definition: {tokens}")
 
     ordered_cols = best_cols + worst_cols
+    df = _apply_pre_transform_translate(group, df, list(ordered_cols))
     # Compute effective (translated) topics once, used for both setindex columns and best/worst categorical dtypes
     effective_topics: list[str] | None = None
     if topics is not None:

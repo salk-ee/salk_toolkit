@@ -1020,6 +1020,59 @@ class TestReadAnnotatedData:
         # Cell values are the item names directly (no translation happened)
         assert data_df["Q_1best"].tolist() == ["Economy", "Health", "Education"]
 
+    def test_topk_scale_translate_feeds_na_vals_detection(self, meta_file, csv_file):
+        """Pre-translate fires before na_vals check: translated sentinel is dropped, raw form is not."""
+        # Row 0: Qa=raw_keep, Qb=raw_drop. Row 1: Qa=raw_drop, Qb=raw_keep.
+        # Pre-translate: raw_drop -> <drop> (matches na_vals, dropped), raw_keep -> keep.
+        # After drop: each row has exactly ONE non-NA cell, so only one result column (Ra) survives.
+        # Without pre-translate: na_vals=["<drop>"] never matches "raw_drop", both cells survive,
+        # leftpack fills Ra AND Rb for every row → two result columns.
+        pd.DataFrame({"Qa": ["raw_keep", "raw_drop"], "Qb": ["raw_drop", "raw_keep"]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "topk",
+                    "name": "q",
+                    "from_columns": r"Q(\w)",
+                    "res_columns": r"R\1",
+                    "agg_index": 1,
+                    "na_vals": ["<drop>"],
+                    "scale": {
+                        "translate": {"raw_keep": "keep", "raw_drop": "<drop>"},
+                    },
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        ndf, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        out = meta_obj.structure["q"]
+        assert out.input_format == "onehot"
+        res_cols = [c for c in ndf.columns if c.startswith("R")]
+        # If pre-translate fired: only 1 non-NA cell per row → dropna(how="all") removes Rb → 1 result col.
+        # If pre-translate did NOT fire: 2 non-NA cells per row → 2 result columns survive.
+        assert len(res_cols) == 1
+
+    def test_scale_translate_none_is_noop(self, meta_file, csv_file):
+        """Blocks without scale.translate pass through unchanged without error."""
+        pd.DataFrame({"Qa": ["A", None], "Qb": [None, "B"]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "topk",
+                    "name": "q",
+                    "from_columns": r"Q(\w)",
+                    "res_columns": r"R\1",
+                    "agg_index": 1,
+                    "na_vals": [],
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        _, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        assert "q" in meta_obj.structure
+
 
 class TestColumnTransformations:
     """Test various column transformation features"""
