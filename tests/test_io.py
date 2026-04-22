@@ -3866,6 +3866,48 @@ class TestPipelineSchema:
         with pytest.raises(ValueError, match="truncation to k=2"):
             read_annotated_data(str(meta_file), return_meta=True)
 
+    def test_maxdiff_multi_sibling_keyed_end_to_end(self, meta_file, csv_file):
+        """Multi-sibling maxdiff with keyed choice_sets/choice_mapping produces N sibling blocks."""
+        parquet_file = csv_file.with_suffix(".parquet")
+        pd.DataFrame(
+            {
+                "Q_g1_b": ["A", "B"],
+                "Q_g1_w": ["B", "A"],
+                "Q_g1_set": [["A", "B"], ["A", "B"]],
+                "Q_g2_b": ["C", "D"],
+                "Q_g2_w": ["D", "C"],
+                "Q_g2_set": [["C", "D"], ["C", "D"]],
+                "V": [1, 1],
+            }
+        ).to_parquet(parquet_file)
+        meta = {
+            "file": str(parquet_file),
+            "structure": [
+                {
+                    "type": "maxdiff",
+                    "name": "md",
+                    "from_columns": r"Q_(\w+)_b",
+                    "best_columns": r"Q_(\w+)_b",
+                    "worst_columns": r"Q_(\w+)_w",
+                    "set_columns": r"Q_\1_set",
+                    "setindex_column": "V",
+                    "subgroup_labels": {"1": {"g1": "g1", "g2": "g2"}},
+                    "choice_sets": {
+                        "g1": [[[1, 2]]],
+                        "g2": [[[1, 2]]],
+                    },
+                    "choice_mapping": {
+                        "g1": {"1": "A", "2": "B"},
+                        "g2": {"1": "C", "2": "D"},
+                    },
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        _, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        assert "md_g1" in meta_obj.structure
+        assert "md_g2" in meta_obj.structure
+
     def test_maxdiff_single_sibling_rejects_keyed_choice_sets(self, meta_file, csv_file):
         """Single-sibling maxdiff with dict-shaped choice_sets → hard fail."""
         pd.DataFrame(

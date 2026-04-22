@@ -490,7 +490,7 @@ def _pick_subgroup_field(value: object, sibling_name: str, source_name: str) -> 
         return None
 
     sibling_label = sibling_name.removeprefix(source_name).lstrip("_")
-    is_keyed = isinstance(value, dict) and all(isinstance(v, (list, dict)) for v in value.values())
+    is_keyed = isinstance(value, dict) and len(value) > 0 and all(isinstance(v, (list, dict)) for v in value.values())
 
     if not sibling_label:
         if is_keyed:
@@ -785,6 +785,40 @@ def _create_maxdiff_metas_and_dfs(
         assert isinstance(sib, MaxDiffBlock)
         cs = _pick_subgroup_field(block.choice_sets, sib.name, block.name)
         cm = _pick_subgroup_field(block.choice_mapping, sib.name, block.name)
+        # When explode produced multiple siblings, narrow string regex fields to
+        # this sibling's columns so the transform doesn't pick up other siblings.
+        sib_label = sib.name.removeprefix(block.name).lstrip("_")
+        if sib_label and isinstance(sib.best_columns, str):
+            best_re = re.compile(sib.best_columns)
+            worst_re = re.compile(sib.worst_columns) if isinstance(sib.worst_columns, str) else None
+            set_pat = sib.set_columns
+
+            def _label_matches(col: str, pattern: re.Pattern[str], label: str = sib_label) -> bool:
+                m = pattern.match(col)
+                return m is not None and m.group(1) == label
+
+            sib_best = [c for c in df.columns if _label_matches(c, best_re)]
+            sib_worst = (
+                [c for c in df.columns if _label_matches(c, worst_re)]
+                if worst_re is not None
+                else list(sib.worst_columns)
+                if isinstance(sib.worst_columns, (list, tuple))
+                else []
+            )
+            sib_set: list[str] | str | None
+            if isinstance(set_pat, str):
+                sib_set = [best_re.sub(set_pat, c) for c in sib_best] if sib_best else []
+            elif isinstance(set_pat, (list, tuple)):
+                sib_set = list(set_pat)
+            else:
+                sib_set = set_pat
+            sib = sib.model_copy(
+                update={
+                    "best_columns": sib_best,
+                    "worst_columns": sib_worst,
+                    "set_columns": sib_set,
+                }
+            )
         sdf, out = _maxdiff_apply_transform(sib, df, cs, cm, source_block=block)
         dfs.append(sdf)
         metas.append(out)
@@ -861,11 +895,15 @@ def _maxdiff_transform_choice_sets(
                 raise ValueError(f"Column {col} does not match best_cols pattern {best_cols_str}")
             return match.expand(set_cols_pattern)
 
-        def _get_group_index(s: str) -> int:
+        def _get_group_index(s: str) -> int | str:
             match = best_template.match(s)
             if match is None:
                 return 0
-            return int(match.group(1))
+            raw = match.group(1)
+            try:
+                return int(raw)
+            except (ValueError, IndexError):
+                return raw
 
         set_cols = list(map(_expand_set_col, sorted(best_cols, key=_get_group_index)))
     else:
