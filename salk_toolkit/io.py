@@ -485,6 +485,28 @@ def _apply_pre_transform_translate(block: ColumnBlockMeta, df: pd.DataFrame, col
     return df
 
 
+def _pick_subgroup_field(value: object, sibling_name: str, source_name: str) -> object:
+    if value is None:
+        return None
+
+    sibling_label = sibling_name.removeprefix(source_name).lstrip("_")
+    is_keyed = isinstance(value, dict) and all(isinstance(v, (list, dict)) for v in value.values())
+
+    if not sibling_label:
+        if is_keyed:
+            raise ValueError(f"Block {source_name!r}: single sibling but field is keyed; expected flat")
+        return value
+
+    if not is_keyed:
+        raise ValueError(f"Block {source_name!r}: multiple siblings but field is flat; expected dict keyed by label")
+    keyed = cast(dict[str, object], value)
+    if sibling_label not in keyed:
+        raise ValueError(
+            f"Block {source_name!r}: sibling {sibling_label!r} missing from field keys {list(keyed.keys())}"
+        )
+    return keyed[sibling_label]
+
+
 def _match_columns(block: ColumnBlockMeta, df: pd.DataFrame) -> list[str]:
     pattern = block.from_columns
     if pattern is None:
@@ -750,40 +772,67 @@ def _build_topk_output_block(
 def _create_maxdiff_metas_and_dfs(
     df: pd.DataFrame,
     block: MaxDiffBlock,
-    **kwargs: dict[str, str],
+    **_: object,
 ) -> tuple[list[pd.DataFrame], list[MaxDiffBlock]]:
-    """
-    Create metas and dfs for maxdiff.
+    dfs: list[pd.DataFrame] = []
+    metas: list[MaxDiffBlock] = []
+    siblings: list[ColumnBlockMeta]
+    if block.from_columns is None:
+        siblings = [block]
+    else:
+        siblings = _subgroup_explode(block, df)
+    for sib in siblings:
+        assert isinstance(sib, MaxDiffBlock)
+        cs = _pick_subgroup_field(block.choice_sets, sib.name, block.name)
+        cm = _pick_subgroup_field(block.choice_mapping, sib.name, block.name)
+        sdf, out = _maxdiff_apply_transform(sib, df, cs, cm, source_block=block)
+        dfs.append(sdf)
+        metas.append(out)
+    return dfs, metas
 
-    Reads `choice_mapping` (1-based index -> item name) and applies scale-level
-    `translate_after` (via stop-gap helper) to output cells.
-    """
+
+def _maxdiff_apply_transform(
+    block: MaxDiffBlock,
+    df: pd.DataFrame,
+    choice_sets: object,
+    choice_mapping: object,
+    *,
+    source_block: MaxDiffBlock,
+) -> tuple[pd.DataFrame, MaxDiffBlock]:
+    if block.input_format == "choice_sets":
+        return _maxdiff_transform_choice_sets(block, df, choice_sets, choice_mapping, source_block=source_block)
+    if block.input_format == "resolved":
+        raise NotImplementedError("MaxDiff input_format=resolved not yet implemented (Task 11)")
+    raise ValueError(f"unknown MaxDiff input_format: {block.input_format!r}")
+
+
+def _maxdiff_transform_choice_sets(
+    block: MaxDiffBlock,
+    df: pd.DataFrame,
+    choice_sets: object,
+    choice_mapping: object,
+    *,
+    source_block: MaxDiffBlock,
+) -> tuple[pd.DataFrame, MaxDiffBlock]:
     df = df.copy(deep=True)
-    create = block  # legacy alias retained to minimize diff below
-    group = block
-    cm = getattr(create, "choice_mapping", None)
+    cm = choice_mapping
     if cm is None:
         raise ValueError("MaxDiffBlock requires 'choice_mapping' to be defined.")
     if not (isinstance(cm, dict) and all(isinstance(v, str) for v in cm.values())):
-        raise NotImplementedError(
-            "multi-subgroup maxdiff not yet implemented: choice_mapping is dict-keyed — see Task 10"
-        )
+        raise ValueError(f"MaxDiffBlock {block.name!r}: choice_mapping must be a flat Dict[str, str]; got {type(cm)}")
     items = cm
     topics: list[str] | None = [items[k] for k in sorted(items, key=int)] if items else None
-    cs = create.choice_sets
-    if cs is not None and not (isinstance(cs, list)):
-        raise NotImplementedError("multi-subgroup maxdiff not yet implemented: choice_sets is dict-keyed — see Task 10")
-    sets = cs
-    best_cols: Sequence[str] | str = create.best_columns
-    worst_cols: Sequence[str] | str = create.worst_columns
-    set_cols: Sequence[str] | str | None = create.set_columns
+    sets = choice_sets
+    best_cols: Sequence[str] | str = block.best_columns
+    worst_cols: Sequence[str] | str = block.worst_columns
+    set_cols: Sequence[str] | str | None = block.set_columns
     # Parse setindex_column: can be None, str, or [str] or [str, dict]
     setindex_col_name: str | None = None
     setindex_col_meta: ColumnMeta | None = None
-    if isinstance(create.setindex_column, str):
-        setindex_col_name = create.setindex_column
-    elif isinstance(create.setindex_column, list):
-        _setindex_parts = list(create.setindex_column)
+    if isinstance(block.setindex_column, str):
+        setindex_col_name = block.setindex_column
+    elif isinstance(block.setindex_column, list):
+        _setindex_parts = list(block.setindex_column)
         setindex_col_name = str(_setindex_parts[0]) if _setindex_parts else None
         if _setindex_parts and len(_setindex_parts) > 1 and isinstance(_setindex_parts[1], dict):
             setindex_col_meta = soft_validate(_setindex_parts[1], ColumnMeta)
@@ -818,15 +867,13 @@ def _create_maxdiff_metas_and_dfs(
                 return 0
             return int(match.group(1))
 
-        set_cols = list(
-            map(_expand_set_col, sorted(best_cols, key=_get_group_index))
-        )  # order should be based on group indices. might the group not be numeric?
+        set_cols = list(map(_expand_set_col, sorted(best_cols, key=_get_group_index)))
     else:
         best_cols = list(best_cols)
         worst_cols = list(worst_cols)
         set_cols = list(set_cols)
 
-    _t = _resolve_maxdiff_translate_stopgap(create)
+    _t = _resolve_maxdiff_translate_stopgap(block)
     translate = dict(_t) if _t else {}
 
     def _maybe_json_load(value: str | None) -> list[object] | None:
@@ -888,8 +935,7 @@ def _create_maxdiff_metas_and_dfs(
         raise ValueError(f"Unsupported token types in maxdiff set definition: {tokens}")
 
     ordered_cols = best_cols + worst_cols
-    df = _apply_pre_transform_translate(group, df, list(ordered_cols))
-    # Compute effective (translated) topics once, used for both setindex columns and best/worst categorical dtypes
+    df = _apply_pre_transform_translate(block, df, list(ordered_cols))
     effective_topics: list[str] | None = None
     if topics is not None:
         effective_topics = [translate.get(t, t) for t in topics] if translate else list(topics)  # type: ignore[misc]
@@ -898,9 +944,7 @@ def _create_maxdiff_metas_and_dfs(
         df = df[ordered_cols + [setindex_col_name]]
         if topics is None or sets is None or effective_topics is None:
             raise ValueError("Maxdiff definitions using 'setindex_column' must also define 'topics' and 'sets'.")
-        topics_arr = np.array(
-            ["", *effective_topics], dtype=object
-        )  # "" at index 0: survey sets are 1-indexed (subject to change)
+        topics_arr = np.array(["", *effective_topics], dtype=object)
         sets_arr = np.asarray(sets, dtype=int)
         lsets = topics_arr[sets_arr]
 
@@ -924,8 +968,6 @@ def _create_maxdiff_metas_and_dfs(
             df[col] = converted_values  # type: ignore[assignment]
 
     # Apply translate to best/worst scalar topic values, then cast to categorical with full translated topic list.
-    # This ensures the column dtype carries only the translated categories, preventing pollution from partial
-    # observed values being appended to Lithuanian originals by _fix_meta_categories later.
     for col in best_cols + worst_cols:
         s = df[col]
         if translate:
@@ -934,42 +976,38 @@ def _create_maxdiff_metas_and_dfs(
             s = pd.Categorical(s, categories=effective_topics)
         df[col] = s
 
-    generated_name = f"{group.name}_maxdiff"
-    df = df.sort_index(axis=1)  # sort columns
+    df = df.sort_index(axis=1)
 
     base_columns = sorted(best_cols + worst_cols + cast(list[str], set_cols))
-    # Carry the full translated topic list as categories in the column meta so _fix_meta_categories
-    # does not need to infer them from the (potentially partial) dtype.
     best_worst_col_meta = ColumnMeta(categories=effective_topics) if effective_topics is not None else ColumnMeta()
     columns_spec: dict[str, ColumnMeta] = {col: best_worst_col_meta for col in base_columns}
     if setindex_col_name is not None:
         if setindex_col_meta is None:
             setindex_col_meta = ColumnMeta()
         if effective_topics is not None and setindex_col_meta.categories is None:
-            # Use translated topic names for the setindex categories
             setindex_col_meta = setindex_col_meta.model_copy(update={"categories": effective_topics})
         if setindex_col_meta.continuous is False:
             setindex_col_meta = setindex_col_meta.model_copy(update={"continuous": True})
         columns_spec = {setindex_col_name: setindex_col_meta} | columns_spec
 
-    scale_dict = deepcopy(group.scale.model_dump(mode="python") if group.scale else {})
+    scale_dict = deepcopy(block.scale.model_dump(mode="python") if block.scale else {})
     if effective_topics is not None:
         scale_dict["categories"] = effective_topics
 
     output_block = soft_validate(
         {
             "type": "maxdiff",
-            "name": generated_name,
+            "name": block.name,
             "scale": scale_dict,
             "columns": columns_spec,
             "best_columns": list(best_cols),
             "worst_columns": list(worst_cols),
             "set_columns": list(cast(list[str], set_cols)),
-            "setindex_column": create.setindex_column,
+            "setindex_column": source_block.setindex_column,
         },
         MaxDiffBlock,
     )
-    return [df], [output_block]
+    return df, output_block
 
 
 CreateBlockModel = TopKBlock | MaxDiffBlock

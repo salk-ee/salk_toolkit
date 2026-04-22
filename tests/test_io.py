@@ -441,8 +441,8 @@ class TestReadAnnotatedData:
             actual_cols = set(actual_block.columns.keys()) if actual_block.columns else set()
             expected_cols = set(expected_block.columns.keys()) if expected_block.columns else set()
 
-            # For maxdiff_maxdiff, optionally check columns match DataFrame
-            if block_name == "maxdiff_maxdiff" and data_df is not None:
+            # For the output maxdiff block, optionally check columns match DataFrame
+            if block_name == "maxdiff" and isinstance(actual_block, MaxDiffBlock) and data_df is not None:
                 df_cols = set(data_df.columns) - {"file_code", "file_name"}
                 assert actual_cols == df_cols, (
                     f"Block {block_name} columns {actual_cols} should match DataFrame columns {df_cols}"
@@ -492,17 +492,12 @@ class TestReadAnnotatedData:
             "maxdiff": ColumnBlockMeta(
                 name="maxdiff",
                 scale=BlockScaleMeta(categories=topics),
-                columns={},
-            ),
-            "maxdiff_maxdiff": ColumnBlockMeta(
-                name="maxdiff_maxdiff",
-                scale=BlockScaleMeta(categories=topics),
                 columns={col: ColumnMeta() for col in all_columns},
             ),
         }
 
         if setindex_column and setindex_meta:
-            structure["maxdiff_maxdiff"].columns[setindex_column] = setindex_meta
+            structure["maxdiff"].columns[setindex_column] = setindex_meta
 
         return structure
 
@@ -905,7 +900,7 @@ class TestReadAnnotatedData:
         )
         df.to_csv_file(csv_file)
         _data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
-        block = data_meta.structure["maxdiff_maxdiff"]
+        block = data_meta.structure["maxdiff"]
         assert isinstance(block, MaxDiffBlock)
         # Question-aligned lists with the same order, two segments per question (best>set, set>worst).
         best_columns = block.best_columns
@@ -961,7 +956,7 @@ class TestReadAnnotatedData:
         df.to_csv_file(csv_file)
         data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
 
-        block = data_meta.structure["maxdiff_maxdiff"]
+        block = data_meta.structure["maxdiff"]
         assert isinstance(block, MaxDiffBlock)
         assert "Q_1best" in block.columns
         assert "Q_1set" in block.columns
@@ -1013,7 +1008,7 @@ class TestReadAnnotatedData:
         df.to_csv_file(csv_file)
         data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
 
-        block = data_meta.structure["maxdiff_maxdiff"]
+        block = data_meta.structure["maxdiff"]
         assert isinstance(block, MaxDiffBlock)
         # Input-only directives cleared on output
         assert block.choice_mapping is None
@@ -3871,6 +3866,64 @@ class TestPipelineSchema:
         with pytest.raises(ValueError, match="truncation to k=2"):
             read_annotated_data(str(meta_file), return_meta=True)
 
+    def test_maxdiff_single_sibling_rejects_keyed_choice_sets(self, meta_file, csv_file):
+        """Single-sibling maxdiff with dict-shaped choice_sets → hard fail."""
+        pd.DataFrame(
+            {
+                "Q_b": ["A", "B"],
+                "Q_w": ["B", "A"],
+                "Q_set": [["A", "B"], ["A", "B"]],
+                "V": [1, 1],
+            }
+        ).to_parquet(csv_file.with_suffix(".parquet"))
+        meta = {
+            "file": str(csv_file.with_suffix(".parquet")),
+            "structure": [
+                {
+                    "type": "maxdiff",
+                    "name": "md",
+                    "best_columns": ["Q_b"],
+                    "worst_columns": ["Q_w"],
+                    "set_columns": ["Q_set"],
+                    "setindex_column": "V",
+                    "choice_sets": {"econ": [[[1, 2]]]},
+                    "choice_mapping": {"1": "A", "2": "B"},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        with pytest.raises(ValueError, match="single sibling.*keyed"):
+            read_annotated_data(str(meta_file), return_meta=True)
+
+    def test_maxdiff_single_sibling_rejects_keyed_choice_mapping(self, meta_file, csv_file):
+        """Single-sibling maxdiff with dict-shaped choice_mapping → hard fail."""
+        pd.DataFrame(
+            {
+                "Q_b": ["A", "B"],
+                "Q_w": ["B", "A"],
+                "Q_set": [["A", "B"], ["A", "B"]],
+                "V": [1, 1],
+            }
+        ).to_parquet(csv_file.with_suffix(".parquet"))
+        meta = {
+            "file": str(csv_file.with_suffix(".parquet")),
+            "structure": [
+                {
+                    "type": "maxdiff",
+                    "name": "md",
+                    "best_columns": ["Q_b"],
+                    "worst_columns": ["Q_w"],
+                    "set_columns": ["Q_set"],
+                    "setindex_column": "V",
+                    "choice_sets": [[[1, 2]]],
+                    "choice_mapping": {"econ": {"1": "A", "2": "B"}},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        with pytest.raises(ValueError, match="single sibling.*keyed"):
+            read_annotated_data(str(meta_file), return_meta=True)
+
 
 class TestInternalPipelineHelpers:
     """Tests for _match_columns and _subgroup_explode internal helpers."""
@@ -3981,6 +4034,38 @@ class TestInternalPipelineHelpers:
         )
         with pytest.raises(ValueError, match="agg_index=5 out of range"):
             _subgroup_explode(b, df)
+
+    def test_pick_subgroup_field_strict_dispatch(self):
+        """_pick_subgroup_field enforces flat-for-single, keyed-for-multi."""
+        from salk_toolkit.io import _pick_subgroup_field
+
+        # Single sibling + flat form: pass-through.
+        flat_cs = [[[1, 2]]]
+        assert _pick_subgroup_field(flat_cs, "md", "md") is flat_cs
+        flat_cm = {"1": "A"}
+        assert _pick_subgroup_field(flat_cm, "md", "md") is flat_cm
+
+        # Single sibling + keyed form: hard fail.
+        with pytest.raises(ValueError, match="single sibling.*keyed"):
+            _pick_subgroup_field({"g1": [[[1, 2]]]}, "md", "md")
+        with pytest.raises(ValueError, match="single sibling.*keyed"):
+            _pick_subgroup_field({"g1": {"1": "A"}}, "md", "md")
+
+        # Multi-sibling + flat form: hard fail.
+        with pytest.raises(ValueError, match="multiple siblings.*flat"):
+            _pick_subgroup_field(flat_cs, "md_g1", "md")
+
+        # Multi-sibling + keyed form, valid key: returns the entry.
+        picked = _pick_subgroup_field({"g1": [[[1, 2]]], "g2": [[[3, 4]]]}, "md_g1", "md")
+        assert picked == [[[1, 2]]]
+
+        # Multi-sibling + keyed form, missing key: hard fail.
+        with pytest.raises(ValueError, match="sibling 'g2' missing"):
+            _pick_subgroup_field({"g1": [[[1, 2]]]}, "md_g2", "md")
+
+        # None returns None regardless of sibling shape.
+        assert _pick_subgroup_field(None, "md", "md") is None
+        assert _pick_subgroup_field(None, "md_g1", "md") is None
 
 
 if __name__ == "__main__":
