@@ -76,6 +76,7 @@ from salk_toolkit.validation import (
     SingleMergeSpec,
     TopKBlock,
     MaxDiffBlock,
+    OneHotBlock,
 )
 
 # Ignore fragmentation warnings
@@ -1121,20 +1122,124 @@ def _maxdiff_transform_choice_sets(
     return df, output_block
 
 
-CreateBlockModel = TopKBlock | MaxDiffBlock
+def _create_onehot_metas_and_dfs(
+    df: pd.DataFrame,
+    block: OneHotBlock,
+    **_: object,
+) -> tuple[list[pd.DataFrame], list[OneHotBlock]]:
+    chs = block.choices if isinstance(block.choices, list) or block.choices is None else list(block.choices)
+    sdf, out = _onehot_apply_transform(block, df, chs)
+    return [sdf], [out]
+
+
+def _onehot_apply_transform(
+    block: OneHotBlock,
+    df: pd.DataFrame,
+    choices: list[str] | None,
+) -> tuple[pd.DataFrame, OneHotBlock]:
+    if block.input_format == "leftpacked":
+        return _onehot_transform_leftpacked(block, df, choices)
+    if block.input_format == "wide":
+        return _onehot_transform_wide(block, df, choices)
+    raise ValueError(f"unknown OneHot input_format: {block.input_format!r}")
+
+
+def _onehot_transform_leftpacked(
+    block: OneHotBlock,
+    df: pd.DataFrame,
+    choices: list[str] | None,
+) -> tuple[pd.DataFrame, OneHotBlock]:
+    from_cols = list(block.from_columns) if isinstance(block.from_columns, list) else _match_columns(block, df)
+    df = _apply_pre_transform_translate(block, df, from_cols)
+    src = df[from_cols].astype("object")
+    if block.na_vals:
+        src = src.replace(block.na_vals, None)
+
+    observed = [
+        v for v in pd.unique(src.values.ravel("K")) if v is not None and not (isinstance(v, float) and pd.isna(v))
+    ]
+
+    if choices is not None:
+        unknown = set(observed) - set(choices)
+        if unknown:
+            raise ValueError(f"OneHot block {block.name!r}: values {sorted(unknown)} not in choices")
+        final_choices = list(choices)
+    else:
+        final_choices = sorted(observed)
+
+    prefix = block.res_prefix or f"{block.name}_"
+    out_cols = [f"{prefix}{c}" for c in final_choices]
+    out_df = pd.DataFrame(
+        {f"{prefix}{c}": src.eq(c).any(axis=1) for c in final_choices},
+        index=df.index,
+    )
+
+    scale_dict = deepcopy(block.scale.model_dump(mode="python") if block.scale else {})
+    out = soft_validate(
+        {
+            "type": "onehot",
+            "name": block.name,
+            "scale": scale_dict,
+            "columns": {c: {} for c in out_cols},
+            "from_columns": from_cols,
+            "input_format": "leftpacked",
+            "choices": final_choices,
+            "res_prefix": block.res_prefix,
+        },
+        OneHotBlock,
+    )
+    return out_df, out
+
+
+def _onehot_transform_wide(
+    block: OneHotBlock,
+    df: pd.DataFrame,
+    choices: list[str] | None,
+) -> tuple[pd.DataFrame, OneHotBlock]:
+    from_cols = list(block.from_columns) if isinstance(block.from_columns, list) else _match_columns(block, df)
+    df = _apply_pre_transform_translate(block, df, from_cols)
+    sdf = df[from_cols].copy()
+    prefix = block.res_prefix or ""
+    final_choices: list[str] | None
+    if choices is not None:
+        final_choices = list(choices)
+    elif prefix:
+        final_choices = [c.removeprefix(prefix) for c in from_cols]
+    else:
+        final_choices = None
+
+    scale_dict = deepcopy(block.scale.model_dump(mode="python") if block.scale else {})
+    out = soft_validate(
+        {
+            "type": "onehot",
+            "name": block.name,
+            "scale": scale_dict,
+            "columns": {c: {} for c in from_cols},
+            "from_columns": from_cols,
+            "input_format": "wide",
+            "choices": final_choices,
+            "res_prefix": block.res_prefix,
+        },
+        OneHotBlock,
+    )
+    return sdf, out
+
+
+CreateBlockModel = TopKBlock | MaxDiffBlock | OneHotBlock
 
 create_block_type_to_create_fn: dict[str, Callable] = {
     "topk": _create_topk_metas_and_dfs,  # type: ignore[assignment]
     "maxdiff": _create_maxdiff_metas_and_dfs,  # type: ignore[assignment]
+    "onehot": _create_onehot_metas_and_dfs,  # type: ignore[assignment]
 }
 
 
 def _create_new_columns_and_metas(
     df: pd.DataFrame, group: ColumnBlockMeta, **kwargs: dict[str, str]
 ) -> Iterator[tuple[pd.DataFrame, ColumnBlockMeta]]:
-    """Create new columns and metadata from a specialized block (TopKBlock / MaxDiffBlock)."""
-    if not isinstance(group, (TopKBlock, MaxDiffBlock)):
-        raise ValueError("Group must be a TopKBlock or MaxDiffBlock to generate new columns")
+    """Create new columns and metadata from a specialized block (TopKBlock / MaxDiffBlock / OneHotBlock)."""
+    if not isinstance(group, (TopKBlock, MaxDiffBlock, OneHotBlock)):
+        raise ValueError("Group must be a TopKBlock, MaxDiffBlock, or OneHotBlock to generate new columns")
     dfs, metas = create_block_type_to_create_fn[group.type](df, group, **kwargs)
     return zip(dfs, metas)
 
@@ -1563,8 +1668,8 @@ def _process_annotated_data(
                 # Concatenate and assign back
                 transformed_combined = pd.concat(subgroup_transformed_parts).reset_index(drop=True)
                 ndf_df[sg] = transformed_combined[sg].values
-        # Handle specialized blocks (topk / maxdiff) — may add new groups to structure
-        if isinstance(group, (TopKBlock, MaxDiffBlock)):
+        # Handle specialized blocks (topk / maxdiff / onehot) — may add new groups to structure
+        if isinstance(group, (TopKBlock, MaxDiffBlock, OneHotBlock)):
             create_source_df = ndf_df.combine_first(raw_data_concat) if not raw_data_concat.empty else ndf_df
             pending_sibling_metas: list[ColumnBlockMeta] = []
             for newdf, new_group_meta in _create_new_columns_and_metas(

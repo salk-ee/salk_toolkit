@@ -4061,6 +4061,89 @@ class TestPipelineSchema:
         with pytest.raises(ValueError, match="incomplete alignment"):
             read_annotated_data(str(meta_file), return_meta=True)
 
+    def test_onehot_leftpacked_explicit_choices(self, meta_file, csv_file):
+        """Leftpacked onehot with explicit choices emits one boolean column per choice."""
+        pd.DataFrame({"M_1": ["FB", "TT"], "M_2": ["TT", None], "M_3": [None, "FB"]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "onehot",
+                    "name": "sm",
+                    "from_columns": r"M_(\d+)",
+                    "input_format": "leftpacked",
+                    "choices": ["FB", "TT"],
+                    "res_prefix": "sm_",
+                    "scale": {"categories": [False, True]},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        ndf, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        assert sorted(meta_obj.structure["sm"].columns.keys()) == ["sm_FB", "sm_TT"]
+        assert list(ndf["sm_FB"]) == [True, True]
+        assert list(ndf["sm_TT"]) == [True, True]
+
+    def test_onehot_leftpacked_inferred_choices(self, meta_file, csv_file):
+        """choices=None derives the sorted union from observed cells."""
+        pd.DataFrame({"M_1": ["A", "B"], "M_2": ["B", None]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "onehot",
+                    "name": "x",
+                    "from_columns": r"M_(\d+)",
+                    "input_format": "leftpacked",
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        _, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        assert sorted(meta_obj.structure["x"].columns.keys()) == ["x_A", "x_B"]
+
+    def test_onehot_unknown_value_hard_fails(self, meta_file, csv_file):
+        """Explicit choices that don't cover observed cells hard-fails."""
+        pd.DataFrame({"M_1": ["A", "ZZ"]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "onehot",
+                    "name": "x",
+                    "from_columns": ["M_1"],
+                    "input_format": "leftpacked",
+                    "choices": ["A"],
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        with pytest.raises(ValueError, match="not in choices"):
+            read_annotated_data(str(meta_file), return_meta=True)
+
+    def test_onehot_wide_passthrough(self, meta_file, csv_file):
+        """input_format=wide: columns pass through as-is; choices inferred from res_prefix when None."""
+        pd.DataFrame({"sm_FB": [True, False], "sm_TT": [False, True]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "onehot",
+                    "name": "sm",
+                    "from_columns": ["sm_FB", "sm_TT"],
+                    "input_format": "wide",
+                    "res_prefix": "sm_",
+                    "scale": {"categories": [False, True]},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        ndf, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        out = meta_obj.structure["sm"]
+        assert out.input_format == "wide"
+        assert sorted(out.columns.keys()) == ["sm_FB", "sm_TT"]
+        assert out.choices == ["FB", "TT"]
+
 
 class TestInternalPipelineHelpers:
     """Tests for _match_columns and _subgroup_explode internal helpers."""
