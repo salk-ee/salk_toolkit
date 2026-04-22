@@ -464,18 +464,6 @@ def _check_topk_na_vals_after_replace(sdf: pd.DataFrame, *, block_name: str) -> 
         )
 
 
-def _resolve_translate_values_stopgap(block: TopKBlock) -> dict[str, str] | None:
-    if block.scale is not None and getattr(block.scale, "translate_after", None):
-        return block.scale.translate_after
-    return None
-
-
-def _resolve_maxdiff_translate_stopgap(block: MaxDiffBlock) -> dict[str, str] | None:
-    if block.scale is not None and getattr(block.scale, "translate_after", None):
-        return block.scale.translate_after
-    return None
-
-
 def _apply_pre_transform_translate(block: ColumnBlockMeta, df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
     if block.scale is None or not block.scale.translate:
         return df
@@ -720,9 +708,7 @@ def _topk_transform_onehot(
 
     scale_dict = deepcopy(block.scale.model_dump(mode="python") if block.scale else {})
 
-    # Stop-gap: block-level translate_values used to live here; now pulled from scale.translate_after
-    # (_resolve_translate_values_stopgap). Task 9 wires this through the pre-transform pipeline.
-    translate_values = _resolve_translate_values_stopgap(block)
+    translate_values = block.scale.translate_after if block.scale else None
     if translate_values:
         sdf = sdf.replace(translate_values)
         effective_cats = list(dict.fromkeys(translate_values.values()))
@@ -985,7 +971,7 @@ def _maxdiff_transform_choice_sets(
         worst_cols = list(worst_cols)
         set_cols = list(set_cols)
 
-    _t = _resolve_maxdiff_translate_stopgap(block)
+    _t = block.scale.translate_after if block.scale else None
     translate = dict(_t) if _t else {}
 
     def _maybe_json_load(value: str | None) -> list[object] | None:
