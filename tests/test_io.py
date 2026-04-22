@@ -3542,7 +3542,6 @@ class TestMultiSourceColumns:
         ).to_csv_file(file2)
         pd.DataFrame({"id": [5, 6], "USA": ["True", "False"], "Canada": ["False", "True"]}).to_csv_file(file3)
 
-        # TODO(Task 9): restore translate_after once scale-merge isolates topk output columns.
         meta = {
             "files": [
                 {"file": "file1.csv", "code": "F0"},
@@ -3551,10 +3550,17 @@ class TestMultiSourceColumns:
             ],
             "structure": [
                 {
+                    "name": "ids",
+                    "columns": {"id": {}},
+                },
+                {
                     "type": "topk",
                     "name": "demographics",
+                    "scale": {
+                        "categories": "infer",
+                        "translate_after": {"1": "Mentioned", "2": "Not mentioned"},
+                    },
                     "columns": {
-                        "id": {},
                         "topk_1": {
                             "source": {
                                 "F0": "topk_col1",
@@ -3575,7 +3581,7 @@ class TestMultiSourceColumns:
                     "from_columns": r"topk_(\d)",
                     "na_vals": ["Not mentioned", "No", "False"],
                     "res_columns": r"topk_R\1",
-                }
+                },
             ],
         }
         write_json(meta_file, meta)
@@ -3602,12 +3608,12 @@ class TestMultiSourceColumns:
         sys_cols = {c[0] if isinstance(c, list) else c for c in sysb.get("columns", [])}
         assert {"file_code", "file_name"}.issubset(sys_cols)
         expected_data = [
-            ["F0", 1, "Yes", "No", "1", None],
-            ["F0", 2, "No", "Yes", "2", None],
-            ["F1", 3, "Mentioned", "Mentioned", "1", "2"],
-            ["F1", 4, "Mentioned", "Not mentioned", "1", None],
-            ["F2", 5, "True", "False", "1", None],
-            ["F2", 6, "False", "True", "2", None],
+            ["F0", 1, "Yes", "No", "Mentioned", None],
+            ["F0", 2, "No", "Yes", "Not mentioned", None],
+            ["F1", 3, "Mentioned", "Mentioned", "Mentioned", "Not mentioned"],
+            ["F1", 4, "Mentioned", "Not mentioned", "Mentioned", None],
+            ["F2", 5, "True", "False", "Mentioned", None],
+            ["F2", 6, "False", "True", "Not mentioned", None],
         ]
         edf = pd.DataFrame(expected_data, columns=["file_code", "id", "topk_1", "topk_2", "topk_R1", "topk_R2"])
         # data_df may contain additional system columns (file_ind, file_name) in multi-file mode
