@@ -3797,6 +3797,27 @@ class TestPipelineSchema:
         with pytest.raises(NotImplementedError, match="ranked_onehot"):
             read_annotated_data(str(meta_file), return_meta=True)
 
+    def test_topk_truncate_drops_non_na_hard_fails(self, meta_file, csv_file):
+        """k=N with more than N non-NA selections per row hard-fails."""
+        pd.DataFrame({"Qa": ["A", None], "Qb": ["A", "B"], "Qc": ["A", "C"]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "topk",
+                    "name": "x",
+                    "from_columns": r"Q(\w)",
+                    "res_columns": r"R\1",
+                    "agg_index": 1,
+                    "k": 2,
+                    "na_vals": [],
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        with pytest.raises(ValueError, match="truncation to k=2"):
+            read_annotated_data(str(meta_file), return_meta=True)
+
 
 class TestInternalPipelineHelpers:
     """Tests for _match_columns and _subgroup_explode internal helpers."""

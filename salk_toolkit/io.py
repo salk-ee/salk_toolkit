@@ -674,6 +674,13 @@ def _topk_transform_onehot(
     sdf = sdf.dropna(axis=1, how="all")
 
     if kmax and kmax != "max" and isinstance(kmax, int):
+        if sdf.shape[1] > kmax:
+            tail = sdf.iloc[:, kmax:]
+            if tail.notna().any().any():
+                raise ValueError(
+                    f"TopK block {block.name!r}: truncation to k={kmax} would drop "
+                    f"non-NA values in columns {list(tail.columns)}"
+                )
         sdf = sdf.iloc[:, :kmax]
 
     scale_dict = deepcopy(block.scale.model_dump(mode="python") if block.scale else {})
