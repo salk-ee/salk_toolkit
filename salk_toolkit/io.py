@@ -1375,6 +1375,8 @@ def _process_annotated_data(
             # are preserved under the original name, but processing directives are dropped.
             group = _demote_to_plain(group)
             # Add processed group to structure (demoted parent first so siblings win on name collision)
+            # TODO: find out if dropping pre-transform columns and meta is acceptable when a sibling
+            # takes the bare block name (the demoted parent entry is silently clobbered).
             new_structure[group.name] = group
             for sibling_meta in pending_sibling_metas:
                 new_structure[sibling_meta.name] = sibling_meta
