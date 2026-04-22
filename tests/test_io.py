@@ -3966,6 +3966,101 @@ class TestPipelineSchema:
         with pytest.raises(ValueError, match="single sibling.*keyed"):
             read_annotated_data(str(meta_file), return_meta=True)
 
+    def test_maxdiff_resolved_three_independent_regexes(self, meta_file, csv_file):
+        """input_format=resolved with three regexes aligned by capture-group value."""
+        parquet_file = csv_file.with_suffix(".parquet")
+        pd.DataFrame(
+            {
+                "Q1_b_1": ["A", "B"],
+                "Q1_w_1": ["B", "A"],
+                "Q1_set_abc_1": [["A", "B"], ["A", "B"]],
+                "Q1_b_2": ["B", "A"],
+                "Q1_w_2": ["A", "B"],
+                "Q1_set_abc_2": [["A", "B"], ["A", "B"]],
+            }
+        ).to_parquet(parquet_file)
+        meta = {
+            "file": str(parquet_file),
+            "structure": [
+                {
+                    "type": "maxdiff",
+                    "name": "md",
+                    "input_format": "resolved",
+                    "best_columns": r"Q1_b_(\d+)",
+                    "worst_columns": r"Q1_w_(\d+)",
+                    "set_columns": r"Q1_set_abc_(\d+)",
+                    "scale": {"categories": ["A", "B"]},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        _, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        out = meta_obj.structure["md"]
+        assert sorted(out.best_columns) == ["Q1_b_1", "Q1_b_2"]
+        assert sorted(out.worst_columns) == ["Q1_w_1", "Q1_w_2"]
+        assert sorted(out.set_columns) == ["Q1_set_abc_1", "Q1_set_abc_2"]
+        segs = out.segments()
+        assert len(segs) == 4
+
+    def test_maxdiff_resolved_explicit_lists(self, meta_file, csv_file):
+        """input_format=resolved with explicit column lists aligned positionally."""
+        parquet_file = csv_file.with_suffix(".parquet")
+        pd.DataFrame(
+            {
+                "best1": ["A", "B"],
+                "worst1": ["B", "A"],
+                "set1": [["A", "B"], ["A", "B"]],
+                "best2": ["B", "A"],
+                "worst2": ["A", "B"],
+                "set2": [["A", "B"], ["A", "B"]],
+            }
+        ).to_parquet(parquet_file)
+        meta = {
+            "file": str(parquet_file),
+            "structure": [
+                {
+                    "type": "maxdiff",
+                    "name": "md",
+                    "input_format": "resolved",
+                    "best_columns": ["best1", "best2"],
+                    "worst_columns": ["worst1", "worst2"],
+                    "set_columns": ["set1", "set2"],
+                    "scale": {"categories": ["A", "B"]},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        _, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        out = meta_obj.structure["md"]
+        assert out.best_columns == ["best1", "best2"]
+        assert len(out.segments()) == 4
+
+    def test_maxdiff_resolved_incomplete_alignment_hard_fails(self, meta_file, csv_file):
+        """Missing a role column for one capture key → hard fail."""
+        parquet_file = csv_file.with_suffix(".parquet")
+        pd.DataFrame(
+            {
+                "Q1_b_1": ["A"],
+                "Q1_w_1": ["B"],
+            }
+        ).to_parquet(parquet_file)
+        meta = {
+            "file": str(parquet_file),
+            "structure": [
+                {
+                    "type": "maxdiff",
+                    "name": "md",
+                    "input_format": "resolved",
+                    "best_columns": r"Q1_b_(\d+)",
+                    "worst_columns": r"Q1_w_(\d+)",
+                    "set_columns": r"Q1_set_abc_(\d+)",
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        with pytest.raises(ValueError, match="incomplete alignment"):
+            read_annotated_data(str(meta_file), return_meta=True)
+
 
 class TestInternalPipelineHelpers:
     """Tests for _match_columns and _subgroup_explode internal helpers."""

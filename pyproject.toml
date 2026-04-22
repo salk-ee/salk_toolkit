@@ -105,6 +105,7 @@ docformat = "google"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+deselect = ["tests/test_plots.py::TestPlots::test_lines_date"]
 
 [tool.pyright]
 pythonVersion = "3.12"

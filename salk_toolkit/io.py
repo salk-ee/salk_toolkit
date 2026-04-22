@@ -836,8 +836,81 @@ def _maxdiff_apply_transform(
     if block.input_format == "choice_sets":
         return _maxdiff_transform_choice_sets(block, df, choice_sets, choice_mapping, source_block=source_block)
     if block.input_format == "resolved":
-        raise NotImplementedError("MaxDiff input_format=resolved not yet implemented (Task 11)")
+        return _maxdiff_transform_resolved(block, df, choice_mapping)
     raise ValueError(f"unknown MaxDiff input_format: {block.input_format!r}")
+
+
+def _resolve_maxdiff_role(spec: object, df: pd.DataFrame) -> list[str]:
+    if spec is None:
+        raise ValueError("maxdiff role column missing")
+    if isinstance(spec, list):
+        return list(spec)
+    r = re.compile(cast(str, spec))
+    return sorted(c for c in df.columns if r.match(c))
+
+
+def _align_resolved_roles(
+    block: MaxDiffBlock, best: list[str], worst: list[str], sets: list[str]
+) -> tuple[list[str], list[str], list[str]]:
+    all_regex = all(isinstance(v, str) for v in (block.best_columns, block.worst_columns, block.set_columns))
+    if all_regex:
+        bp = re.compile(cast(str, block.best_columns))
+        wp = re.compile(cast(str, block.worst_columns))
+        sp = re.compile(cast(str, block.set_columns))
+        by_key: dict[str, list[str | None]] = {}
+        for c in best:
+            m = bp.match(c)
+            assert m is not None
+            by_key.setdefault(m.group(1), [None, None, None])[0] = c
+        for c in worst:
+            m = wp.match(c)
+            assert m is not None
+            by_key.setdefault(m.group(1), [None, None, None])[1] = c
+        for c in sets:
+            m = sp.match(c)
+            assert m is not None
+            by_key.setdefault(m.group(1), [None, None, None])[2] = c
+        missing = [(k, t) for k, t in by_key.items() if None in t]
+        if missing:
+            raise ValueError(f"MaxDiff resolved: incomplete alignment: {missing}")
+        keys = sorted(by_key, key=lambda s: int(s) if s.isdigit() else s)
+        triples = [by_key[k] for k in keys]
+        return [t[0] for t in triples], [t[1] for t in triples], [t[2] for t in triples]  # type: ignore[return-value]
+
+    if not (len(best) == len(worst) == len(sets)):
+        raise ValueError(
+            f"MaxDiff resolved lists must have equal length; got best={len(best)}, worst={len(worst)}, sets={len(sets)}"
+        )
+    return best, worst, sets
+
+
+def _maxdiff_transform_resolved(
+    block: MaxDiffBlock,
+    df: pd.DataFrame,
+    choice_mapping: object,
+) -> tuple[pd.DataFrame, MaxDiffBlock]:
+    best = _resolve_maxdiff_role(block.best_columns, df)
+    worst = _resolve_maxdiff_role(block.worst_columns, df)
+    sets = _resolve_maxdiff_role(block.set_columns, df)
+    best, worst, sets = _align_resolved_roles(block, best, worst, sets)
+    df = _apply_pre_transform_translate(block, df, best + worst + sets)
+    cols = sorted(set(best) | set(worst) | set(sets))
+    sdf = df[cols].copy()
+    scale_dict = deepcopy(block.scale.model_dump(mode="python") if block.scale else {})
+    out = soft_validate(
+        {
+            "type": "maxdiff",
+            "name": block.name,
+            "scale": scale_dict,
+            "columns": {c: {} for c in cols},
+            "best_columns": best,
+            "worst_columns": worst,
+            "set_columns": sets,
+            "input_format": "resolved",
+        },
+        MaxDiffBlock,
+    )
+    return sdf, out
 
 
 def _maxdiff_transform_choice_sets(
