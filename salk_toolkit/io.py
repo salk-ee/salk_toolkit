@@ -564,6 +564,39 @@ def _create_topk_metas_and_dfs(
     return dfs, metas
 
 
+def _topk_transform_skip(
+    block: TopKBlock,
+    df: pd.DataFrame,
+    *,
+    source_block: TopKBlock,
+) -> tuple[pd.DataFrame, TopKBlock]:
+    if not (isinstance(block.from_columns, list) and isinstance(source_block.res_columns, list)):
+        raise ValueError(
+            f"TopK block {block.name!r}: input_format={block.input_format!r} requires "
+            f"from_columns and res_columns as explicit lists"
+        )
+    if list(block.from_columns) != list(source_block.res_columns):
+        raise ValueError(
+            f"TopK block {block.name!r}: input_format={block.input_format!r} requires "
+            f"res_columns to match from_columns; got res_columns={source_block.res_columns!r} "
+            f"vs from_columns={list(block.from_columns)!r}"
+        )
+    missing = [c for c in block.from_columns if c not in df.columns]
+    if missing:
+        raise ValueError(f"TopK block {block.name!r}: columns missing from dataframe: {missing}")
+    sdf = df[list(block.from_columns)].copy()
+    scale_dict = deepcopy(block.scale.model_dump(mode="python") if block.scale else {})
+    meta_out = _build_topk_output_block(
+        name=block.name,
+        scale_dict=scale_dict,
+        columns=list(block.from_columns),
+        from_cols=list(block.from_columns),
+        res_cols=list(block.from_columns),
+        block=block,
+    )
+    return sdf, meta_out
+
+
 def _topk_apply_transform(
     block: TopKBlock,
     df: pd.DataFrame,
@@ -575,7 +608,7 @@ def _topk_apply_transform(
     if fmt == "onehot":
         return _topk_transform_onehot(block, df, source_pattern=source_pattern, source_block=source_block)
     if fmt in ("leftpacked", "ranked_leftpack"):
-        raise NotImplementedError(f"TopK input_format={fmt!r} not yet implemented (Task 7)")
+        return _topk_transform_skip(block, df, source_block=source_block)
     if fmt == "ranked_onehot":
         raise NotImplementedError("ranked_onehot transform not yet implemented — no production user")
     raise ValueError(f"unknown TopK input_format: {fmt!r}")

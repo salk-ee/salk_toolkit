@@ -3712,6 +3712,117 @@ class TestPipelineSchema:
         assert b.na_vals == ["99"]
         assert not hasattr(b, "segments")
 
+    def test_topk_leftpacked_skip_passthrough(self, tmp_path):
+        """input_format=leftpacked skips the transform and passes R1..Rk through."""
+        import pandas as pd
+        import json
+        from salk_toolkit.io import read_annotated_data
+
+        csv = tmp_path / "d.csv"
+        pd.DataFrame({"X_R1": ["A", "B"], "X_R2": ["B", None]}).to_csv(csv, index=False)
+        meta = {
+            "file": str(csv),
+            "structure": [
+                {
+                    "type": "topk",
+                    "name": "x",
+                    "from_columns": ["X_R1", "X_R2"],
+                    "res_columns": ["X_R1", "X_R2"],
+                    "input_format": "leftpacked",
+                    "scale": {"categories": "infer"},
+                }
+            ],
+        }
+        meta_path = tmp_path / "meta.json"
+        meta_path.write_text(json.dumps(meta))
+        _, meta_obj = read_annotated_data(str(meta_path), return_meta=True)
+        out = meta_obj.structure["x"]
+        assert list(out.columns.keys()) == ["X_R1", "X_R2"]
+        assert out.input_format == "leftpacked"
+        assert out.segments() == [(["X_R1", "X_R2"], None, False)]
+
+    def test_topk_ranked_leftpack_segments_chain(self, tmp_path):
+        """input_format=ranked_leftpack skips transform and segments() returns ordered chain."""
+        import pandas as pd
+        import json
+        from salk_toolkit.io import read_annotated_data
+
+        csv = tmp_path / "d.csv"
+        pd.DataFrame({"X_R1": ["A", "B"], "X_R2": ["B", None]}).to_csv(csv, index=False)
+        meta = {
+            "file": str(csv),
+            "structure": [
+                {
+                    "type": "topk",
+                    "name": "x",
+                    "from_columns": ["X_R1", "X_R2"],
+                    "res_columns": ["X_R1", "X_R2"],
+                    "input_format": "ranked_leftpack",
+                    "scale": {"categories": "infer"},
+                }
+            ],
+        }
+        meta_path = tmp_path / "meta.json"
+        meta_path.write_text(json.dumps(meta))
+        _, meta_obj = read_annotated_data(str(meta_path), return_meta=True)
+        assert meta_obj.structure["x"].segments() == [
+            (["X_R1"], ["X_R2"], True),
+            (["X_R1", "X_R2"], None, False),
+        ]
+
+    def test_topk_leftpacked_mismatch_raises(self, tmp_path):
+        """res_columns != from_columns hard-fails on skip transforms."""
+        import pandas as pd
+        import json
+        import pytest
+        from salk_toolkit.io import read_annotated_data
+
+        csv = tmp_path / "d.csv"
+        pd.DataFrame({"X_R1": ["A"]}).to_csv(csv, index=False)
+        meta = {
+            "file": str(csv),
+            "structure": [
+                {
+                    "type": "topk",
+                    "name": "x",
+                    "from_columns": ["X_R1"],
+                    "res_columns": ["X_R1", "X_R2"],
+                    "input_format": "leftpacked",
+                }
+            ],
+        }
+        meta_path = tmp_path / "meta.json"
+        meta_path.write_text(json.dumps(meta))
+        with pytest.raises(ValueError, match="res_columns to match from_columns"):
+            read_annotated_data(str(meta_path), return_meta=True)
+
+    def test_topk_ranked_onehot_raises(self, tmp_path):
+        """ranked_onehot is a scaffold — hard-fails with NotImplementedError."""
+        import pandas as pd
+        import json
+        import pytest
+        from salk_toolkit.io import read_annotated_data
+
+        csv = tmp_path / "d.csv"
+        pd.DataFrame({"Qa": [1, 2], "Qb": [2, 1]}).to_csv(csv, index=False)
+        meta = {
+            "file": str(csv),
+            "structure": [
+                {
+                    "type": "topk",
+                    "name": "x",
+                    "from_columns": r"Q(\w)",
+                    "res_columns": r"R\1",
+                    "agg_index": 1,
+                    "input_format": "ranked_onehot",
+                }
+            ],
+        }
+        meta_path = tmp_path / "meta.json"
+        meta_path.write_text(json.dumps(meta))
+        with pytest.raises(NotImplementedError, match="ranked_onehot"):
+            read_annotated_data(str(meta_path), return_meta=True)
+
 
 class TestInternalPipelineHelpers:
     """Tests for _match_columns and _subgroup_explode internal helpers."""
