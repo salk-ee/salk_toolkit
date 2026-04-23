@@ -63,7 +63,11 @@ from typing import (
     get_origin,
     get_type_hints,
     TypeAlias,
+    TYPE_CHECKING,
 )
+
+if TYPE_CHECKING:
+    import pandas as pd
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -279,6 +283,12 @@ class ColumnBlockMeta(PBase):
         object.__setattr__(self, "columns", merged_columns)
         return self
 
+    def resolve_role_columns(self, df: "pd.DataFrame", sibling_label: str) -> Dict[str, Any]:
+        """Return a dict of field-name -> concrete-list updates that narrow any
+        regex-valued column-role fields to this sibling's columns. Default: no roles
+        beyond `from_columns` (already handled by `_narrow_sibling`)."""
+        return {}
+
     @model_serializer(mode="wrap")
     def _serialize_model(
         self, handler: Callable[[BaseModel], dict[str, Any]], info: SerializationInfo
@@ -356,6 +366,30 @@ class MaxDiffBlock(ColumnBlockMeta):
         return [([best[k]], [sets[k]], True) for k in range(len(best))] + [
             ([sets[k]], [worst[k]], True) for k in range(len(best))
         ]
+
+    def resolve_role_columns(self, df: "pd.DataFrame", sibling_label: str) -> Dict[str, Any]:
+        """Resolve `best_columns` / `worst_columns` / `set_columns` to this sibling's
+        concrete df-columns. `set_columns` may be a substitution template
+        (`re.Pattern.expand`-style) applied to matched `best_columns`."""
+        import re as _re
+
+        updates: Dict[str, Any] = {}
+
+        def _label_match(col: str, patt: "_re.Pattern[str]") -> bool:
+            m = patt.match(col)
+            return m is not None and (not sibling_label or m.group(1) == sibling_label)
+
+        if isinstance(self.best_columns, str):
+            best_re = _re.compile(self.best_columns)
+            sib_best = [c for c in df.columns if _label_match(c, best_re)]
+            updates["best_columns"] = sib_best
+            if isinstance(self.worst_columns, str):
+                worst_re = _re.compile(self.worst_columns)
+                updates["worst_columns"] = [c for c in df.columns if _label_match(c, worst_re)]
+            if isinstance(self.set_columns, str):
+                # set_columns may be a substitution template against best_re.
+                updates["set_columns"] = [best_re.sub(self.set_columns, c) for c in sib_best]
+        return updates
 
 
 class OneHotBlock(ColumnBlockMeta):

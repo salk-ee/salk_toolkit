@@ -527,7 +527,8 @@ def _subgroup_explode(block: ColumnBlockMeta, df: pd.DataFrame) -> list[ColumnBl
     matched_cols = _match_columns(block, df)
     pattern = block.from_columns
     if not isinstance(pattern, str):
-        return [_narrow_sibling(block, matched_cols, label_suffix="")]
+        siblings = [_narrow_sibling(block, matched_cols, label_suffix="")]
+        return [_apply_role_resolution(s, block, df) for s in siblings]
 
     regex = re.compile(pattern)
     first = regex.match(matched_cols[0])
@@ -546,7 +547,8 @@ def _subgroup_explode(block: ColumnBlockMeta, df: pd.DataFrame) -> list[ColumnBl
     non_agg_positions = [i for i in range(n_groups) if i != agg_pos]
 
     if not non_agg_positions:
-        return [_narrow_sibling(block, matched_cols, label_suffix="")]
+        siblings = [_narrow_sibling(block, matched_cols, label_suffix="")]
+        return [_apply_role_resolution(s, block, df) for s in siblings]
 
     def _key(col: str) -> tuple[str, ...]:
         m = regex.match(col)
@@ -566,7 +568,17 @@ def _subgroup_explode(block: ColumnBlockMeta, df: pd.DataFrame) -> list[ColumnBl
             parts.append(str(labels.get(str(pos + 1), {}).get(val, val)))
         return "_".join(parts)
 
-    return [_narrow_sibling(block, cols, label_suffix=_label(key)) for key, cols in sibling_cols.items()]
+    return [
+        _apply_role_resolution(_narrow_sibling(block, cols, label_suffix=_label(key)), block, df)
+        for key, cols in sibling_cols.items()
+    ]
+
+
+def _apply_role_resolution(sib: ColumnBlockMeta, source: ColumnBlockMeta, df: pd.DataFrame) -> ColumnBlockMeta:
+    """Apply per-type role-column resolution. Label is derived from sibling vs source name."""
+    sib_label = sib.name.removeprefix(source.name).lstrip("_")
+    updates = sib.resolve_role_columns(df, sib_label)
+    return sib.model_copy(update=updates) if updates else sib
 
 
 def _create_topk_metas_and_dfs(

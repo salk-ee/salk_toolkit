@@ -590,6 +590,41 @@ class TestReadAnnotatedData:
             expected_topics=topics.tolist(),
         )
 
+    def test_maxdiff_explode_resolves_role_columns_per_sibling(self, meta_file, csv_file):
+        """After subgroup_explode the source regex in best/worst/set_columns is replaced
+        by per-sibling concrete lists; the transform never sees regex."""
+        from salk_toolkit.io import _subgroup_explode
+        from salk_toolkit.validation import MaxDiffBlock
+
+        df = pd.DataFrame(
+            {
+                "Q_A_1best": ["x"],
+                "Q_A_1worst": ["x"],
+                "Q_A_1set": [["x"]],
+                "Q_A_2best": ["x"],
+                "Q_A_2worst": ["x"],
+                "Q_A_2set": [["x"]],
+                "Q_B_1best": ["x"],
+                "Q_B_1worst": ["x"],
+                "Q_B_1set": [["x"]],
+            }
+        )
+        block = MaxDiffBlock(
+            name="md",
+            from_columns=r"Q_([AB])_\d+best",  # used by explode to enumerate siblings
+            best_columns=r"Q_([AB])_(\d+)best",
+            worst_columns=r"Q_([AB])_(\d+)worst",
+            set_columns=r"Q_\1_\2set",
+            choice_mapping={"1": "Alpha"},
+        )
+        siblings = _subgroup_explode(block, df)
+        by_label = {s.name.removeprefix("md_"): s for s in siblings}
+        assert set(by_label) == {"A", "B"}
+        sib_a = by_label["A"]
+        assert isinstance(sib_a.best_columns, list) and sib_a.best_columns == ["Q_A_1best", "Q_A_2best"]
+        assert isinstance(sib_a.worst_columns, list) and sib_a.worst_columns == ["Q_A_1worst", "Q_A_2worst"]
+        assert isinstance(sib_a.set_columns, list) and sib_a.set_columns == ["Q_A_1set", "Q_A_2set"]
+
     def test_maxdiff_create_block_explicit_sets(self, meta_file, csv_file):
         """Ensure explicit set definitions are parsed for every serialization mode."""
         topics = list("ABCDEFGHIJKLMNOP")
