@@ -888,6 +888,17 @@ def _maxdiff_transform_choice_sets(
     source_block: MaxDiffBlock,
 ) -> tuple[pd.DataFrame, MaxDiffBlock]:
     df = df.copy(deep=True)
+    if not (
+        isinstance(block.best_columns, list)
+        and isinstance(block.worst_columns, list)
+        and isinstance(block.set_columns, list)
+    ):
+        raise TypeError(
+            f"_maxdiff_transform_choice_sets expects resolved role columns; got "
+            f"best={type(block.best_columns).__name__}, "
+            f"worst={type(block.worst_columns).__name__}, "
+            f"set={type(block.set_columns).__name__}"
+        )
     cm = choice_mapping
     if cm is None:
         raise ValueError("MaxDiffBlock requires 'choice_mapping' to be defined.")
@@ -909,46 +920,11 @@ def _maxdiff_transform_choice_sets(
         setindex_col_name = str(_setindex_parts[0]) if _setindex_parts else None
         if _setindex_parts and len(_setindex_parts) > 1 and isinstance(_setindex_parts[1], dict):
             setindex_col_meta = soft_validate(_setindex_parts[1], ColumnMeta)
-    best_is_str = isinstance(best_cols, str)
-    set_is_str = isinstance(set_cols, str)
     if set_cols is None:
         raise ValueError("Maxdiff create blocks must define 'set_columns'.")
-    if best_is_str != set_is_str:
-        raise ValueError(
-            "Create args best_cols and set_cols must be of the same type: "
-            f"{type(best_cols)} != {type(set_cols)}. "
-            f"Got {best_cols} and {set_cols}."
-        )
-    if best_is_str:
-        best_cols_str = cast(str, best_cols)
-        worst_cols_str = cast(str, worst_cols)
-        best_template = re.compile(best_cols_str)
-        worst_template = re.compile(worst_cols_str)
-        best_cols = list(filter(lambda col: best_template.match(col), df.columns))
-        worst_cols = list(filter(lambda col: worst_template.match(col), df.columns))
-        set_cols_pattern = cast(str, set_cols)
-
-        def _expand_set_col(col: str) -> str:
-            match = best_template.match(col)
-            if match is None:
-                raise ValueError(f"Column {col} does not match best_cols pattern {best_cols_str}")
-            return match.expand(set_cols_pattern)
-
-        def _get_group_index(s: str) -> int | str:
-            match = best_template.match(s)
-            if match is None:
-                return 0
-            raw = match.group(1)
-            try:
-                return int(raw)
-            except (ValueError, IndexError):
-                return raw
-
-        set_cols = list(map(_expand_set_col, sorted(best_cols, key=_get_group_index)))
-    else:
-        best_cols = list(best_cols)
-        worst_cols = list(worst_cols)
-        set_cols = list(set_cols)
+    best_cols = list(best_cols)
+    worst_cols = list(worst_cols)
+    set_cols = list(set_cols)
 
     _t = block.scale.translate_after if block.scale else None
     translate = dict(_t) if _t else {}
