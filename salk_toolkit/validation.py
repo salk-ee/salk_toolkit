@@ -369,25 +369,89 @@ class MaxDiffBlock(ColumnBlockMeta):
 
     def resolve_role_columns(self, df: "pd.DataFrame", sibling_label: str) -> Dict[str, Any]:
         """Resolve `best_columns` / `worst_columns` / `set_columns` to this sibling's
-        concrete df-columns. `set_columns` may be a substitution template
-        (`re.Pattern.expand`-style) applied to matched `best_columns`."""
+        concrete df-columns. Shape depends on `input_format`:
+
+        - ``choice_sets`` (default): `best`/`worst` are label-keyed regexes; `set_columns`
+          is a substitution template applied to matched best cols. Matched best/worst
+          columns are sorted by the last capture group (as int if parseable) to match
+          the transform's question-index ordering.
+
+        - ``resolved``: each role is an independent regex matched against all df columns.
+          No sibling narrowing, no substitution - alignment is handled downstream by
+          ``_align_resolved_roles``.
+        """
         import re as _re
 
         updates: Dict[str, Any] = {}
 
-        def _label_match(col: str, patt: "_re.Pattern[str]") -> bool:
-            m = patt.match(col)
-            return m is not None and (not sibling_label or m.group(1) == sibling_label)
+        def _match_all(patt: "_re.Pattern[str]") -> list[str]:
+            return [c for c in df.columns if patt.match(c)]
 
+        def _match_labeled(patt: "_re.Pattern[str]") -> list[str]:
+            return [
+                c
+                for c in df.columns
+                if (m := patt.match(c)) is not None and (not sibling_label or m.group(1) == sibling_label)
+            ]
+
+        def _sort_by_last_group(cols: list[str], patt: "_re.Pattern[str]") -> list[str]:
+            def _key(col: str) -> tuple[int, Any]:
+                m = patt.match(col)
+                if m is None or not m.groups():
+                    return (1, col)
+                last = m.groups()[-1]
+                try:
+                    return (0, int(last))
+                except (TypeError, ValueError):
+                    return (0, last)
+
+            return sorted(cols, key=_key)
+
+        if self.input_format == "resolved":
+            all_regex = (
+                isinstance(self.best_columns, str)
+                and isinstance(self.worst_columns, str)
+                and isinstance(self.set_columns, str)
+            )
+            if all_regex:
+                bp = _re.compile(cast(str, self.best_columns))
+                wp = _re.compile(cast(str, self.worst_columns))
+                sp = _re.compile(cast(str, self.set_columns))
+                by_key: Dict[str, List[Optional[str]]] = {}
+                for c in df.columns:
+                    if (m := bp.match(c)) is not None:
+                        by_key.setdefault(m.group(1), [None, None, None])[0] = c
+                    if (m := wp.match(c)) is not None:
+                        by_key.setdefault(m.group(1), [None, None, None])[1] = c
+                    if (m := sp.match(c)) is not None:
+                        by_key.setdefault(m.group(1), [None, None, None])[2] = c
+                missing = [(k, t) for k, t in by_key.items() if None in t]
+                if missing:
+                    raise ValueError(f"MaxDiff resolved: incomplete alignment: {missing}")
+                keys = sorted(by_key, key=lambda s: int(s) if s.isdigit() else s)
+                triples = [by_key[k] for k in keys]
+                updates["best_columns"] = [t[0] for t in triples]
+                updates["worst_columns"] = [t[1] for t in triples]
+                updates["set_columns"] = [t[2] for t in triples]
+                return updates
+            if isinstance(self.best_columns, str):
+                updates["best_columns"] = _match_all(_re.compile(self.best_columns))
+            if isinstance(self.worst_columns, str):
+                updates["worst_columns"] = _match_all(_re.compile(self.worst_columns))
+            if isinstance(self.set_columns, str):
+                updates["set_columns"] = _match_all(_re.compile(self.set_columns))
+            return updates
+
+        # input_format == "choice_sets"
         if isinstance(self.best_columns, str):
             best_re = _re.compile(self.best_columns)
-            sib_best = [c for c in df.columns if _label_match(c, best_re)]
+            sib_best = _sort_by_last_group(_match_labeled(best_re), best_re)
             updates["best_columns"] = sib_best
             if isinstance(self.worst_columns, str):
                 worst_re = _re.compile(self.worst_columns)
-                updates["worst_columns"] = [c for c in df.columns if _label_match(c, worst_re)]
+                updates["worst_columns"] = _sort_by_last_group(_match_labeled(worst_re), worst_re)
             if isinstance(self.set_columns, str):
-                # set_columns may be a substitution template against best_re.
+                # substitution template against best_re
                 updates["set_columns"] = [best_re.sub(self.set_columns, c) for c in sib_best]
         return updates
 

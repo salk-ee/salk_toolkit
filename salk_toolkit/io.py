@@ -777,10 +777,8 @@ def _create_maxdiff_metas_and_dfs(
     metas: list[MaxDiffBlock] = []
     siblings: list[ColumnBlockMeta]
     if block.from_columns is None:
-        # No explode, no role resolution: the transform handles regex roles
-        # itself for the single-sibling case (see _maxdiff_transform_choice_sets
-        # and _maxdiff_transform_resolved).
-        siblings = [block]
+        # No explode: still run role resolution so transforms see concrete lists.
+        siblings = [_apply_role_resolution(block, block, df)]
     else:
         siblings = _subgroup_explode(block, df)
     for sib in siblings:
