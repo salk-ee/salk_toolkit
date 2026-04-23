@@ -777,6 +777,9 @@ def _create_maxdiff_metas_and_dfs(
     metas: list[MaxDiffBlock] = []
     siblings: list[ColumnBlockMeta]
     if block.from_columns is None:
+        # No explode, no role resolution: the transform handles regex roles
+        # itself for the single-sibling case (see _maxdiff_transform_choice_sets
+        # and _maxdiff_transform_resolved).
         siblings = [block]
     else:
         siblings = _subgroup_explode(block, df)
@@ -784,40 +787,6 @@ def _create_maxdiff_metas_and_dfs(
         assert isinstance(sib, MaxDiffBlock)
         cs = _pick_subgroup_field(block.choice_sets, sib.name, block.name)
         cm = _pick_subgroup_field(block.choice_mapping, sib.name, block.name)
-        # When explode produced multiple siblings, narrow string regex fields to
-        # this sibling's columns so the transform doesn't pick up other siblings.
-        sib_label = sib.name.removeprefix(block.name).lstrip("_")
-        if sib_label and isinstance(sib.best_columns, str):
-            best_re = re.compile(sib.best_columns)
-            worst_re = re.compile(sib.worst_columns) if isinstance(sib.worst_columns, str) else None
-            set_pat = sib.set_columns
-
-            def _label_matches(col: str, pattern: re.Pattern[str], label: str = sib_label) -> bool:
-                m = pattern.match(col)
-                return m is not None and m.group(1) == label
-
-            sib_best = [c for c in df.columns if _label_matches(c, best_re)]
-            sib_worst = (
-                [c for c in df.columns if _label_matches(c, worst_re)]
-                if worst_re is not None
-                else list(sib.worst_columns)
-                if isinstance(sib.worst_columns, (list, tuple))
-                else []
-            )
-            sib_set: list[str] | str | None
-            if isinstance(set_pat, str):
-                sib_set = [best_re.sub(set_pat, c) for c in sib_best] if sib_best else []
-            elif isinstance(set_pat, (list, tuple)):
-                sib_set = list(set_pat)
-            else:
-                sib_set = set_pat
-            sib = sib.model_copy(
-                update={
-                    "best_columns": sib_best,
-                    "worst_columns": sib_worst,
-                    "set_columns": sib_set,
-                }
-            )
         sdf, out = _maxdiff_apply_transform(sib, df, cs, cm, source_block=block)
         dfs.append(sdf)
         metas.append(out)
