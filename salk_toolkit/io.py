@@ -474,13 +474,84 @@ def _apply_pre_transform_translate(block: ColumnBlockMeta, df: pd.DataFrame, col
     return df
 
 
+def _apply_post_transform_translate(
+    block: ColumnBlockMeta,
+    sdf: pd.DataFrame,
+    meta: ColumnBlockMeta,
+) -> tuple[pd.DataFrame, ColumnBlockMeta]:
+    """Universal stage 5. If `scale.translate_after` is set on the *output* meta:
+    - scalar cells: element-wise `.replace` via translate_after dict per column.
+    - list-valued cells (future MaxDiff set-column support): map inside the list.
+    - Categorical columns: rebuild with translated categories in the same order.
+    - Rewrite `meta.scale.categories` to the translated values.
+    Blocks with no scale or no translate_after pass through unchanged.
+    MaxDiff blocks reject translate_after at pydantic validation (Task 3's
+    `_reject_translate_after` model validator), so this branch is a defensive
+    safety net — unreachable in practice."""
+    scale = meta.scale
+    if scale is None or not scale.translate_after:
+        return sdf, meta
+    if isinstance(block, MaxDiffBlock):
+        raise ValueError(
+            f"MaxDiffBlock {block.name!r}: scale.translate_after is not supported on maxdiff; "
+            f"use scale.translate (pre-transform) instead."
+        )
+    t = dict(scale.translate_after)
+
+    def _map_scalar(v: object) -> object:
+        if isinstance(v, str):
+            return t.get(v, v)
+        return v
+
+    def _map_list(lst: object, _t: dict[str, str] = t) -> object:
+        if lst is None:
+            return None
+        if isinstance(lst, float) and pd.isna(lst):
+            return None
+        return [_t.get(x, x) if isinstance(x, str) else x for x in cast(Iterable[object], lst)]
+
+    for col in sdf.columns:
+        s = sdf[col]
+        if _is_series_of_lists(s):
+            sdf[col] = s.map(_map_list)
+        elif isinstance(s.dtype, pd.CategoricalDtype):
+            new_cats = [t.get(c, c) if isinstance(c, str) else c for c in s.cat.categories]
+            sdf[col] = s.cat.rename_categories(new_cats)
+        else:
+            sdf[col] = s.map(_map_scalar)
+
+    scale_dict = scale.model_dump(mode="python")
+    if not scale_dict.get("categories") or scale_dict.get("categories") == "infer":
+        new_categories = list(dict.fromkeys(t.values()))
+    else:
+        new_categories = [t.get(c, c) if isinstance(c, str) else c for c in scale_dict["categories"]]
+    scale_dict["categories"] = new_categories
+    new_scale = type(scale).model_validate(scale_dict)
+    # Propagate the post-translate categories onto each column too, mirroring what
+    # `merge_scale_with_columns` does at block-validation time. Columns whose
+    # categories were inherited from the pre-translate scale (`"infer"` or the
+    # pre-translate list) get re-synced to the new categories.
+    updated_columns: dict[str, ColumnMeta] = {}
+    pre_cats = scale.categories
+    for cn, col_meta in meta.columns.items():
+        col_update: dict[str, object] = {}
+        if col_meta.categories == "infer" or col_meta.categories == pre_cats:
+            col_update["categories"] = new_categories
+        if col_meta.translate_after == scale.translate_after:
+            col_update["translate_after"] = new_scale.translate_after
+        updated_columns[cn] = col_meta.model_copy(update=col_update) if col_update else col_meta
+    meta_out = meta.model_copy(update={"scale": new_scale, "columns": updated_columns})
+    return sdf, meta_out
+
+
 def _process_block(
     block: ColumnBlockMeta, df: pd.DataFrame, **kwargs: object
 ) -> Iterator[tuple[pd.DataFrame, ColumnBlockMeta]]:
     """Universal driver. Stage 1+2 (match + explode) happens in
     `_subgroup_explode`; stage 3 (pre-translate) happens here; stage 4 (transform)
-    is dispatched by block type. Stage 5 (post-translate) lands in Task 6.
-    Build-output still lives inside each transform for now."""
+    is dispatched by block type; stage 5 (post-translate) lands in
+    `_apply_post_transform_translate`. Build-output still lives inside each
+    transform for now."""
     siblings: list[ColumnBlockMeta]
     if isinstance(block, MaxDiffBlock) and getattr(block, "from_columns", None) is None:
         # MaxDiff without from_columns: single sibling produced via role resolution
@@ -497,6 +568,7 @@ def _process_block(
         cols = sib.input_df_columns(df)
         df_t = _apply_pre_transform_translate(sib, df, cols)
         sdf, meta = _apply_transform(sib, df_t, source_block=block, **kwargs)
+        sdf, meta = _apply_post_transform_translate(sib, sdf, meta)
         yield sdf, meta
 
 
@@ -754,14 +826,6 @@ def _topk_transform_onehot(
         sdf = sdf.iloc[:, :kmax]
 
     scale_dict = deepcopy(block.scale.model_dump(mode="python") if block.scale else {})
-
-    translate_values = block.scale.translate_after if block.scale else None
-    if translate_values:
-        sdf = sdf.replace(translate_values)
-        effective_cats = list(dict.fromkeys(translate_values.values()))
-        for col in sdf.columns:
-            sdf[col] = pd.Categorical(sdf[col], categories=effective_cats)
-        scale_dict["categories"] = effective_cats
 
     meta_out = _build_topk_output_block(
         name=block.name,
