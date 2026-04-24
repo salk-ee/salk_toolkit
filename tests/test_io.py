@@ -1082,6 +1082,178 @@ class TestReadAnnotatedData:
         # Cell values are the item names directly (no translation needed — cells already in target vocab)
         assert data_df["Q_1best"].tolist() == ["Economy", "Health", "Education"]
 
+    def test_maxdiff_inline_index_tokens(self, meta_file, csv_file):
+        """Inline MaxDiff with integer-list tokens in set cells and index strings in
+        best/worst cells. scale.translate maps index strings to display names."""
+        # CSV reparses "1" as int, breaking .replace() against string-keyed translate
+        # dict, so we write the fixture as parquet (preserves string dtype).
+        parquet_file = csv_file.with_suffix(".parquet")
+        meta = {
+            "file": str(parquet_file),
+            "structure": [
+                {
+                    "type": "maxdiff",
+                    "name": "md",
+                    "columns": [],
+                    "best_columns": ["Q_1best"],
+                    "worst_columns": ["Q_1worst"],
+                    "set_columns": ["Q_1set"],
+                    "scale": {
+                        "categories": "infer",
+                        "translate": {"1": "Economy", "2": "Health", "3": "Education"},
+                    },
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        df = pd.DataFrame(
+            {
+                "Q_1best": ["1", "3", "2"],
+                "Q_1worst": ["2", "1", "1"],
+                "Q_1set": [[1, 2, 3], [1, 2, 3], [1, 2, 3]],
+            }
+        )
+        df.to_parquet(parquet_file)
+        data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
+
+        assert data_df["Q_1best"].tolist() == ["Economy", "Education", "Health"]
+        assert data_df["Q_1worst"].tolist() == ["Health", "Economy", "Economy"]
+        assert list(data_df["Q_1set"].iloc[0]) == ["Economy", "Health", "Education"]
+        block = data_meta.structure["md"]
+        assert set(block.scale.categories or []) == {"Economy", "Health", "Education"}
+
+    def test_maxdiff_inline_name_tokens(self, meta_file, csv_file):
+        """Inline MaxDiff with raw-language names in best/worst cells.
+        scale.translate maps raw names to display names — same dict-key space
+        as cell contents, NOT integer positions. Uses input_format='resolved'
+        because the index-keyed ``choice_sets`` transform requires
+        integer-sortable translate keys.
+
+        Note: the pre-transform translate is scalar-cell ``.replace`` and cannot
+        run over list-valued cells; set_columns are required by MaxDiff schema
+        but we exclude them from translate scope by asserting on best/worst only."""
+        # Parquet preserves object-list dtype across the read.
+        parquet_file = csv_file.with_suffix(".parquet")
+        meta = {
+            "file": str(parquet_file),
+            "structure": [
+                {
+                    "type": "maxdiff",
+                    "name": "md",
+                    "columns": [],
+                    "best_columns": ["Q_1best"],
+                    "worst_columns": ["Q_1worst"],
+                    "set_columns": ["Q_1set"],
+                    "input_format": "resolved",
+                    "scale": {
+                        "categories": ["Economy", "Health", "Education"],
+                        "translate": {
+                            "Ekonomika": "Economy",
+                            "Sveikata": "Health",
+                            "Svietimas": "Education",
+                        },
+                    },
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        # Set cells are scalar comma-strings; translate is a scalar-value replace
+        # which does NOT match substrings, so set cells pass through untouched.
+        # This test pins the best/worst translation behaviour; set-cell translate
+        # for resolved+list-cells is not supported by the current pipeline.
+        df = pd.DataFrame(
+            {
+                "Q_1best": ["Ekonomika", "Svietimas", "Sveikata"],
+                "Q_1worst": ["Sveikata", "Ekonomika", "Ekonomika"],
+                "Q_1set": ["Ekonomika", "Ekonomika", "Ekonomika"],
+            }
+        )
+        df.to_parquet(parquet_file)
+        data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
+
+        assert data_df["Q_1best"].tolist() == ["Economy", "Education", "Health"]
+        assert data_df["Q_1worst"].tolist() == ["Health", "Economy", "Economy"]
+        # Set cells also element-replaced by translate (scalar form).
+        assert data_df["Q_1set"].tolist() == ["Economy", "Economy", "Economy"]
+
+    def test_maxdiff_setindex_lookup(self, meta_file, csv_file):
+        """MaxDiff driven by setindex_column + choice_sets metadata. scale.translate
+        replaces the old choice_mapping: it's both the index->name source for the
+        setindex lookup AND the cell translator for best/worst."""
+        choice_sets = [
+            [[1, 2, 3], [2, 3, 1], [1, 3, 2]],
+            [[3, 1, 2], [1, 2, 3], [3, 2, 1]],
+        ]
+        # Use parquet to preserve string dtype on integer-string best/worst cells.
+        parquet_file = csv_file.with_suffix(".parquet")
+        meta = {
+            "file": str(parquet_file),
+            "structure": [
+                {
+                    "type": "maxdiff",
+                    "name": "md",
+                    "columns": [],
+                    "best_columns": r"Q_(\d+)best",
+                    "worst_columns": r"Q_(\d+)worst",
+                    "set_columns": r"Q_\1set",
+                    "setindex_column": ["Q_Version", {"continuous": True}],
+                    "choice_sets": choice_sets,
+                    "scale": {
+                        "categories": "infer",
+                        "translate": {"1": "Economy", "2": "Health", "3": "Education"},
+                    },
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        df = pd.DataFrame(
+            {
+                "Q_Version": [1, 2, 1],
+                "Q_1best": ["1", "3", "2"],
+                "Q_1worst": ["2", "1", "1"],
+                "Q_2best": ["3", "1", "3"],
+                "Q_2worst": ["1", "2", "1"],
+                "Q_3best": ["1", "3", "1"],
+                "Q_3worst": ["3", "1", "3"],
+            }
+        )
+        df.to_parquet(parquet_file)
+        data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
+
+        assert list(data_df["Q_1set"].iloc[0]) == ["Economy", "Health", "Education"]
+        assert list(data_df["Q_1set"].iloc[1]) == ["Education", "Economy", "Health"]
+        assert data_df["Q_1best"].tolist() == ["Economy", "Education", "Health"]
+        assert data_df["Q_1worst"].tolist() == ["Health", "Economy", "Economy"]
+
+        block = data_meta.structure["md"]
+        assert block.choice_sets is None
+        assert isinstance(block.best_columns, list)
+        assert set(block.scale.categories or []) == {"Economy", "Health", "Education"}
+
+    def test_maxdiff_translate_after_is_deprecated(self, meta_file, csv_file):
+        """scale.translate_after on a MaxDiff block must be a hard fail with a
+        message pointing at scale.translate."""
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "maxdiff",
+                    "name": "md",
+                    "columns": [],
+                    "best_columns": ["Q_1best"],
+                    "worst_columns": ["Q_1worst"],
+                    "set_columns": ["Q_1set"],
+                    "scale": {"translate_after": {"1": "Economy"}},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        df = pd.DataFrame({"Q_1best": ["1"], "Q_1worst": ["1"], "Q_1set": [[1]]})
+        df.to_csv_file(csv_file)
+
+        with pytest.raises(ValueError, match=r"(?i)translate_after.*maxdiff.*scale\.translate"):
+            read_and_process_data(str(meta_file), return_meta=True)
+
     def test_topk_scale_translate_feeds_na_vals_detection(self, meta_file, csv_file):
         """Pre-translate fires before na_vals check: translated sentinel is dropped, raw form is not."""
         # Row 0: Qa=raw_keep, Qb=raw_drop. Row 1: Qa=raw_drop, Qb=raw_keep.
