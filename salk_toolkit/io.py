@@ -467,10 +467,30 @@ def _check_topk_na_vals_after_replace(sdf: pd.DataFrame, *, block_name: str) -> 
 def _apply_pre_transform_translate(block: ColumnBlockMeta, df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
     if block.scale is None or not block.scale.translate:
         return df
+    # TODO: consider str-coercing cells before .replace() — CSV round-trips turn
+    # integer-string index cells into int64, so .replace({"1": "Economy"}) silently
+    # no-ops. See follow-up from 2026-04-23 block-processing refactor.
+    translate = cast("dict[object, object]", dict(block.scale.translate))
     df = df.copy()
+    is_maxdiff = isinstance(block, MaxDiffBlock)
+
+    def _map_list(lst: object) -> object:
+        if lst is None:
+            return None
+        if isinstance(lst, float) and pd.isna(lst):
+            return None
+        return [translate.get(x, x) for x in cast(Iterable[object], lst)]
+
     for c in cols:
-        if c in df.columns:
-            df[c] = df[c].astype("object").replace(block.scale.translate)
+        if c not in df.columns:
+            continue
+        s = df[c]
+        if is_maxdiff and _is_series_of_lists(s):
+            # MaxDiff-only: list-valued set cells get element-wise translation.
+            # Other block types never ship list-valued cells through this path.
+            df[c] = s.map(_map_list)
+        else:
+            df[c] = s.astype("object").replace(translate)
     return df
 
 
