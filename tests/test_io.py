@@ -589,6 +589,26 @@ class TestReadAnnotatedData:
             expected_topics=topics.tolist(),
         )
 
+    def test_input_df_columns_topk_onehot_maxdiff(self):
+        """Each block type reports the df-columns it reads: topk/onehot use from_columns;
+        maxdiff uses the union of best/worst/set."""
+        from salk_toolkit.validation import TopKBlock, MaxDiffBlock, OneHotBlock
+
+        df = pd.DataFrame({"a": [1], "b": [1], "c": [1], "d": [1]})
+        tk = TopKBlock(name="t", from_columns=["a", "b"], res_columns=["R1", "R2"])
+        assert tk.input_df_columns(df) == ["a", "b"]
+
+        oh = OneHotBlock(name="o", from_columns=["a", "c"])
+        assert oh.input_df_columns(df) == ["a", "c"]
+
+        md = MaxDiffBlock(
+            name="m",
+            best_columns=["a"],
+            worst_columns=["b"],
+            set_columns=["c"],
+        )
+        assert set(md.input_df_columns(df)) == {"a", "b", "c"}
+
     def test_maxdiff_explode_resolves_role_columns_per_sibling(self, meta_file, csv_file):
         """After subgroup_explode the source regex in best/worst/set_columns is replaced
         by per-sibling concrete lists; the transform never sees regex."""

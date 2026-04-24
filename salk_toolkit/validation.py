@@ -289,6 +289,19 @@ class ColumnBlockMeta(PBase):
         beyond `from_columns` (already handled by `_narrow_sibling`)."""
         return {}
 
+    def input_df_columns(self, df: "pd.DataFrame") -> List[str]:
+        """Return every df-column this block reads. Default: `from_columns`,
+        resolved via regex if necessary."""
+        import re as _re
+
+        pattern = self.from_columns
+        if pattern is None:
+            return [c for c in self.columns.keys() if c in df.columns]
+        if isinstance(pattern, list):
+            return list(pattern)
+        regex = _re.compile(pattern)
+        return [c for c in df.columns if regex.match(c)]
+
     @model_serializer(mode="wrap")
     def _serialize_model(
         self, handler: Callable[[BaseModel], dict[str, Any]], info: SerializationInfo
@@ -469,6 +482,38 @@ class MaxDiffBlock(ColumnBlockMeta):
                 # substitution template against best_re
                 updates["set_columns"] = [best_re.sub(self.set_columns, c) for c in sib_best]
         return updates
+
+    def input_df_columns(self, df: "pd.DataFrame") -> List[str]:
+        """Union of best/worst/set columns; each may be regex or list. `set_columns`
+        as a substitution template is expected to have been resolved upstream at
+        explode time — non-list/non-regex values here indicate a bug."""
+        out: list[str] = []
+
+        def _collect(spec: object) -> None:
+            if spec is None:
+                return
+            if isinstance(spec, list):
+                out.extend(spec)
+                return
+            if isinstance(spec, str):
+                import re as _re
+
+                r = _re.compile(spec)
+                out.extend(c for c in df.columns if r.match(c))
+                return
+            raise TypeError(f"MaxDiff column role must be str or list; got {type(spec)}")
+
+        _collect(self.best_columns)
+        _collect(self.worst_columns)
+        _collect(self.set_columns)
+        # Preserve order, drop duplicates.
+        seen: set[str] = set()
+        uniq: list[str] = []
+        for c in out:
+            if c not in seen:
+                seen.add(c)
+                uniq.append(c)
+        return uniq
 
 
 class OneHotBlock(ColumnBlockMeta):
