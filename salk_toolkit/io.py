@@ -474,6 +474,59 @@ def _apply_pre_transform_translate(block: ColumnBlockMeta, df: pd.DataFrame, col
     return df
 
 
+def _process_block(
+    block: ColumnBlockMeta, df: pd.DataFrame, **kwargs: object
+) -> Iterator[tuple[pd.DataFrame, ColumnBlockMeta]]:
+    """Universal driver. Stage 1+2 (match + explode) happens in
+    `_subgroup_explode`; stage 3 (pre-translate) happens here; stage 4 (transform)
+    is dispatched by block type. Stage 5 (post-translate) lands in Task 6.
+    Build-output still lives inside each transform for now."""
+    siblings: list[ColumnBlockMeta]
+    if isinstance(block, MaxDiffBlock) and getattr(block, "from_columns", None) is None:
+        # MaxDiff without from_columns: single sibling produced via role resolution
+        # only (no explode machinery because explode keys on from_columns).
+        siblings = [_apply_role_resolution(block, block, df)]
+    elif isinstance(block, OneHotBlock):
+        # OneHot fans columns into choices, not into subgroups — keep all matched
+        # columns in a single sibling.
+        siblings = [block]
+    else:
+        siblings = _subgroup_explode(block, df)
+
+    for sib in siblings:
+        cols = sib.input_df_columns(df)
+        df_t = _apply_pre_transform_translate(sib, df, cols)
+        sdf, meta = _apply_transform(sib, df_t, source_block=block, **kwargs)
+        yield sdf, meta
+
+
+def _apply_transform(
+    block: ColumnBlockMeta,
+    df: pd.DataFrame,
+    *,
+    source_block: ColumnBlockMeta,
+    **kwargs: object,
+) -> tuple[pd.DataFrame, ColumnBlockMeta]:
+    """Dispatch to the per-type transform."""
+    if isinstance(block, TopKBlock):
+        assert isinstance(source_block, TopKBlock)
+        source_pattern = source_block.from_columns if isinstance(source_block.from_columns, str) else None
+        return _topk_apply_transform(block, df, source_pattern=source_pattern, source_block=source_block)
+    if isinstance(block, MaxDiffBlock):
+        assert isinstance(source_block, MaxDiffBlock)
+        cs = _pick_subgroup_field(source_block.choice_sets, block.name, source_block.name)
+        return _maxdiff_apply_transform(block, df, cs, source_block=source_block)
+    if isinstance(block, OneHotBlock):
+        assert isinstance(source_block, OneHotBlock)
+        chs = (
+            source_block.choices
+            if isinstance(source_block.choices, list) or source_block.choices is None
+            else list(source_block.choices)
+        )
+        return _onehot_apply_transform(block, df, chs)
+    raise TypeError(f"Unsupported block type for _apply_transform: {type(block)}")
+
+
 def _pick_subgroup_field(value: object, sibling_name: str, source_name: str) -> object:
     if value is None:
         return None
@@ -581,22 +634,6 @@ def _apply_role_resolution(sib: ColumnBlockMeta, source: ColumnBlockMeta, df: pd
     return sib.model_copy(update=updates) if updates else sib
 
 
-def _create_topk_metas_and_dfs(
-    df: pd.DataFrame,
-    block: TopKBlock,
-    **_: object,
-) -> tuple[list[pd.DataFrame], list[TopKBlock]]:
-    source_pattern = block.from_columns if isinstance(block.from_columns, str) else None
-    dfs: list[pd.DataFrame] = []
-    metas: list[TopKBlock] = []
-    for sib in _subgroup_explode(block, df):
-        assert isinstance(sib, TopKBlock)
-        sdf, out = _topk_apply_transform(sib, df, source_pattern=source_pattern, source_block=block)
-        dfs.append(sdf)
-        metas.append(out)
-    return dfs, metas
-
-
 def _topk_transform_skip(
     block: TopKBlock,
     df: pd.DataFrame,
@@ -617,7 +654,6 @@ def _topk_transform_skip(
     missing = [c for c in block.from_columns if c not in df.columns]
     if missing:
         raise ValueError(f"TopK block {block.name!r}: columns missing from dataframe: {missing}")
-    df = _apply_pre_transform_translate(block, df, list(block.from_columns))
     sdf = df[list(block.from_columns)].copy()
     scale_dict = deepcopy(block.scale.model_dump(mode="python") if block.scale else {})
     meta_out = _build_topk_output_block(
@@ -657,7 +693,6 @@ def _topk_transform_onehot(
 ) -> tuple[pd.DataFrame, TopKBlock]:
     assert isinstance(block.from_columns, list)
     from_cols = list(block.from_columns)
-    df = _apply_pre_transform_translate(block, df, from_cols)
     na_vals = list(block.na_vals or [])
     kmax = block.k
 
@@ -768,28 +803,6 @@ def _build_topk_output_block(
     )
 
 
-def _create_maxdiff_metas_and_dfs(
-    df: pd.DataFrame,
-    block: MaxDiffBlock,
-    **_: object,
-) -> tuple[list[pd.DataFrame], list[MaxDiffBlock]]:
-    dfs: list[pd.DataFrame] = []
-    metas: list[MaxDiffBlock] = []
-    siblings: list[ColumnBlockMeta]
-    if block.from_columns is None:
-        # No explode: still run role resolution so transforms see concrete lists.
-        siblings = [_apply_role_resolution(block, block, df)]
-    else:
-        siblings = _subgroup_explode(block, df)
-    for sib in siblings:
-        assert isinstance(sib, MaxDiffBlock)
-        cs = _pick_subgroup_field(block.choice_sets, sib.name, block.name)
-        sdf, out = _maxdiff_apply_transform(sib, df, cs, source_block=block)
-        dfs.append(sdf)
-        metas.append(out)
-    return dfs, metas
-
-
 def _maxdiff_apply_transform(
     block: MaxDiffBlock,
     df: pd.DataFrame,
@@ -856,7 +869,6 @@ def _maxdiff_transform_resolved(
     worst = _resolve_maxdiff_role(block.worst_columns, df)
     sets = _resolve_maxdiff_role(block.set_columns, df)
     best, worst, sets = _align_resolved_roles(block, best, worst, sets)
-    df = _apply_pre_transform_translate(block, df, best + worst + sets)
     cols = sorted(set(best) | set(worst) | set(sets))
     sdf = df[cols].copy()
     scale_dict = deepcopy(block.scale.model_dump(mode="python") if block.scale else {})
@@ -981,7 +993,6 @@ def _maxdiff_transform_choice_sets(
         raise ValueError(f"Unsupported token types in maxdiff set definition: {tokens}")
 
     ordered_cols = best_cols + worst_cols
-    df = _apply_pre_transform_translate(block, df, list(ordered_cols))
 
     if setindex_col_name:
         df = df[ordered_cols + [setindex_col_name]]
@@ -1050,16 +1061,6 @@ def _maxdiff_transform_choice_sets(
     return df, output_block
 
 
-def _create_onehot_metas_and_dfs(
-    df: pd.DataFrame,
-    block: OneHotBlock,
-    **_: object,
-) -> tuple[list[pd.DataFrame], list[OneHotBlock]]:
-    chs = block.choices if isinstance(block.choices, list) or block.choices is None else list(block.choices)
-    sdf, out = _onehot_apply_transform(block, df, chs)
-    return [sdf], [out]
-
-
 def _onehot_apply_transform(
     block: OneHotBlock,
     df: pd.DataFrame,
@@ -1078,7 +1079,6 @@ def _onehot_transform_leftpacked(
     choices: list[str] | None,
 ) -> tuple[pd.DataFrame, OneHotBlock]:
     from_cols = list(block.from_columns) if isinstance(block.from_columns, list) else _match_columns(block, df)
-    df = _apply_pre_transform_translate(block, df, from_cols)
     src = df[from_cols].astype("object")
     if block.na_vals:
         src = src.replace(block.na_vals, None)
@@ -1125,7 +1125,6 @@ def _onehot_transform_wide(
     choices: list[str] | None,
 ) -> tuple[pd.DataFrame, OneHotBlock]:
     from_cols = list(block.from_columns) if isinstance(block.from_columns, list) else _match_columns(block, df)
-    df = _apply_pre_transform_translate(block, df, from_cols)
     sdf = df[from_cols].copy()
     prefix = block.res_prefix or ""
     final_choices: list[str] | None
@@ -1153,23 +1152,13 @@ def _onehot_transform_wide(
     return sdf, out
 
 
-CreateBlockModel = TopKBlock | MaxDiffBlock | OneHotBlock
-
-create_block_type_to_create_fn: dict[str, Callable] = {
-    "topk": _create_topk_metas_and_dfs,  # type: ignore[assignment]
-    "maxdiff": _create_maxdiff_metas_and_dfs,  # type: ignore[assignment]
-    "onehot": _create_onehot_metas_and_dfs,  # type: ignore[assignment]
-}
-
-
 def _create_new_columns_and_metas(
     df: pd.DataFrame, group: ColumnBlockMeta, **kwargs: dict[str, str]
 ) -> Iterator[tuple[pd.DataFrame, ColumnBlockMeta]]:
-    """Create new columns and metadata from a specialized block (TopKBlock / MaxDiffBlock / OneHotBlock)."""
+    """Create new columns and metadata from a specialized block."""
     if not isinstance(group, (TopKBlock, MaxDiffBlock, OneHotBlock)):
         raise ValueError("Group must be a TopKBlock, MaxDiffBlock, or OneHotBlock to generate new columns")
-    dfs, metas = create_block_type_to_create_fn[group.type](df, group, **kwargs)
-    return zip(dfs, metas)
+    return _process_block(df=df, block=group, **kwargs)
 
 
 def _demote_to_plain(block: ColumnBlockMeta) -> ColumnBlockMeta:

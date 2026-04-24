@@ -590,8 +590,10 @@ class TestReadAnnotatedData:
         )
 
     def test_input_df_columns_topk_onehot_maxdiff(self):
-        """Each block type reports the df-columns it reads: topk/onehot use from_columns;
-        maxdiff uses the union of best/worst/set."""
+        """Each block type reports the df-columns safe to pre-translate. Topk/onehot
+        use from_columns. MaxDiff reports best+worst+set for ``resolved`` input_format
+        (cells are scalar index strings) but best+worst only for ``choice_sets``
+        (set cells hold lists and are not pre-translated)."""
         from salk_toolkit.validation import TopKBlock, MaxDiffBlock, OneHotBlock
 
         df = pd.DataFrame({"a": [1], "b": [1], "c": [1], "d": [1]})
@@ -601,13 +603,23 @@ class TestReadAnnotatedData:
         oh = OneHotBlock(name="o", from_columns=["a", "c"])
         assert oh.input_df_columns(df) == ["a", "c"]
 
-        md = MaxDiffBlock(
+        md_resolved = MaxDiffBlock(
             name="m",
             best_columns=["a"],
             worst_columns=["b"],
             set_columns=["c"],
+            input_format="resolved",
         )
-        assert set(md.input_df_columns(df)) == {"a", "b", "c"}
+        assert set(md_resolved.input_df_columns(df)) == {"a", "b", "c"}
+
+        md_choice_sets = MaxDiffBlock(
+            name="m",
+            best_columns=["a"],
+            worst_columns=["b"],
+            set_columns=["c"],
+            input_format="choice_sets",
+        )
+        assert set(md_choice_sets.input_df_columns(df)) == {"a", "b"}
 
     def test_maxdiff_explode_resolves_role_columns_per_sibling(self, meta_file, csv_file):
         """After subgroup_explode the source regex in best/worst/set_columns is replaced

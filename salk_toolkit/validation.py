@@ -484,9 +484,10 @@ class MaxDiffBlock(ColumnBlockMeta):
         return updates
 
     def input_df_columns(self, df: "pd.DataFrame") -> List[str]:
-        """Union of best/worst/set columns; each may be regex or list. `set_columns`
-        as a substitution template is expected to have been resolved upstream at
-        explode time — non-list/non-regex values here indicate a bug."""
+        """Columns whose raw cell values are safe to pre-translate. For
+        ``input_format="resolved"`` this is best + worst + set (all scalar index
+        strings). For ``input_format="choice_sets"`` set cells hold list values
+        and must be excluded — pre-translate is applied to best + worst only."""
         out: list[str] = []
 
         def _collect(spec: object) -> None:
@@ -505,7 +506,8 @@ class MaxDiffBlock(ColumnBlockMeta):
 
         _collect(self.best_columns)
         _collect(self.worst_columns)
-        _collect(self.set_columns)
+        if self.input_format == "resolved":
+            _collect(self.set_columns)
         # Preserve order, drop duplicates.
         seen: set[str] = set()
         uniq: list[str] = []
