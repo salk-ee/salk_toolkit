@@ -537,12 +537,11 @@ class TestReadAnnotatedData:
                     "type": "maxdiff",
                     "name": "maxdiff",
                     "columns": [],
-                    "scale": {"categories": topics.tolist()},
+                    "scale": {"categories": topics.tolist(), "translate": items},
                     "best_columns": r"Q2_(\d+?)best",
                     "worst_columns": r"Q2_(\d+?)worst",
                     "set_columns": r"Q2_\1set",
                     "setindex_column": ["Q2_Version", {"continuous": True, "categories": None}],
-                    "choice_mapping": items,
                     "choice_sets": sets.tolist(),
                 }
             ],
@@ -615,7 +614,7 @@ class TestReadAnnotatedData:
             best_columns=r"Q_([AB])_(\d+)best",
             worst_columns=r"Q_([AB])_(\d+)worst",
             set_columns=r"Q_\1_\2set",
-            choice_mapping={"1": "Alpha"},
+            scale=BlockScaleMeta(translate={"1": "Alpha"}),
         )
         siblings = _subgroup_explode(block, df)
         by_label = {s.name.removeprefix("md_"): s for s in siblings}
@@ -696,11 +695,10 @@ class TestReadAnnotatedData:
                     "type": "maxdiff",
                     "name": "maxdiff",
                     "columns": [],
-                    "scale": {"categories": topics},
+                    "scale": {"categories": topics, "translate": items},
                     "best_columns": r"Q2_(\d+?)best",
                     "worst_columns": r"Q2_(\d+?)worst",
                     "set_columns": r"Q2_\1set",
-                    "choice_mapping": items,
                 }
             ],
         }
@@ -917,8 +915,7 @@ class TestReadAnnotatedData:
                     "best_columns": r"Q_(\d+)best",
                     "worst_columns": r"Q_(\d+)worst",
                     "set_columns": r"Q_\1set",
-                    "choice_mapping": items,
-                    "scale": {"categories": "infer"},
+                    "scale": {"categories": "infer", "translate": items},
                 }
             ],
         }
@@ -952,15 +949,21 @@ class TestReadAnnotatedData:
             assert segs[q + k] == ([set_columns[k]], [worst_columns[k]], True)
 
     def test_maxdiff_with_translate(self, meta_file, csv_file):
-        """MaxDiff with `choice_mapping` in original language and `scale.translate_after` to display language."""
-        items = {"1": "Ekonomika", "2": "Sveikata", "3": "Svietimas"}
-        translate = {"Ekonomika": "Economy", "Sveikata": "Health", "Svietimas": "Education"}
+        """MaxDiff with `scale.translate` mapping 1-based index strings to display-language topics.
+
+        The source stores best/worst cells as 1-based index strings ("1","2","3"); pre-transform
+        translate element-wise replaces those with display-language topic names ("Economy" etc.).
+        The same dict defines the topic universe for `setindex_column` lookups.
+        """
+        translate = {"1": "Economy", "2": "Health", "3": "Education"}
+        display_topics = ["Economy", "Health", "Education"]
         choice_sets = [
             [[1, 2, 3], [2, 3, 1], [1, 3, 2]],  # version 1
             [[3, 1, 2], [1, 2, 3], [3, 2, 1]],  # version 2
         ]
+        parquet_file = csv_file.with_suffix(".parquet")
         meta = {
-            "file": "test.csv",
+            "file": str(parquet_file),
             "structure": [
                 {
                     "type": "maxdiff",
@@ -970,25 +973,26 @@ class TestReadAnnotatedData:
                     "worst_columns": r"Q_(\d+)worst",
                     "set_columns": r"Q_\1set",
                     "setindex_column": ["Q_Version", {"continuous": True}],
-                    "choice_mapping": items,
                     "choice_sets": choice_sets,
-                    "scale": {"categories": "infer", "translate_after": translate},
+                    "scale": {"categories": "infer", "translate": translate},
                 }
             ],
         }
         write_json(meta_file, meta)
+        # Best/worst cells are 1-based index strings; pre-transform translate renames them.
+        # Parquet preserves the string dtype (CSV would reparse "1" as int).
         df = pd.DataFrame(
             {
                 "Q_Version": [1, 2, 1],
-                "Q_1best": ["Ekonomika", "Svietimas", "Sveikata"],
-                "Q_1worst": ["Sveikata", "Ekonomika", "Ekonomika"],
-                "Q_2best": ["Svietimas", "Ekonomika", "Svietimas"],
-                "Q_2worst": ["Ekonomika", "Sveikata", "Ekonomika"],
-                "Q_3best": ["Ekonomika", "Svietimas", "Ekonomika"],
-                "Q_3worst": ["Svietimas", "Ekonomika", "Svietimas"],
+                "Q_1best": ["1", "3", "2"],
+                "Q_1worst": ["2", "1", "1"],
+                "Q_2best": ["3", "1", "3"],
+                "Q_2worst": ["1", "2", "1"],
+                "Q_3best": ["1", "3", "1"],
+                "Q_3worst": ["3", "1", "3"],
             }
         )
-        df.to_csv_file(csv_file)
+        df.to_parquet(parquet_file)
         data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
 
         block = data_meta.structure["maxdiff"]
@@ -998,20 +1002,19 @@ class TestReadAnnotatedData:
 
         # Cell values translated into display language
         assert data_df["Q_1best"].tolist() == ["Economy", "Education", "Health"]
-        assert set(data_df["Q_1best"].cat.categories) == {"Economy", "Health", "Education"}
+        assert set(data_df["Q_1best"].cat.categories) == set(display_topics)
 
         # Output block is a MaxDiffBlock with resolved column lists; input-only directives cleared.
         assert block.type == "maxdiff"
-        assert block.choice_mapping is None
         assert block.choice_sets is None
         assert isinstance(block.best_columns, list)
         assert isinstance(block.worst_columns, list)
         assert isinstance(block.set_columns, list)
         # Translated vocabulary lives on the scale categories.
-        assert block.scale is not None and set(block.scale.categories or []) == set(translate.values())
+        assert block.scale is not None and set(block.scale.categories or []) == set(display_topics)
 
     def test_maxdiff_items_no_translate(self, meta_file, csv_file):
-        """MaxDiff with choice_mapping already in target language (no translate)."""
+        """MaxDiff with scale.translate already in target language (no additional translation)."""
         items = {"1": "Economy", "2": "Health", "3": "Education"}
         meta = {
             "file": "test.csv",
@@ -1023,8 +1026,7 @@ class TestReadAnnotatedData:
                     "best_columns": r"Q_(\d+)best",
                     "worst_columns": r"Q_(\d+)worst",
                     "set_columns": r"Q_\1set",
-                    "choice_mapping": items,
-                    "scale": {"categories": "infer"},
+                    "scale": {"categories": "infer", "translate": items},
                 }
             ],
         }
@@ -1045,9 +1047,7 @@ class TestReadAnnotatedData:
 
         block = data_meta.structure["maxdiff"]
         assert isinstance(block, MaxDiffBlock)
-        # Input-only directives cleared on output
-        assert block.choice_mapping is None
-        # Cell values are the item names directly (no translation happened)
+        # Cell values are the item names directly (no translation needed — cells already in target vocab)
         assert data_df["Q_1best"].tolist() == ["Economy", "Health", "Education"]
 
     def test_topk_scale_translate_feeds_na_vals_detection(self, meta_file, csv_file):
@@ -3751,11 +3751,11 @@ class TestPipelineSchema:
         assert b2.segments() == [(["R1", "R2", "R3"], None, False)]
 
     def test_maxdiff_schema_has_input_format_and_renamed_fields(self):
-        """Verify MaxDiffBlock has input_format and choice_mapping; items and translate removed."""
+        """Verify MaxDiffBlock has input_format; choice_mapping/items/translate removed."""
         from salk_toolkit.validation import MaxDiffBlock
 
         assert "input_format" in MaxDiffBlock.model_fields
-        assert "choice_mapping" in MaxDiffBlock.model_fields
+        assert "choice_mapping" not in MaxDiffBlock.model_fields
         assert "items" not in MaxDiffBlock.model_fields
         assert "translate" not in MaxDiffBlock.model_fields
 
@@ -3908,16 +3908,20 @@ class TestPipelineSchema:
             read_annotated_data(str(meta_file), return_meta=True)
 
     def test_maxdiff_multi_sibling_keyed_end_to_end(self, meta_file, csv_file):
-        """Multi-sibling maxdiff with keyed choice_sets/choice_mapping produces N sibling blocks."""
+        """Multi-sibling maxdiff with keyed choice_sets produces N sibling blocks.
+
+        `scale.translate` is flat per-block (shared topic universe across siblings); only
+        `choice_sets` supports the sibling-keyed dict form.
+        """
         parquet_file = csv_file.with_suffix(".parquet")
         pd.DataFrame(
             {
                 "Q_g1_b": ["A", "B"],
                 "Q_g1_w": ["B", "A"],
                 "Q_g1_set": [["A", "B"], ["A", "B"]],
-                "Q_g2_b": ["C", "D"],
-                "Q_g2_w": ["D", "C"],
-                "Q_g2_set": [["C", "D"], ["C", "D"]],
+                "Q_g2_b": ["A", "B"],
+                "Q_g2_w": ["B", "A"],
+                "Q_g2_set": [["A", "B"], ["A", "B"]],
                 "V": [1, 1],
             }
         ).to_parquet(parquet_file)
@@ -3937,10 +3941,7 @@ class TestPipelineSchema:
                         "g1": [[[1, 2]]],
                         "g2": [[[1, 2]]],
                     },
-                    "choice_mapping": {
-                        "g1": {"1": "A", "2": "B"},
-                        "g2": {"1": "C", "2": "D"},
-                    },
+                    "scale": {"translate": {"1": "A", "2": "B"}},
                 }
             ],
         }
@@ -3970,36 +3971,7 @@ class TestPipelineSchema:
                     "set_columns": ["Q_set"],
                     "setindex_column": "V",
                     "choice_sets": {"econ": [[[1, 2]]]},
-                    "choice_mapping": {"1": "A", "2": "B"},
-                }
-            ],
-        }
-        write_json(meta_file, meta)
-        with pytest.raises(ValueError, match="single sibling.*keyed"):
-            read_annotated_data(str(meta_file), return_meta=True)
-
-    def test_maxdiff_single_sibling_rejects_keyed_choice_mapping(self, meta_file, csv_file):
-        """Single-sibling maxdiff with dict-shaped choice_mapping → hard fail."""
-        pd.DataFrame(
-            {
-                "Q_b": ["A", "B"],
-                "Q_w": ["B", "A"],
-                "Q_set": [["A", "B"], ["A", "B"]],
-                "V": [1, 1],
-            }
-        ).to_parquet(csv_file.with_suffix(".parquet"))
-        meta = {
-            "file": str(csv_file.with_suffix(".parquet")),
-            "structure": [
-                {
-                    "type": "maxdiff",
-                    "name": "md",
-                    "best_columns": ["Q_b"],
-                    "worst_columns": ["Q_w"],
-                    "set_columns": ["Q_set"],
-                    "setindex_column": "V",
-                    "choice_sets": [[[1, 2]]],
-                    "choice_mapping": {"econ": {"1": "A", "2": "B"}},
+                    "scale": {"translate": {"1": "A", "2": "B"}},
                 }
             ],
         }

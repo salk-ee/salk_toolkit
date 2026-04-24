@@ -336,8 +336,15 @@ class MaxDiffBlock(ColumnBlockMeta):
     """Block for MaxDiff best-worst scaling experiments. The stored output
     block is an instance of this class; `best_columns` / `worst_columns` /
     `set_columns` are resolved to `List[str]` by :mod:`salk_toolkit.io`,
-    index-aligned by question. Input-only directives are cleared on output;
-    translated item vocabulary flows through `scale.translate_after`."""
+    index-aligned by question. Input-only directives are cleared on output.
+
+    Translation: `scale.translate` is a `Dict[str, str]` mapping 1-based-index
+    strings (``"1"``, ``"2"``, ...) to target-language display names. It is
+    used as the topic universe for ``setindex_column`` lookups AND as an
+    element-wise translator (via ``_apply_pre_transform_translate``) for raw
+    best/worst/set cells when those cells hold index strings. ``scale.translate_after``
+    is not supported on MaxDiff blocks and raises ``ValueError`` at read time.
+    """
 
     type: Literal["maxdiff"] = "maxdiff"  # type: ignore[assignment]
 
@@ -350,7 +357,15 @@ class MaxDiffBlock(ColumnBlockMeta):
     input_format: Literal["choice_sets", "resolved"] = "choice_sets"
 
     choice_sets: Optional[Union[List[List[List[int]]], Dict[str, List[List[List[int]]]]]] = None
-    choice_mapping: Optional[Union[Dict[str, str], Dict[str, Dict[str, str]]]] = None
+
+    @model_validator(mode="after")
+    def _reject_translate_after(self, info: ValidationInfo) -> Self:
+        if self.scale is not None and self.scale.translate_after:
+            raise ValueError(
+                f"MaxDiffBlock {self.name!r}: scale.translate_after is deprecated for "
+                f"maxdiff; use scale.translate (pre-transform) instead."
+            )
+        return self
 
     def segments(self) -> List[Tuple[List[str], List[str], bool]]:
         """Return ordinal-ranking segments for this resolved MaxDiff block."""

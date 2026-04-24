@@ -160,6 +160,13 @@ Both are the primary mechanism for all block types:
 When `translate_after` is present and `scale.categories` is unset,
 categories are derived from `translate_after.values()`.
 
+**MaxDiff exception:** `scale.translate_after` is not supported on MaxDiff
+blocks — use `scale.translate` (pre-transform) instead. Writing
+`translate_after` on a MaxDiff scale raises `ValueError` at validation time.
+On MaxDiff, `scale.translate` doubles as the 1-based-index to display-name
+map (topic universe) and as the element-wise translator for raw best/worst/set
+cells holding index strings.
+
 ### Per-block-type schema summary
 
 **`TopKBlock`:**
@@ -172,13 +179,15 @@ categories are derived from `translate_after.values()`.
 **`MaxDiffBlock`:**
 - `best_columns`, `worst_columns`, `set_columns`, `setindex_column` — as today.
 - `input_format: Literal["choice_sets", "resolved"] = "choice_sets"`.
-- `choice_mapping: Dict[str, str]` — renamed from `items`. Maps 1-based
-  item index (as string) to item value as it appears in raw data cells.
-  Required under `"choice_sets"`; optional (validation-only) under
-  `"resolved"`.
+- `scale.translate: Dict[str, str]` — 1-based-index string → display name.
+  Required under `input_format="choice_sets"`, optional under `"resolved"`.
+  Doubles as the topic universe for `setindex_column` lookups AND as an
+  element-wise translator (via `_apply_pre_transform_translate`) for raw
+  best/worst/set cells holding index strings.
 - `choice_sets: List[List[List[int]]]` for single-subgroup blocks
   (flat form, today's shape).
-- `translate` removed → use `scale.translate_after`.
+- `translate` removed → use `scale.translate`.
+- `scale.translate_after` is rejected at validation time for MaxDiff blocks.
 
 **`OneHotBlock` (new):**
 - `type: Literal["onehot"]`.
@@ -206,10 +215,7 @@ choice_sets: Optional[Union[
     List[List[List[int]]],                     # flat: single subgroup
     Dict[str, List[List[List[int]]]]           # keyed by sibling label
 ]]
-choice_mapping: Optional[Union[
-    Dict[str, str],                            # flat: single subgroup
-    Dict[str, Dict[str, str]]                  # keyed by sibling label
-]]
+# scale.translate is flat per-block (shared topic universe across siblings).
 
 # OneHotBlock
 choices: Optional[Union[

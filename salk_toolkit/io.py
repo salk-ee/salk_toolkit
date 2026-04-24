@@ -784,8 +784,7 @@ def _create_maxdiff_metas_and_dfs(
     for sib in siblings:
         assert isinstance(sib, MaxDiffBlock)
         cs = _pick_subgroup_field(block.choice_sets, sib.name, block.name)
-        cm = _pick_subgroup_field(block.choice_mapping, sib.name, block.name)
-        sdf, out = _maxdiff_apply_transform(sib, df, cs, cm, source_block=block)
+        sdf, out = _maxdiff_apply_transform(sib, df, cs, source_block=block)
         dfs.append(sdf)
         metas.append(out)
     return dfs, metas
@@ -795,14 +794,13 @@ def _maxdiff_apply_transform(
     block: MaxDiffBlock,
     df: pd.DataFrame,
     choice_sets: object,
-    choice_mapping: object,
     *,
     source_block: MaxDiffBlock,
 ) -> tuple[pd.DataFrame, MaxDiffBlock]:
     if block.input_format == "choice_sets":
-        return _maxdiff_transform_choice_sets(block, df, choice_sets, choice_mapping, source_block=source_block)
+        return _maxdiff_transform_choice_sets(block, df, choice_sets, source_block=source_block)
     if block.input_format == "resolved":
-        return _maxdiff_transform_resolved(block, df, choice_mapping)
+        return _maxdiff_transform_resolved(block, df)
     raise ValueError(f"unknown MaxDiff input_format: {block.input_format!r}")
 
 
@@ -853,7 +851,6 @@ def _align_resolved_roles(
 def _maxdiff_transform_resolved(
     block: MaxDiffBlock,
     df: pd.DataFrame,
-    choice_mapping: object,
 ) -> tuple[pd.DataFrame, MaxDiffBlock]:
     best = _resolve_maxdiff_role(block.best_columns, df)
     worst = _resolve_maxdiff_role(block.worst_columns, df)
@@ -883,7 +880,6 @@ def _maxdiff_transform_choice_sets(
     block: MaxDiffBlock,
     df: pd.DataFrame,
     choice_sets: object,
-    choice_mapping: object,
     *,
     source_block: MaxDiffBlock,
 ) -> tuple[pd.DataFrame, MaxDiffBlock]:
@@ -899,13 +895,15 @@ def _maxdiff_transform_choice_sets(
             f"worst={type(block.worst_columns).__name__}, "
             f"set={type(block.set_columns).__name__}"
         )
-    cm = choice_mapping
-    if cm is None:
-        raise ValueError("MaxDiffBlock requires 'choice_mapping' to be defined.")
-    if not (isinstance(cm, dict) and all(isinstance(v, str) for v in cm.values())):
-        raise ValueError(f"MaxDiffBlock {block.name!r}: choice_mapping must be a flat Dict[str, str]; got {type(cm)}")
-    items = cm
-    topics: list[str] | None = [items[k] for k in sorted(items, key=int)] if items else None
+    translate: dict[str, str] = (
+        {str(k): str(v) for k, v in block.scale.translate.items()} if (block.scale and block.scale.translate) else {}
+    )
+    if not translate:
+        raise ValueError(
+            f"MaxDiffBlock {block.name!r}: scale.translate is required (maps 1-based "
+            f"index strings to display names). Got empty translate."
+        )
+    topics: list[str] = [translate[k] for k in sorted(translate.keys(), key=int)]
     sets = choice_sets
     best_cols: Sequence[str] | str = block.best_columns
     worst_cols: Sequence[str] | str = block.worst_columns
@@ -925,9 +923,6 @@ def _maxdiff_transform_choice_sets(
     best_cols = list(best_cols)
     worst_cols = list(worst_cols)
     set_cols = list(set_cols)
-
-    _t = block.scale.translate_after if block.scale else None
-    translate = dict(_t) if _t else {}
 
     def _maybe_json_load(value: str | None) -> list[object] | None:
         try:
@@ -974,8 +969,6 @@ def _maxdiff_transform_choice_sets(
             stripped = [token.strip() for token in tokens]
             return [translate.get(t, t) for t in stripped] if translate else stripped  # type: ignore[return-value]
         if all(_is_int_like(token) for token in tokens):
-            if topics is None:
-                raise ValueError("Explicit maxdiff set columns with indices require 'topics' to be defined.")
             converted = []
             for token in tokens:
                 idx = int(token) if not isinstance(token, (int, np.integer)) else int(token)
@@ -989,15 +982,12 @@ def _maxdiff_transform_choice_sets(
 
     ordered_cols = best_cols + worst_cols
     df = _apply_pre_transform_translate(block, df, list(ordered_cols))
-    effective_topics: list[str] | None = None
-    if topics is not None:
-        effective_topics = [translate.get(t, t) for t in topics] if translate else list(topics)  # type: ignore[misc]
 
     if setindex_col_name:
         df = df[ordered_cols + [setindex_col_name]]
-        if topics is None or sets is None or effective_topics is None:
-            raise ValueError("Maxdiff definitions using 'setindex_column' must also define 'topics' and 'sets'.")
-        topics_arr = np.array(["", *effective_topics], dtype=object)
+        if sets is None:
+            raise ValueError("Maxdiff definitions using 'setindex_column' must also define 'sets'.")
+        topics_arr = np.array(["", *topics], dtype=object)
         sets_arr = np.asarray(sets, dtype=int)
         lsets = topics_arr[sets_arr]
 
@@ -1020,32 +1010,29 @@ def _maxdiff_transform_choice_sets(
                     converted_values.append(None)
             df[col] = converted_values  # type: ignore[assignment]
 
-    # Apply translate to best/worst scalar topic values, then cast to categorical with full translated topic list.
+    # Pre-translate already mapped index strings to topic names before the transform ran,
+    # so df[col] already contains translated values — just cast to categorical.
     for col in best_cols + worst_cols:
         s = df[col]
-        if translate:
-            s = s.map(lambda x, _t=translate: _t.get(x, x) if isinstance(x, str) else x)
-        if effective_topics is not None:
-            s = pd.Categorical(s, categories=effective_topics)
+        s = pd.Categorical(s, categories=topics)
         df[col] = s
 
     df = df.sort_index(axis=1)
 
     base_columns = sorted(best_cols + worst_cols + cast(list[str], set_cols))
-    best_worst_col_meta = ColumnMeta(categories=effective_topics) if effective_topics is not None else ColumnMeta()
+    best_worst_col_meta = ColumnMeta(categories=topics)
     columns_spec: dict[str, ColumnMeta] = {col: best_worst_col_meta for col in base_columns}
     if setindex_col_name is not None:
         if setindex_col_meta is None:
             setindex_col_meta = ColumnMeta()
-        if effective_topics is not None and setindex_col_meta.categories is None:
-            setindex_col_meta = setindex_col_meta.model_copy(update={"categories": effective_topics})
+        if setindex_col_meta.categories is None:
+            setindex_col_meta = setindex_col_meta.model_copy(update={"categories": topics})
         if setindex_col_meta.continuous is False:
             setindex_col_meta = setindex_col_meta.model_copy(update={"continuous": True})
         columns_spec = {setindex_col_name: setindex_col_meta} | columns_spec
 
     scale_dict = deepcopy(block.scale.model_dump(mode="python") if block.scale else {})
-    if effective_topics is not None:
-        scale_dict["categories"] = effective_topics
+    scale_dict["categories"] = topics
 
     output_block = soft_validate(
         {
