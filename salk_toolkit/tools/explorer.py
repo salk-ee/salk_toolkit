@@ -25,76 +25,17 @@ if profile:
     p = Profiler()
     p.start()
 
-st.set_page_config(
-    layout="wide",
-    page_title="SALK Explorer",
-    # page_icon="./s-model.png",
-    initial_sidebar_state="expanded",
-)
+try:
+    st.set_page_config(
+        layout="wide",
+        page_title="SALK Explorer",
+        # page_icon="./s-model.png",
+        initial_sidebar_state="expanded",
+    )
+except Exception:
+    pass
 
 info = st.empty()
-
-try:
-    s = st.secrets.get("sip", {})
-except FileNotFoundError:
-    has_secrets = False
-else:
-    has_secrets = True
-
-# Allow explorer to be deployed online with access restrictions similar to other dashboards
-if has_secrets and st.secrets.get("sip", {}).get("input_files"):  # st.secrets.get('auth',{}).get('use_oauth'):
-    import s3fs  # type: ignore[import-untyped]
-
-    from salk_toolkit.dashboard import FronteggAuthenticationManager, log_event
-
-    groups = ["user", "admin"]
-    org_whitelist = st.secrets["sip"]["org_whitelist"]
-
-    # Set up logging
-    s3fs = s3fs.S3FileSystem(anon=False)
-    uam = None
-    log_path = st.secrets["sip"]["log_path"]
-
-    def logger(event: str, uid: str | None = None) -> None:
-        """Log an event to S3."""
-        user_uid = uam.user.get("uid", "anonymous") if uam and uam.user else "anonymous"
-        log_event(event, uid or user_uid, log_path, s3_fs=s3fs)
-
-    uam = FronteggAuthenticationManager(
-        groups,
-        org_whitelist=org_whitelist,
-        info=info,
-        logger=logger,
-        languages={},
-        translate_func=lambda t: t,
-    )
-
-    uam.login_screen()
-    if not uam.authenticated:
-        st.stop()  # Wait for login redirect to happen
-    elif uam.user.get("organization") not in org_whitelist:  # Logged in but not authorized
-        st.header("You are not authorized to access this dashboard!")
-        st.stop()
-    # else:
-    #     with st.sidebar:
-    #         uam.logout_button('Logout','sidebar')
-
-    # Dummy SDB for admin panel
-    sdb = type(
-        "SDB-lite",
-        (),
-        {
-            "uam": uam,
-            "log_path": log_path,
-            "s3fs": s3fs,
-            "filemap": {},
-            "cc_translations": {},
-            "tf": lambda t: t,
-        },
-    )()
-
-else:
-    sdb = None
 
 with st.spinner("Loading libraries.."):
     import base64
@@ -177,42 +118,37 @@ translate = default_translate
 path = "./"
 paths = defaultdict(lambda: path)
 
-if has_secrets and st.secrets.get("sip", {}).get("input_files"):
-    global_data_meta = None
-    input_file_choices = st.secrets["sip"]["input_files"]
-    default_inputs = input_file_choices.copy()
+cl_args = sys.argv[1:] if len(sys.argv) > 1 else []
+if cl_args and cl_args[0].endswith(".json") and os.path.isfile(cl_args[0]):
+    global_data_meta = soft_validate(replace_constants(read_json(cl_args[0])), DataMeta)
+    cl_args = cl_args[1:]
 else:
-    cl_args = sys.argv[1:] if len(sys.argv) > 1 else []
-    if cl_args and cl_args[0].endswith(".json") and os.path.isfile(cl_args[0]):
-        global_data_meta = soft_validate(replace_constants(read_json(cl_args[0])), DataMeta)
-        cl_args = cl_args[1:]
-    else:
-        global_data_meta = None
+    global_data_meta = None
 
-    # Add command line inputs as default input files
-    default_inputs = []
-    for raw_arg in cl_args:
-        if raw_arg.startswith("-"):
-            continue
-        if not os.path.isfile(raw_arg):
-            continue
-        path, fname = os.path.split(raw_arg)
-        if fname == "." or fname == "..":
-            path, fname = fname, ""
-        if not fname:
-            continue
-        if fname in paths:  # Duplicate file name: include path
-            p1, p2 = os.path.split(path)
-            path, fname = p1, os.path.join(p2, fname)
-        paths[fname] = (path or ".") + "/"
-        default_inputs.append(fname)
+# Add command line inputs as default input files
+default_inputs = []
+for raw_arg in cl_args:
+    if raw_arg.startswith("-"):
+        continue
+    if not os.path.isfile(raw_arg):
+        continue
+    path, fname = os.path.split(raw_arg)
+    if fname == "." or fname == "..":
+        path, fname = fname, ""
+    if not fname:
+        continue
+    if fname in paths:  # Duplicate file name: include path
+        p1, p2 = os.path.split(path)
+        path, fname = p1, os.path.join(p2, fname)
+    paths[fname] = (path or ".") + "/"
+    default_inputs.append(fname)
 
-    if not path:
-        path = "./"
-    else:
-        path += "/"
+if not path:
+    path = "./"
+else:
+    path += "/"
 
-    input_file_choices = default_inputs + sorted([f for f in os.listdir(path) if f[-8:] == ".parquet"])
+input_file_choices = default_inputs + sorted([f for f in os.listdir(path) if f[-8:] == ".parquet"])
 
 if len(input_file_choices) > 1:
     input_files = st.sidebar.multiselect("Select files:", input_file_choices, default_inputs)
@@ -484,15 +420,6 @@ with st.sidebar:  # .expander("Select dimensions"):
     with st.expander("Plot desc"):
         st.code(pprint.pformat(args, indent=0, width=30))
 
-
-if sdb and getattr(getattr(sdb, "uam", None), "admin", False):
-    with st.sidebar:
-        apanel = st.checkbox("Admin panel", value=False, key="admin_panel")
-    if apanel:
-        from salk_toolkit.dashboard import admin_page
-
-        admin_page(sdb)
-        st.stop()
 
 # left, middle, right = st.columns([2, 5, 2])
 # tab = middle.radio('Tabs',['Main'],horizontal=True,label_visibility='hidden')
