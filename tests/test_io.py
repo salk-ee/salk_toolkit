@@ -4472,37 +4472,37 @@ class TestInternalPipelineHelpers:
         with pytest.raises(ValueError, match="agg_index=5 out of range"):
             _subgroup_explode(b, df)
 
-    def test_pick_subgroup_field_strict_dispatch(self):
-        """_pick_subgroup_field enforces flat-for-single, keyed-for-multi."""
-        from salk_toolkit.io import _pick_subgroup_field
+    def test_get_subgroup_config_strict_dispatch(self):
+        """_get_subgroup_config enforces flat-for-single, keyed-for-multi."""
+        from salk_toolkit.io import _get_subgroup_config
 
         # Single sibling + flat form: pass-through.
         flat_cs = [[[1, 2]]]
-        assert _pick_subgroup_field(flat_cs, "md", "md") is flat_cs
+        assert _get_subgroup_config(flat_cs, "md", "md") is flat_cs
         flat_cm = {"1": "A"}
-        assert _pick_subgroup_field(flat_cm, "md", "md") is flat_cm
+        assert _get_subgroup_config(flat_cm, "md", "md") is flat_cm
 
         # Single sibling + keyed form: hard fail.
         with pytest.raises(ValueError, match="single sibling.*keyed"):
-            _pick_subgroup_field({"g1": [[[1, 2]]]}, "md", "md")
+            _get_subgroup_config({"g1": [[[1, 2]]]}, "md", "md")
         with pytest.raises(ValueError, match="single sibling.*keyed"):
-            _pick_subgroup_field({"g1": {"1": "A"}}, "md", "md")
+            _get_subgroup_config({"g1": {"1": "A"}}, "md", "md")
 
         # Multi-sibling + flat form: hard fail.
         with pytest.raises(ValueError, match="multiple siblings.*flat"):
-            _pick_subgroup_field(flat_cs, "md_g1", "md")
+            _get_subgroup_config(flat_cs, "md_g1", "md")
 
         # Multi-sibling + keyed form, valid key: returns the entry.
-        picked = _pick_subgroup_field({"g1": [[[1, 2]]], "g2": [[[3, 4]]]}, "md_g1", "md")
+        picked = _get_subgroup_config({"g1": [[[1, 2]]], "g2": [[[3, 4]]]}, "md_g1", "md")
         assert picked == [[[1, 2]]]
 
         # Multi-sibling + keyed form, missing key: hard fail.
         with pytest.raises(ValueError, match="sibling 'g2' missing"):
-            _pick_subgroup_field({"g1": [[[1, 2]]]}, "md_g2", "md")
+            _get_subgroup_config({"g1": [[[1, 2]]]}, "md_g2", "md")
 
         # None returns None regardless of sibling shape.
-        assert _pick_subgroup_field(None, "md", "md") is None
-        assert _pick_subgroup_field(None, "md_g1", "md") is None
+        assert _get_subgroup_config(None, "md", "md") is None
+        assert _get_subgroup_config(None, "md_g1", "md") is None
 
 
 if __name__ == "__main__":

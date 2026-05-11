@@ -472,7 +472,6 @@ def _apply_pre_transform_translate(block: ColumnBlockMeta, df: pd.DataFrame, col
     # no-ops. See follow-up from 2026-04-23 block-processing refactor.
     translate = cast("dict[object, object]", dict(block.scale.translate))
     df = df.copy()
-    is_maxdiff = isinstance(block, MaxDiffBlock)
 
     def _map_list(lst: object) -> object:
         if lst is None:
@@ -485,9 +484,7 @@ def _apply_pre_transform_translate(block: ColumnBlockMeta, df: pd.DataFrame, col
         if c not in df.columns:
             continue
         s = df[c]
-        if is_maxdiff and _is_series_of_lists(s):
-            # MaxDiff-only: list-valued set cells get element-wise translation.
-            # Other block types never ship list-valued cells through this path.
+        if isinstance(block, MaxDiffBlock) and _is_series_of_lists(s):
             df[c] = s.map(_map_list)
         else:
             df[c] = s.astype("object").replace(translate)
@@ -567,27 +564,41 @@ def _apply_post_transform_translate(
 def _process_block(
     block: ColumnBlockMeta, df: pd.DataFrame, **kwargs: object
 ) -> Iterator[tuple[pd.DataFrame, ColumnBlockMeta]]:
-    """Universal driver. Stage 1+2 (match + explode) happens in
-    `_subgroup_explode`; stage 3 (pre-translate) happens here; stage 4 (transform)
-    is dispatched by block type; stage 5 (post-translate) lands in
-    `_apply_post_transform_translate`. Build-output still lives inside each
-    transform for now."""
+    """Universal driver for all block types (plain, topk, maxdiff, onehot).
+
+    Executes the 5-stage processing pipeline:
+    1. Match: Identify candidate columns from the dataframe.
+    2. Explode: Fan out regex-matched columns into subgroup siblings.
+    3. Pre-translate: Map raw cell values using scale.translate.
+    4. Transform: Dispatch to type-specific transformation and output building.
+    5. Post-translate: Map output cells and categories using scale.translate_after.
+    """
     siblings: list[ColumnBlockMeta]
     if isinstance(block, MaxDiffBlock) and getattr(block, "from_columns", None) is None:
-        # MaxDiff without from_columns: single sibling produced via role resolution
-        # only (no explode machinery because explode keys on from_columns).
         siblings = [_apply_role_resolution(block, block, df)]
     elif isinstance(block, OneHotBlock):
-        # OneHot fans columns into choices, not into subgroups — keep all matched
-        # columns in a single sibling.
+        siblings = [block]
+    elif block.type == "plain":
         siblings = [block]
     else:
         siblings = _subgroup_explode(block, df)
 
     for sib in siblings:
         cols = sib.input_df_columns(df)
+        # STAGE 3: Pre-translate
         df_t = _apply_pre_transform_translate(sib, df, cols)
+
+        # Pass choice_sets for MaxDiff from sibling context
+        if isinstance(sib, MaxDiffBlock):
+            cs = (
+                _get_subgroup_config(block.choice_sets, sib.name, block.name) if hasattr(block, "choice_sets") else None
+            )
+            kwargs["choice_sets"] = cs
+
+        # STAGE 4: Transform (MUST use df_t which has translated values)
         sdf, meta = _apply_transform(sib, df_t, source_block=block, **kwargs)
+
+        # STAGE 5: Post-translate
         sdf, meta = _apply_post_transform_translate(sib, sdf, meta)
         yield sdf, meta
 
@@ -606,7 +617,7 @@ def _apply_transform(
         return _topk_apply_transform(block, df, source_pattern=source_pattern, source_block=source_block)
     if isinstance(block, MaxDiffBlock):
         assert isinstance(source_block, MaxDiffBlock)
-        cs = _pick_subgroup_field(source_block.choice_sets, block.name, source_block.name)
+        cs = kwargs.get("choice_sets")
         return _maxdiff_apply_transform(block, df, cs, source_block=source_block)
     if isinstance(block, OneHotBlock):
         assert isinstance(source_block, OneHotBlock)
@@ -616,10 +627,174 @@ def _apply_transform(
             else list(source_block.choices)
         )
         return _onehot_apply_transform(block, df, chs)
+    if block.type == "plain":
+        return _plain_apply_transform(block, df, source_block=source_block, **kwargs)  # type: ignore[arg-type]
     raise TypeError(f"Unsupported block type for _apply_transform: {type(block)}")
 
 
-def _pick_subgroup_field(value: object, sibling_name: str, source_name: str) -> object:
+def _plain_apply_transform(
+    block: ColumnBlockMeta,
+    df: pd.DataFrame,
+    *,
+    source_block: ColumnBlockMeta,
+    raw_data_dict: dict[str, pd.DataFrame] | None = None,
+    file_index_ranges: dict[str, slice] | None = None,
+    constants: dict[str, Any] | None = None,
+    einfo: dict[str, Any] | None = None,
+    only_fix_categories: bool = False,
+) -> tuple[pd.DataFrame, ColumnBlockMeta]:
+    """Universal transform for plain blocks.
+
+    Processes columns one-by-one, applying the translate -> transform ->
+    translate_after pipeline.
+    """
+    ndf_df = pd.DataFrame(index=df.index)
+    updated_columns: dict[str, ColumnMeta] = {}
+
+    for orig_cn, col_meta in block.columns.items():
+        mcm = col_meta
+        scale_meta = block.scale
+        col_prefix = scale_meta.col_prefix if scale_meta is not None else None
+        cn = col_prefix + orig_cn if col_prefix is not None else orig_cn
+
+        if cn not in df.columns:
+            # Column defined in meta but missing from source.
+            # MATCH STABLE BEHAVIOR: skip creation in ndf_df, but keep it in metadata structure.
+            updated_columns[orig_cn] = mcm
+            continue
+
+        s = df[cn].copy()
+
+        if not only_fix_categories and not _is_series_of_lists(s):
+            if s.dtype.name == "category":
+                s = s.astype("object")
+
+            if mcm.translate:
+                s = s.astype("str").replace(mcm.translate).replace("nan", None).replace("None", None)
+
+            if mcm.transform is not None and isinstance(mcm.transform, str):
+                if raw_data_dict is None or file_index_ranges is None:
+                    warn(f"Column {cn}: transform skipped because context is missing")
+                else:
+                    transformed_parts: list[pd.Series] = []
+                    for file_code, file_raw_data in raw_data_dict.items():
+                        idx_range = file_index_ranges[file_code]
+                        s_local = s.iloc[idx_range]
+                        # ndf_local = ndf_df.iloc[idx_range] # ndf view might be too complex for simple eval
+                        transformed = eval(
+                            mcm.transform,
+                            {
+                                "s": s_local,
+                                "df": file_raw_data,
+                                "pd": pd,
+                                "np": np,
+                                "stk": stk,
+                                **(constants or {}),
+                            },
+                        )
+                        transformed_parts.append(pd.Series(transformed, index=s_local.index, name=cn))
+                    s = pd.concat(transformed_parts, ignore_index=True)
+
+            if mcm.translate_after:
+                s = pd.Series(s).astype("str").replace(mcm.translate_after).replace("nan", None).replace("None", None)
+
+            if mcm.datetime:
+                s = pd.to_datetime(s, errors="coerce")
+            elif mcm.continuous:
+                s = pd.to_numeric(s, errors="coerce")
+
+        s.name = cn
+
+        # Category mapping / inference logic
+        if mcm.categories and not _is_series_of_lists(s):
+            if mcm.categories == "infer":
+                should_warn_ordered = mcm.ordered and not pd.api.types.is_numeric_dtype(s)
+                if mcm.translate and not mcm.transform and set(mcm.translate.values()) >= set(s.dropna().unique()):
+                    translate_values = list(mcm.translate.values())
+                    cats = [str(c) for c in translate_values if c in s.dropna().unique()]
+                    inferred_cats = list(dict.fromkeys(cats))
+                    mcm = mcm.model_copy(update={"categories": inferred_cats})
+                else:
+                    if should_warn_ordered:
+                        warn(f"Ordered category {cn} had category: infer. This only works for lexicographic ordering!")
+                    s, inferred_cats = _deterministic_categories_and_values(s)
+                    mcm = mcm.model_copy(update={"categories": inferred_cats})
+                cats = inferred_cats
+            elif pd.api.types.is_numeric_dtype(s):
+                cats = mcm.categories
+                if not isinstance(cats, list):
+                    raise ValueError(f"Categories for {cn} must be a list")
+                try:
+                    fcats = np.array(cats).astype(float)
+                    s_values_arr = np.asarray(s.values).reshape(-1)
+                    distances = np.abs(s_values_arr.reshape(-1, 1) - fcats.reshape(1, -1))
+                    indices = distances.argmin(axis=1)
+                    s = pd.Series(
+                        np.array(cats)[indices],
+                        index=s.index,
+                        name=s.name,
+                        dtype=pd.CategoricalDtype(categories=cats, ordered=mcm.ordered or False),
+                    )
+                except (ValueError, TypeError) as e:
+                    raise ValueError(f"Categories for {cn} are not numeric: {cats}") from e
+            else:
+                cats = mcm.categories
+                if not isinstance(cats, list):
+                    raise ValueError(f"Categories for {cn} must be a list")
+
+            if isinstance(cats, list):
+                dropped = set(s.dropna().unique()) - set(cats)
+                if dropped:
+                    warn(f"Values for {cn} not in categories and will be dropped: {dropped}")
+                s = pd.Series(pd.Categorical(s, categories=cats, ordered=mcm.ordered or False), name=cn)
+
+        ndf_df[cn] = s
+        updated_columns[orig_cn] = mcm
+
+    if block.subgroup_transform is not None:
+        if raw_data_dict is None or file_index_ranges is None:
+            warn(f"Block {block.name!r}: subgroup_transform skipped because context is missing")
+        else:
+            subgroup_transformed_parts: list[pd.DataFrame] = []
+            for file_code, file_raw_data in raw_data_dict.items():
+                idx_range = file_index_ranges[file_code]
+                gdf_local = ndf_df.iloc[idx_range].copy()
+                transformed_gdf = eval(
+                    block.subgroup_transform,
+                    {
+                        "gdf": gdf_local,
+                        "df": file_raw_data,
+                        "pd": pd,
+                        "np": np,
+                        "stk": stk,
+                        **(constants or {}),
+                    },
+                )
+                subgroup_transformed_parts.append(transformed_gdf)
+            ndf_df = pd.concat(subgroup_transformed_parts).reset_index(drop=True)
+
+    out_meta = block.model_copy(update={"columns": updated_columns})
+    return ndf_df, out_meta
+
+
+def _get_subgroup_config(value: object, sibling_name: str, source_name: str) -> object:
+    """Extract a sibling-specific configuration from a parent field.
+
+    A parent field (like `choice_sets` or `choice_mapping`) can be either:
+    1. A 'flat' structure (list or dict) that is shared by all siblings.
+    2. A 'keyed' dictionary where keys correspond to subgroup labels (e.g.,
+       'economics', 'politics') and values are the sibling-specific configs.
+
+    This helper extracts the correct config based on the sibling's name suffix.
+
+    Args:
+        value: The configuration value from the parent block.
+        sibling_name: The name of the narrowed sibling block.
+        source_name: The name of the original parent block.
+
+    Returns:
+        The configuration (flat or picked from the keyed dict) for this sibling.
+    """
     if value is None:
         return None
 
@@ -669,6 +844,11 @@ def _narrow_sibling(block: ColumnBlockMeta, cols: list[str], *, label_suffix: st
 
 
 def _subgroup_explode(block: ColumnBlockMeta, df: pd.DataFrame) -> list[ColumnBlockMeta]:
+    """Fan out regex-matched columns into subgroup siblings.
+
+    If from_columns is a regex with capture groups, this function identifies every
+    unique combination of captured values and returns a list of 'narrowed' siblings.
+    """
     matched_cols = _match_columns(block, df)
     pattern = block.from_columns
     if not isinstance(pattern, str):
@@ -680,16 +860,19 @@ def _subgroup_explode(block: ColumnBlockMeta, df: pd.DataFrame) -> list[ColumnBl
     assert first is not None
     n_groups = len(first.groups())
 
-    # TopK aggregates columns over the subgroup, should not explode
-    agg_idx = getattr(block, "agg_index", None)
+    # TOPK-specific: skip one group for sibling identity if aggregating.
+    # Otherwise, use all groups.
     agg_pos = None
-    if agg_idx is not None:
+    if isinstance(block, TopKBlock):
+        agg_idx = block.agg_index
         agg_pos = agg_idx - 1 if agg_idx > 0 else agg_idx
         if agg_pos < 0:
             agg_pos = n_groups + agg_pos
+
         if not (0 <= agg_pos < n_groups):
             raise ValueError(f"Block {block.name!r}: agg_index={agg_idx} out of range for {n_groups} capture group(s)")
-    non_agg_positions = [i for i in range(n_groups) if i != agg_pos]
+
+    non_agg_positions = [i for i in range(n_groups) if i != agg_pos] if agg_pos is not None else list(range(n_groups))
 
     if not non_agg_positions:
         siblings = [_narrow_sibling(block, matched_cols, label_suffix="")]
@@ -726,39 +909,6 @@ def _apply_role_resolution(sib: ColumnBlockMeta, source: ColumnBlockMeta, df: pd
     return sib.model_copy(update=updates) if updates else sib
 
 
-def _topk_transform_skip(
-    block: TopKBlock,
-    df: pd.DataFrame,
-    *,
-    source_block: TopKBlock,
-) -> tuple[pd.DataFrame, TopKBlock]:
-    if not (isinstance(block.from_columns, list) and isinstance(source_block.res_columns, list)):
-        raise ValueError(
-            f"TopK block {block.name!r}: input_format={block.input_format!r} requires "
-            f"from_columns and res_columns as explicit lists"
-        )
-    if list(block.from_columns) != list(source_block.res_columns):
-        raise ValueError(
-            f"TopK block {block.name!r}: input_format={block.input_format!r} requires "
-            f"res_columns to match from_columns; got res_columns={source_block.res_columns!r} "
-            f"vs from_columns={list(block.from_columns)!r}"
-        )
-    missing = [c for c in block.from_columns if c not in df.columns]
-    if missing:
-        raise ValueError(f"TopK block {block.name!r}: columns missing from dataframe: {missing}")
-    sdf = df[list(block.from_columns)].copy()
-    scale_dict = deepcopy(block.scale.model_dump(mode="python") if block.scale else {})
-    meta_out = _build_topk_output_block(
-        name=block.name,
-        scale_dict=scale_dict,
-        columns=list(block.from_columns),
-        from_cols=list(block.from_columns),
-        res_cols=list(block.from_columns),
-        block=block,
-    )
-    return sdf, meta_out
-
-
 def _topk_apply_transform(
     block: TopKBlock,
     df: pd.DataFrame,
@@ -766,14 +916,47 @@ def _topk_apply_transform(
     source_pattern: str | None,
     source_block: TopKBlock,
 ) -> tuple[pd.DataFrame, TopKBlock]:
+    """Dispatch TopK transformation based on input_format."""
     fmt = block.input_format
+    if fmt in ("leftpacked", "ranked_leftpack"):
+        # No transform needed, just extract columns
+        return _topk_transform_passthrough(block, df, source_block=source_block)
     if fmt == "onehot":
         return _topk_transform_onehot(block, df, source_pattern=source_pattern, source_block=source_block)
-    if fmt in ("leftpacked", "ranked_leftpack"):
-        return _topk_transform_skip(block, df, source_block=source_block)
     if fmt == "ranked_onehot":
-        raise NotImplementedError("ranked_onehot transform not yet implemented — no production user")
+        raise NotImplementedError("ranked_onehot transform not yet implemented")
     raise ValueError(f"unknown TopK input_format: {fmt!r}")
+
+
+def _topk_transform_passthrough(
+    block: TopKBlock,
+    df: pd.DataFrame,
+    *,
+    source_block: TopKBlock,
+) -> tuple[pd.DataFrame, TopKBlock]:
+    """TopK passthrough: input is already in TopK format (one row per response)."""
+    from_cols = list(block.from_columns) if isinstance(block.from_columns, list) else []
+    if not from_cols:
+        raise ValueError(f"TopK {block.name!r}: missing explicit from_columns for passthrough")
+
+    # Check for res_columns mismatch (enforce for skip transforms)
+    res_cols = list(source_block.res_columns) if isinstance(source_block.res_columns, list) else []
+    if res_cols and from_cols != res_cols:
+        raise ValueError(
+            f"TopK block {block.name!r}: input_format={block.input_format!r} requires "
+            f"res_columns to match from_columns; got res_columns={res_cols!r} "
+            f"vs from_columns={from_cols!r}"
+        )
+
+    sdf = df[from_cols].copy()
+    meta_out = _build_topk_output_block(
+        name=block.name,
+        columns=from_cols,
+        from_cols=from_cols,
+        res_cols=from_cols,
+        block=block,
+    )
+    return sdf, meta_out
 
 
 def _topk_transform_onehot(
@@ -783,92 +966,78 @@ def _topk_transform_onehot(
     source_pattern: str | None,
     source_block: TopKBlock,
 ) -> tuple[pd.DataFrame, TopKBlock]:
-    assert isinstance(block.from_columns, list)
-    from_cols = list(block.from_columns)
+    """TopK onehot transform: pivot multiple columns (mentions) into ranked TopK columns."""
+    from_cols = list(block.from_columns) if isinstance(block.from_columns, list) else []
     na_vals = list(block.na_vals or [])
-    kmax = block.k
 
-    # astype('object') unifies list-mode with regex path; categorical/bool input rows go through mask uniformly.
+    # 1. Standardize input (mentions -> values)
     sdf = df[from_cols].astype("object").replace(na_vals, None)
     _check_topk_na_vals_after_replace(sdf, block_name=block.name)
 
-    res_template = source_block.res_columns if isinstance(source_block.res_columns, str) else None
-
-    all_res_cols: list[str]
-    if source_pattern is not None:
-        regex_from = re.compile(source_pattern)
-        agg_ind = block.agg_index
-        agg_ind = agg_ind - 1 if agg_ind > 0 else agg_ind
-
-        def _capture_at_agg(col: str) -> str:
-            m = regex_from.match(col)
-            assert m is not None
-            return m.groups()[agg_ind]
-
-        if res_template is not None:
-            all_res_cols = []
-            for col in sdf.columns:
-                m = regex_from.match(col)
-                assert m is not None
-                all_res_cols.append(m.expand(res_template))
-        else:
-            all_res_cols = list(source_block.res_columns) if isinstance(source_block.res_columns, list) else []
-            if not all_res_cols:
-                raise ValueError(f"TopK block {block.name!r}: cannot expand res_columns")
-
-        sdf.columns = sdf.columns.map(_capture_at_agg)
+    # 2. Pivot to values
+    if source_pattern:
+        regex = re.compile(source_pattern)
+        agg_pos = block.agg_index
+        agg_pos = agg_pos - 1 if agg_pos > 0 else agg_pos
+        # Use capture group from regex as the value for each cell
+        sdf.columns = [regex.match(c).groups()[agg_pos] for c in sdf.columns]  # type: ignore[union-attr]
         sdf = sdf.mask(~sdf.isna(), other=pd.Series(sdf.columns, index=sdf.columns), axis=1)
-        _throw_vals_left(sdf)
-        sdf.columns = all_res_cols
     else:
-        assert isinstance(source_block.res_columns, list)
-        all_res_cols = list(source_block.res_columns)
-        if len(all_res_cols) != len(from_cols):
-            raise ValueError(f"from_columns ({len(from_cols)}) and res_columns ({len(all_res_cols)}) must match")
+        # If no pattern, use column names (stripping prefix if present)
         if source_block.from_prefix:
-            prefix = source_block.from_prefix
-            rename = {c: c.removeprefix(prefix) for c in from_cols}
-            sdf = sdf.rename(columns=rename)
+            sdf.columns = [c.removeprefix(source_block.from_prefix) for c in sdf.columns]
         sdf = sdf.mask(~sdf.isna(), other=pd.Series(sdf.columns, index=sdf.columns), axis=1)
-        sdf.columns = all_res_cols
-        _throw_vals_left(sdf)
 
+    # 3. Collapse left
+    _throw_vals_left(sdf)
+
+    # 4. Map to result column names
+    res_cols = _resolve_topk_res_cols(block, source_block, source_pattern)
+    sdf.columns = res_cols
     sdf = sdf.dropna(axis=1, how="all")
 
-    if kmax and kmax != "max" and isinstance(kmax, int):
-        if sdf.shape[1] > kmax:
-            tail = sdf.iloc[:, kmax:]
-            if tail.notna().any().any():
-                raise ValueError(
-                    f"TopK block {block.name!r}: truncation to k={kmax} would drop "
-                    f"non-NA values in columns {list(tail.columns)}"
-                )
+    # 5. Truncate to K
+    kmax = block.k
+    if isinstance(kmax, int) and sdf.shape[1] > kmax:
+        if sdf.iloc[:, kmax:].notna().any().any():
+            raise ValueError(
+                f"TopK block {block.name!r}: truncation to k={kmax} would drop "
+                f"non-NA values in columns {list(sdf.columns[kmax:])}"
+            )
         sdf = sdf.iloc[:, :kmax]
-
-    scale_dict = deepcopy(block.scale.model_dump(mode="python") if block.scale else {})
 
     meta_out = _build_topk_output_block(
         name=block.name,
-        scale_dict=scale_dict,
         columns=sdf.columns.tolist(),
         from_cols=from_cols,
-        res_cols=all_res_cols,
+        res_cols=res_cols,
         block=block,
     )
     return sdf, meta_out
 
 
+def _resolve_topk_res_cols(block: TopKBlock, source: TopKBlock, pattern: str | None) -> list[str]:
+    """Determine final result column names for a TopK sibling."""
+    if isinstance(source.res_columns, list):
+        return list(source.res_columns)
+
+    if isinstance(source.res_columns, str) and pattern:
+        regex = re.compile(pattern)
+        from_cols = list(block.from_columns) if isinstance(block.from_columns, list) else []
+        return [regex.match(c).expand(source.res_columns) for c in from_cols]  # type: ignore[union-attr]
+
+    raise ValueError(f"TopK {block.name!r}: cannot resolve res_columns")
+
+
 def _build_topk_output_block(
     *,
     name: str,
-    scale_dict: dict[str, object],
     columns: list[str],
     from_cols: list[str],
     res_cols: list[str],
     block: TopKBlock,
 ) -> TopKBlock:
-    """Assemble a resolved output ``TopKBlock`` for one subgroup. The narrowed
-    ``from_columns`` / ``res_columns`` encode the subgroup identity."""
+    scale_dict = deepcopy(block.scale.model_dump(mode="python") if block.scale else {})
     return soft_validate(
         {
             "type": "topk",
@@ -878,7 +1047,7 @@ def _build_topk_output_block(
             "from_columns": list(from_cols),
             "res_columns": list(res_cols),
             "agg_index": block.agg_index,
-            "na_vals": list(block.na_vals) if block.na_vals is not None else [],
+            "na_vals": list(block.na_vals or []),
             "k": block.k,
             "from_prefix": block.from_prefix,
             "input_format": block.input_format,
@@ -1236,15 +1405,6 @@ def _onehot_transform_wide(
     return sdf, out
 
 
-def _create_new_columns_and_metas(
-    df: pd.DataFrame, group: ColumnBlockMeta, **kwargs: dict[str, str]
-) -> Iterator[tuple[pd.DataFrame, ColumnBlockMeta]]:
-    """Create new columns and metadata from a specialized block."""
-    if not isinstance(group, (TopKBlock, MaxDiffBlock, OneHotBlock)):
-        raise ValueError("Group must be a TopKBlock, MaxDiffBlock, or OneHotBlock to generate new columns")
-    return _process_block(df=df, block=group, **kwargs)
-
-
 def _demote_to_plain(block: ColumnBlockMeta) -> ColumnBlockMeta:
     """Demote a specialized block (TopKBlock / MaxDiffBlock) to a plain ColumnBlockMeta,
     preserving every field declared on ``ColumnBlockMeta`` and dropping subclass-specific
@@ -1410,7 +1570,11 @@ def _process_annotated_data(
             "file_name": {"categories": file_names_in_order, "ordered": True},
         },
     }
-    sys_block = soft_validate(sys_block_dict, ColumnBlockMeta)
+    sys_block = (
+        soft_validate(sys_block_name, ColumnBlockMeta)
+        if isinstance(sys_block_name, ColumnBlockMeta)
+        else soft_validate(sys_block_dict, ColumnBlockMeta)
+    )
     structure2 = dict(meta_obj.structure)
     if sys_block_name in structure2:
         existing = structure2[sys_block_name]
@@ -1436,261 +1600,150 @@ def _process_annotated_data(
         file_index_ranges[file_code] = slice(current_idx, current_idx + file_len)
         current_idx += file_len
 
-    all_cns = dict()
+    all_cns: dict[str, str] = {}
     # Build new structure dict as we process groups (Pydantic models are immutable)
     new_structure: dict[str, ColumnBlockMeta] = {}
     for group_name, group in meta_obj.structure.items():
         if group.name in all_cns:
             raise Exception(f"Group name {group.name} duplicates a column name in group {all_cns[group.name]}")
         all_cns[group.name] = group.name
-        g_cols = []
-        # Process columns in this group
-        # group.columns is Dict[str, ColumnMeta]
-        # Note: scale metadata is already merged with column metadata
-        # by ColumnBlockMeta.merge_scale_with_columns validator
-        # Keep for forward-compat; metadata categories are reconciled later by _fix_meta_categories.
-        # (We do not remove missing columns from meta, we only skip materializing them into df.)
-        updated_columns: dict[str, ColumnMeta] = {}
+
+        # 1. Build source DF for this group by concatenating raw columns from all files.
+        group_source_cols: dict[str, pd.Series] = {}
+        has_any_source = False
         for orig_cn, col_meta in group.columns.items():
-            # Work with Pydantic objects directly
-            # Get the merged column metadata (scale already merged in during validation)
-            mcm = col_meta
-            # Extract source from ColumnMeta - can be str or dict[str, str]
-            source_spec = col_meta.source if col_meta.source is not None else orig_cn
-            scale_meta = group.scale if group.scale is not None else None
+            scale_meta = group.scale
+            col_prefix = scale_meta.col_prefix if scale_meta is not None else None
+            cn = (col_prefix + orig_cn) if col_prefix is not None else orig_cn
 
-            # Col prefix is used to avoid name clashes when different groups naturally share same column names
-            # col_prefix is only in BlockScaleMeta, not ColumnMeta, so get it from scale_meta directly
-            col_prefix = scale_meta.col_prefix if scale_meta is not None and scale_meta.col_prefix is not None else None
-            cn = orig_cn
-            if col_prefix is not None:
-                cn = col_prefix + orig_cn
+            # In only_fix_categories mode, source is the processed column name itself
+            source_spec = cn if only_fix_categories else (col_meta.source if col_meta.source is not None else orig_cn)
 
-            # Detect duplicate columns in meta - including among those missing or generated
-            # Only flag if they are duplicates even after prefix
-            if cn in all_cns:
+            if cn in all_cns and cn != group.name:
                 raise Exception(f"Duplicate column name found: '{cn}' in {all_cns[cn]} and {group.name}")
             all_cns[cn] = group.name
 
-            if only_fix_categories:
-                source_spec = cn
-
-            # Extract columns from all files and concatenate immediately
             per_file_series: list[pd.Series] = []
             for file_code, file_raw_data in raw_data_dict.items():
-                # Determine source column name for this file
                 if isinstance(source_spec, dict):
-                    # Dict mapping: use file code, fallback to 'default', or use orig_cn
                     sn = source_spec.get(file_code, source_spec.get("default", orig_cn))
                 else:
-                    # String: use for all files
                     sn = source_spec
 
-                if sn not in file_raw_data:
-                    if not group.generated:  # bypass warning for columns marked as being generated later
-                        warn(f"Column {sn} not found in file {file_code}")
-                    # Create empty series with same index as file
-                    s = pd.Series(index=file_raw_data.index, dtype=object, name=cn)
-                    per_file_series.append(s)
-                    continue
-
-                if file_raw_data[sn].isna().all():
-                    warn(f"Column {sn} is empty in file {file_code} and thus ignored")
-                    # Create empty series with same index as file
-                    s = pd.Series(index=file_raw_data.index, dtype=object, name=cn)
-                    per_file_series.append(s)
-                    continue
-
-                # Extract raw column value - no processing yet
-                s = file_raw_data[sn].copy()
-                s.name = cn  # Set name early
-                per_file_series.append(s)
-
-            # Concatenate all per-file series immediately - now process on concatenated data
-            if not per_file_series:
-                # No valid series found, skip this column
-                continue
-
-            # Concatenated series ready for processing
-            s: pd.Series = pd.concat(per_file_series).reset_index(drop=True)
-
-            # Declared in meta but missing/empty in all source files -> drop from df and meta.
-            if s.isna().all():
-                continue
-
-            # Store original dtype info if categorical (before any conversions)
-            original_dtype = s.dtype
-            if not only_fix_categories and not _is_series_of_lists(s):
-                if original_dtype.name == "category":
-                    s = s.astype("object")  # This makes it easier to use common ops like replace and fillna
-                if mcm.translate:
-                    s = s.astype("str").replace(mcm.translate).replace("nan", None).replace("None", None)
-                if mcm.transform is not None and isinstance(mcm.transform, str):
-                    # For transform, process per-file using index ranges
-                    transformed_parts: list[pd.Series] = []
-                    for file_code, file_raw_data in raw_data_dict.items():
-                        idx_range = file_index_ranges[file_code]
-                        s_local = s.iloc[idx_range]
-                        ndf_local = ndf_df.iloc[idx_range]
-                        transformed = eval(
-                            mcm.transform,
-                            {
-                                "s": s_local,
-                                "df": file_raw_data,  # Per-file raw data
-                                "ndf": ndf_local,  # Per-file processed data view
-                                "pd": pd,
-                                "np": np,
-                                "stk": stk,
-                                **constants,
-                            },
-                        )
-
-                        s_out = pd.Series(transformed, index=s_local.index, name=cn)
-                        transformed_parts.append(s_out)
-                    s = pd.concat(transformed_parts, ignore_index=True)
-                if mcm.translate_after:
-                    s = (
-                        pd.Series(s)
-                        .astype("str")
-                        .replace(mcm.translate_after)
-                        .replace("nan", None)
-                        .replace("None", None)
-                    )
-
-                if mcm.datetime:
-                    s = pd.to_datetime(s, errors="coerce")
-                elif mcm.continuous:
-                    s = pd.to_numeric(s, errors="coerce")
-
-            s.name = cn  # Ensure name is set
-
-            # Category inference on concatenated data
-            if mcm.categories and not _is_series_of_lists(s):
-                if mcm.categories == "infer":
-                    # Check for ordered warning before we modify s
-                    should_warn_ordered = mcm.ordered and not pd.api.types.is_numeric_dtype(s)
-                    # Infer categories from the transformed data (s has already gone through
-                    # translate -> transform -> translate_after pipeline)
-                    # Always use s as the source of truth - it has the final transformed values
-                    if mcm.translate and not mcm.transform and set(mcm.translate.values()) >= set(s.dropna().unique()):
-                        # Infer order from translation dict
-                        translate_values = list(mcm.translate.values())
-                        cats = [str(c) for c in translate_values if c in s.dropna().unique()]
-                        # As mapping can be many-to-one, we need to use unique and preserve order
-                        inferred_cats = list(dict.fromkeys(cats))
-                        # Update metadata with inferred categories (preserves translation dict order)
-                        mcm = mcm.model_copy(update={"categories": inferred_cats})
-                    else:
-                        # Deterministic ordering:
-                        # - numeric dtype -> numeric sort
-                        # - numeric-like strings -> numeric sort
-                        # - otherwise -> lexicographic sort
-                        if should_warn_ordered:
-                            warn(
-                                f"Ordered category {cn} had category: infer. "
-                                "This only works correctly if you want lexicographic ordering!"
-                            )
-                        s, inferred_cats = _deterministic_categories_and_values(s)
-                        # Update metadata with inferred categories
-                        mcm = mcm.model_copy(update={"categories": inferred_cats})
-                    cats = inferred_cats
-                elif pd.api.types.is_numeric_dtype(s):
-                    # Numeric datatype being coerced into categorical - map to nearest category value
-                    cats = mcm.categories
-                    if not isinstance(cats, list):
-                        raise ValueError(f"Categories for {cn} must be a list when series is numeric")
-
-                    try:
-                        fcats = np.array(cats).astype(float)
-                        s_values_arr = np.asarray(s.values)
-                        if s_values_arr.ndim == 0:
-                            s_values_arr = s_values_arr.reshape(-1)
-                        cats_array = np.array(cats)
-                        s_values_reshaped = s_values_arr.reshape(-1, 1)
-                        fcats_reshaped = fcats.reshape(1, -1)
-                        distances = np.abs(s_values_reshaped - fcats_reshaped)
-                        indices = distances.argmin(axis=1)
-                        s = pd.Series(
-                            cats_array[indices],
-                            index=s.index,
-                            name=s.name,
-                            dtype=pd.CategoricalDtype(
-                                categories=cats, ordered=mcm.ordered if mcm.ordered is not None else False
-                            ),
-                        )
-                    except (ValueError, TypeError) as e:
-                        raise ValueError(f"Categories for {cn} are not numeric: {cats}") from e
-                else:
-                    cats = mcm.categories
-                    if not isinstance(cats, list):
-                        raise ValueError(f"Categories for {cn} must be a list")
-
-                if isinstance(cats, list):
-                    dropped = set(s.dropna().unique()) - set(cats)
-                    if dropped:
-                        warn(f"Values for {cn} not in categories and will be dropped: {dropped}")
-                    # Use updated ordered flag if we modified it during inference
-                    final_ordered = mcm.ordered if mcm.ordered is not None else False
-                    s = pd.Series(
-                        pd.Categorical(s, categories=cats, ordered=final_ordered),
-                        name=cn,
-                    )
-
-            # Add column directly to concatenated DataFrame
-            ndf_df[cn] = s
-            g_cols.append(cn)
-
-            # Store updated column metadata (with inferred categories if applicable)
-            updated_columns[orig_cn] = mcm
-
-        if group.subgroup_transform is not None:
-            # subgroups is not in ColumnBlockMeta, so we'll use g_cols as default
-            subgroups = [g_cols]  # TODO: Add subgroups field to ColumnBlockMeta if needed
-            for sg in subgroups:
-                # Apply per-file using index ranges
-                subgroup_transformed_parts: list[pd.DataFrame] = []
-                for file_code in raw_data_dict.keys():
+                # If we've already processed this column in a previous block, take it from ndf_df
+                if only_fix_categories and sn in ndf_df.columns:
+                    # In only_fix_categories, ndf_df is already populated with processed data.
                     idx_range = file_index_ranges[file_code]
-                    gdf_local = ndf_df[sg].iloc[idx_range].copy()
-                    ndf_local = ndf_df.iloc[idx_range].copy()
-                    transformed_gdf = eval(
-                        group.subgroup_transform,
-                        {
-                            "gdf": gdf_local,
-                            "ndf": ndf_local,  # Per-file processed data view
-                            "df": file_raw_data,  # Per-file raw data
-                            "pd": pd,
-                            "np": np,
-                            "stk": stk,
-                            **constants,
-                        },
-                    )
-                    subgroup_transformed_parts.append(transformed_gdf)
-                # Concatenate and assign back
-                transformed_combined = pd.concat(subgroup_transformed_parts).reset_index(drop=True)
-                ndf_df[sg] = transformed_combined[sg].values
-        # Handle specialized blocks (topk / maxdiff / onehot) — may add new groups to structure
+                    s = ndf_df[sn].iloc[idx_range].copy()
+                    s.name = cn
+                    per_file_series.append(s)
+                    has_any_source = True
+                    continue
+
+                if sn not in file_raw_data:
+                    # Don't pre-initialize missing columns in group_df to avoid merge overlap issues later.
+                    continue
+
+                s = file_raw_data[sn].copy()
+                s.name = cn
+                per_file_series.append(s)
+                has_any_source = True
+
+            if per_file_series:
+                s_concat = pd.concat(per_file_series).reset_index(drop=True)
+                group_source_cols[cn] = s_concat
+
+        # If it's a plain block and NO source columns were found at all across any files,
+        # we only skip it if it has no declared columns and isn't generated.
+        if not has_any_source and not group.generated and not group.columns and group.type == "plain":
+            continue
+
+        group_df = pd.DataFrame(group_source_cols)
+        if group_df.empty:
+            group_df = pd.DataFrame(index=raw_data_concat.index)
+
+        # 2. Process the block (Stage 1-5) using the universal driver
+        create_source_df = group_df.combine_first(ndf_df).combine_first(raw_data_concat)
+
         if isinstance(group, (TopKBlock, MaxDiffBlock, OneHotBlock)):
-            create_source_df = ndf_df.combine_first(raw_data_concat) if not raw_data_concat.empty else ndf_df
-            pending_sibling_metas: list[ColumnBlockMeta] = []
-            for newdf, new_group_meta in _create_new_columns_and_metas(
-                create_source_df,
-                group,
-            ):
-                ndf_df = ndf_df.combine_first(newdf)
-                pending_sibling_metas.append(new_group_meta)
-            # Demote the input specialized block to a plain ColumnBlockMeta: its raw columns
+            # Specialized blocks: handle explosion and transformation
+
+            # Pass 1: Demote the input specialized block to a plain ColumnBlockMeta: its raw columns
             # are preserved under the original name, but processing directives are dropped.
-            group = _demote_to_plain(group)
-            # Add processed group to structure (demoted parent first so siblings win on name collision)
-            # TODO: find out if dropping pre-transform columns and meta is acceptable when a sibling
-            # takes the bare block name (the demoted parent entry is silently clobbered).
-            new_structure[group.name] = group
-            for sibling_meta in pending_sibling_metas:
-                new_structure[sibling_meta.name] = sibling_meta
+            demoted_parent = _demote_to_plain(group)
+            new_structure[demoted_parent.name] = demoted_parent
+
+            # We must also process the raw columns of the specialized block as plain
+            # if they were explicitly declared in its 'columns' field.
+            if demoted_parent.columns:
+                p_cols = demoted_parent.input_df_columns(create_source_df)
+                df_pt = _apply_pre_transform_translate(demoted_parent, create_source_df, p_cols)
+                sdf_p, _ = _plain_apply_transform(
+                    demoted_parent,
+                    df_pt,
+                    source_block=group,
+                    raw_data_dict=raw_data_dict,
+                    file_index_ranges=file_index_ranges,
+                    constants=constants,
+                    einfo=einfo,
+                    only_fix_categories=only_fix_categories,
+                )
+                for c in sdf_p.columns:
+                    ndf_df[c] = sdf_p[c]
+            else:
+                # If no columns, still ensure they are in ndf_df from group_df
+                for c in group_df.columns:
+                    ndf_df[c] = group_df[c]
+
+            # Pass 2: specialized explosion / transformation
+            # Refresh source df with Pass 1 results
+            create_source_df_refreshed = ndf_df.combine_first(raw_data_concat)
+
+            processed_siblings: list[tuple[pd.DataFrame, ColumnBlockMeta]] = list(
+                _process_block(
+                    group,
+                    create_source_df_refreshed,
+                    raw_data_dict=raw_data_dict,
+                    file_index_ranges=file_index_ranges,
+                    constants=constants,
+                    einfo=einfo,
+                    only_fix_categories=only_fix_categories,
+                )
+            )
+
+            for sdf, smeta in processed_siblings:
+                for c in sdf.columns:
+                    ndf_df[c] = sdf[c]
+                new_structure[smeta.name] = smeta
         else:
-            # Add processed group to structure
-            new_structure[group.name] = group
+            # Plain blocks: process directly
+            processed_plain: list[tuple[pd.DataFrame, ColumnBlockMeta]] = list(
+                _process_block(
+                    group,
+                    create_source_df,
+                    raw_data_dict=raw_data_dict,
+                    file_index_ranges=file_index_ranges,
+                    constants=constants,
+                    einfo=einfo,
+                    only_fix_categories=only_fix_categories,
+                )
+            )
+
+            for sdf, smeta in processed_plain:
+                for c in sdf.columns:
+                    ndf_df[c] = sdf[c]
+
+                # MATCH OLD BEHAVIOR: Drop columns that are entirely NA from the DATAFRAME
+                # but keep them in the METADATA if they were explicitly declared.
+                final_cols_map = {}
+                prefix = smeta.scale.col_prefix if smeta.scale and smeta.scale.col_prefix else ""
+                for orig_k, v in smeta.columns.items():
+                    cn = prefix + orig_k
+                    if cn in ndf_df.columns and ndf_df[cn].isna().all() and not smeta.generated:
+                        del ndf_df[cn]
+                    final_cols_map[orig_k] = v
+
+                new_structure[smeta.name] = smeta.model_copy(update={"columns": final_cols_map})
 
     if meta_obj.postprocessing is not None and not only_fix_categories:
         globs = {
@@ -1708,9 +1761,33 @@ def _process_annotated_data(
     # Update meta with new structure (including any groups created during processing)
     meta_obj = meta_obj.model_copy(update={"structure": new_structure})
 
-    # Fix categories after postprocessing
+    if not only_fix_categories:
+        # Pass 3: Lightweight category fix-up pass for columns that appeared after postprocessing
+        # (e.g. merged columns). We process only blocks that are explicitly plain and exist in df.
+        for group in meta_obj.structure.values():
+            if group.type != "plain":
+                continue
+
+            # Skip if none of its columns are in ndf_df (avoid creating NaNs)
+            prefix = group.scale.col_prefix if group.scale and group.scale.col_prefix else ""
+            if not any((prefix + k) in ndf_df.columns for k in group.columns.keys()):
+                continue
+
+            processed_fixup: list[tuple[pd.DataFrame, ColumnBlockMeta]] = list(
+                _process_block(
+                    group,
+                    ndf_df,
+                    only_fix_categories=True,
+                )
+            )
+            for sdf, smeta in processed_fixup:
+                for c in sdf.columns:
+                    ndf_df[c] = sdf[c]
+
+    # Final fix categories after all processing passes
     # Also replaces infer with the actual categories
     meta_obj = _fix_meta_categories(meta_obj, ndf_df, warnings=True)
+
     # Ensure we have a DataMeta object
     if not isinstance(meta_obj, DataMeta):
         meta_obj = soft_validate(meta_obj, DataMeta)

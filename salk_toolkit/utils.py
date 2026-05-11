@@ -711,7 +711,8 @@ def is_numeric_str_series(s: pd.Series) -> bool:
     nonnull = s.dropna()
     if len(nonnull) == 0:
         return False
-    if not nonnull.map(lambda v: isinstance(v, str)).all():
+    # Use unique() for Categorical efficiency and to avoid reduction errors on some pandas versions
+    if not all(isinstance(v, str) for v in nonnull.unique()):
         return False
     parsed = pd.to_numeric(nonnull, errors="coerce")
     return bool(parsed.notna().all())
@@ -721,7 +722,14 @@ def is_date_str_series(s: pd.Series) -> bool:
     """Return True if all non-null values are strings that parse as dates."""
 
     nonnull = s.dropna()
-    if len(nonnull) == 0 or not nonnull.map(lambda v: isinstance(v, str)).all() or is_numeric_str_series(s):
+    if len(nonnull) == 0:
+        return False
+
+    # Use unique() for Categorical efficiency and to avoid reduction errors on some pandas versions
+    if not all(isinstance(v, str) for v in nonnull.unique()):
+        return False
+
+    if is_numeric_str_series(s):
         return False
     parsed = pd.to_datetime(nonnull, errors="coerce", format="mixed")
     return bool(parsed.notna().all())
