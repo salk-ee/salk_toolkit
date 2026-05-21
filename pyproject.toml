@@ -22,7 +22,7 @@ classifiers = [
 ]
 dependencies = [
   "altair",
-  "arviz",
+  "arviz>=1.1",
   "authlib",
   "frontegg",
   "hsluv",
