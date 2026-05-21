@@ -282,7 +282,10 @@ def _load_data_files(
                 metas.append(soft_validate(result_meta, DataMeta, warnings=True))
         elif extension in ["csv", "gz"]:
             read_opts = cast(dict[str, Any], opts) if opts else {}
-            raw_data = pd.read_csv(cast(str, mapped_file), low_memory=False, **read_opts)  # type: ignore[call-overload]
+            csv_defaults: dict[str, Any] = {"low_memory": False}
+            if read_opts.get("engine") == "python":
+                csv_defaults.pop("low_memory")  # python engine doesn't support low_memory
+            raw_data = pd.read_csv(cast(str, mapped_file), **{**csv_defaults, **read_opts})  # type: ignore[call-overload]
         elif extension in ["sav", "dta"]:
             read_fn = getattr(pyreadstat, "read_" + (mapped_file[-3:]).lower())
             with warnings.catch_warnings():  # While pyreadstat has not been updated to pandas 2.2 standards
@@ -1943,7 +1946,10 @@ def infer_meta(
         ext = os.path.splitext(fname)[1].lower()[1:]
         meta["files"] = [{"file": fname, "opts": read_opts, "code": "F0"}]
         if ext in ["csv", "gz"]:
-            df = pd.read_csv(data_file, low_memory=False, **read_opts)  # type: ignore[call-overload]
+            csv_defaults: dict[str, Any] = {"low_memory": False}
+            if read_opts.get("engine") == "python":
+                csv_defaults.pop("low_memory")  # python engine doesn't support low_memory
+            df = pd.read_csv(data_file, **{**csv_defaults, **read_opts})  # type: ignore[call-overload]
         elif ext in ["sav", "dta"]:
             read_fn = getattr(pyreadstat, "read_" + ext)
             df, sav_meta = read_fn(
