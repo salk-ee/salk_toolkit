@@ -1379,7 +1379,7 @@ def draws_to_hdis(
     for hdiv in hdi_vals:
         ldf_v = (
             data.groupby(gbc, observed=False)[vc]
-            .apply(lambda s: pd.Series(list(az.hdi(s.to_numpy(), hdi_prob=hdiv)), index=["lo", "hi"]))
+            .apply(lambda s: pd.Series(list(az.hdi(s.to_numpy(), prob=hdiv)), index=["lo", "hi"]))
             .reset_index()
         )
         ldf_v["hdi"] = hdiv
