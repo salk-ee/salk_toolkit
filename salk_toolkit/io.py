@@ -1422,6 +1422,41 @@ def _demote_to_plain(block: ColumnBlockMeta) -> ColumnBlockMeta:
 # When figuring out the metafile, it can also be run as: _process_annotated_data(meta=<dict>, data_file=<>)
 
 
+def _combine_first_preserving_order(*frames: pd.DataFrame) -> pd.DataFrame:
+    """Like ``DataFrame.combine_first(other1).combine_first(other2)...`` but
+    keeps the natural source-data column order instead of lex-sorting.
+
+    ``DataFrame.combine_first`` lex-sorts the union of column names in its
+    result. That ordering is wrong for our TopK/MaxDiff/OneHot block pipeline
+    when ``from_columns`` is a regex with a single numeric capture group
+    (e.g. ``vA10_M_(\\d+)`` matching ``vA10_M_1, ..., vA10_M_14, vA10_M_99``):
+    after the onehot pivot + leftpack, the rename step assumes the columns are
+    still in source order, so a lex-sorted ``vA10_M_1, vA10_M_10, vA10_M_11,
+    ..., vA10_M_2, ...`` produces ``issue_top_1, issue_top_10, issue_top_11``
+    instead of ``issue_top_1, issue_top_2, issue_top_3``.
+
+    Restore the natural order: first frame's columns first (in their order),
+    then any new columns from each subsequent frame (in their order), deduped.
+    The underlying ``combine_first`` semantics (left-priority value coalescing
+    plus index union) are preserved — only the column ordering changes.
+    """
+    if not frames:
+        return pd.DataFrame()
+    result = frames[0]
+    for other in frames[1:]:
+        result = result.combine_first(other)
+    desired: list[str] = []
+    seen: set[str] = set()
+    for frame in frames:
+        for c in frame.columns:
+            if c not in seen:
+                desired.append(c)
+                seen.add(c)
+    # Tolerate any columns combine_first invented that we didn't account for
+    desired += [c for c in result.columns if c not in seen]
+    return result[desired]
+
+
 # Type annotations to know the return type for return_meta=True/False
 @overload
 def _process_annotated_data(
@@ -1662,8 +1697,15 @@ def _process_annotated_data(
         if group_df.empty:
             group_df = pd.DataFrame(index=raw_data_concat.index)
 
-        # 2. Process the block (Stage 1-5) using the universal driver
-        create_source_df = group_df.combine_first(ndf_df).combine_first(raw_data_concat)
+        # 2. Process the block (Stage 1-5) using the universal driver.
+        # `DataFrame.combine_first` lex-sorts column names in the result. That
+        # broke TopK on inputs like `vA10_M_(\d+)` where lex order interleaves
+        # `vA10_M_10/_11/_12/_13/_14` between `_M_1` and `_M_2`, causing the
+        # post-leftpack positional rename to tag rank-2 slots as `issue_top_10`
+        # instead of `issue_top_2`. Restore the natural source order: columns
+        # produced by this group's own meta first, then carry-overs from prior
+        # blocks, then the raw concat — each in their original order, deduped.
+        create_source_df = _combine_first_preserving_order(group_df, ndf_df, raw_data_concat)
 
         if isinstance(group, (TopKBlock, MaxDiffBlock, OneHotBlock)):
             # Specialized blocks: handle explosion and transformation
@@ -1696,8 +1738,9 @@ def _process_annotated_data(
                     ndf_df[c] = group_df[c]
 
             # Pass 2: specialized explosion / transformation
-            # Refresh source df with Pass 1 results
-            create_source_df_refreshed = ndf_df.combine_first(raw_data_concat)
+            # Refresh source df with Pass 1 results. Same column-order
+            # restoration as Pass 1 (see comment above).
+            create_source_df_refreshed = _combine_first_preserving_order(ndf_df, raw_data_concat)
 
             processed_siblings: list[tuple[pd.DataFrame, ColumnBlockMeta]] = list(
                 _process_block(
