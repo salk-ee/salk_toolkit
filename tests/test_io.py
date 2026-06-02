@@ -2498,6 +2498,34 @@ class TestMultipleFiles:
 class TestReadAndProcessData:
     """Test read_and_process_data function"""
 
+    def test_category_subset_in_last_file_still_unions(self, temp_dir):
+        """Case B: when the LAST file lists fewer categories for a shared column, combined
+        categories still union across files (not truncated to last)."""
+        csv1 = temp_dir / "cb1.csv"
+        csv2 = temp_dir / "cb2.csv"
+        pd.DataFrame({"id": [1, 2, 3], "region": ["North", "South", "East"]}).to_csv_file(csv1)
+        pd.DataFrame({"id": [4, 5], "region": ["North", "South"]}).to_csv_file(csv2)
+        meta1 = temp_dir / "cb1.json"
+        meta2 = temp_dir / "cb2.json"
+        write_json(
+            meta1,
+            {
+                "file": "cb1.csv",
+                "structure": [
+                    {"name": "main", "columns": ["id", ["region", {"categories": ["North", "South", "East"]}]]}
+                ],
+            },
+        )
+        write_json(
+            meta2,
+            {
+                "file": "cb2.csv",
+                "structure": [{"name": "main", "columns": ["id", ["region", {"categories": ["North", "South"]}]]}],
+            },
+        )
+        df = read_and_process_data({"files": [{"file": str(meta1)}, {"file": str(meta2)}]})
+        assert set(df["region"].cat.categories) == {"North", "South", "East"}
+
     def test_string_shorthand(self, csv_file, sample_csv_data):
         """Test string shorthand for simple file loading"""
         sample_csv_data.to_csv_file(csv_file)
@@ -3944,6 +3972,101 @@ class TestStructureMerge:
         merged = _merge_data_metas([m1, m2])
         assert set(merged.structure["trust"].columns.keys()) == {"trust_a", "trust_b", "trust_c"}
         assert list(merged.structure["trust"].columns.keys()) == ["trust_a", "trust_b", "trust_c"]
+
+    def test_block_only_in_first_file_survives(self, temp_dir):
+        """A block present only in file1 must survive the merge (today metas[-1] drops it)."""
+        csv1 = temp_dir / "bs1.csv"
+        csv2 = temp_dir / "bs2.csv"
+        pd.DataFrame({"id": [1, 2], "shared": ["Yes", "No"], "extra": ["Yes", "No"]}).to_csv_file(csv1)
+        pd.DataFrame({"id": [3, 4], "shared": ["Yes", "No"]}).to_csv_file(csv2)
+        meta1 = temp_dir / "bs1.json"
+        meta2 = temp_dir / "bs2.json"
+        write_json(
+            meta1,
+            {
+                "file": "bs1.csv",
+                "structure": [
+                    {"name": "meta", "columns": ["id"]},
+                    {"name": "common", "scale": {"categories": ["No", "Yes"]}, "columns": ["shared"]},
+                    {"name": "april_only", "scale": {"categories": ["No", "Yes"]}, "columns": ["extra"]},
+                ],
+            },
+        )
+        write_json(
+            meta2,
+            {
+                "file": "bs2.csv",
+                "structure": [
+                    {"name": "meta", "columns": ["id"]},
+                    {"name": "common", "scale": {"categories": ["No", "Yes"]}, "columns": ["shared"]},
+                ],
+            },
+        )
+        df, meta = read_and_process_data({"files": [{"file": str(meta1)}, {"file": str(meta2)}]}, return_meta=True)
+        assert "april_only" in meta.structure
+        assert "extra" in df.columns
+        by_id = df.set_index("id")
+        assert by_id.loc[1, "extra"] == "Yes"
+        assert pd.isna(by_id.loc[3, "extra"])
+
+    def test_identical_structures_are_noop(self):
+        """Identical structures across files -> merged structure equals the inputs'."""
+        from salk_toolkit.io import _merge_data_metas
+
+        spec = {
+            "file": "x.csv",
+            "structure": [
+                {"name": "b1", "scale": {"categories": ["No", "Yes"], "ordered": True}, "columns": ["a", "c"]},
+                {"name": "b2", "columns": [["n", {"continuous": True}]]},
+            ],
+        }
+        m1 = make_data_meta(spec)
+        m2 = make_data_meta(spec)
+        merged = _merge_data_metas([m1, m2])
+        assert list(merged.structure.keys()) == ["b1", "b2"]
+        assert list(merged.structure["b1"].columns.keys()) == ["a", "c"]
+        assert merged.structure["b1"].scale.categories == ["No", "Yes"]
+        assert merged.structure["b1"].scale.ordered is True
+        assert merged.structure["b2"].columns["n"].continuous is True
+
+    def test_category_superset_unions(self):
+        """A column's categories union across files (existing order, then missing appended)."""
+        from salk_toolkit.io import _merge_data_metas
+
+        m1 = make_data_meta(
+            {"file": "x.csv", "structure": [{"name": "b", "columns": [["q", {"categories": ["Low", "High"]}]]}]}
+        )
+        m2 = make_data_meta(
+            {
+                "file": "y.csv",
+                "structure": [{"name": "b", "columns": [["q", {"categories": ["High", "Mid", "VeryHigh"]}]]}],
+            }
+        )
+        merged = _merge_data_metas([m1, m2])
+        assert merged.structure["b"].columns["q"].categories == ["Low", "High", "Mid", "VeryHigh"]
+
+    def test_block_type_mismatch_raises(self):
+        """A block with conflicting types across files (plain vs topk) is a hard conflict."""
+        from salk_toolkit.io import _merge_data_metas
+
+        m1 = make_data_meta({"file": "x.csv", "structure": [{"name": "b", "columns": ["q"]}]})  # plain
+        m2 = make_data_meta(
+            {
+                "file": "y.csv",
+                "structure": [{"type": "topk", "name": "b", "from_columns": "Q(\\d+)", "res_columns": "R\\1"}],
+            }
+        )  # topk
+        with pytest.raises(ValueError, match="type mismatch"):
+            _merge_data_metas([m1, m2])
+
+    def test_column_order_first_file_then_appended(self):
+        """Columns keep file1 order; later files' new columns are appended in their order."""
+        from salk_toolkit.io import _merge_data_metas
+
+        m1 = make_data_meta({"file": "x.csv", "structure": [{"name": "b", "columns": ["a", "b", "c"]}]})
+        m2 = make_data_meta({"file": "y.csv", "structure": [{"name": "b", "columns": ["b", "d", "a", "e"]}]})
+        merged = _merge_data_metas([m1, m2])
+        assert list(merged.structure["b"].columns.keys()) == ["a", "b", "c", "d", "e"]
 
 
 class TestInferMetaDeepL:
