@@ -63,6 +63,7 @@ globs: salk_toolkit/io.py, salk_toolkit/validation.py, salk_toolkit/serializatio
 - **file_map**: Before reading any file from disk, we consult the global `file_map` dictionary and remap if needed
   - This is to allow packaging multiple annotations with their source files without worrying about paths
 - **multi-file inputs**: Each entry in `files` can attach extra columns (e.g. survey dates, wave codes). Those values flow into the processed dataframe as categoricals keyed by the added column names.
+  - **structure merge**: the combined `DataMeta` for a multi-file load is built by `_merge_data_metas` (io.py), which unions block *structure* — blocks and their column lists — across all file metas in file order (not just `metas[-1]`), in addition to the category union. Columns union first-seen order; categories union; conflicting scalar fields are last-file-wins with a `warn`; the raw `source` var is exempt. Hard conflicts raise: block-type mismatch (same block `name`, different `topk`/`plain`/`maxdiff`/`onehot` `type`), scale-kind mismatch, or `num_values`/categories length mismatch. So a later wave listing a column-subset battery no longer truncates the combined meta, and hand-unioning the last-wave meta is no longer required.
 - **DataDescription**: `read_and_process_data` accepts inline `data`, `preprocessing`/`postprocessing` snippets, boolean `filter` expressions, and `merge` specs so you can stage joins without editing the base meta.
 
 ## Practical notes
