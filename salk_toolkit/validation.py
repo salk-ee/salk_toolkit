@@ -322,14 +322,29 @@ class TopKBlock(ColumnBlockMeta):
     type: Literal["topk"] = "topk"  # type: ignore[assignment]
 
     columns: ColSpec = DF(dict)
-    k: Union[int, Literal["max"]] = "max"
+    k: Union[int, Literal["max"]] = Field(
+        default="max", description="Number of ranked slots to keep ('max' = as many as the data supports)."
+    )
+    # Source columns: an explicit list, or a regex whose capture group(s) index items/subgroups.
     from_columns: Union[str, List[str]]  # type: ignore[assignment]
-    res_columns: Union[str, List[str]]
-    agg_index: int = -1
-    na_vals: Optional[List[str]] = DF(list)
+    res_columns: Union[str, List[str]] = Field(
+        description="Output column names; a regex substitution template (e.g. 'R\\1') when from_columns is a regex."
+    )
+    agg_index: int = Field(
+        default=-1, description="Which regex capture group indexes the items (1-based; -1 = last group)."
+    )
+    na_vals: Optional[List[str]] = Field(
+        default_factory=list, description="Raw cell values treated as missing before aggregation."
+    )
     from_prefix: Optional[str] = None
 
-    input_format: Literal["onehot", "ranked_onehot", "leftpacked", "ranked_leftpack"] = "onehot"
+    input_format: Literal["onehot", "ranked_onehot", "leftpacked", "ranked_leftpack"] = Field(
+        default="onehot",
+        description=(
+            "Shape of the raw data: 'onehot' = one 0/1 column per item; 'leftpacked' = R1..Rk columns "
+            "already holding chosen item names; 'ranked_*' variants additionally treat slot order as a ranking."
+        ),
+    )
 
     def segments(self) -> List[Tuple[List[str], Optional[List[str]], bool]]:
         """Return ordinal-ranking segments for this resolved TopKBlock."""
@@ -362,12 +377,26 @@ class MaxDiffBlock(ColumnBlockMeta):
     type: Literal["maxdiff"] = "maxdiff"  # type: ignore[assignment]
 
     columns: ColSpec = DF(dict)
-    best_columns: Union[str, List[str]]
-    worst_columns: Union[str, List[str]]
-    set_columns: Optional[Union[str, List[str]]] = None
+    best_columns: Union[str, List[str]] = Field(
+        description="Columns (list or regex) holding the 'best' pick per question."
+    )
+    worst_columns: Union[str, List[str]] = Field(
+        description="Columns (list or regex) holding the 'worst' pick per question."
+    )
+    set_columns: Optional[Union[str, List[str]]] = Field(
+        default=None,
+        description="Columns naming the items shown in each question. For input_format='choice_sets' a "
+        "substitution template against best_columns; for 'resolved' an independent regex.",
+    )
     setindex_column: Optional[Union[str, List[object]]] = None
 
-    input_format: Literal["choice_sets", "resolved"] = "choice_sets"
+    input_format: Literal["choice_sets", "resolved"] = Field(
+        default="choice_sets",
+        description=(
+            "'choice_sets' = best/worst cells hold item indices and choice_sets/set lists define each question's "
+            "options; 'resolved' = best/worst/set columns are already aligned per question."
+        ),
+    )
 
     choice_sets: Optional[Union[List[List[List[int]]], Dict[str, List[List[List[int]]]]]] = None
 
@@ -527,11 +556,22 @@ class OneHotBlock(ColumnBlockMeta):
     type: Literal["onehot"] = "onehot"  # type: ignore[assignment]
 
     columns: ColSpec = DF(dict)
+    # Source columns: an explicit list or a regex.
     from_columns: Union[str, List[str]]  # type: ignore[assignment]
 
-    input_format: Literal["leftpacked", "wide"] = "leftpacked"
+    input_format: Literal["leftpacked", "wide"] = Field(
+        default="leftpacked",
+        description=(
+            "'leftpacked' = M_1..M_n columns hold chosen choice names packed left; "
+            "'wide' = one column per choice already."
+        ),
+    )
 
-    choices: Optional[Union[List[str], Dict[str, List[str]]]] = None
+    choices: Optional[List[str]] = Field(
+        default=None,
+        description="Explicit choice list; if None, derived as the sorted union of non-null cell values "
+        "(excluding na_vals).",
+    )
     res_prefix: Optional[str] = None
     na_vals: Optional[List[str]] = None
 
@@ -557,20 +597,41 @@ def _cb_lst_to_dict(lst: Sequence[object] | dict[str, object]) -> dict[str, obje
     return result
 
 
+# Block-level fields removed by the create-refactor. Because ``PBase`` uses
+# ``extra="ignore"``, leaving these unguarded would silently drop the directive and
+# mis-process the block; we reject them loudly so stale annotations fail fast.
+_LEGACY_BLOCK_FIELDS = {
+    "topics": "MaxDiff topic names now come from scale.translate (1-based index -> name).",
+    "sets": "MaxDiff set columns are declared via set_columns / setindex_column.",
+    "choice_mapping": "Folded into scale.translate.",
+    "items": "Folded into scale.translate.",
+    "row_labels": "Folded into scale.translate.",
+    "translate_values": "TopK index->name translation now lives in scale.translate_after.",
+    "groups": "Subgroup naming now uses subgroup_labels.",
+}
+
+
 def _default_block_type(block: object) -> object:
     """Ensure a block dict carries a ``type`` discriminator (default ``"plain"``).
-    Passes Pydantic model instances through untouched. Raises on the legacy nested
-    ``create`` shape so silently-lost TopK/MaxDiff processing becomes a loud failure."""
+    Passes Pydantic model instances through untouched. Raises on legacy schema shapes
+    (the nested ``create`` field or removed block-level fields) so silently-lost
+    TopK/MaxDiff processing becomes a loud, actionable failure."""
     if isinstance(block, BaseModel):
         return block
     if not isinstance(block, dict):
         raise TypeError("Block specification must be a dict or BaseModel instance.")
-    if "create" in block and "type" not in block:
+    if "create" in block:
         raise ValueError(
             f"Block {block.get('name')!r} uses the legacy nested 'create' field, which is no "
             "longer supported. Hoist create.type to the top level as 'type' and flatten the "
             "create fields onto the block (e.g. {'type': 'topk', 'name': ..., 'from_columns': ...}). "
-            "See specs/2026-04-02-maxdiff-topk-schema-refactor.md."
+            "See specs/block-processing.md."
+        )
+    legacy = [f for f in _LEGACY_BLOCK_FIELDS if f in block]
+    if legacy:
+        hints = "; ".join(f"'{f}': {_LEGACY_BLOCK_FIELDS[f]}" for f in legacy)
+        raise ValueError(
+            f"Block {block.get('name')!r} uses removed block field(s) {legacy}. {hints} See specs/block-processing.md."
         )
     if "type" not in block:
         return {"type": "plain", **block}

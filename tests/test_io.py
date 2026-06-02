@@ -4140,6 +4140,43 @@ class TestPipelineSchema:
         assert "groups" not in TopKBlock.model_fields
         assert "translate_values" not in TopKBlock.model_fields
 
+    def test_legacy_nested_create_with_type_raises(self):
+        """A block carrying both `type` and a legacy `create` field must fail loud,
+        not silently drop the create directives via extra='ignore'."""
+        from salk_toolkit.validation import _default_block_type
+
+        with pytest.raises(ValueError, match="create"):
+            _default_block_type({"type": "plain", "name": "b", "create": {"type": "topk", "from_columns": "Q(\\d+)"}})
+
+    def test_legacy_maxdiff_block_fields_raise(self):
+        """Removed MaxDiff block-level fields (topics/sets/choice_mapping/items) must
+        raise a helpful migration error rather than be silently ignored."""
+        from salk_toolkit.validation import _default_block_type
+
+        for legacy in ("topics", "sets", "choice_mapping", "items"):
+            with pytest.raises(ValueError, match=legacy):
+                _default_block_type({"type": "maxdiff", "name": "md", legacy: "whatever"})
+
+    def test_legacy_topk_block_fields_raise(self):
+        """Removed TopK block-level fields (translate_values/groups) must raise."""
+        from salk_toolkit.validation import _default_block_type
+
+        for legacy in ("translate_values", "groups"):
+            with pytest.raises(ValueError, match=legacy):
+                _default_block_type({"type": "topk", "name": "t", legacy: {"1": "x"}})
+
+    def test_onehot_choices_rejects_dict(self):
+        """OneHotBlock no longer accepts the unreachable Dict[str, list] choices form;
+        a dict must fail validation rather than silently corrupt to its keys."""
+        from salk_toolkit.validation import soft_validate, OneHotBlock
+
+        with pytest.raises(Exception):
+            soft_validate(
+                {"type": "onehot", "name": "sm", "from_columns": r"M_(\d+)", "choices": {"g": ["A", "B"]}},
+                OneHotBlock,
+                warnings=True,
+            )
+
     def test_topk_segments_ranked_and_unranked(self):
         """Verify segments() returns chain for ranked formats and single entry for flat ones."""
         from salk_toolkit.validation import soft_validate, TopKBlock

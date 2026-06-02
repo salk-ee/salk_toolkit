@@ -709,12 +709,7 @@ def _apply_transform(
         return _maxdiff_apply_transform(block, df, cs, source_block=source_block)
     if isinstance(block, OneHotBlock):
         assert isinstance(source_block, OneHotBlock)
-        chs = (
-            source_block.choices
-            if isinstance(source_block.choices, list) or source_block.choices is None
-            else list(source_block.choices)
-        )
-        return _onehot_apply_transform(block, df, chs)
+        return _onehot_apply_transform(block, df, source_block.choices)
     if block.type == "plain":
         return _plain_apply_transform(block, df, source_block=source_block, **kwargs)  # type: ignore[arg-type]
     raise TypeError(f"Unsupported block type for _apply_transform: {type(block)}")
@@ -918,6 +913,18 @@ def _match_columns(block: ColumnBlockMeta, df: pd.DataFrame) -> list[str]:
     if not cols:
         raise ValueError(f"No columns matched for block {block.name!r} (from_columns={pattern!r})")
     return cols
+
+
+def _block_scale_dict(block: ColumnBlockMeta) -> dict[str, Any]:
+    """A deep-copied plain dict of the block's scale (empty dict when no scale),
+    safe to mutate while building an output block."""
+    return deepcopy(block.scale.model_dump(mode="python") if block.scale else {})
+
+
+def _resolved_from_cols(block: ColumnBlockMeta, df: pd.DataFrame) -> list[str]:
+    """`from_columns` as a concrete list: identity for an explicit list, else
+    regex-matched against `df`."""
+    return list(block.from_columns) if isinstance(block.from_columns, list) else _match_columns(block, df)
 
 
 def _narrow_sibling(block: ColumnBlockMeta, cols: list[str], *, label_suffix: str) -> ColumnBlockMeta:
@@ -1125,7 +1132,7 @@ def _build_topk_output_block(
     res_cols: list[str],
     block: TopKBlock,
 ) -> TopKBlock:
-    scale_dict = deepcopy(block.scale.model_dump(mode="python") if block.scale else {})
+    scale_dict = _block_scale_dict(block)
     return soft_validate(
         {
             "type": "topk",
@@ -1212,7 +1219,7 @@ def _maxdiff_transform_resolved(
     best, worst, sets = _align_resolved_roles(block, best, worst, sets)
     cols = sorted(set(best) | set(worst) | set(sets))
     sdf = df[cols].copy()
-    scale_dict = deepcopy(block.scale.model_dump(mode="python") if block.scale else {})
+    scale_dict = _block_scale_dict(block)
     out = soft_validate(
         {
             "type": "maxdiff",
@@ -1383,7 +1390,7 @@ def _maxdiff_transform_choice_sets(
             setindex_col_meta = setindex_col_meta.model_copy(update={"continuous": True})
         columns_spec = {setindex_col_name: setindex_col_meta} | columns_spec
 
-    scale_dict = deepcopy(block.scale.model_dump(mode="python") if block.scale else {})
+    scale_dict = _block_scale_dict(block)
     scale_dict["categories"] = topics
 
     output_block = soft_validate(
@@ -1419,7 +1426,7 @@ def _onehot_transform_leftpacked(
     df: pd.DataFrame,
     choices: list[str] | None,
 ) -> tuple[pd.DataFrame, OneHotBlock]:
-    from_cols = list(block.from_columns) if isinstance(block.from_columns, list) else _match_columns(block, df)
+    from_cols = _resolved_from_cols(block, df)
     src = df[from_cols].astype("object")
     if block.na_vals:
         src = src.replace(block.na_vals, None)
@@ -1443,7 +1450,7 @@ def _onehot_transform_leftpacked(
         index=df.index,
     )
 
-    scale_dict = deepcopy(block.scale.model_dump(mode="python") if block.scale else {})
+    scale_dict = _block_scale_dict(block)
     out = soft_validate(
         {
             "type": "onehot",
@@ -1465,7 +1472,7 @@ def _onehot_transform_wide(
     df: pd.DataFrame,
     choices: list[str] | None,
 ) -> tuple[pd.DataFrame, OneHotBlock]:
-    from_cols = list(block.from_columns) if isinstance(block.from_columns, list) else _match_columns(block, df)
+    from_cols = _resolved_from_cols(block, df)
     sdf = df[from_cols].copy()
     prefix = block.res_prefix or ""
     final_choices: list[str] | None
@@ -1476,7 +1483,7 @@ def _onehot_transform_wide(
     else:
         final_choices = None
 
-    scale_dict = deepcopy(block.scale.model_dump(mode="python") if block.scale else {})
+    scale_dict = _block_scale_dict(block)
     out = soft_validate(
         {
             "type": "onehot",
