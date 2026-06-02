@@ -3860,6 +3860,92 @@ class TestMultiSourceColumns:
         assert {"file_name"}.issubset(data_df.columns)
 
 
+class TestStructureMerge:
+    """Multi-file loads union block structure (blocks + columns), not metas[-1]."""
+
+    def test_column_subset_battery_unions_across_files(self, temp_dir):
+        """File1 lists a 3-column battery; file2 (LAST) lists a 2-column subset.
+        The combined meta must expose all 3 columns (the union), file2-only rows NaN
+        on the file1-only column."""
+        csv1 = temp_dir / "sm1.csv"
+        csv2 = temp_dir / "sm2.csv"
+        pd.DataFrame(
+            {"id": [1, 2], "trust_a": ["Yes", "No"], "trust_b": ["Yes", "No"], "trust_c": ["Yes", "No"]}
+        ).to_csv_file(csv1)
+        pd.DataFrame({"id": [3, 4], "trust_a": ["Yes", "No"], "trust_b": ["Yes", "No"]}).to_csv_file(csv2)
+        meta1 = temp_dir / "sm1.json"
+        meta2 = temp_dir / "sm2.json"
+        write_json(
+            meta1,
+            {
+                "file": "sm1.csv",
+                "structure": [
+                    {"name": "meta", "columns": ["id"]},
+                    {
+                        "name": "trust",
+                        "scale": {"categories": ["No", "Yes"], "ordered": True},
+                        "columns": ["trust_a", "trust_b", "trust_c"],
+                    },
+                ],
+            },
+        )
+        write_json(
+            meta2,
+            {
+                "file": "sm2.csv",
+                "structure": [
+                    {"name": "meta", "columns": ["id"]},
+                    {
+                        "name": "trust",
+                        "scale": {"categories": ["No", "Yes"], "ordered": True},
+                        "columns": ["trust_a", "trust_b"],
+                    },
+                ],
+            },
+        )
+
+        df, meta = read_and_process_data({"files": [{"file": str(meta1)}, {"file": str(meta2)}]}, return_meta=True)
+
+        # The combined meta must list all 3 columns (the union), not just file2's subset.
+        assert set(meta.structure["trust"].columns.keys()) == {"trust_a", "trust_b", "trust_c"}
+
+        assert "trust_c" in df.columns
+        by_id = df.set_index("id")
+        assert by_id.loc[1, "trust_c"] == "Yes" and by_id.loc[2, "trust_c"] == "No"
+        assert pd.isna(by_id.loc[3, "trust_c"]) and pd.isna(by_id.loc[4, "trust_c"])
+
+    def test_merge_data_metas_unions_columns_directly(self):
+        """Direct unit test of _merge_data_metas: column union, file order preserved."""
+        from salk_toolkit.io import _merge_data_metas
+
+        m1 = make_data_meta(
+            {
+                "structure": [
+                    {
+                        "name": "trust",
+                        "scale": {"categories": ["No", "Yes"], "ordered": True},
+                        "columns": ["trust_a", "trust_b", "trust_c"],
+                    }
+                ]
+            }
+        )
+        m2 = make_data_meta(
+            {
+                "structure": [
+                    {
+                        "name": "trust",
+                        "scale": {"categories": ["No", "Yes"], "ordered": True},
+                        "columns": ["trust_a", "trust_b"],
+                    }
+                ]
+            }
+        )
+
+        merged = _merge_data_metas([m1, m2])
+        assert set(merged.structure["trust"].columns.keys()) == {"trust_a", "trust_b", "trust_c"}
+        assert list(merged.structure["trust"].columns.keys()) == ["trust_a", "trust_b", "trust_c"]
+
+
 class TestInferMetaDeepL:
     """Tests for infer_meta deepl_key / source_lang parameters."""
 
