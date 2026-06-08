@@ -470,6 +470,17 @@ class TestTimeAndRandomUtilities:
         assert result["draw"].max() < 3
         assert result["draw"].min() >= 0
 
+    def test_deterministic_draws_non_default_index(self):
+        """Redraw on a filtered population must not misalign by index labels."""
+        df = pd.DataFrame({"a": range(100), "draw": np.tile(np.arange(10), 10)})
+        subset = df[df["draw"].isin([0, 1, 2])].copy()
+        result = deterministic_draws(subset, 10, "step2")
+
+        assert result["draw"].notna().all()
+        assert result["draw"].dtype == np.int64 or result["draw"].dtype.kind in "iu"
+        assert result["draw"].max() < 10
+        assert result["draw"].min() >= 0
+
     def test_rel_wave_times(self):
         """Test rel_wave_times function."""
         ws = pd.Series([1, 1, 2, 2, 3])

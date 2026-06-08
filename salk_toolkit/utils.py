@@ -769,7 +769,9 @@ def deterministic_draws(
 
     if n_total is None:
         n_total = len(df)
-    df.loc[:, "draw"] = pd.Series(stable_draws(n_total, n_draws, uid), index=np.arange(n_total))
+    df = df.copy()
+    # Assign by position: a filtered population keeps its original index labels.
+    df["draw"] = stable_draws(n_total, n_draws, uid)
     return df
 
 
