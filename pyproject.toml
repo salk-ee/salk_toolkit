@@ -22,7 +22,7 @@ classifiers = [
 ]
 dependencies = [
   "altair",
-  "arviz",
+  "arviz>=1.1",
   "authlib",
   "frontegg",
   "hsluv",
@@ -31,6 +31,7 @@ dependencies = [
   "libsql_client",
   "matplotlib",
   "numpy",
+  "openpyxl",
   "pandas",
   "pillow",
   "polars>=1.39.0,<2",
