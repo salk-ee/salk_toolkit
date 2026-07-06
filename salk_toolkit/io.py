@@ -34,9 +34,11 @@ __all__ = [
 
 import json
 import os
+import subprocess
 import warnings
 import re
 from collections import defaultdict
+from functools import lru_cache
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from copy import deepcopy
 from typing import Any, Callable, Literal, TypeAlias, TypeVar, cast, overload
@@ -1963,7 +1965,7 @@ def infer_meta(
             if translate_fn:
                 col_labels = {k: translate_fn(v) for k, v in col_labels.items()}
         elif ext == "parquet":
-            df = pd.read_parquet(data_file, **read_opts)
+            df = pd.read_parquet(data_file, **read_opts)  # type: ignore[call-overload]
         elif ext in ["xls", "xlsx", "xlsm", "xlsb", "odf", "ods", "odt"]:
             df = pd.read_excel(data_file, **read_opts)  # type: ignore[call-overload]
         else:
@@ -2280,6 +2282,23 @@ def _find_type_in_dict(d: object, dtype: type, path: str = "") -> None:
 custom_meta_key = "salk-toolkit-meta"
 
 
+@lru_cache(maxsize=1)
+def get_stk_commit() -> str | None:
+    """Short git commit of the salk_toolkit checkout, or None when not running from a git repo."""
+    try:
+        return (
+            subprocess.check_output(
+                ["git", "rev-parse", "--short", "HEAD"],
+                cwd=os.path.dirname(os.path.abspath(__file__)),
+                stderr=subprocess.DEVNULL,
+                text=True,
+            ).strip()
+            or None
+        )
+    except Exception:
+        return None
+
+
 def write_parquet_with_metadata(df: pd.DataFrame, meta: dict[str, object] | ParquetMeta, file_name: str) -> None:
     """Write DataFrame to Parquet file with embedded metadata.
 
@@ -2298,6 +2317,12 @@ def write_parquet_with_metadata(df: pd.DataFrame, meta: dict[str, object] | Parq
     data_meta = meta_payload.get("data")
     if isinstance(data_meta, DataMeta):
         meta_payload["data"] = data_meta.model_dump(mode="json")
+
+    # Stamp the writing salk_toolkit commit so files are self-describing; callers may override.
+    if not meta_payload.get("stk_commit"):
+        stk_commit = get_stk_commit()
+        if stk_commit:
+            meta_payload["stk_commit"] = stk_commit
 
     custom_meta_json = json.dumps(meta_payload)
     existing_meta = table.schema.metadata

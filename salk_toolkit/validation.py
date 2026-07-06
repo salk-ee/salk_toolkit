@@ -599,6 +599,8 @@ class ParquetMeta(BaseModel):
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
     data: DataMeta
+    stk_commit: Optional[str] = None  # salk_toolkit git commit that wrote the file
+    sip_commit: Optional[str] = None  # salk_internal_package git commit (set by run_stack)
 
 
 DataSpec = Union[str, "DataDescription"]
