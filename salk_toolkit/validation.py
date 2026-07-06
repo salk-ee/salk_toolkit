@@ -340,17 +340,19 @@ def _normalize_data_desc_input(meta: Any, read_opts_key: str = "read_opts") -> A
     Non-dicts pass through unchanged.
     """
     if isinstance(meta, dict):
+        # Never mutate the caller's dict: a `mode="before"` validator must be pure,
+        # otherwise it leaks FileDesc objects back into the source model_desc (breaking
+        # later json.dumps of that dict, e.g. in package_model).
+        meta = dict(meta)
+
         # If file is provided, convert to first entry in files list
         if meta.get("file") is not None:
             file_value = meta.get("file")
             read_opts = meta.get(read_opts_key, {}) if read_opts_key != "__no_read_opts__" else {}
-            meta = dict(meta)  # Make a copy
             meta.pop("file", None)
             if read_opts_key != "__no_read_opts__":
                 meta.pop("read_opts", None)  # read_opts is now in files
-            if not meta.get("files"):
-                meta["files"] = []
-            meta["files"].insert(0, FileDesc(file=file_value, opts=read_opts))
+            meta["files"] = [FileDesc(file=file_value, opts=read_opts), *(meta.get("files") or [])]
 
         # Ensure all files have codes based on their index in the list
         if meta.get("files") is not None:
