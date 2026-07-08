@@ -2785,6 +2785,50 @@ class TestReplaceDataMetaInParquet:
         assert group_cols == {"test_group": ["renamed_col", "keep_same", "response", "party"]}
 
 
+class TestParquetCommitStamps:
+    """write_parquet_with_metadata stamps the salk_toolkit commit into the metadata"""
+
+    def test_stk_commit_stamped_and_read_back(self, temp_dir):
+        """Written parquet carries the current salk_toolkit git commit; sip_commit stays unset."""
+        import subprocess
+        import os
+        import salk_toolkit.io as stk_io
+
+        df = pd.DataFrame({"a": [1, 2, 3]})
+        meta = {"data": {"structure": [{"name": "blk", "columns": ["a"]}]}}
+        path = os.path.join(temp_dir, "stamped.parquet")
+        write_parquet_with_metadata(df, meta, path)
+
+        expected = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=os.path.dirname(os.path.abspath(stk_io.__file__)),
+            text=True,
+        ).strip()
+
+        pmeta = read_parquet_metadata(path)
+        assert pmeta is not None
+        assert pmeta.stk_commit == expected
+        assert pmeta.sip_commit is None
+
+    def test_explicit_commits_preserved(self, temp_dir):
+        """Caller-provided stk_commit/sip_commit values are not overwritten by the auto-stamp."""
+        import os
+
+        df = pd.DataFrame({"a": [1]})
+        meta = {
+            "data": {"structure": [{"name": "blk", "columns": ["a"]}]},
+            "stk_commit": "cafe123",
+            "sip_commit": "beef456",
+        }
+        path = os.path.join(temp_dir, "explicit.parquet")
+        write_parquet_with_metadata(df, meta, path)
+
+        pmeta = read_parquet_metadata(path)
+        assert pmeta is not None
+        assert pmeta.stk_commit == "cafe123"
+        assert pmeta.sip_commit == "beef456"
+
+
 class TestSoftValidate:
     """Test soft_validate function"""
 
