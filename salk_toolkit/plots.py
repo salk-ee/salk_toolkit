@@ -44,6 +44,7 @@ __all__ = [
     "fd_mangle",
     "facet_dist",
     "ordered_population",
+    "ordered_population_sampled",
     "marimekko",
 ]
 
@@ -2175,6 +2176,85 @@ def ordered_population(
         data=tdf,
     )
     return plot  # type: ignore[return-value]
+
+
+def _sample_ordered_population_group(
+    group: pd.DataFrame,
+    value_col: str,
+    sample_size: int,
+    seed: int,
+) -> pd.DataFrame:
+    """Sample one already-filtered population group and assign ordered positions."""
+    if len(group) > sample_size:
+        sampled = group.sample(n=sample_size, replace=False, random_state=seed).copy()
+    else:
+        sampled = group.copy()
+
+    sort_cols = [value_col]
+    if "id" in sampled.columns:
+        sort_cols.append("id")
+    sampled = sampled.sort_values(sort_cols, kind="mergesort").reset_index(drop=True)
+    sampled["pos"] = (np.arange(len(sampled)) + 0.5) / len(sampled) if len(sampled) else []
+    return sampled
+
+
+@stk_plot(
+    "ordered_population_sampled",
+    data_format="raw",
+    factor_columns=3,
+    aspect_ratio=(1.0 / 1.0),
+    args={"sample_size": "int", "seed": "int"},
+    n_facets=(0, 1),
+    no_question_facet=True,
+    hidden=True,
+)
+def ordered_population_sampled(
+    p: PlotInput,
+    sample_size: int = 2000,
+    seed: int = 42,
+) -> AltairChart:
+    """Plot actual sampled population rows ordered by the selected value."""
+
+    if sample_size <= 0:
+        raise ValueError("sample_size must be positive")
+
+    data = p.data.copy().dropna(subset=[p.value_col])
+    outer_cols = list(p.outer_factors)
+    f0 = p.facets[0] if p.facets else None
+
+    if outer_cols:
+        groups = []
+        for i, (_, group) in enumerate(data.groupby(outer_cols, sort=False, observed=True)):
+            groups.append(_sample_ordered_population_group(group, p.value_col, sample_size, seed + i))
+        sampled = pd.concat(groups, ignore_index=True) if groups else data.assign(pos=[])
+    else:
+        sampled = _sample_ordered_population_group(data, p.value_col, sample_size, seed)
+
+    base = alt.Chart(sampled).encode(
+        x=alt.X(
+            "pos:Q",
+            title="",
+            axis=alt.Axis(labels=False, ticks=False),
+        )
+    )
+    points = base.mark_circle(size=8, opacity=0.45).encode(
+        y=alt.Y(
+            f"{p.value_col}:Q",
+            title="",
+            axis=alt.Axis(grid=True),
+        ),
+        color=alt.Color(field=f0.col, type="nominal", sort=f0.order, scale=f0.colors)
+        if f0 is not None
+        else alt.value("red"),
+        tooltip=p.tooltip,
+    )
+    rule = (
+        alt.Chart()
+        .mark_rule(color="red", strokeDash=[2, 3])
+        .encode(y=alt.Y("mv:Q"))
+        .transform_joinaggregate(mv=f"mean({p.value_col}):Q", groupby=outer_cols)
+    )
+    return alt.layer(rule, points, data=sampled)  # type: ignore[return-value]
 
 
 @stk_plot(

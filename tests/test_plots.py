@@ -37,6 +37,8 @@ from utils.plot_comparison import (
 # Disable Altair max rows limit for testing
 alt.data_transformers.disable_max_rows()
 
+EXPERIMENTAL_MATCHING_PLOTS = {"ordered_population_sampled"}
+
 
 class TestPlots:
     """Test class for all plot types in the salk_toolkit plotting system."""
@@ -95,6 +97,7 @@ class TestPlots:
 
         # Get matching plots (details=True returns a dict)
         matches_dict = matching_plots(config, test_full_df, test_data_meta, details=True, list_hidden=True)
+        matches_dict = {k: v for k, v in matches_dict.items() if k not in EXPERIMENTAL_MATCHING_PLOTS}
 
         if full_df is not None:
             result = e2e_plot(config, data_file=None, full_df=full_df, data_meta=data_meta, **test_kwargs)
@@ -593,6 +596,32 @@ class TestPlots:
             "plot_args": {"full_data": True},  # required for consistency
         }
         self._run_plot_test("test_ordered_population", config, recompute=recompute, width=800)
+
+    def test_ordered_population_sampled_uses_real_sampled_rows_after_filter(self):
+        """Sampled ordered population emits real filtered sample rows, not 200 slice summaries."""
+        config = {
+            "res_col": "thermometer",
+            "factor_cols": ["party_preference"],
+            "filter": {"party_preference": ["EKRE", "SDE"]},
+            "plot": "ordered_population_sampled",
+            "internal_facet": True,
+            "plot_args": {"sample_size": 37},
+        }
+        chart = e2e_plot(config, str(self.data_file), width=800)
+        spec = chart.to_dict()
+        data_name = spec["data"]["name"]
+        rows = spec["datasets"][data_name]
+
+        assert {row["party_preference"] for row in rows} <= {"EKRE", "SDE"}
+        by_question: dict[str, list[dict[str, Any]]] = {}
+        for row in rows:
+            by_question.setdefault(row["question"], []).append(row)
+        assert by_question
+        for group_rows in by_question.values():
+            assert len(group_rows) == 37
+            assert [row["pos"] for row in group_rows] == sorted(row["pos"] for row in group_rows)
+            assert group_rows[0]["pos"] == pytest.approx(0.5 / 37)
+            assert group_rows[-1]["pos"] == pytest.approx(36.5 / 37)
 
     def test_marimekko(self, recompute):
         """Test Marimekko plot."""
