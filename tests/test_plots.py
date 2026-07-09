@@ -637,6 +637,19 @@ class TestPlots:
 
         assert len(data) == 37 * data["question"].nunique()
 
+    def test_ordered_population_sampled_defaults_to_1000_rows_per_question(self):
+        """The implicit sampled plot cap should stay small enough for interactive charts."""
+        config = {
+            "res_col": "thermometer",
+            "factor_cols": ["party_preference"],
+            "filter": {},
+            "plot": "ordered_population_sampled",
+            "internal_facet": True,
+        }
+        data = e2e_plot(config, str(self.data_file), width=800, return_data=True)
+
+        assert len(data) == min(1000, data["id"].nunique()) * data["question"].nunique()
+
     def test_marimekko(self, recompute):
         """Test Marimekko plot."""
         config = {

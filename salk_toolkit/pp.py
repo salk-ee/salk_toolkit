@@ -1107,7 +1107,7 @@ def pp_transform_data(
     # cap rows here, before group observations are melted into long form.
     sample_n = pp_desc.sample
     if sample_n is None and pp_desc.plot == "ordered_population_sampled":
-        sample_n = int((pp_desc.plot_args or {}).get("sample_size", 2000))
+        sample_n = int((pp_desc.plot_args or {}).get("sample_size", 1000))
         if sample_n <= 0:
             raise ValueError("sample_size must be positive")
     if sample_n:

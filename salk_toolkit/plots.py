@@ -2210,7 +2210,7 @@ def _sample_ordered_population_group(
 )
 def ordered_population_sampled(
     p: PlotInput,
-    sample_size: int = 2000,
+    sample_size: int = 1000,
     seed: int = 42,
 ) -> AltairChart:
     """Plot actual sampled population rows ordered by the selected value."""
