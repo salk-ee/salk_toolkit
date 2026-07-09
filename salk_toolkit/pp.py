@@ -1103,11 +1103,18 @@ def pp_transform_data(
             )
             c_meta[c] = merge_pydantic_models(c_meta.get(c, GroupOrColumnMeta()), merge_payload)
 
-    # Sample from filtered data
-    if pp_desc.sample:
-        sample_method = getattr(filtered_df, "sample", None)
-        if sample_method is not None:
-            filtered_df = sample_method(n=pp_desc.sample, with_replacement=True)
+    # Sample from filtered data. The sampled ordered-population experiment must
+    # cap rows here, before group observations are melted into long form.
+    sample_n = pp_desc.sample
+    if sample_n is None and pp_desc.plot == "ordered_population_sampled":
+        sample_n = int((pp_desc.plot_args or {}).get("sample_size", 2000))
+        if sample_n <= 0:
+            raise ValueError("sample_size must be positive")
+    if sample_n:
+        ids = filtered_df.select("id").collect().get_column("id")
+        if len(ids) > sample_n:
+            sampled_ids = utils.stable_rng(42).choice(ids.to_numpy(), size=int(sample_n), replace=False)
+            filtered_df = filtered_df.filter(pl.col("id").is_in(sampled_ids.tolist()))
 
     original_question_meta = c_meta.get(pp_desc.res_col, GroupOrColumnMeta()).model_copy(deep=True)
     original_question_colors = original_question_meta.question_colors

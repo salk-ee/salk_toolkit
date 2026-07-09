@@ -623,6 +623,20 @@ class TestPlots:
             assert group_rows[0]["pos"] == pytest.approx(0.5 / 37)
             assert group_rows[-1]["pos"] == pytest.approx(36.5 / 37)
 
+    def test_ordered_population_sampled_limits_raw_data_before_question_melt(self):
+        """The sampled plot must cap filtered raw rows before group observations are melted."""
+        config = {
+            "res_col": "thermometer",
+            "factor_cols": ["party_preference"],
+            "filter": {"party_preference": ["EKRE", "SDE"]},
+            "plot": "ordered_population_sampled",
+            "internal_facet": True,
+            "plot_args": {"sample_size": 37},
+        }
+        data = e2e_plot(config, str(self.data_file), width=800, return_data=True)
+
+        assert len(data) == 37 * data["question"].nunique()
+
     def test_marimekko(self, recompute):
         """Test Marimekko plot."""
         config = {
