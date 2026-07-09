@@ -227,7 +227,6 @@ def _load_data_files(
     path: str | None,
     read_opts: dict[str, Any] | None = None,
     ignore_exclusions: bool = False,
-    only_fix_categories: bool = False,
     add_original_inds: bool = False,
 ) -> tuple[dict[str, pd.DataFrame], DataMeta | None, dict[str, object]]:
     """Internal helper to load files defined in metadata or descriptions.
@@ -256,6 +255,7 @@ def _load_data_files(
     for fi, fd in enumerate(data_files):
         data_file = fd.file
         opts = fd.opts or read_opts
+        result_meta: DataMeta | None = None
         file_code = fd.code if fd.code is not None else f"F{fi}"  # Default to F0, F1, F2, etc.
         if path:
             # path is guaranteed to be str here due to the if check
@@ -277,7 +277,6 @@ def _load_data_files(
                 infer=False,
                 return_meta=True,
                 ignore_exclusions=ignore_exclusions,
-                only_fix_categories=only_fix_categories,
                 add_original_inds=add_original_inds,
             )
             if result_meta is not None:
@@ -321,11 +320,7 @@ def _load_data_files(
         # we must NOT overwrite its internal per-file provenance columns (file_code/file_name),
         # otherwise we'd collapse them into a single file.
         preserve_annotated_multi = (
-            extension in ["json", "yaml", "parquet"]
-            and "result_meta" in locals()
-            and result_meta is not None
-            and getattr(result_meta, "files", None) is not None
-            and len(cast(list[object], getattr(result_meta, "files"))) > 1
+            result_meta is not None and result_meta.files is not None and len(result_meta.files) > 1
         )
         if not preserve_annotated_multi:
             raw_data["file_code"] = file_code
@@ -913,47 +908,14 @@ def _create_new_columns_and_metas(
 # When figuring out the metafile, it can also be run as: _process_annotated_data(meta=<dict>, data_file=<>)
 
 
-# Type annotations to know the return type for return_meta=True/False
-@overload
-def _process_annotated_data(
-    meta_fname: str | None = ...,
-    meta: DataMeta | dict[str, object] | None = ...,
-    data_file: str | None = ...,
-    raw_data: pd.DataFrame | None = ...,
-    *,
-    return_meta: Literal[True],
-    ignore_exclusions: bool = ...,
-    only_fix_categories: bool = ...,
-    return_raw: bool = ...,
-    add_original_inds: bool = ...,
-) -> ProcessedDataReturn: ...
-
-
-@overload
-def _process_annotated_data(
-    meta_fname: str | None = ...,
-    meta: DataMeta | dict[str, object] | None = ...,
-    data_file: str | None = ...,
-    raw_data: pd.DataFrame | None = ...,
-    return_meta: Literal[False] = False,
-    ignore_exclusions: bool = ...,
-    only_fix_categories: bool = ...,
-    return_raw: bool = ...,
-    add_original_inds: bool = ...,
-) -> pd.DataFrame: ...
-
-
 def _process_annotated_data(
     meta_fname: str | None = None,
     meta: DataMeta | dict[str, object] | None = None,
     data_file: str | None = None,
-    raw_data: pd.DataFrame | dict[str, pd.DataFrame] | None = None,
-    return_meta: bool = False,
     ignore_exclusions: bool = False,
-    only_fix_categories: bool = False,
     return_raw: bool = False,
     add_original_inds: bool = False,
-) -> pd.DataFrame | ProcessedDataReturn:
+) -> ProcessedDataReturn:
     """Process annotated data according to metadata specifications."""
     # Read metafile
     metafile = cast(dict[str, str], stk_file_map).get(meta_fname, meta_fname)  # type: ignore[call-overload]
@@ -976,51 +938,37 @@ def _process_annotated_data(
     constants: dict[str, object] = dict(meta_obj.constants)
     # Now meta is guaranteed to be a DataMeta object, not None
 
-    # Read datafile(s) - now returns dict[str, pd.DataFrame] for per-file processing
+    # Read datafile(s) - returns dict[str, pd.DataFrame] for per-file processing
     # Handle data_file override or ensure files list is populated
-    raw_data_dict: dict[str, pd.DataFrame] | None = None
-    if raw_data is None:
-        if data_file is not None:
-            # data_file override: use it directly
-            files_list = [FileDesc(file=data_file, opts=meta_obj.read_opts)]
-        elif meta_obj.files is not None:
-            files_list = meta_obj.files
-        else:
-            raise ValueError("No files provided in metadata")
-
-        raw_data_dict, inp_meta, einfo = _load_data_files(
-            files_list,
-            path=meta_fname if meta_fname is not None else (data_file if data_file is not None else None),
-            read_opts=meta_obj.read_opts,
-            ignore_exclusions=ignore_exclusions,
-            only_fix_categories=only_fix_categories,
-            add_original_inds=add_original_inds,
-        )
-        if inp_meta is not None:
-            warn("Processing main meta file")  # Print this to separate warnings for input jsons from main
-    elif isinstance(raw_data, dict):
-        raw_data_dict = raw_data
-        einfo = {}
+    if data_file is not None:
+        # data_file override: use it directly
+        files_list = [FileDesc(file=data_file, opts=meta_obj.read_opts)]
+    elif meta_obj.files is not None:
+        files_list = meta_obj.files
     else:
-        # Backward compatibility: single DataFrame -> treat as single-file dict
-        raw_data_dict = {"F0": raw_data}
-        einfo = {}
+        raise ValueError("No files provided in metadata")
+
+    raw_data_dict, inp_meta, einfo = _load_data_files(
+        files_list,
+        path=meta_fname if meta_fname is not None else data_file,
+        read_opts=meta_obj.read_opts,
+        ignore_exclusions=ignore_exclusions,
+        add_original_inds=add_original_inds,
+    )
+    if inp_meta is not None:
+        warn("Processing main meta file")  # Print this to separate warnings for input jsons from main
 
     if return_raw:
         # Return concatenated for backward compatibility
         raw_data_concat = pd.concat(raw_data_dict.values()) if raw_data_dict else pd.DataFrame()
-        if return_meta:
-            return (raw_data_concat, meta_obj)
-        return raw_data_concat
-
-    assert raw_data_dict is not None, "Expected raw_data_dict to be initialized before processing"
+        return (raw_data_concat, meta_obj)
 
     file_meta_map = _file_meta_map(raw_data_dict)
     file_codes_in_order = list(raw_data_dict.keys())
     raw_data_dict = {fc: raw_data_dict[fc] for fc in file_codes_in_order}
 
     # Run preprocessing per file
-    if meta_obj.preprocessing is not None and not only_fix_categories:
+    if meta_obj.preprocessing is not None:
         for file_code, df in raw_data_dict.items():
             file_name = file_meta_map[file_code]
             globs = {
@@ -1123,9 +1071,6 @@ def _process_annotated_data(
                 raise Exception(f"Duplicate column name found: '{cn}' in {all_cns[cn]} and {group.name}")
             all_cns[cn] = group.name
 
-            if only_fix_categories:
-                source_spec = cn
-
             # Extract columns from all files and concatenate immediately
             per_file_series: list[pd.Series] = []
             for file_code, file_raw_data in raw_data_dict.items():
@@ -1171,7 +1116,7 @@ def _process_annotated_data(
 
             # Store original dtype info if categorical (before any conversions)
             original_dtype = s.dtype
-            if not only_fix_categories and not _is_series_of_lists(s):
+            if not _is_series_of_lists(s):
                 if original_dtype.name == "category":
                     s = s.astype("object")  # This makes it easier to use common ops like replace and fillna
                 if mcm.translate:
@@ -1338,7 +1283,7 @@ def _process_annotated_data(
         # Add processed group to structure
         new_structure[group.name] = group
 
-    if meta_obj.postprocessing is not None and not only_fix_categories:
+    if meta_obj.postprocessing is not None:
         globs = {
             "pd": pd,
             "np": np,
@@ -1368,26 +1313,40 @@ def _process_annotated_data(
     if not add_original_inds:
         ndf_df.drop(columns=["original_inds"], inplace=True)
 
-    # Return with meta as dict if requested (for backward compatibility)
-    if return_meta:
-        return (ndf_df, meta_obj)
-    return ndf_df
+    return (ndf_df, meta_obj)
 
 
 @overload
 def read_annotated_data(
-    fname: str, infer: bool = ..., return_raw: bool = ..., *, return_meta: Literal[True], **kwargs: object
+    fname: str,
+    infer: bool = ...,
+    return_raw: bool = ...,
+    *,
+    return_meta: Literal[True],
+    ignore_exclusions: bool = ...,
+    add_original_inds: bool = ...,
 ) -> ProcessedDataReturn: ...
 
 
 @overload
 def read_annotated_data(
-    fname: str, infer: bool = ..., return_raw: bool = ..., *, return_meta: Literal[False] = False, **kwargs: object
+    fname: str,
+    infer: bool = ...,
+    return_raw: bool = ...,
+    return_meta: Literal[False] = False,
+    *,
+    ignore_exclusions: bool = ...,
+    add_original_inds: bool = ...,
 ) -> pd.DataFrame: ...
 
 
 def read_annotated_data(
-    fname: str, infer: bool = True, return_raw: bool = False, return_meta: bool = False, **kwargs: object
+    fname: str,
+    infer: bool = True,
+    return_raw: bool = False,
+    return_meta: bool = False,
+    ignore_exclusions: bool = False,
+    add_original_inds: bool = False,
 ) -> pd.DataFrame | ProcessedDataReturn:
     """Read either a json annotation and process the data, or a processed parquet with the annotation attached.
 
@@ -1397,7 +1356,8 @@ def read_annotated_data(
         return_raw: Whether to return raw unprocessed data (for debugging).
             Return_raw is here for easier debugging of metafiles and is not meant to be used in production.
         return_meta: Whether to return metadata along with data.
-        **kwargs: Additional arguments passed to processing functions.
+        ignore_exclusions: Whether to keep rows listed in meta `excluded`.
+        add_original_inds: Whether to keep the `original_inds` column in the result.
 
     Returns:
         DataFrame, or tuple of (DataFrame, metadata) if return_meta=True.
@@ -1406,17 +1366,10 @@ def read_annotated_data(
     data: pd.DataFrame | None = None
     meta_obj: DataMeta | None = None
     if ext in {".json", ".yaml"}:
-        # Extract parameters from kwargs that are valid for _process_annotated_data
-        ignore_exclusions = bool(kwargs.get("ignore_exclusions", False))
-        only_fix_categories = bool(kwargs.get("only_fix_categories", False))
-        add_original_inds = bool(kwargs.get("add_original_inds", False))
-        # Pass all parameters explicitly to match overloads - return_meta=True means ProcessedDataReturn
         data, meta_obj = _process_annotated_data(
             meta_fname=fname,
-            return_meta=True,
             return_raw=return_raw,
             ignore_exclusions=ignore_exclusions,
-            only_fix_categories=only_fix_categories,
             add_original_inds=add_original_inds,
         )
     elif ext == ".parquet":
@@ -1424,40 +1377,21 @@ def read_annotated_data(
         if full_meta is not None:
             meta_obj = full_meta.data
 
-    if meta_obj is not None or not infer:
-        assert isinstance(data, pd.DataFrame), "Expected data to be DataFrame"
-        if return_meta:
-            return (data, meta_obj)
-        return data
+    if meta_obj is None and infer:
+        warn(f"Warning: using inferred meta for {fname}")
+        inferred_meta = infer_meta(fname, meta_file=False)
+        data, meta_obj = _process_annotated_data(
+            data_file=fname,
+            meta=inferred_meta,
+            return_raw=return_raw,
+            ignore_exclusions=ignore_exclusions,
+            add_original_inds=add_original_inds,
+        )
 
-    warn(f"Warning: using inferred meta for {fname}")
-    inferred_meta = infer_meta(fname, meta_file=False)
-    # Extract parameters from kwargs that are valid for _process_annotated_data
-    ignore_exclusions = bool(kwargs.get("ignore_exclusions", False))
-    only_fix_categories = bool(kwargs.get("only_fix_categories", False))
-    add_original_inds = bool(kwargs.get("add_original_inds", False))
-    # Use conditional to match overloads based on return_meta value
-    # Pass return_meta first (after *) to help Pyright match overloads
+    assert isinstance(data, pd.DataFrame), "Expected data to be DataFrame"
     if return_meta:
-        return _process_annotated_data(
-            data_file=fname,
-            meta=inferred_meta,
-            return_meta=True,
-            return_raw=return_raw,
-            ignore_exclusions=ignore_exclusions,
-            only_fix_categories=only_fix_categories,
-            add_original_inds=add_original_inds,
-        )
-    else:
-        return _process_annotated_data(
-            data_file=fname,
-            meta=inferred_meta,
-            return_meta=False,
-            return_raw=return_raw,
-            ignore_exclusions=ignore_exclusions,
-            only_fix_categories=only_fix_categories,
-            add_original_inds=add_original_inds,
-        )
+        return (data, meta_obj)
+    return data
 
 
 def fix_df_with_meta(df: pd.DataFrame, dmeta: DataMeta) -> pd.DataFrame:
@@ -2077,7 +2011,7 @@ def infer_meta(
 def _data_with_inferred_meta(data_file: str, **kwargs: object) -> tuple[pd.DataFrame, DataMeta]:
     """Read data file and infer metadata if not present."""
     meta = infer_meta(data_file, meta_file=False, **kwargs)
-    df, meta_result = _process_annotated_data(meta=meta, data_file=data_file, return_meta=True)  # type: ignore[call-overload]
+    df, meta_result = _process_annotated_data(meta=meta, data_file=data_file)
     assert meta_result is not None, "Expected metadata to be present"
     return df, meta_result
 
@@ -2153,6 +2087,9 @@ def read_and_process_data(
     return_meta: Literal[False] = False,
     constants: Mapping[str, JSONValue] | None = ...,
     skip_postprocessing: bool = ...,
+    *,
+    ignore_exclusions: bool = ...,
+    add_original_inds: bool = ...,
     **kwargs: object,
 ) -> pd.DataFrame: ...
 
@@ -2163,6 +2100,9 @@ def read_and_process_data(
     return_meta: Literal[True],
     constants: Mapping[str, JSONValue] | None = ...,
     skip_postprocessing: bool = ...,
+    *,
+    ignore_exclusions: bool = ...,
+    add_original_inds: bool = ...,
     **kwargs: object,
 ) -> tuple[pd.DataFrame, DataMeta]: ...
 
@@ -2172,6 +2112,8 @@ def read_and_process_data(
     return_meta: bool = False,
     constants: Mapping[str, JSONValue] | None = None,
     skip_postprocessing: bool = False,
+    ignore_exclusions: bool = False,
+    add_original_inds: bool = False,
     **kwargs: Any,
 ) -> pd.DataFrame | tuple[pd.DataFrame, DataMeta]:
     """Read and process data according to a description object.
@@ -2181,11 +2123,14 @@ def read_and_process_data(
         return_meta: Whether to return metadata along with data.
         constants: Dictionary of constants for preprocessing/postprocessing.
         skip_postprocessing: Whether to skip postprocessing step.
-        **kwargs: Additional arguments passed to file readers.
+        ignore_exclusions: Whether to keep rows listed in meta `excluded`.
+        add_original_inds: Whether to keep the `original_inds` column in the result.
 
     Returns:
         DataFrame, or tuple of (DataFrame, metadata) if return_meta=True.
     """
+    if kwargs:
+        warn(f"read_and_process_data got unknown arguments which are ignored: {sorted(kwargs)}")
     if constants is None:
         constants = {}
     if isinstance(desc, str):
@@ -2202,11 +2147,6 @@ def read_and_process_data(
     if isinstance(desc_obj, DataDescription) and desc_obj.data is not None:
         df, meta_obj, einfo = pd.DataFrame(data=desc_obj.data), None, {}
     else:
-        # Extract parameters from kwargs
-        ignore_exclusions = kwargs.get("ignore_exclusions", False)
-        only_fix_categories = kwargs.get("only_fix_categories", False)
-        add_original_inds = kwargs.get("add_original_inds", False)
-
         # Get files list from description
         if isinstance(desc_obj, DataDescription) and desc_obj.files:
             files_list = desc_obj.files
@@ -2214,23 +2154,16 @@ def read_and_process_data(
             raise ValueError("No files provided in DataDescription")
 
         # Load files directly
-        raw_data_dict, meta_raw, einfo = _load_data_files(
+        raw_data_dict, meta_obj, einfo = _load_data_files(
             files_list,
             path=None,
             read_opts={},
             ignore_exclusions=ignore_exclusions,
-            only_fix_categories=only_fix_categories,
             add_original_inds=add_original_inds,
         )
 
         # Concatenate for backward compatibility
         df = pd.concat(raw_data_dict.values())
-        if meta_raw is None:
-            meta_obj = None
-        elif isinstance(meta_raw, DataMeta):
-            meta_obj = meta_raw
-        else:
-            meta_obj = soft_validate(meta_raw, DataMeta, warnings=True)
 
         # Ensure returned metadata categories reflect reconciled categoricals (including injected extra fields).
         if meta_obj is not None:
@@ -2249,11 +2182,7 @@ def read_and_process_data(
             globs["df"] = globs["df"][eval(desc_obj.filter, globs)]
         if desc_obj.merge:
             # Note: expects merge files to have corresponding meta in global DataMeta file
-            oldcols = globs["df"].columns
             globs["df"] = _perform_merges(globs["df"], desc_obj.merge, constants, meta_obj)
-            if kwargs.get("data_meta", False):
-                newcols = [col for col in globs["df"].columns if col not in oldcols]
-                globs["df"].loc[:, newcols] = fix_df_with_meta(globs["df"][newcols], kwargs["data_meta"])
         if desc_obj.postprocessing and not skip_postprocessing:
             exec(_str_from_list(desc_obj.postprocessing), globs)
         df = globs["df"]
