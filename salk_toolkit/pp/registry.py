@@ -24,6 +24,9 @@ class PlotMeta(PBase):
     requires_factor: bool = False
     no_question_facet: bool = False
     agg_fn: Optional[str] = None
+    # Cap on filtered rows, applied before group questions are melted (keeps raw plots at
+    # sample_n x n_questions rows). pp_desc.sample and plot_args["sample_size"] override it.
+    sample: Optional[int] = None
     group_sizes: bool = False
     sort_numeric_first_facet: bool = False
     no_faceting: bool = False
