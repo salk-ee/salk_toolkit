@@ -2457,7 +2457,7 @@ class TestMetadataUtilities:
 
     def test_get_original_column_names_bug_fix(self):
         """Test that get_original_column_names handles strings correctly (bug fix)"""
-        from salk_toolkit.io import _get_original_column_names as get_original_column_names
+        from salk_toolkit.io.meta import _get_original_column_names as get_original_column_names
 
         # Test simple string columns (this was the bug case)
         meta_simple = make_data_meta(
