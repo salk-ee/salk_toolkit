@@ -336,23 +336,50 @@ For "select top K" questions (e.g. "which 3 issues matter most?"):
 - `input_format`: `choice_sets` (default) or `resolved` — see the doc.
 
 > **Two maxdiff routes.** The STK `MaxDiffBlock` transform above (int-index cells,
-> required `set_columns`) is distinct from how maxdiff is usually modelled: in
-> production the best/worst/set columns are kept as plain name-categorical columns and
-> fed to the SIP `ordinal_ranking` model via a hand-written `structure` (shown-set
-> column as the comparison set). Check the model_desc before assuming a survey's
-> maxdiff uses this STK transform.
+> required `set_columns`) is distinct from how maxdiff has usually been modelled: in
+> production the best/worst/set columns are often kept as plain name-categorical
+> columns and fed to the SIP `ordinal_ranking` model (shown-set column as the
+> comparison set). Check the model_desc before assuming a survey's maxdiff uses
+> this STK transform. Either way the `structure` should live on the block as a
+> `model_spec` (stamped automatically by the typed block, authored by hand on the
+> plain-columns route — see below) rather than be hand-written per model desc.
 
 The `columns` list for these blocks is usually **empty** — output columns are
 auto-generated.
 
-**Modeling hookup (`model_spec`).** Processed topk/maxdiff blocks automatically
-carry a `model_spec` — the SIP observation-model description their block name
-resolves to (an `ordinal_ranking` structure by default), so the block name can be
-used directly as a model output. Any block may set `model_spec` explicitly to
-override the default or to route a plain block (e.g. hand-kept best/set/worst
-columns) to any OM. In the model desc, `{"name": "<block>", "model_spec": {...}}` overrides
-parameters on top of the block's spec without restating the structure — see
-specs/block-processing.md.
+### `model_spec` — wiring blocks into SIP models
+
+Processed topk/maxdiff blocks automatically carry a `model_spec`: the SIP
+observation-model description (an `ordinal_ranking` with the right `structure`)
+that the block name resolves to when used as a model output. On the model side
+this means the block name alone is a complete `res_cols` entry:
+
+```jsonc
+"res_cols": ["issue_importance"]                       // → ordinal_ranking from the block's spec
+"res_cols": [{ "name": "issue_importance",
+               "model_spec": { "mode": "Combined" } }] // → same, with parameters overridden
+```
+
+The resolved OM is named `<block>_score` (so the block name keeps meaning the raw
+columns); entry-level `model_spec` dicts shallow-merge over the block's, so
+parameters (`mode`, `model`, `ordered`, …) change without restating `structure`.
+
+Any block may also set `model_spec` **explicitly** — to override a typed block's
+default, or to route a *plain* block to any OM. That makes the annotation the
+canonical home for hand-built ranking setups: e.g. maxdiff kept as plain
+name-categorical best/set/worst columns (see the note below) declares its
+structure once on the block instead of repeating it in every model desc:
+
+```jsonc
+{ "name": "maxdiff",
+  "columns": ["MD1_best", "MD1_set", "MD1_worst", "MD2_best", "MD2_set", "MD2_worst"],
+  "model_spec": { "structure": [ [["MD1_best"], ["MD1_set"], ["MD1_worst"]],
+                                 [["MD2_best"], ["MD2_set"], ["MD2_worst"]] ] } }
+```
+
+Defaults, merge rules and the multi-sibling restriction are in
+specs/block-processing.md; the model-side view is in the `sip-create-model`
+skill (salk_internal_package).
 
 ## Conventions (MUST follow)
 
