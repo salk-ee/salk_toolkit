@@ -350,7 +350,9 @@ carry a `model_spec` — the SIP observation-model description their block name
 resolves to (an `ordinal_ranking` structure by default), so the block name can be
 used directly as a model output. Any block may set `model_spec` explicitly to
 override the default or to route a plain block (e.g. hand-kept best/set/worst
-columns) to any OM — see specs/block-processing.md.
+columns) to any OM. In the model desc, `{"name": "<block>", "model_spec": {...}}` overrides
+parameters on top of the block's spec without restating the structure — see
+specs/block-processing.md.
 
 ## Conventions (MUST follow)
 
