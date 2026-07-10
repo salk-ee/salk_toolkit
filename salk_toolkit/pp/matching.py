@@ -26,19 +26,6 @@ priority_weights = {
     "required_meta": [n_a, 500],
 }
 
-# More agressive old version:
-# priority_weights = {
-#     'draws': [n_a, 50],
-#     'nonnegative': [n_a, 50],
-#     'hidden': [n_a, 0],
-
-#     'ordered': [n_a, 100],
-#     'likert': [n_a, 200],
-#     'required_meta': [n_a, 500],
-# }
-
-# Method for choosing a sensible default plot based on the data and plot metadata
-
 
 def _calculate_priority(plot_meta: PlotMeta, match: Mapping[str, Any]) -> tuple[int, List[str]]:
     """Score how well a plot definition matches the requested descriptor."""
