@@ -22,11 +22,13 @@ __all__ = [
     "simulate_election_e2e",
     "simulate_election_pp",
     "mandate_plot",
+    "party_mandates",
     "coalition_applet",
 ]
 
 import itertools as it
-from typing import Mapping, Sequence
+from copy import copy as shallow_copy
+from typing import Callable, Mapping, Sequence
 
 import altair as alt
 import numpy as np
@@ -35,7 +37,7 @@ import streamlit as st
 
 from salk_toolkit import utils as stk_utils
 from salk_toolkit.plots import stk_plot
-from salk_toolkit.pp import AltairChart, PlotInput
+from salk_toolkit.pp import AltairChart, FacetMeta, PlotInput
 from salk_toolkit.validation import ElectoralSystem
 
 # --------------------------------------------------------
@@ -351,7 +353,36 @@ def simulate_election_pp(
     return df
 
 
-# This fits into the pp framework as: f0['col']=party_pref, factor=electoral_district, hence the as_is and hidden flags
+def _simulate_if_needed(
+    p: PlotInput,
+    mandates: Mapping[str, int] | None,
+    electoral_system: ElectoralSystem | Mapping[str, object] | None,
+    value_col: str | None,
+    sim_done: bool,
+) -> pd.DataFrame:
+    """Run `simulate_election_pp` on `p.data` unless the pipeline already did (`sim_done`)."""
+
+    if sim_done:
+        return p.data
+    if mandates is None or electoral_system is None:
+        raise ValueError("mandates and electoral_system must be provided when sim_done=False")
+    if not isinstance(electoral_system, ElectoralSystem):
+        electoral_system = ElectoralSystem.model_validate(electoral_system)
+    tf = p.translate or (lambda s: s)
+    f0, f1 = p.facets[0], p.facets[1]
+    return simulate_election_pp(
+        p.data,
+        {tf(k): v for k, v in mandates.items()},
+        electoral_system,
+        f0.col,
+        value_col or p.value_col,
+        f1.col,
+        f0.order,
+        f1.order,
+    )
+
+
+# Fits the pp framework as: f0=party_pref, f1=electoral_district, hence as_is
 @stk_plot(
     "mandate_plot",
     data_format="longform",
@@ -370,7 +401,8 @@ def simulate_election_pp(
     },
     as_is=True,
     priority=-500,
-)  # , hidden=True)
+    payload=True,
+)
 def mandate_plot(
     p: PlotInput,
     mandates: Mapping[str, int] | None = None,
@@ -379,56 +411,24 @@ def mandate_plot(
     width: int | None = None,
     alt_properties: Mapping[str, object] | None = None,
     sim_done: bool = False,
-) -> AltairChart:
-    """Create a mandate distribution visualization for election results.
+) -> AltairChart | PlotInput:
+    """Per-district mandate probability distributions from an election simulation."""
 
-    Args:
-        p: Plot parameters bundle provided by the plot pipeline.
-        mandates: Mapping between district names and mandate counts.
-        electoral_system: Dictionary describing the electoral system.
-        value_col: Optional override for the value column.
-        width: Optional chart width override.
-        alt_properties: Optional Altair property overrides.
-        sim_done: Whether simulation has already been run.
-
-    Returns:
-        Altair chart showing mandate probability distributions.
-    """
-    data = p.data.copy()
     if len(p.facets) < 2:
         raise ValueError("mandate_plot requires at least two facets (party and district)")
     if p.outer_factors:
         raise ValueError("mandate_plot does not support outer factors")
 
+    p = shallow_copy(p)
+    p.data = p.data.copy()
     f0, f1 = p.facets[0], p.facets[1]
-    party_col, district_col = f0.col, f1.col
     tf = p.translate or (lambda s: s)
-    value_col = value_col or p.value_col
     width = width or p.width
     alt_props: dict[str, object] = dict(p.alt_properties)
     if alt_properties:
         alt_props.update(dict(alt_properties))
 
-    if not sim_done:
-        if mandates is None:
-            raise ValueError("mandates must be provided when sim_done=False")
-        translated_mandates = {tf(k): v for k, v in mandates.items()}
-        if electoral_system is None:
-            raise ValueError("electoral_system must be provided when sim_done=False")
-        if not isinstance(electoral_system, ElectoralSystem):
-            electoral_system = ElectoralSystem.model_validate(electoral_system)
-        df = simulate_election_pp(
-            data,
-            translated_mandates,
-            electoral_system,
-            party_col,
-            value_col,
-            district_col,
-            f0.order,
-            f1.order,
-        )
-    else:
-        df = data
+    df = _simulate_if_needed(p, mandates, electoral_system, value_col, sim_done)
 
     df[f1.col] = df[f1.col].replace({"Compensation": tf("Compensation")})
 
@@ -454,6 +454,10 @@ def mandate_plot(
     el_cols = [i for i, v in eliminate.items() if v]
     res = res[~res[f0.col].isin(el_cols)]
     cat_order = list(eliminate[~eliminate].index)
+
+    p.data = res
+    if p.return_df:
+        return p
 
     f_width = max(50, width / len(cat_order)) if width is not None else 50
 
@@ -496,98 +500,10 @@ def mandate_plot(
     return plot  # type: ignore[return-value]
 
 
-# This fits into the pp framework as: f0['col']=party_pref, factor=electoral_district, hence the as_is and hidden flags
-@stk_plot(
-    "coalition_applet",
-    data_format="longform",
-    draws=True,
-    requires_factor=True,
-    agg_fn="sum",
-    args={
-        "mandates": "pass",
-        "electoral_system": "pass",
-        "value_col": "pass",
-        "initial_coalition": "list",
-        "sim_done": "pass",
-    },
-    requires=[{}, {"mandates": "pass", "electoral_system": "pass"}],
-    as_is=True,
-    n_facets=(2, 2),
-    priority=-1000,
-)  # , hidden=True)
-def coalition_applet(
-    p: PlotInput,
-    mandates: Mapping[str, int] | None = None,
-    electoral_system: ElectoralSystem | Mapping[str, object] | None = None,
-    value_col: str | None = None,
-    initial_coalition: Sequence[str] | None = None,
-    sim_done: bool = False,
-) -> None:
-    """Interactive Streamlit widget for exploring coalition scenarios.
+def _party_mandate_dists(odf: pd.DataFrame, party_col: str, tf: Callable[[str], str]) -> pd.DataFrame:
+    """Per-party mandate-count distribution (percent per count) with median and over-threshold prob."""
 
-    Args:
-        p: Plot parameters with data/metadata supplied by the pipeline.
-        mandates: Mapping of districts to mandate counts (required if sim_done=False).
-        electoral_system: Electoral system definition (ElectoralSystem or dict).
-        value_col: Optional override for vote column.
-        initial_coalition: Sequence of parties pre-selected in the widget.
-        sim_done: Whether simulation has already been run.
-    """
-    tf = p.translate or (lambda s: s)
-    initial_coalition = initial_coalition or []
-    value_col = value_col or p.value_col
-
-    if p.outer_factors:
-        raise ValueError("coalition_applet does not support outer factors")
-    if len(p.facets) < 2:
-        raise ValueError("coalition_applet expects two facets (party and district)")
-    f0, f1 = p.facets[0], p.facets[1]
-    party_col, district_col = f0.col, f1.col
-
-    if not sim_done:
-        if mandates is None or electoral_system is None:
-            raise ValueError("mandates and electoral_system must be provided when sim_done=False")
-        if not isinstance(electoral_system, ElectoralSystem):
-            electoral_system = ElectoralSystem.model_validate(electoral_system)
-        mandates_dict = {tf(k): v for k, v in mandates.items()}
-        sdf = simulate_election_pp(
-            p.data,
-            mandates_dict,
-            electoral_system,
-            party_col,
-            value_col or p.value_col,
-            district_col,
-            f0.order,
-            f1.order,
-        )
-    else:
-        sdf = p.data
-        if mandates is None:
-            mandates_meta = getattr(f1.meta, "mandates", None)
-            mandates_dict = dict(mandates_meta or {})
-        else:
-            mandates_dict = {tf(k): v for k, v in mandates.items()}
-
-    # Aggregate to total mandate counts
-    odf = sdf.groupby(["draw", party_col])["mandates"].sum().reset_index()
-    odf["over_t"] = odf["mandates"] > 0
     adf = odf[odf["mandates"] > 0]
-
-    list(adf[party_col].unique())  # Leave only parties that have mandates
-
-    coalition = st.multiselect(
-        tf("Select the coalition:"),
-        f0.order,
-        default=initial_coalition,
-        help=tf("Choose the parties whose coalition to model"),
-    )
-
-    st.markdown("""___""")
-
-    col1, col2 = st.columns((9, 9), gap="large")
-    col1.markdown(tf("**Party mandate distributions**"))
-
-    # Individual parties plot
     ddf = (
         (adf.groupby(party_col)["mandates"].value_counts() / odf.groupby(party_col).size())
         .rename("percent")
@@ -603,12 +519,15 @@ def coalition_applet(
         left_on=party_col,
         right_index=True,
     )
+    return ddf
 
-    p_plot = (
-        alt.Chart(
-            ddf,
-            # title=var
-        )
+
+def _party_dist_chart(ddf: pd.DataFrame, f0: FacetMeta, tf: Callable[[str], str]) -> AltairChart:
+    """One row of mandate-count histogram per party."""
+
+    party_col = f0.col
+    return (
+        alt.Chart(ddf)
         .mark_rect(opacity=0.8, stroke="black", strokeWidth=0)
         .transform_calculate(x1="datum.mandates - 0.45", x2="datum.mandates + 0.45")
         .encode(
@@ -631,7 +550,124 @@ def coalition_applet(
         )
         .properties(height=60)
     )
-    col1.altair_chart(p_plot, use_container_width=True)
+
+
+# Static (non-streamlit) counterpart of coalition_applet's party distributions pane
+@stk_plot(
+    "party_mandates",
+    data_format="longform",
+    draws=True,
+    requires_factor=True,
+    agg_fn="sum",
+    args={"mandates": "pass", "electoral_system": "pass", "value_col": "pass", "sim_done": "pass"},
+    requires=[{}, {"mandates": "pass", "electoral_system": "pass"}],
+    as_is=True,
+    n_facets=(2, 2),
+    priority=-500,
+    payload=True,
+)
+def party_mandates(
+    p: PlotInput,
+    mandates: Mapping[str, int] | None = None,
+    electoral_system: ElectoralSystem | Mapping[str, object] | None = None,
+    value_col: str | None = None,
+    sim_done: bool = False,
+) -> AltairChart | PlotInput:
+    """Mandate-count distribution per party from an election simulation."""
+
+    if len(p.facets) < 2:
+        raise ValueError("party_mandates requires two facets (party and district)")
+    if p.outer_factors:
+        raise ValueError("party_mandates does not support outer factors")
+
+    p = shallow_copy(p)
+    tf = p.translate or (lambda s: s)
+    f0 = p.facets[0]
+
+    sdf = _simulate_if_needed(p, mandates, electoral_system, value_col, sim_done)
+    odf = sdf.groupby(["draw", f0.col])["mandates"].sum().reset_index()
+    odf["over_t"] = odf["mandates"] > 0
+
+    p.data = _party_mandate_dists(odf, f0.col, tf)
+    if p.return_df:
+        return p
+
+    return _party_dist_chart(p.data, f0, tf)
+
+
+@stk_plot(
+    "coalition_applet",
+    data_format="longform",
+    draws=True,
+    requires_factor=True,
+    agg_fn="sum",
+    args={
+        "mandates": "pass",
+        "electoral_system": "pass",
+        "value_col": "pass",
+        "initial_coalition": "list",
+        "sim_done": "pass",
+    },
+    requires=[{}, {"mandates": "pass", "electoral_system": "pass"}],
+    as_is=True,
+    n_facets=(2, 2),
+    priority=-1000,
+    payload=True,
+)
+def coalition_applet(
+    p: PlotInput,
+    mandates: Mapping[str, int] | None = None,
+    electoral_system: ElectoralSystem | Mapping[str, object] | None = None,
+    value_col: str | None = None,
+    initial_coalition: Sequence[str] | None = None,
+    sim_done: bool = False,
+) -> None | PlotInput:
+    """Interactive Streamlit widget for exploring coalition scenarios.
+
+    With `return_df` it instead returns per-draw seat totals per party (draw, party, mandates,
+    over_t) -- enough for a consumer to do any coalition math client-side.
+    """
+    tf = p.translate or (lambda s: s)
+    initial_coalition = initial_coalition or []
+
+    if p.outer_factors:
+        raise ValueError("coalition_applet does not support outer factors")
+    if len(p.facets) < 2:
+        raise ValueError("coalition_applet expects two facets (party and district)")
+    f0, f1 = p.facets[0], p.facets[1]
+    party_col = f0.col
+
+    sdf = _simulate_if_needed(p, mandates, electoral_system, value_col, sim_done)
+    if mandates is not None:
+        mandates_dict = {tf(k): v for k, v in mandates.items()}
+    else:  # sim_done path may carry mandates on the district facet's metadata
+        mandates_dict = dict(getattr(f1.meta, "mandates", None) or {})
+
+    # Aggregate to total mandate counts
+    odf = sdf.groupby(["draw", party_col])["mandates"].sum().reset_index()
+    odf["over_t"] = odf["mandates"] > 0
+
+    if p.return_df:
+        p = shallow_copy(p)
+        p.data = odf
+        return p
+
+    adf = odf[odf["mandates"] > 0]
+
+    coalition = st.multiselect(
+        tf("Select the coalition:"),
+        f0.order,
+        default=initial_coalition,
+        help=tf("Choose the parties whose coalition to model"),
+    )
+
+    st.markdown("""___""")
+
+    col1, col2 = st.columns((9, 9), gap="large")
+    col1.markdown(tf("**Party mandate distributions**"))
+
+    ddf = _party_mandate_dists(odf, party_col, tf)
+    col1.altair_chart(_party_dist_chart(ddf, f0, tf), use_container_width=True)
 
     total_mandates = sum(mandates_dict.values())
 

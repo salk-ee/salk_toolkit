@@ -960,11 +960,12 @@ def gb_in_apply(
     gb_cols: Sequence[str],
     fn: Callable[..., pd.DataFrame | pd.Series],
     cols: Sequence[str] | None = None,
+    observed: bool = False,
     **kwargs: object,
 ) -> pd.DataFrame:
     """Groupby apply if needed - similar to gb_in but for apply.
 
-    Apply ``fn`` either to the whole frame or grouped subsets.
+    ``observed=True`` restricts groups to category combinations actually present in ``df``.
     """
 
     if cols is None:
@@ -975,7 +976,7 @@ def gb_in_apply(
             res = pd.DataFrame(res).T
     else:
         # Convert to list for pandas groupby overload matching
-        res = df.groupby(list(gb_cols), observed=False)[cols].apply(fn, **kwargs)  # type: ignore[call-overload]
+        res = df.groupby(list(gb_cols), observed=observed)[cols].apply(fn, **kwargs)  # type: ignore[call-overload]
     return res
 
 

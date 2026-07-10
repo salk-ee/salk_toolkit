@@ -17,7 +17,16 @@ It maps annotated survey data to Altair charts by:
 from __future__ import annotations
 
 # These are the only functions that should be exposed to the public
-__all__ = ["e2e_plot", "matching_plots", "test_new_plot", "cont_transform_options", "create_plot", "get_plot_fn"]
+__all__ = [
+    "e2e_plot",
+    "matching_plots",
+    "test_new_plot",
+    "cont_transform_options",
+    "create_plot",
+    "get_plot_fn",
+]
+# `create_plot_payload` / `UnsupportedPayloadError` are also importable from here
+# (lazily, via module `__getattr__`) for backwards compatibility.
 
 import gc
 import inspect
@@ -27,6 +36,7 @@ from math import ceil
 from copy import copy as shallow_copy, deepcopy
 from dataclasses import dataclass, field
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -122,6 +132,9 @@ class PlotInput:
     alt_properties: Dict[str, Any] = field(default_factory=dict)
     outer_factors: List[str] = field(default_factory=list)
     plot_args: Dict[str, Any] = field(default_factory=dict)
+    extras: Dict[str, Any] = field(default_factory=dict)  # plot -> payload side-channel (e.g. "scale", "geo")
+    n_facet_cols: Optional[int] = None  # stashed by create_plot for payload consumers
+    return_df: bool = False  # plot fns with payload=True return the prepared PlotInput instead of a chart
 
     def model_copy(self, *, deep: bool = False, update: dict[str, Any] | None = None) -> "PlotInput":
         """Backwards-compatible copy helper (mirrors the old Pydantic API used internally)."""
@@ -253,6 +266,7 @@ class PlotMeta(PBase):
     hidden: bool = False
     transform_fn: Optional[str] = None
     nonnegative: bool = False
+    payload: bool = False  # plot fn honors PlotInput.return_df (supports create_plot_payload)
 
 
 special_columns: List[str] = [
@@ -1480,7 +1494,12 @@ def _meta_color_scale(
 def _translate_df(df: pd.DataFrame, translate: Callable[[str], str]) -> pd.DataFrame:
     """Translate column names and categorical levels for display."""
 
-    df.columns = [(translate(c) if c not in special_columns and not c.endswith("_label") else c) for c in df.columns]
+    # `reverse_`-prefixed maxdiff companion columns are located by prefix and never displayed,
+    # so they must survive translation untouched, like `_label`
+    def _keep(c: str) -> bool:
+        return c in special_columns or c.endswith("_label") or c.startswith("reverse_")
+
+    df.columns = [(c if _keep(c) else translate(c)) for c in df.columns]
     for c in df.columns:
         if df[c].dtype.name == "category":
             cats = utils.get_categories(df[c].dtype)
@@ -1593,6 +1612,7 @@ def create_plot(
     return_matrix_of_plots: bool = False,
     translate: Callable[[str], str] | None = None,
     publish_mode: bool = False,
+    escape_labels: bool = True,
 ) -> AltairChart | List[List[AltairChart]] | PlotInput:
     """Produce an Altair plot (or matrix of plots) from prepared parameters.
 
@@ -1718,8 +1738,9 @@ def create_plot(
 
     # Add escaping as Vega Lite goes crazy for symbols like ".[]"
     # It would be enough to do it just for column names, but it's easier to do it for all
+    # `escape_labels=False` skips this (used by payload consumers that want raw labels).
     def _tfunc(s: str) -> str:
-        return utils.escape_vega_label(translate(s))
+        return translate(s) if not escape_labels else utils.escape_vega_label(translate(s))
 
     pi.translate = _tfunc
 
@@ -1782,6 +1803,7 @@ def create_plot(
 
     # Create the plot using it's function
     if dry_run:
+        pi.n_facet_cols = n_facet_cols
         return pi
 
     plot_fn = _get_plot_fn(pp_desc.plot)
@@ -1876,6 +1898,23 @@ def create_plot(
             plot = [[plot]]
 
     return plot
+
+
+# `create_plot_payload` / `UnsupportedPayloadError` live in `salk_toolkit.payload`;
+# re-exported here lazily for backwards compatibility (e.g. dms-plots-api imports from pp).
+if TYPE_CHECKING:
+    from salk_toolkit.payload import (
+        UnsupportedPayloadError as UnsupportedPayloadError,
+        create_plot_payload as create_plot_payload,
+    )
+
+
+def __getattr__(name: str) -> object:
+    if name in ("create_plot_payload", "UnsupportedPayloadError"):
+        import salk_toolkit.payload as _payload
+
+        return getattr(_payload, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 # Extra configuration for plots in publish mode

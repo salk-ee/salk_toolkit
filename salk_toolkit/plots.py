@@ -50,7 +50,9 @@ __all__ = [
 
 import itertools as it
 import math
-from typing import Any, Dict, Sequence
+from copy import copy as shallow_copy
+from dataclasses import replace
+from typing import Any, Dict, List, Sequence
 
 import altair as alt
 import arviz as az
@@ -189,18 +191,17 @@ def boxplot_vals(s: pd.Series, extent: float = 1.5, delta: float = 1e-4) -> pd.D
     n_facets=(1, 2),
     priority=50,
     group_sizes=True,
+    payload=True,
 )
-def boxplot_manual(p: PlotInput) -> AltairChart:
+def boxplot_manual(p: PlotInput) -> AltairChart | PlotInput:
     """Manual boxplot implementation using Tukey whiskers."""
 
+    p = shallow_copy(p)
     data = p.data.copy()
     if not p.facets:
         raise ValueError("boxplots requires at least one facet dimension")
 
-    f0 = p.facets[0]
-    f1 = p.facets[1] if len(p.facets) > 1 else None
     fmt = p.val_format
-
     if fmt.endswith("%"):
         data[p.value_col] = data[p.value_col] * 100
         fmt = fmt[:-1] + "f"
@@ -220,6 +221,13 @@ def boxplot_manual(p: PlotInput) -> AltairChart:
         .reset_index()
     )
     _clean_levels(df)
+
+    p.data = df
+    if p.return_df:
+        return p
+
+    f0 = p.facets[0]
+    f1 = p.facets[1] if len(p.facets) > 1 else None
 
     shared = {
         "y": alt.Y(field=f0.col, type="nominal", title=None, sort=f0.order),
@@ -284,12 +292,15 @@ stk_plot("boxplots-raw", data_format="raw", n_facets=(1, 2), priority=0)(boxplot
     transform_fn="ordered-topbot1",
     agg_fn="posneg_mean",
     draws=True,
+    continuous=True,
     n_facets=(1, 2),
     group_sizes=True,
+    payload=True,
 )
-def maxdiff_manual(p: PlotInput) -> AltairChart:
-    """Render MaxDiff results as categorical columns."""
+def maxdiff_manual(p: PlotInput) -> AltairChart | PlotInput:
+    """Render MaxDiff results as a Most/Least important tornado (`kind` column marks the sides)."""
 
+    p = shallow_copy(p)
     data = p.data.copy()
     if not p.facets:
         raise ValueError("maxdiff plot requires at least one facet dimension")
@@ -298,17 +309,18 @@ def maxdiff_manual(p: PlotInput) -> AltairChart:
     f1 = p.facets[1] if len(p.facets) > 1 else None
     fmt = p.val_format
 
-    reverse_val_col = next(
-        filter(
-            lambda s: p.value_col.lower() in s.lower() and "reverse" in s.lower(),
-            data.columns,
+    # Located by prefix: `p.value_col` may carry a display label unrelated to the raw name
+    reverse_val_col = next((s for s in data.columns if s.startswith("reverse_")), None)
+    if reverse_val_col is None:
+        raise ValueError(
+            "maxdiff plot requires maxdiff scores -- no 'reverse_<col>' companion column "
+            f"found alongside value column '{p.value_col}'. This plot only supports "
+            "maxdiff-score data (paired best/worst shares), not arbitrary continuous columns."
         )
-    )
 
     if fmt.endswith("%"):
         data[p.value_col] *= 100
-        if reverse_val_col in data.columns:
-            data[reverse_val_col] *= 100
+        data[reverse_val_col] *= 100
         fmt = fmt[:-1] + "f"
 
     minv, maxv = data[p.value_col].min(), data[p.value_col].max()
@@ -326,8 +338,19 @@ def maxdiff_manual(p: PlotInput) -> AltairChart:
     )
     df_reverse["mean"] = -df_reverse["mean"]
     df_reverse["kind"] = "Least important"
-
     df["kind"] = "Most important"
+
+    df = pd.concat(
+        [df[f_cols + ["kind", "mean"]], df_reverse[f_cols + ["kind", "mean"]]],
+        ignore_index=True,
+        sort=False,
+    )
+    _clean_levels(df)  # For test consistency
+
+    p.data = df
+    p.facets = [f0] + ([f1] if f1 is not None else [])
+    if p.return_df:
+        return p
 
     shared = {
         "y": alt.Y(field=f0.col, type="nominal", title=None, sort=f0.order),
@@ -344,12 +367,6 @@ def maxdiff_manual(p: PlotInput) -> AltairChart:
         + p.tooltip[1:],
     }
 
-    df = pd.concat(
-        [df[f_cols + ["kind", "mean"]], df_reverse[f_cols + ["kind", "mean"]]],
-        ignore_index=True,
-        sort=False,
-    )
-    _clean_levels(df)  # For test consistency
     root = alt.Chart(df).encode(**shared)
     size = 12
     red, blue = utils.redblue_gradient[1], utils.redblue_gradient[-2]
@@ -376,13 +393,15 @@ def maxdiff_manual(p: PlotInput) -> AltairChart:
     )
 
 
-@stk_plot("columns", data_format="longform", draws=False, n_facets=(1, 2))
-def columns(p: PlotInput) -> AltairChart:
+@stk_plot("columns", data_format="longform", draws=False, n_facets=(1, 2), payload=True)
+def columns(p: PlotInput) -> AltairChart | PlotInput:
     """Simple column chart for categorical comparisons."""
 
     data = p.data
     if not p.facets:
         raise ValueError("columns plot requires at least one facet dimension")
+    if p.return_df:  # Data needs no reshaping for this plot
+        return p
 
     f0 = p.facets[0]
     f1 = p.facets[1] if len(p.facets) > 1 else None
@@ -603,7 +622,7 @@ def make_start_end(
     if len(x) != len(cat_order):
         shared = x.to_dict(orient="records")[0]
         # Fill in missing rows with value zero so they would just be skipped
-        mdf = pd.DataFrame({cat_col: pd.Categorical(cat_order, cat_order, ordered=True)})
+        mdf = pd.DataFrame({cat_col: pd.Categorical(list(cat_order), categories=list(cat_order), ordered=True)})
         x = pd.merge(mdf, x, on=cat_col, how="left").fillna({**shared, value_col: 0})
     x = x.sort_values(by=cat_col)
 
@@ -631,6 +650,16 @@ def make_start_end(
     return res
 
 
+def _pick_likert_facets(
+    facets: List[FacetMeta],
+) -> tuple[FacetMeta, FacetMeta, FacetMeta | None]:
+    """Select (f0, f1, f2) from likert_bars' prepared facets list (synthetic `question` included)."""
+
+    if len(facets) >= 3:
+        return facets[0], facets[2], facets[1]
+    return facets[0], facets[1], None
+
+
 @stk_plot(
     "likert_bars",
     data_format="longform",
@@ -639,14 +668,13 @@ def make_start_end(
     n_facets=(1, 3),
     sort_numeric_first_facet=True,
     priority=50,
+    payload=True,
 )
-def likert_bars(
-    p: PlotInput,
-) -> AltairChart:
+def likert_bars(p: PlotInput) -> AltairChart | PlotInput:
     """Display likert responses as diverging stacked bars."""
 
-    data = p.data.copy()
-    facets = p.facets
+    p = shallow_copy(p)
+    data, facets = p.data.copy(), list(p.facets)
     if not facets:
         raise ValueError("likert_bars requires at least one facet dimension")
 
@@ -662,11 +690,7 @@ def likert_bars(
         )
         facets = [facets[0], synthetic]
 
-    if len(facets) >= 3:
-        f0, f1, f2 = facets[0], facets[2], facets[1]
-    else:
-        f0, f1, f2 = facets[0], facets[1], None
-
+    f0 = facets[0]
     neg, neutral, pos = utils.split_to_neg_neutral_pos(f0.order, f0.neutrals)
     ninds = [f0.order.index(c) for c in neutral]
 
@@ -680,8 +704,14 @@ def likert_bars(
         n_negative=len(neg),
     )
 
+    p.data, p.facets = bar_data, facets
+    if p.return_df:
+        return p
+
+    f0, f1, f2 = _pick_likert_facets(p.facets)
+
     plot = (
-        alt.Chart(bar_data)
+        alt.Chart(p.data)
         .mark_bar()
         .encode(
             x=alt.X("start:Q", axis=alt.Axis(title=None, format="%")),
@@ -761,15 +791,25 @@ def kde_1d(
     args={"stacked": "bool", "bw": "float"},
     no_question_facet=True,
     continuous=True,
+    payload=True,
 )
 def density(
     p: PlotInput,
     stacked: bool = False,
     bw: float | None = None,
-) -> AltairChart:
-    """Stacked (or overlapped) density plot for continuous responses."""
+) -> AltairChart | PlotInput:
+    """Stacked (or overlapped) density plot: per-group 1D KDE over a shared 101-point grid."""
 
+    p = shallow_copy(p)
     data = p.data.copy()
+
+    # Typed error for API callers that skip e2e_plot's applicability guard
+    if not pd.api.types.is_numeric_dtype(data[p.value_col]):
+        raise ValueError(
+            f"density plot requires a continuous (numeric) observation; "
+            f"'{p.value_col}' is categorical -- pick a continuous measure or another plot type"
+        )
+
     f0 = p.facets[0] if p.facets else None
     gb_cols = utils.gb_cols_with_tooltip_fields(
         p.outer_factors + [f.col for f in p.facets],
@@ -786,6 +826,8 @@ def density(
     ls = np.linspace(np.nextafter(vmin, -np.inf), np.nextafter(vmax, np.inf), 101)
     if bw is None:
         bw = kde_bw(data[[p.value_col]])
+    # observed=True: on the payload/matrix-of-plots per-cell frames, observed=False would
+    # manufacture a phantom zero-density curve per unobserved outer-facet category
     ndata = utils.gb_in_apply(
         data,
         gb_cols,
@@ -795,12 +837,9 @@ def density(
         ls=ls,
         scale=stacked,
         bw=bw,
+        observed=True,
     ).reset_index()
     _clean_levels(ndata)
-
-    selection = None
-    if f0:
-        selection = alt.selection_point(name="param_1", fields=[f0.col], bind="legend")
 
     if stacked:
         if f0:
@@ -808,6 +847,16 @@ def density(
             ndata.loc[:, "order"] = ndata[f0.col].astype("object").replace(ldict).astype("int")
 
         ndata["density"] /= len(data)
+
+    p.data = ndata
+    if p.return_df:
+        return p
+
+    selection = None
+    if f0:
+        selection = alt.selection_point(name="param_1", fields=[f0.col], bind="legend")
+
+    if stacked:
         enc_kwargs: Dict[str, Any] = {}
         if f0:
             enc_kwargs = {
@@ -878,6 +927,7 @@ stk_plot(
     args={"stacked": "bool", "bw": "float"},
     no_question_facet=True,
     priority=0,
+    payload=True,
 )(density)
 
 
@@ -975,6 +1025,40 @@ def cluster_based_reorder(X: np.ndarray) -> np.ndarray:
     return hierarchy.leaves_list(hierarchy.optimal_leaf_ordering(hierarchy.ward(pdist), pdist))
 
 
+# ColorBrewer stops approximating Vega's built-in "yellowgreen" (sequential) and
+# "redyellowgreen" (diverging) schemes, resolved once here so a payload consumer (e.g. an
+# ECharts renderer) can use literal hex stops instead of resolving a Vega scheme name itself.
+# These mirror the hex values dms's periskoop echarts renderer currently hardcodes in
+# frontend/src/components/periskoop/explore/echarts/vegaLiteToOption.ts -- a later port can
+# read `payload["scale"]["stops"]` instead of keeping its own copy.
+_MATRIX_SCHEME_STOPS: Dict[str, List[str]] = {
+    "yellowgreen": [
+        "#ffffe5",
+        "#f7fcb9",
+        "#d9f0a3",
+        "#addd8e",
+        "#78c679",
+        "#41ab5d",
+        "#238443",
+        "#006837",
+        "#004529",
+    ],
+    "redyellowgreen": [
+        "#a50026",
+        "#d73027",
+        "#f46d43",
+        "#fdae61",
+        "#fee08b",
+        "#ffffbf",
+        "#d9ef8b",
+        "#a6d96a",
+        "#66bd63",
+        "#1a9850",
+        "#006837",
+    ],
+}
+
+
 @stk_plot(
     "matrix",
     data_format="longform",
@@ -982,26 +1066,29 @@ def cluster_based_reorder(X: np.ndarray) -> np.ndarray:
     n_facets=(2, 2),
     args={"reorder": "bool", "log_colors": "bool"},
     priority=55,
+    payload=True,
 )
 def matrix(
     p: PlotInput,
     reorder: bool = False,
     log_colors: bool = False,
-) -> AltairChart:
+) -> AltairChart | PlotInput:
     """Heatmap-style matrix plot (optionally reorder rows/cols via clustering)."""
 
+    p = shallow_copy(p)
     data = p.data.copy()
     if len(p.facets) < 2:
         raise ValueError("matrix plot requires two facet dimensions")
 
     f0, f1 = p.facets[0], p.facets[1]
-    fmt = p.val_format
 
     fcols = [c for c in data.columns if c not in [p.value_col, f0.col]]
     if len(fcols) == 1 and reorder:  # Reordering only works if no external facets
         X = data.pivot(columns=f1.col, index=f0.col).to_numpy()
-        f0.order = np.array(f0.order)[cluster_based_reorder(X)].tolist()
-        f1.order = np.array(f1.order)[cluster_based_reorder(X.T)].tolist()
+        # replace() not in-place mutation: FacetMeta objects are shared across payload cells
+        f0 = replace(f0, order=np.array(f0.order)[cluster_based_reorder(X)].tolist())
+        f1 = replace(f1, order=np.array(f1.order)[cluster_based_reorder(X.T)].tolist())
+        p.facets = [f0, f1] + list(p.facets[2:])
 
     if log_colors:
         data["val_log"] = np.log(data[p.value_col])
@@ -1015,22 +1102,31 @@ def matrix(
     dmax = float(max(-mi, ma))
 
     if mi < 0:
-        scale, smid, swidth = (
+        alt_scale, dmin, smid = (
             {
                 "scheme": "redyellowgreen",
                 "domainMid": 0,
                 "domainMin": -dmax,
                 "domainMax": dmax,
             },
+            -dmax,
             0,
-            2 * dmax,
         )
     else:
-        scale, smid, swidth = (
+        alt_scale, dmin, smid = (
             {"scheme": "yellowgreen", "domainMin": 0, "domainMax": dmax},
             0,
-            2 * dmax,
+            0,
         )  # dmax/2, dmax
+
+    p.data = data
+    # NOTE: the payload has a single top-level `scale`; a faceted matrix keeps only the last cell's
+    p.extras = {**p.extras, "scale": {"stops": _MATRIX_SCHEME_STOPS[alt_scale["scheme"]], "domain": [dmin, smid, dmax]}}
+    if p.return_df:
+        return p
+
+    fmt = p.val_format
+    swidth = 2 * dmax
 
     # Draw colored boxes
     plot = (
@@ -1042,7 +1138,7 @@ def matrix(
             color=alt.Color(
                 field=scale_v,
                 type="quantitative",
-                scale=alt.Scale(**scale),
+                scale=alt.Scale(**alt_scale),
                 legend=(alt.Legend(title=None) if not log_colors else None),
             ),
             tooltip=p.tooltip,
@@ -1291,6 +1387,7 @@ interp_methods = [False, True] + [
     n_facets=(2, 2),
     args={"smooth": interp_methods},
     priority=10,
+    payload=True,
 )
 @stk_plot(
     "line",
@@ -1300,31 +1397,36 @@ interp_methods = [False, True] + [
     n_facets=(1, 1),
     args={"smooth": interp_methods},
     priority=10,
+    payload=True,
 )
 def lines(
     p: PlotInput,
     smooth: bool | str = False,
-) -> AltairChart:
+) -> AltairChart | PlotInput:
     """Line chart with optional smoothing and categorical faceting."""
 
+    p = shallow_copy(p)
     data = p.data.copy()
     if not p.facets:
         raise ValueError("lines plot requires at least one facet dimension")
 
+    fx = p.facets[0] if len(p.facets) == 1 else p.facets[1]
+
+    # Adds a parsed `<x>_cont` column when the x categories are numeric/date-like strings;
+    # payload consumers detect that column, so the payload path needs no x_axis
+    x_axis, data = _cat_to_cont_axis(data, fx)
+
+    p.data = data
+    if p.return_df:
+        return p
+
     fmt = p.val_format or ".2f"
     chart_width = p.width
-    if len(p.facets) == 1:
-        fx = p.facets[0]
-        fy = None
-    else:
-        fy, fx = p.facets[0], p.facets[1]
+    fy = None if len(p.facets) == 1 else p.facets[0]
 
     # Backwards compatibility from when it was true/false
     if isinstance(smooth, bool):
         smooth = "natural" if smooth else "linear"
-
-    # See if we should use a continous axis (if categoricals are actually numbers)
-    x_axis, data = _cat_to_cont_axis(data, fx)
 
     chart = alt.Chart(data)
     plot = chart.mark_line(point=True, interpolate=smooth).encode(
@@ -1656,15 +1758,17 @@ def likert_rad_pol(
     return plot
 
 
-@stk_plot("barbell", data_format="longform", draws=False, n_facets=(2, 2))
+@stk_plot("barbell", data_format="longform", draws=False, n_facets=(2, 2), payload=True)
 def barbell(
     p: PlotInput,
-) -> AltairChart:
+) -> AltairChart | PlotInput:
     """Draw barbell-style comparison between two categories per question."""
 
     data = p.data.copy()
     if len(p.facets) < 2:
         raise ValueError("barbell plot requires two facet dimensions")
+    if p.return_df:  # Data needs no reshaping for this plot
+        return p
 
     f0, f1 = p.facets[0], p.facets[1]
     fmt = p.val_format
@@ -1709,6 +1813,22 @@ def barbell(
     return chart
 
 
+def _geo_extras(topo_feature: tuple[str, str, str], region_key: str) -> Dict[str, Any]:
+    """Payload `extras["geo"]` shape for `geoplot`/`geobest`: region_key = survey-side join
+    column, name_property = the geo feature's join property."""
+
+    json_url, json_meta, json_col = topo_feature
+    geo: Dict[str, Any] = {
+        "url": json_url,
+        "format": "geojson" if json_meta == "geojson" else "topojson",
+        "region_key": region_key,
+        "name_property": json_col,
+    }
+    if geo["format"] == "topojson":
+        geo["object"] = json_meta
+    return geo
+
+
 @stk_plot(
     "geoplot",
     data_format="longform",
@@ -1719,39 +1839,30 @@ def barbell(
     aspect_ratio=(4.0 / 3.0),
     no_question_facet=True,
     args={"separate_axes": "bool"},
+    payload=True,
 )
 def geoplot(
     p: PlotInput,
     topo_feature: tuple[str, str, str],
     separate_axes: bool = False,
-) -> AltairChart:
+) -> AltairChart | PlotInput:
     """Render a choropleth map based on annotated topojson metadata."""
 
-    data = p.data.copy()
+    p = shallow_copy(p)
     if not p.facets:
         raise ValueError("geoplot requires at least one facet dimension")
 
+    data = p.data.copy()
     outer_colors = dict(p.outer_colors or {})
-    fmt = p.val_format or ".2f"
     f0 = p.facets[0]
     vr = p.value_range
 
-    json_url, json_meta, json_col = topo_feature
-    if json_meta == "geojson":
-        source = alt.Data(url=json_url, format=alt.DataFormat(property="features", type="json"))
-    else:
-        source = alt.topo_feature(json_url, json_meta)
-
     # Unescape Vega labels for the column on which we merge with the geojson
     # This is a bit of a hack, but should be the only place where we need to do this due to external data
-    data = data.copy()
     data[f0.col] = data[f0.col].apply(utils.unescape_vega_label)
 
     lmi, lma = data[p.value_col].min(), data[p.value_col].max()
     mi, ma = vr if vr and not separate_axes else (lmi, lma)
-
-    # Only show maximum on legend if min and max too close together
-    [lmi, lma] if (lma - lmi) / (ma - mi) > 0.5 else [lma]
     rel_range = [(lmi - mi) / (ma - mi), (lma - mi) / (ma - mi)]
 
     outer0 = p.outer_factors[0] if p.outer_factors else None
@@ -1759,7 +1870,6 @@ def geoplot(
     # If colors provided, create a gradient based on that
     if p.outer_factors and outer_colors and data[p.outer_factors[0]].nunique() == 1 and ofv in outer_colors:
         grad = utils.gradient_from_color(outer_colors[ofv], range=rel_range)
-        scale = {"domain": [lmi, lma], "range": grad}
     else:  # Blues for pos, reds for neg, redblue for both
         # If axis spans both directions
         dmax = max(-mi, ma)
@@ -1772,12 +1882,25 @@ def geoplot(
             ]  # Use negative part i.e. red scale
 
         grad = utils.gradient_subrange(utils.redblue_gradient, 11, range=rel_range)
-        scale = {"domain": [lmi, lma], "range": grad}
 
-        # if mi<0 and ma>0:
-        #   scale = { 'scheme':'redblue', 'domainMid':0, 'domainMin':-dmax, 'domainMax':dmax, 'rangeMax': 0.1 }
-        # elif ma<0: scale = { 'scheme': 'reds', 'reverse': True }#, 'domainMin': 0, 'domainMax':dmax }
-        # else: scale = { 'scheme': 'blues' }#, 'domainMin': 0, 'domainMax':dmax }
+    p.data = data
+    # NOTE: the payload has a single top-level `geo`/`scale`; multi-cell geo payloads are
+    # gated to the Vega fallback upstream, so only single-cell geo reaches this
+    p.extras = {
+        **p.extras,
+        "scale": {"stops": grad, "domain": [lmi, lma]},
+        "geo": _geo_extras(topo_feature, f0.col),
+    }
+    if p.return_df:
+        return p
+
+    fmt = p.val_format or ".2f"
+
+    json_url, json_meta, json_col = topo_feature
+    if json_meta == "geojson":
+        source = alt.Data(url=json_url, format=alt.DataFormat(property="features", type="json"))
+    else:
+        source = alt.topo_feature(json_url, json_meta)
 
     plot = (
         alt.Chart(source)
@@ -1792,7 +1915,7 @@ def geoplot(
             color=alt.Color(
                 field=p.value_col,
                 type="quantitative",
-                scale=alt.Scale(**scale),  # To use color scale, consider switching to opacity for value
+                scale=alt.Scale(domain=[lmi, lma], range=grad),
                 legend=alt.Legend(
                     format=fmt,
                     title=None,
@@ -1815,31 +1938,39 @@ def geoplot(
     requires=[{}, {"topo_feature": "pass"}],
     no_faceting=True,
     aspect_ratio=(4.0 / 3.0),
+    payload=True,
 )
 def geobest(
     p: PlotInput,
     topo_feature: tuple[str, str, str],
-) -> AltairChart:
-    """Display the top-N winning regions for each facet."""
+) -> AltairChart | PlotInput:
+    """Map showing the winning (highest-value) category per region."""
 
-    data = p.data.copy()
+    p = shallow_copy(p)
     if len(p.facets) < 2:
         raise ValueError("geobest plot requires two facet dimensions")
 
+    data = p.data.copy()
     f0, f1 = p.facets[0], p.facets[1]
-    chart_width = p.width
 
-    # Same hack as geoplot - required for periods (.) in county names
-    data = data.copy()
+    # Same hack as geoplot - required for periods (.) in county/region names
     data[f1.col] = data[f1.col].apply(utils.unescape_vega_label)
+
+    data = data.sort_values(p.value_col, ascending=False).drop_duplicates([f1.col])
+
+    p.data = data
+    # Color is categorical (facets[0].colors) so no `scale` extra; geo joins on the region facet f1
+    p.extras = {**p.extras, "geo": _geo_extras(topo_feature, f1.col)}
+    if p.return_df:
+        return p
+
+    chart_width = p.width
 
     json_url, json_meta, json_col = topo_feature
     if json_meta == "geojson":
         source = alt.Data(url=json_url, format=alt.DataFormat(property="features", type="json"))
     else:
         source = alt.topo_feature(json_url, json_meta)
-
-    data = data.sort_values(p.value_col, ascending=False).drop_duplicates([f1.col])
 
     plot = (
         alt.Chart(source)
@@ -2266,28 +2397,23 @@ def ordered_population_sampled(
     args={"separate": "bool"},
     n_facets=(2, 2),
     priority=60,
+    payload=True,
 )
 def marimekko(
     p: PlotInput,
     separate: bool = False,
-) -> AltairChart:
-    """Build a Marimekko (mosaic) chart showing joint distributions."""
+) -> AltairChart | PlotInput:
+    """Marimekko (mosaic) chart of joint distributions (`x1/x2/y1/y2` etc. geometry columns)."""
 
+    p = shallow_copy(p)
     data = p.data.copy()
     if len(p.facets) < 2:
         raise ValueError("marimekko plot requires two facet dimensions")
 
     outer_cols = list(p.outer_factors)
     f0, f1 = p.facets[0], p.facets[1]
-    tf = p.translate or (lambda s: s)
-    chart_width = p.width
 
-    xcol, ycol, ycol_scale, yorder = (
-        f1.col,
-        f0.col,
-        f0.colors,
-        list(reversed(f0.order)),
-    )
+    xcol, ycol, yorder = f1.col, f0.col, list(reversed(f0.order))
 
     # Fill in missing values with zero
     mdf = pd.DataFrame(
@@ -2373,6 +2499,14 @@ def marimekko(
     ndata.iloc[0, -1] = xcol
 
     _clean_levels(ndata)
+
+    p.data = ndata
+    if p.return_df:
+        return p
+
+    tf = p.translate or (lambda s: s)
+    chart_width = p.width
+    ycol_scale = f0.colors
 
     # selection = alt.selection_point(fields=[yvar], bind="legend"
 
