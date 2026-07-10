@@ -245,17 +245,19 @@ def pp_transform_data(
                 filtered_df = filtered_df.drop("draw").join(draw_dfs[0].drop("question").lazy(), on=["id"], how="left")
                 draw_dfs = []  # To avoid adding draws again below
 
-        # Continuous longform groups can be aggregated in wide form and unpivoted after,
-        # so the n_rows x n_questions longform frame is never materialized. Requires all
-        # questions to share draws (or have none) and a weight-compatible aggregation.
+        # Longform groups can be aggregated in wide form (per question column) and only the
+        # small aggregates melted, so the n_rows x n_questions longform frame is never
+        # materialized. Requires all questions to share draws (or have none) and, for
+        # categorical questions, a percent-style aggregation.
         fschema = filtered_df.collect_schema()
         agg_fn_resolved = plot_meta.agg_fn or pp_desc.agg_fn or "mean"
+        cat_flags = [isinstance(fschema[c], (pl.Categorical, pl.Enum, pl.String)) for c in value_vars]
         if (
             plot_meta.data_format == "longform"
             and "question" in factor_cols
             and not draw_dfs
             and agg_fn_resolved != "posneg_mean"
-            and all(not isinstance(fschema[c], (pl.Categorical, pl.Enum, pl.String)) for c in value_vars)
+            and (not any(cat_flags) or (all(cat_flags) and agg_fn_resolved in ("mean", "sum")))
         ):
             wide_value_vars = value_vars
         else:
@@ -362,24 +364,44 @@ def _wrangle_data(
         agg_fn = pp_desc.agg_fn or "mean"
         agg_fn = plot_meta.agg_fn or agg_fn
 
-        if wide_value_vars is not None:  # Continuous question group, still in wide form
-            value_col = res_col
+        if wide_value_vars is not None:  # Question group, still in wide form
             gb = [d for d in gb_dims if d != "question"]
             if not gb:
                 raw_df = raw_df.with_columns(pl.lit("dummy").alias("dummy_col"))
                 gb = ["dummy_col"]
 
-            # Aggregate each question column per group, then unpivot the aggregated frame
-            if agg_fn in ["mean", "sum"]:  # Use weighted sum to compute both sum and mean
-                aggs = [(pl.col(q) * pl.col(weight_col)).sum().alias(q) for q in wide_value_vars]
-            else:  # median, min, max, etc. - ignore weight_col
-                aggs = [getattr(pl.col(q), agg_fn)().alias(q) for q in wide_value_vars]
-            data = raw_df.group_by(gb).agg(aggs + [pl.col(weight_col).sum()])
-            data = data.unpivot(
-                variable_name="question", value_name=res_col, index=gb + [weight_col], on=wide_value_vars
-            )
-            if agg_fn == "mean":
-                data = data.with_columns(pl.col(res_col) / pl.col(weight_col))
+            if isinstance(schema[wide_value_vars[0]], (pl.Categorical, pl.Enum, pl.String)):
+                cat_col = res_col
+                value_col = "percent"
+
+                # One small aggregation per question, all sharing the same filtered scan
+                # (comm_subplan_elim), concatenated afterwards. Emits exactly the observed
+                # (group, category) combos, like the melt-then-aggregate path would.
+                parts = [
+                    raw_df.group_by(gb + [pl.col(q).cast(pl.Categorical).alias(res_col)])
+                    .agg(pl.col(weight_col).sum().alias("percent"))
+                    .with_columns(pl.lit(q).alias("question"))
+                    for q in wide_value_vars
+                ]
+                data = pl.concat(parts)
+                data = data.with_columns(pl.col("percent").sum().over(gb + ["question"]).alias(weight_col))
+                if agg_fn == "mean":
+                    data = data.with_columns(pl.col("percent") / pl.col(weight_col))
+                # agg_fn is restricted to mean/sum by the wide-path guard
+
+            else:  # Continuous: aggregate each question column per group
+                value_col = res_col
+                if agg_fn in ["mean", "sum"]:  # Use weighted sum to compute both sum and mean
+                    aggs = [(pl.col(q) * pl.col(weight_col)).sum().alias(q) for q in wide_value_vars]
+                else:  # median, min, max, etc. - ignore weight_col
+                    aggs = [getattr(pl.col(q), agg_fn)().alias(q) for q in wide_value_vars]
+                data = raw_df.group_by(gb).agg(aggs + [pl.col(weight_col).sum()])
+                data = data.unpivot(
+                    variable_name="question", value_name=res_col, index=gb + [weight_col], on=wide_value_vars
+                )
+                if agg_fn == "mean":
+                    data = data.with_columns(pl.col(res_col) / pl.col(weight_col))
+
             data = data.with_columns(pl.col("question").cast(pl.Enum(wide_value_vars)))
             if gb == ["dummy_col"]:
                 data = data.drop("dummy_col")
