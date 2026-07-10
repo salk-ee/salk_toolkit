@@ -14,6 +14,8 @@ import altair as alt
 from salk_toolkit.pp import (
     _calculate_priority as calculate_priority,
     _transform_cont,
+    FacetMeta,
+    PlotInput,
     get_plot_fn,
     impute_facet_dims,
     matching_plots,
@@ -370,10 +372,10 @@ def test_convert_res_continuous_maps_unmapped_nonresponse_to_null() -> None:
     assert by_gender["Male"] == pytest.approx((-1 + 1 + 1 + 2 + 2) / 5)
 
 
-def test_get_plot_fn_legacy_wrapper_builds_chart() -> None:
-    """`get_plot_fn` should support the legacy `get_plot_fn(name)(**pparams)` convention."""
+def test_get_plot_fn_builds_chart_from_plot_input() -> None:
+    """`get_plot_fn` returns the plot function, callable with a PlotInput plus plot kwargs."""
 
-    plot = get_plot_fn("matrix")(
+    pi = PlotInput(
         data=pd.DataFrame(
             {
                 "row": ["A", "A", "B", "B"],
@@ -382,13 +384,13 @@ def test_get_plot_fn_legacy_wrapper_builds_chart() -> None:
             }
         ),
         facets=[
-            {"col": "row", "order": ["A", "B"], "colors": alt.Undefined},
-            {"col": "col", "order": ["X", "Y"], "colors": alt.Undefined},
+            FacetMeta(col="row", order=["A", "B"], colors=alt.Undefined),
+            FacetMeta(col="col", order=["X", "Y"], colors=alt.Undefined),
         ],
         value_col="value",
         val_format=".2",
-        log_colors=False,
     )
+    plot = get_plot_fn("matrix")(pi, log_colors=False)
 
     assert hasattr(plot, "to_dict")
 

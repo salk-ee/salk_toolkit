@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 
 import salk_toolkit.utils as utils
-from salk_toolkit.pp import FacetMeta, PlotInput, _get_plot_fn, _normalize_color_dict, create_plot, get_plot_meta
+from salk_toolkit.pp import FacetMeta, PlotInput, _normalize_color_dict, create_plot, get_plot_fn, get_plot_meta
 from salk_toolkit.utils import clean_kwargs
 from salk_toolkit.validation import PlotDescriptor
 
@@ -217,7 +217,7 @@ def create_plot_payload(
     dry_pi = create_plot(pi, pp_desc, dry_run=True, escape_labels=False, translate=translate)
     assert isinstance(dry_pi, PlotInput)
 
-    plot_fn = _get_plot_fn(pp_desc.plot)
+    plot_fn = get_plot_fn(pp_desc.plot)
     plot_kwargs = clean_kwargs(plot_fn, dry_pi.plot_args)
 
     data = dry_pi.data
