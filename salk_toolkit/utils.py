@@ -105,6 +105,7 @@ if TYPE_CHECKING:
 
 import numpy as np
 import pandas as pd
+from pandas.api.typing import DataFrameGroupBy
 import scipy
 from scipy.optimize import linear_sum_assignment
 from scipy.spatial.distance import cdist
@@ -112,6 +113,7 @@ from scipy.spatial.distance import cdist
 from altair.utils._importers import import_vl_convert
 
 import altair as alt
+from altair.utils.schemapi import UndefinedType
 import matplotlib.colors as mpc
 import hsluv  # type: ignore[import-untyped]
 
@@ -292,7 +294,7 @@ def match_sum_round(s: Sequence[float]) -> np.ndarray:
     return fs.astype("int")
 
 
-def min_diff(arr: Sequence[float]) -> float:
+def min_diff(arr: Sequence[float] | np.ndarray) -> float:
     """Return the smallest strictly positive difference between sorted values.
 
     Args:
@@ -444,7 +446,7 @@ def replace_constants(
             if isinstance(v, str) and v in constants_map:
                 d[k] = constants_map[v]
             elif isinstance(v, (dict, list)):
-                d[k] = replace_constants(v, constants_map, inplace=True, keep=keep)
+                d[k] = replace_constants(cast(Any, v), constants_map, inplace=True, keep=keep)
     # Handle list case
     elif isinstance(d, list):
         for i, v in enumerate(d):
@@ -515,19 +517,19 @@ default_color = "lightgrey"  # Something that stands out so it is easy to notice
 def to_alt_scale(
     scale: Mapping[str, str] | alt.Scale | None,
     order: Sequence[str] | None = None,
-) -> alt.Scale | alt.utils.schemapi.UndefinedType:
+) -> alt.Scale | UndefinedType:
     """Convert a mapping into an Altair scale (or None into alt.Undefined) while preserving category order.
 
     Preserving order matters because scale order overrides sort argument.
     """
 
     if scale is None:
-        scale = alt.Undefined  # type: ignore[assignment]
-    if isinstance(scale, dict):
+        return alt.Undefined
+    if isinstance(scale, Mapping):
         if order is None:
             order = list(scale.keys())
         # else: order = [ c for c in order if c in scale ]
-        scale = alt.Scale(
+        return alt.Scale(
             domain=list(order),
             range=[(scale[c] if c in scale else default_color) for c in order],
         )
@@ -744,7 +746,7 @@ def rel_wave_times(ws: Sequence[int], dts: Sequence[Any], dt0: pd.Timestamp | No
 def stable_rng(seed: int | str | bytes) -> np.random.Generator:
     """Return a platform-stable RNG using numpy's SFC64 bit generator."""
 
-    return np.random.Generator(np.random.SFC64(seed))
+    return np.random.Generator(np.random.SFC64(cast(Any, seed)))
 
 
 def stable_draws(n: int, n_draws: int, uid: str | int) -> np.ndarray:
@@ -812,7 +814,7 @@ def cut_nice_labels(
         breaks.insert(0, mi)
         lopen = True
 
-    obreaks = breaks.copy()
+    obreaks = list(breaks)
 
     if isint:
         breaks = list(map(int, breaks))
@@ -849,7 +851,7 @@ def rename_cats(df: pd.DataFrame, col: str, cat_map: Mapping[str, str]) -> None:
     """Rename categorical levels regardless of dtype quirks."""
 
     if df[col].dtype.name == "category":
-        df[col] = df[col].cat.rename_categories(cat_map)
+        df[col] = df[col].cat.rename_categories(cast(Any, cat_map))
     else:
         df[col] = df[col].replace(cat_map)
 
@@ -866,7 +868,7 @@ def str_replace(s: pd.Series, d: Mapping[str, str]) -> pd.Series:
 def merge_series(*lst: pd.Series | tuple[pd.Series, Sequence[Any]]) -> pd.Series:
     """Merge multiple series, preferentially taking non-null values."""
 
-    s = lst[0].astype("object").copy()
+    s = cast(pd.Series, lst[0]).astype("object").copy()
     for t in lst[1:]:
         if isinstance(t, tuple):
             ns, whitelist = t
@@ -948,7 +950,7 @@ def gb_cols_with_tooltip_fields(
     return out
 
 
-def gb_in(df: pd.DataFrame, gb_cols: Sequence[str]) -> pd.core.groupby.generic.DataFrameGroupBy | pd.DataFrame:
+def gb_in(df: pd.DataFrame, gb_cols: Sequence[str]) -> DataFrameGroupBy | pd.DataFrame:
     """Return ``df.groupby`` when ``gb_cols`` not empty; otherwise return ``df``."""
 
     # Convert to list for pandas groupby overload matching
@@ -1078,7 +1080,7 @@ def get_size(obj: object, seen: set[int] | None = None) -> int:
     return size
 
 
-def get_categories(dtype: object) -> list[object]:
+def get_categories(dtype: object) -> list[Any]:
     """Safely get categories from a pandas dtype.
 
     Args:
@@ -1087,10 +1089,9 @@ def get_categories(dtype: object) -> list[object]:
     Returns:
         List of categories if dtype has categories attribute, empty list otherwise.
     """
-    if hasattr(dtype, "categories"):
-        categories = dtype.categories
-        if categories is not None:
-            return list(categories)
+    categories = getattr(dtype, "categories", None)
+    if categories is not None:
+        return list(categories)
     return []
 
 
@@ -1103,9 +1104,7 @@ def get_ordered(dtype: object) -> bool:
     Returns:
         True if dtype is ordered, False otherwise.
     """
-    if hasattr(dtype, "ordered"):
-        return bool(dtype.ordered)
-    return False
+    return bool(getattr(dtype, "ordered", False))
 
 
 def escape_vega_label(label: str) -> str:
@@ -1135,6 +1134,7 @@ def read_yaml(model_desc_file: str) -> JSONValue:
 
     if ".yaml" not in model_desc_file:
         raise FileNotFoundError(f"Expecting {model_desc_file} to have a .yaml extension")
+    yaml_desc = None
     with open(model_desc_file) as stream:
         try:
             yaml_desc = yaml.safe_load(stream)
@@ -1467,6 +1467,7 @@ def plot_matrix_html(
 
     rstring = "XYZresponsiveXZY"  # Something we can replace easy
     specs, ncols = [], len(matrix[0])
+    repl = "1"  # Default responsive width multiplier if no plot sets one
     for i, p in enumerate(matrix):
         for j, pp in enumerate(p):
             if isinstance(pp, dict):
