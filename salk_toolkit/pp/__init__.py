@@ -41,6 +41,7 @@ from .registry import (
     _stk_deregister as _stk_deregister,
 )
 from .meta import (
+    _extract_column_meta_cached as _extract_column_meta_cached,
     _update_data_meta_with_pp_desc as _update_data_meta_with_pp_desc,
 )
 from .matching import (

@@ -13,6 +13,11 @@ from salk_toolkit.validation import DF, ColumnMeta, GroupOrColumnMeta, PBase, so
 from .common import AltairChart, FacetMeta, PlotInput
 
 
+# --------------------------------------------------------
+#          PLOT REGISTRY FUNCTIONS
+# --------------------------------------------------------
+
+
 class PlotMeta(PBase):
     """Metadata registered for each plot function via ``@stk_plot``."""
 
@@ -180,12 +185,12 @@ def get_plot_fn(plot_name: str) -> Callable[..., AltairChart]:
             cat_col=cast(Optional[str], pparams.get("cat_col")),
             val_format=cast(str, pparams.get("val_format") or "%"),
             val_range=cast(Optional[Tuple[Optional[float], Optional[float]]], pparams.get("val_range")),
-            filtered_size=float(cast(object, pparams.get("filtered_size") or 0.0)),
+            filtered_size=float(cast(Any, pparams.get("filtered_size") or 0.0)),
             facets=facets_list,
             tooltip=cast(List[Any], pparams.get("tooltip") or []),
             value_range=cast(Optional[Tuple[float, float]], pparams.get("value_range")),
             outer_colors=cast(Dict[str, Any], pparams.get("outer_colors") or {}),
-            width=int(cast(object, pparams.get("width") or 800)),
+            width=int(cast(Any, pparams.get("width") or 800)),
             alt_properties=cast(Dict[str, Any], pparams.get("alt_properties") or {}),
             outer_factors=cast(List[str], pparams.get("outer_factors") or []),
             plot_args=cast(Dict[str, Any], pparams.get("plot_args") or {}),

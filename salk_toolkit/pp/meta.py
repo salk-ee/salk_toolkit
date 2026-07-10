@@ -6,7 +6,8 @@ from typing import Dict, List
 
 from pydantic import BaseModel
 
-from salk_toolkit.io import extract_column_meta, group_columns_dict
+from salk_toolkit.io import extract_column_meta
+from salk_toolkit.io import group_columns_dict
 from salk_toolkit.validation import (
     BlockScaleMeta,
     ColumnBlockMeta,
@@ -15,6 +16,24 @@ from salk_toolkit.validation import (
     PlotDescriptor,
     soft_validate,
 )
+
+
+# extract_column_meta runs a pydantic validation per column, which is a real per-plot cost
+# on datasets with hundreds of columns - and it gets called several times per plot render.
+# Cache per meta instance; keys hold a strong reference so id() stays valid while cached.
+_col_meta_cache: Dict[int, tuple[DataMeta, Dict[str, GroupOrColumnMeta]]] = {}
+
+
+def _extract_column_meta_cached(data_meta: DataMeta) -> Dict[str, GroupOrColumnMeta]:
+    """Cached ``extract_column_meta``; returns a fresh dict so callers can replace entries."""
+
+    key = id(data_meta)
+    hit = _col_meta_cache.get(key)
+    if hit is None or hit[0] is not data_meta:
+        if len(_col_meta_cache) > 8:
+            _col_meta_cache.clear()
+        _col_meta_cache[key] = (data_meta, extract_column_meta(data_meta))
+    return dict(_col_meta_cache[key][1])
 
 
 def _update_data_meta_with_pp_desc(
@@ -43,7 +62,7 @@ def _update_data_meta_with_pp_desc(
 
         if res_meta.scale is None and res_meta.columns:
             base_col_name = next(iter(res_meta.columns.keys()), None)
-            base_col_meta = extract_column_meta(data_meta).get(base_col_name)
+            base_col_meta = _extract_column_meta_cached(meta_obj).get(base_col_name) if base_col_name else None
             if base_col_meta is not None:
                 scale_payload = base_col_meta.model_dump(mode="python")
                 scale_payload["col_prefix"] = ""
@@ -52,7 +71,7 @@ def _update_data_meta_with_pp_desc(
         structure[res_meta.name] = res_meta
         working_meta = working_meta.model_copy(update={"structure": structure})
 
-    col_meta = extract_column_meta(working_meta)
+    col_meta = _extract_column_meta_cached(working_meta)
     gc_dict = group_columns_dict(working_meta)
 
     col_meta_override = desc_obj.col_meta or {}

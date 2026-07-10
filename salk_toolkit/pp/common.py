@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from copy import copy as shallow_copy, deepcopy
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, cast
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, cast
 
 import altair as alt
-import numpy as np
 import pandas as pd
 from pydantic_extra_types.color import Color
 
@@ -77,7 +76,7 @@ class PlotInput:
         return out
 
 
-def _normalize_color_dict(scale: Dict[str, Color | str] | None) -> Dict[str, str] | None:
+def _normalize_color_dict(scale: Mapping[str, Color | str] | None) -> Dict[str, str] | None:
     """Convert Color objects to hex strings so Altair accepts the scale."""
 
     if not scale:
@@ -96,49 +95,9 @@ def _normalize_color_dict(scale: Dict[str, Color | str] | None) -> Dict[str, str
 AltairChart = alt.Chart | alt.LayerChart | alt.FacetChart | alt.VConcatChart | alt.HConcatChart | alt.ConcatChart
 
 
-def _augment_draws(
-    data: pd.DataFrame,
-    factors: Sequence[str] | None = None,
-    n_draws: int | None = None,
-    threshold: int = 50,
-) -> pd.DataFrame:
-    """Augment each draw with bootstrap data from across whole population.
-
-    Ensures at least ``threshold`` samples per bucket.
-    """
-
-    if n_draws is None:
-        n_draws = data.draw.max() + 1
-
-    assert n_draws is not None, "n_draws must be set"
-
-    if factors:  # Run recursively on each factor separately and concatenate results
-        factors_list = list(factors)
-        if data[["draw"] + factors_list].value_counts().min() >= threshold:
-            return data  # This takes care of large datasets fast
-        return (
-            data.groupby(factors_list, observed=False)
-            .apply(_augment_draws, n_draws=n_draws, threshold=threshold)
-            .reset_index(drop=True)
-        )  # Slow-ish, but only needed on small data now
-
-    # Get count of values for each draw
-    draw_counts = data["draw"].value_counts()  # Get value counts of existing draws
-    if len(draw_counts) < n_draws:  # Fill in completely missing draws
-        draw_counts = (draw_counts + pd.Series(0, index=range(n_draws))).fillna(0).astype(int)
-
-    # If no new draws needed, just return original
-    if draw_counts.min() >= threshold:
-        return data
-
-    # Generate an index for new draws
-    new_draws = [d for d, c in draw_counts[draw_counts < threshold].items() for _ in range(threshold - c)]
-
-    # Generate new draws
-    new_rows = data.iloc[np.random.choice(len(data), len(new_draws)), :].copy()
-    new_rows = new_rows.assign(draw=new_draws)
-
-    return pd.concat([data, new_rows])
+# --------------------------------------------------------
+#          SHARED UTILITY FUNCTIONS
+# --------------------------------------------------------
 
 
 def _get_cat_num_vals(
