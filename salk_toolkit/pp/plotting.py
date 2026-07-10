@@ -26,7 +26,7 @@ from .common import (
 )
 from .matching import _inner_outer_factors, impute_factor_cols, matching_plots
 from .meta import _extract_column_meta_cached
-from .registry import PlotMeta, _get_plot_fn, _stk_deregister, get_plot_meta, stk_plot
+from .registry import PlotMeta, _stk_deregister, get_plot_fn, get_plot_meta, stk_plot
 from .wrangle import pp_transform_data
 
 
@@ -349,7 +349,7 @@ def create_plot(
     if dry_run:
         return pi
 
-    plot_fn = _get_plot_fn(pp_desc.plot)
+    plot_fn = get_plot_fn(pp_desc.plot)
     if alt_wrapper is None:
         alt_wrapper = lambda p: p
 

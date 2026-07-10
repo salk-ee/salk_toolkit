@@ -38,11 +38,16 @@ class FacetMeta:
     """Facet definition consumed by the plotting pipeline."""
 
     col: str  # Column name used for faceting within the processed dataframe
-    ocol: str  # Original column (before translations or label tweaks)
+    ocol: str = ""  # Original column (before translations or label tweaks); defaults to ``col``
     order: List[str] = field(default_factory=list)  # Ordered categories for the facet column
     colors: object | None = None  # Altair-ready color definition (often `alt.Scale`, `alt.Undefined`, or a dict)
     neutrals: List[str] = field(default_factory=list)  # Likert neutral categories to mute in gradients
     meta: ColumnMeta = field(default_factory=ColumnMeta)  # Full metadata reference for the facet column
+
+    def __post_init__(self) -> None:
+        """Default ``ocol`` to ``col`` when not given."""
+        if not self.ocol:
+            self.ocol = self.col
 
 
 @dataclass
@@ -50,8 +55,8 @@ class PlotInput:
     """Structured container passed to individual plot functions."""
 
     data: pd.DataFrame
-    col_meta: Dict[str, GroupOrColumnMeta]
     value_col: str
+    col_meta: Dict[str, GroupOrColumnMeta] = field(default_factory=dict)
     cat_col: Optional[str] = None
     val_format: str = "%"
     val_range: Optional[Tuple[Optional[float], Optional[float]]] = None
