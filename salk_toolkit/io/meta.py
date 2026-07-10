@@ -1,7 +1,7 @@
 """Metadata introspection and reconciliation helpers for DataMeta structures."""
 
 from collections.abc import Sequence
-from typing import TypeVar
+from typing import Any, TypeVar
 
 import pandas as pd
 
@@ -19,6 +19,95 @@ from salk_toolkit.validation import (
 )
 
 from salk_toolkit.io.core import _deterministic_categories_and_values
+
+
+def _merge_categories(a: list | str | None, b: list | str | None) -> list | str | None:
+    """Union two category specs. 'infer' on either side defers to data-driven
+    resolution downstream, so propagate 'infer'. Otherwise union preserving a's
+    order then appending b's new categories."""
+    if a == "infer" or b == "infer":
+        return "infer"
+    if a is None:
+        return b
+    if b is None:
+        return a
+    out = list(a)
+    for c in b:
+        if c not in out:
+            out.append(c)
+    return out
+
+
+_MERGE_SCALAR_FIELDS = (
+    "continuous",
+    "datetime",
+    "ordered",
+    "likert",
+    "neutral_middle",
+    "num_values",
+    "label",
+    "colors",
+    "nonordered",
+)
+
+
+def _merge_column_meta(a: ColumnMeta, b: ColumnMeta, ctx: str) -> ColumnMeta:
+    """Merge two ColumnMeta (or scale metas) for the same logical column across files.
+    Categories union; listed scalar fields last-file-wins with a warn on genuine
+    conflict. Raises on scale-kind mismatch and num_values/category length mismatch."""
+    update: dict[str, Any] = {}
+    cats = _merge_categories(a.categories, b.categories)
+    if cats is not None:
+        update["categories"] = cats
+    for f in _MERGE_SCALAR_FIELDS:
+        av, bv = getattr(a, f, None), getattr(b, f, None)
+        if av is not None and bv is not None and av != bv:
+            warn(f"{ctx}: field {f!r} differs across files ({av!r} vs {bv!r}); using last-file value")
+        if bv is not None:
+            update[f] = bv
+    a_cat = a.categories is not None
+    b_cat = b.categories is not None
+    if (a.continuous and b_cat) or (b.continuous and a_cat):
+        raise ValueError(f"{ctx}: scale-kind mismatch (categorical vs continuous) across files")
+    merged = a.model_copy(update=update)
+    final_cats = update.get("categories", a.categories)
+    if isinstance(final_cats, list) and merged.num_values is not None and len(merged.num_values) != len(final_cats):
+        raise ValueError(f"{ctx}: num_values length {len(merged.num_values)} != categories length {len(final_cats)}")
+    return merged
+
+
+def _merge_blocks(a: ColumnBlockMeta, b: ColumnBlockMeta) -> ColumnBlockMeta:
+    """Merge two same-named blocks across files. Columns union (first-seen order);
+    scale + per-column categories union; scalars last-file-wins. Raises on block-type
+    mismatch."""
+    if a.type != b.type:
+        raise ValueError(f"Block {a.name!r}: type mismatch across files ({a.type!r} vs {b.type!r})")
+    cols = dict(a.columns)
+    for cn, cm in b.columns.items():
+        cols[cn] = _merge_column_meta(cols[cn], cm, ctx=f"Block {a.name!r} column {cn!r}") if cn in cols else cm
+    update: dict[str, Any] = {"columns": cols}
+    if a.scale is not None and b.scale is not None:
+        update["scale"] = _merge_column_meta(a.scale, b.scale, ctx=f"Block {a.name!r} scale")
+    elif b.scale is not None:
+        update["scale"] = b.scale
+    return a.model_copy(update=update)
+
+
+def _merge_data_metas(metas: list[DataMeta]) -> DataMeta:
+    """Build the combined DataMeta for a multi-file load by unioning block structure
+    across all file metas (in file order). Top-level fields come from the last file;
+    only `structure` is merged. Single meta -> returned unchanged (no-op)."""
+    if not metas:
+        raise ValueError("_merge_data_metas called with no metas")
+    if len(metas) == 1:
+        return metas[0]
+    merged = {}
+    for meta in metas:
+        if meta.structure is None:
+            continue
+        for name, block in meta.structure.items():
+            merged[name] = _merge_blocks(merged[name], block) if name in merged else block
+    return metas[-1].model_copy(update={"structure": merged})
 
 
 def fix_df_with_meta(df: pd.DataFrame, dmeta: DataMeta) -> pd.DataFrame:

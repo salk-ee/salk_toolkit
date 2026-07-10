@@ -126,17 +126,18 @@
     },
     {
       "name": "issue_importance",
-      "create": {
-        "type": "topk",
-        "from_columns": "Q3r(\\d+)",
-        "res_columns": "Q3_R\\1",
-        "agg_index": 1,
-        "na_vals": [
-          "NO TO: Ekonomika",
-          "NO TO: Sveikata",
-          "NO TO: Gynyba",
-          "NO TO: Švietimas"
-        ],
+      "type": "topk",
+      "from_columns": "Q3r(\\d+)",
+      "res_columns": "Q3_R\\1",
+      "agg_index": 1,
+      "na_vals": [
+        "NO TO: Ekonomika",
+        "NO TO: Sveikata",
+        "NO TO: Gynyba",
+        "NO TO: Švietimas"
+      ],
+      "scale": {
+        "categories": "infer",
         "translate_after": {
           "1": "Economy",
           "2": "Healthcare",
@@ -144,28 +145,28 @@
           "4": "Education"
         }
       },
-      "scale": { "categories": "infer" },
       "columns": []
     },
     {
       "name": "maxdiff",
+      "type": "maxdiff",
       "columns": [],
-      "create": {
-        "type": "maxdiff",
-        "best_columns": "Q4_(\\d+?)best",
-        "worst_columns": "Q4_(\\d+?)worst",
-        "set_columns": "Q4_\\1set",
-        "setindex_column": ["Q4_Version", { "continuous": true }],
-        "topics": "md_topics",
-        "sets": "md_sets"
-      },
+      "best_columns": "Q4_(\\d+?)best",
+      "worst_columns": "Q4_(\\d+?)worst",
+      "set_columns": "Q4_\\1set",
+      "setindex_column": ["Q4_Version", { "continuous": true }],
+      "input_format": "choice_sets",
+      "choice_sets": [
+        [[1, 2, 3], [1, 3, 4], [2, 3, 4]],
+        [[1, 2, 4], [2, 3, 4], [1, 3, 4]]
+      ],
       "scale": {
         "categories": "infer",
         "translate": {
-          "Ekonomika": "Economy",
-          "Sveikata": "Healthcare",
-          "Gynyba": "Defence",
-          "Švietimas": "Education"
+          "1": "Economy",
+          "2": "Healthcare",
+          "3": "Defence",
+          "4": "Education"
         }
       }
     }
