@@ -55,7 +55,10 @@ An authored `model_spec` on a typed block wins over the default. Setting one on
 a block that explodes into multiple subgroup siblings raises (ambiguous — the
 siblings get per-sibling defaults). The spec travels with the DataMeta (parquet
 round-trips included) and is exposed on the group entry by `extract_column_meta`,
-which is how SIP's AutodetectOM resolves a block name to the described OM.
+which is how SIP's AutodetectOM resolves a block name to the described OM. In a
+model desc, a `res_cols` entry of `{"name": "<block>", "model_spec": {…}}`
+shallow-merges its dict over the block's spec — override parameters (`mode`,
+`model`, …) without restating the structure.
 
 ### `scale.translate` vs `scale.translate_after`
 
