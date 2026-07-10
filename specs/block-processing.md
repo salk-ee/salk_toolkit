@@ -37,6 +37,26 @@ Plain blocks are processed column-by-column by `salk_toolkit/io/pipeline.py`
 4. **Transform** — the type-specific aggregation/widening, producing the output columns.
 5. **Post-translate** — map output cells and categories through `scale.translate_after`.
 
+### `model_spec` — routing a block into the model
+
+Every block accepts an optional `model_spec`: the observation-model description
+(the dict a SIP `res_cols` entry would hold — any OM, not just `ordinal_ranking`)
+that the block name should resolve to when passed to a model. Typed blocks stamp
+a default onto their processed output blocks:
+
+- **topk** — `{"structure": [[<output cols>, null]], "ordered": <ranked?>}`:
+  picked items rank above the rest of the item pool; the `ranked_*` input
+  formats set `ordered: true` so slot order counts as a ranking.
+- **maxdiff** — `{"structure": [[[best_k], [set_k], [worst_k]], …]}`: one
+  weak-order chain per question (best > shown set > worst).
+- **onehot / plain** — no default; an authored `model_spec` passes through as-is.
+
+An authored `model_spec` on a typed block wins over the default. Setting one on
+a block that explodes into multiple subgroup siblings raises (ambiguous — the
+siblings get per-sibling defaults). The spec travels with the DataMeta (parquet
+round-trips included) and is exposed on the group entry by `extract_column_meta`,
+which is how SIP's AutodetectOM resolves a block name to the described OM.
+
 ### `scale.translate` vs `scale.translate_after`
 
 - **`translate`** runs *before* the transform. Use it when raw cells hold index
