@@ -433,9 +433,10 @@ class MaxDiffBlock(ColumnBlockMeta):
           columns are sorted by the last capture group (as int if parseable) to match
           the transform's question-index ordering.
 
-        - ``resolved``: each role is an independent regex matched against all df columns.
-          No sibling narrowing, no substitution - alignment is handled downstream by
-          ``_align_resolved_roles``.
+        - ``resolved``: no sibling narrowing, no substitution. If all three roles are
+          regexes they are matched and aligned here by shared capture-group key (raising
+          on incomplete alignment); otherwise each regex role is matched independently and
+          explicit lists are kept as-is (the transform length-checks those).
         """
         import re as _re
 

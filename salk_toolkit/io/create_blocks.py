@@ -233,19 +233,12 @@ def _get_subgroup_config(value: object, sibling_name: str, source_name: str) -> 
 
 
 def _match_columns(block: ColumnBlockMeta, df: pd.DataFrame) -> list[str]:
-    """Stage 1: resolve `from_columns` to the concrete df columns it selects."""
-    pattern = block.from_columns
-    if pattern is None:
-        cols = [c for c in block.columns.keys() if c in df.columns]
-    elif isinstance(pattern, list):
-        cols = list(pattern)
-    elif isinstance(pattern, str):
-        regex = re.compile(pattern)
-        cols = [c for c in df.columns if regex.match(c)]
-    else:
-        raise TypeError(f"from_columns must be str, list, or None; got {type(pattern)}")
+    """Stage 1: resolve `from_columns` to the concrete df columns it selects, raising if
+    none match. Uses the base `from_columns` resolver explicitly, so it stays correct even
+    for MaxDiffBlock (whose `input_df_columns` override means best/worst/set, not this)."""
+    cols = ColumnBlockMeta.input_df_columns(block, df)
     if not cols:
-        raise ValueError(f"No columns matched for block {block.name!r} (from_columns={pattern!r})")
+        raise ValueError(f"No columns matched for block {block.name!r} (from_columns={block.from_columns!r})")
     return cols
 
 
@@ -253,12 +246,6 @@ def _block_scale_dict(block: ColumnBlockMeta) -> dict[str, Any]:
     """A deep-copied plain dict of the block's scale (empty dict when no scale),
     safe to mutate while building an output block."""
     return deepcopy(block.scale.model_dump(mode="python") if block.scale else {})
-
-
-def _resolved_from_cols(block: ColumnBlockMeta, df: pd.DataFrame) -> list[str]:
-    """`from_columns` as a concrete list: identity for an explicit list, else
-    regex-matched against `df`."""
-    return list(block.from_columns) if isinstance(block.from_columns, list) else _match_columns(block, df)
 
 
 def _narrow_sibling(block: ColumnBlockMeta, cols: list[str], *, label_suffix: str) -> ColumnBlockMeta:
@@ -499,58 +486,21 @@ def _maxdiff_apply_transform(
     raise ValueError(f"unknown MaxDiff input_format: {block.input_format!r}")
 
 
-def _resolve_maxdiff_role(spec: object, df: pd.DataFrame) -> list[str]:
-    if spec is None:
-        raise ValueError("maxdiff role column missing")
-    if isinstance(spec, list):
-        return list(spec)
-    r = re.compile(cast(str, spec))
-    return sorted(c for c in df.columns if r.match(c))
-
-
-def _align_resolved_roles(
-    block: MaxDiffBlock, best: list[str], worst: list[str], sets: list[str]
-) -> tuple[list[str], list[str], list[str]]:
-    all_regex = all(isinstance(v, str) for v in (block.best_columns, block.worst_columns, block.set_columns))
-    if all_regex:
-        bp = re.compile(cast(str, block.best_columns))
-        wp = re.compile(cast(str, block.worst_columns))
-        sp = re.compile(cast(str, block.set_columns))
-        by_key: dict[str, list[str | None]] = {}
-        for c in best:
-            m = bp.match(c)
-            assert m is not None
-            by_key.setdefault(m.group(1), [None, None, None])[0] = c
-        for c in worst:
-            m = wp.match(c)
-            assert m is not None
-            by_key.setdefault(m.group(1), [None, None, None])[1] = c
-        for c in sets:
-            m = sp.match(c)
-            assert m is not None
-            by_key.setdefault(m.group(1), [None, None, None])[2] = c
-        missing = [(k, t) for k, t in by_key.items() if None in t]
-        if missing:
-            raise ValueError(f"MaxDiff resolved: incomplete alignment: {missing}")
-        keys = sorted(by_key, key=lambda s: int(s) if s.isdigit() else s)
-        triples = [by_key[k] for k in keys]
-        return [t[0] for t in triples], [t[1] for t in triples], [t[2] for t in triples]  # type: ignore[return-value]
-
-    if not (len(best) == len(worst) == len(sets)):
-        raise ValueError(
-            f"MaxDiff resolved lists must have equal length; got best={len(best)}, worst={len(worst)}, sets={len(sets)}"
-        )
-    return best, worst, sets
-
-
 def _maxdiff_transform_resolved(
     block: MaxDiffBlock,
     df: pd.DataFrame,
 ) -> tuple[pd.DataFrame, MaxDiffBlock]:
-    best = _resolve_maxdiff_role(block.best_columns, df)
-    worst = _resolve_maxdiff_role(block.worst_columns, df)
-    sets = _resolve_maxdiff_role(block.set_columns, df)
-    best, worst, sets = _align_resolved_roles(block, best, worst, sets)
+    # Roles arrive already resolved to concrete, index-aligned lists via
+    # MaxDiffBlock.resolve_role_columns (regex roles matched + aligned by capture key,
+    # explicit lists kept as-is). Here we only guard the explicit-list case, which the
+    # validator does not length-check.
+    if block.set_columns is None:
+        raise ValueError(f"MaxDiffBlock {block.name!r}: set_columns is required for input_format='resolved'")
+    best, worst, sets = list(block.best_columns), list(block.worst_columns), list(block.set_columns)
+    if not (len(best) == len(worst) == len(sets)):
+        raise ValueError(
+            f"MaxDiff resolved lists must have equal length; got best={len(best)}, worst={len(worst)}, sets={len(sets)}"
+        )
     cols = sorted(set(best) | set(worst) | set(sets))
     sdf = df[cols].copy()
     scale_dict = _block_scale_dict(block)
@@ -618,61 +568,46 @@ def _maxdiff_transform_choice_sets(
     worst_cols = list(worst_cols)
     set_cols = list(set_cols)
 
-    def _maybe_json_load(value: str | None) -> list[object] | None:
+    def _maybe_json_load(value: str) -> list[object] | None:
         try:
             parsed = json.loads(value)
             return parsed if isinstance(parsed, list) else None
         except (TypeError, json.JSONDecodeError):
             return None
 
-    def _is_int_like(token: object) -> bool:
-        if isinstance(token, (int, np.integer)):
-            return True
-        if isinstance(token, str):
-            stripped = token.strip()
-            if not stripped:
-                return False
-            try:
-                int(stripped)
-                return True
-            except ValueError:
-                return False
-        return False
-
-    def _tokens_from_value(value: object) -> list[str] | float | None:
+    def _tokens_from_value(value: object) -> list[str] | None:
+        """Normalise one set cell into a list of string tokens (or None for NA).
+        Accepts native lists, or a string encoding them as JSON or comma-separated."""
         if value is None or (isinstance(value, float) and pd.isna(value)):
-            return value
+            return None
         if isinstance(value, (list, tuple, np.ndarray, pd.Series)):
             return [str(item) for item in value]
         if isinstance(value, str):
             stripped = value.strip()
             parsed = _maybe_json_load(stripped) if stripped.startswith("[") and stripped.endswith("]") else None
             if parsed is not None:
-                return [str(item) for item in parsed] if isinstance(parsed, list) else None
+                return [str(item) for item in parsed]
             return [part.strip() for part in stripped.split(",") if part.strip()]
         raise ValueError(f"Unsupported maxdiff set specification value: {value}")
 
-    def _convert_tokens_to_topics(tokens: list[str] | float | None) -> list[str] | None | float:
-        if tokens is None or (isinstance(tokens, float) and pd.isna(tokens)):
-            return tokens
-        if not isinstance(tokens, list):
-            tokens = [str(tokens)]
-        if not tokens:
-            return []
-        if all(isinstance(token, str) for token in tokens) and not all(_is_int_like(token) for token in tokens):
-            stripped = [token.strip() for token in tokens]
-            return [translate.get(t, t) for t in stripped] if translate else stripped  # type: ignore[return-value]
-        if all(_is_int_like(token) for token in tokens):
-            converted = []
-            for token in tokens:
-                idx = int(token) if not isinstance(token, (int, np.integer)) else int(token)
-                if idx < 1 or idx > len(topics):
-                    raise ValueError(f"Maxdiff set index {idx} is out of bounds for topics list of size {len(topics)}.")
-                converted.append(topics[idx - 1])
-            return converted
-        if all(isinstance(token, str) for token in tokens):
-            return [token.strip() for token in tokens]
-        raise ValueError(f"Unsupported token types in maxdiff set definition: {tokens}")
+    def _tokens_to_topics(tokens: list[str] | None) -> list[str] | None:
+        """Map a set cell's tokens to display-name topics: an integer token is a 1-based
+        index into `topics`, anything else is a raw name run through `translate`. (The two
+        agree on index tokens: `topics` is built from `translate` in index order.)"""
+        if tokens is None:
+            return None
+        out: list[str] = []
+        for tok in tokens:
+            t = tok.strip()
+            try:
+                idx = int(t)
+            except ValueError:
+                out.append(translate.get(t, t))
+                continue
+            if idx < 1 or idx > len(topics):
+                raise ValueError(f"Maxdiff set index {idx} is out of bounds for topics list of size {len(topics)}.")
+            out.append(topics[idx - 1])
+        return out
 
     ordered_cols = best_cols + worst_cols
 
@@ -691,17 +626,7 @@ def _maxdiff_transform_choice_sets(
     else:
         df = df[ordered_cols + set_cols]
         for col in set_cols:
-            converted_values: list[list[str] | None] = []
-            for value in df[col].tolist():
-                tokens = _tokens_from_value(value)
-                converted = _convert_tokens_to_topics(tokens)
-                if converted is None or (isinstance(converted, float) and pd.isna(converted)):
-                    converted_values.append(None)
-                elif isinstance(converted, list):
-                    converted_values.append(converted)
-                else:
-                    converted_values.append(None)
-            df[col] = converted_values  # type: ignore[assignment]
+            df[col] = [_tokens_to_topics(_tokens_from_value(v)) for v in df[col].tolist()]  # type: ignore[assignment]
 
     # Pre-translate already mapped index strings to topic names before the transform ran,
     # so df[col] already contains translated values — just cast to categorical.
@@ -760,7 +685,7 @@ def _onehot_transform_leftpacked(
     df: pd.DataFrame,
     choices: list[str] | None,
 ) -> tuple[pd.DataFrame, OneHotBlock]:
-    from_cols = _resolved_from_cols(block, df)
+    from_cols = _match_columns(block, df)
     src = df[from_cols].astype("object")
     if block.na_vals:
         src = src.replace(block.na_vals, None)
@@ -806,7 +731,7 @@ def _onehot_transform_wide(
     df: pd.DataFrame,
     choices: list[str] | None,
 ) -> tuple[pd.DataFrame, OneHotBlock]:
-    from_cols = _resolved_from_cols(block, df)
+    from_cols = _match_columns(block, df)
     sdf = df[from_cols].copy()
     prefix = block.res_prefix or ""
     final_choices: list[str] | None
