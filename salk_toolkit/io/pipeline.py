@@ -1,36 +1,28 @@
-"""The annotation pipeline: _process_annotated_data turns loaded source files into a processed dataframe + meta."""
+"""The annotation pipeline: stages that turn a SourceBundle + DataMeta into a processed Dataset."""
 
-import os
-from typing import Literal, cast, overload
+from typing import cast
 
 import numpy as np
 import pandas as pd
-import scipy as sp
 
-import salk_toolkit as stk
-from salk_toolkit.utils import (
-    read_json,
-    read_yaml,
-    warn,
-)
+from salk_toolkit.utils import warn
 from salk_toolkit.validation import (
     ColumnBlockMeta,
     ColumnMeta,
     DataMeta,
-    FileDesc,
     soft_validate,
 )
 
-from salk_toolkit.io import readers
 from salk_toolkit.io.core import (
-    ProcessedDataReturn,
+    Dataset,
+    HookEnv,
+    ProcessOpts,
+    SourceBundle,
     _deterministic_categories_and_values,
     _is_series_of_lists,
-    _str_from_list,
 )
 from salk_toolkit.io.create_blocks import _create_new_columns_and_metas
 from salk_toolkit.io.meta import _fix_meta_categories
-from salk_toolkit.io.sources import _load_data_files
 
 
 def _file_meta_map(dfs: dict[str, pd.DataFrame]) -> dict[str, str]:
@@ -45,151 +37,26 @@ def _file_meta_map(dfs: dict[str, pd.DataFrame]) -> dict[str, str]:
     return dict(zip(fm["file_code"], fm["file_name"]))
 
 
-@overload
-def _process_annotated_data(
-    meta_fname: str | None = ...,
-    meta: DataMeta | dict[str, object] | None = ...,
-    data_file: str | None = ...,
-    raw_data: pd.DataFrame | None = ...,
-    *,
-    return_meta: Literal[True],
-    ignore_exclusions: bool = ...,
-    only_fix_categories: bool = ...,
-    return_raw: bool = ...,
-    add_original_inds: bool = ...,
-) -> ProcessedDataReturn: ...
+def _inject_files_block(bundle: SourceBundle, meta_obj: DataMeta, file_names: dict[str, str]) -> DataMeta:
+    """(Re)stamp provenance columns and add the generated `files` block to the structure.
 
+    The columns are overwritten to guarantee correctness even if preprocessing mutated/dropped them.
+    The block gets explicit ordered categories (no "infer") for determinism, so the system file
+    columns can be used downstream (e.g. plotting/pipeline).
+    """
+    for fc, fdf in bundle.frames.items():
+        fdf["file_code"] = str(fc)
+        fdf["file_name"] = file_names[fc]
 
-@overload
-def _process_annotated_data(
-    meta_fname: str | None = ...,
-    meta: DataMeta | dict[str, object] | None = ...,
-    data_file: str | None = ...,
-    raw_data: pd.DataFrame | None = ...,
-    return_meta: Literal[False] = False,
-    ignore_exclusions: bool = ...,
-    only_fix_categories: bool = ...,
-    return_raw: bool = ...,
-    add_original_inds: bool = ...,
-) -> pd.DataFrame: ...
-
-
-def _process_annotated_data(
-    meta_fname: str | None = None,
-    meta: DataMeta | dict[str, object] | None = None,
-    data_file: str | None = None,
-    raw_data: pd.DataFrame | dict[str, pd.DataFrame] | None = None,
-    return_meta: bool = False,
-    ignore_exclusions: bool = False,
-    only_fix_categories: bool = False,
-    return_raw: bool = False,
-    add_original_inds: bool = False,
-) -> pd.DataFrame | ProcessedDataReturn:
-    """Process annotated data according to metadata specifications."""
-    # Read metafile
-    metafile = cast(dict[str, str], readers.stk_file_map).get(meta_fname, meta_fname)  # type: ignore[call-overload]
-    meta_input: DataMeta | dict[str, object] | None = meta
-    if meta_fname is not None:
-        ext = os.path.splitext(metafile)[1]
-        if ext == ".yaml":
-            meta_raw = read_yaml(metafile)
-        elif ext == ".json":
-            meta_raw = read_json(metafile)
-        else:
-            raise Exception(f"Unknown meta file format {ext} for file: {meta_fname}")
-        assert isinstance(meta_raw, dict), "Meta file must contain a dict"
-        meta_input = dict(meta_raw)  # Cast to ensure object values
-
-    # Soft-validate and work with Pydantic DataMeta object throughout
-    if meta_input is None:
-        raise ValueError("Metadata cannot be None")
-    meta_obj = soft_validate(meta_input, DataMeta, warnings=True)
-    constants: dict[str, object] = dict(meta_obj.constants)
-    # Now meta is guaranteed to be a DataMeta object, not None
-
-    # Read datafile(s) - now returns dict[str, pd.DataFrame] for per-file processing
-    # Handle data_file override or ensure files list is populated
-    raw_data_dict: dict[str, pd.DataFrame] | None = None
-    if raw_data is None:
-        if data_file is not None:
-            # data_file override: use it directly
-            files_list = [FileDesc(file=data_file, opts=meta_obj.read_opts)]
-        elif meta_obj.files is not None:
-            files_list = meta_obj.files
-        else:
-            raise ValueError("No files provided in metadata")
-
-        raw_data_dict, inp_meta, einfo = _load_data_files(
-            files_list,
-            path=meta_fname if meta_fname is not None else (data_file if data_file is not None else None),
-            read_opts=meta_obj.read_opts,
-            ignore_exclusions=ignore_exclusions,
-            only_fix_categories=only_fix_categories,
-            add_original_inds=add_original_inds,
-        )
-        if inp_meta is not None:
-            warn("Processing main meta file")  # Print this to separate warnings for input jsons from main
-    elif isinstance(raw_data, dict):
-        raw_data_dict = raw_data
-        einfo = {}
-    else:
-        # Backward compatibility: single DataFrame -> treat as single-file dict
-        raw_data_dict = {"F0": raw_data}
-        einfo = {}
-
-    if return_raw:
-        # Return concatenated for backward compatibility
-        raw_data_concat = pd.concat(raw_data_dict.values()) if raw_data_dict else pd.DataFrame()
-        if return_meta:
-            return (raw_data_concat, meta_obj)
-        return raw_data_concat
-
-    assert raw_data_dict is not None, "Expected raw_data_dict to be initialized before processing"
-
-    file_meta_map = _file_meta_map(raw_data_dict)
-    file_codes_in_order = list(raw_data_dict.keys())
-    raw_data_dict = {fc: raw_data_dict[fc] for fc in file_codes_in_order}
-
-    # Run preprocessing per file
-    if meta_obj.preprocessing is not None and not only_fix_categories:
-        for file_code, df in raw_data_dict.items():
-            file_name = file_meta_map[file_code]
-            globs = {
-                "pd": pd,
-                "np": np,
-                "sp": sp,
-                "stk": stk,
-                "df": df,
-                "file_code": file_code,
-                "file_name": file_name,
-                **einfo,
-                **constants,
-            }
-            exec(_str_from_list(meta_obj.preprocessing), globs)
-            raw_data_dict[file_code] = globs["df"]
-
-    # Ensure file metadata columns always survive end-to-end (also if preprocessing dropped/mutated them).
-    file_names_in_order: list[str] = []
-    for file_code in file_codes_in_order:
-        df = raw_data_dict[file_code]
-        file_name_val = file_meta_map[file_code]
-        # Overwrite to guarantee correctness even if preprocessing mutated/dropped these columns.
-        df["file_code"] = str(file_code)
-        df["file_name"] = file_name_val
-        raw_data_dict[file_code] = df
-        file_names_in_order.append(file_name_val)
-
-    # Inject implicit metadata for system file columns so they can be used downstream (e.g. plotting/pipeline).
-    # Provide explicit ordered category order (no "infer") for determinism.
     sys_block_name = "files"
-    sys_block_hidden = len(raw_data_dict) <= 1
+    sys_block_hidden = len(bundle.frames) <= 1
     sys_block_dict: dict[str, object] = {
         "name": sys_block_name,
         "generated": True,
         "hidden": sys_block_hidden,
         "columns": {
-            "file_code": {"categories": [str(fc) for fc in file_codes_in_order], "ordered": True},
-            "file_name": {"categories": file_names_in_order, "ordered": True},
+            "file_code": {"categories": [str(fc) for fc in bundle.frames], "ordered": True},
+            "file_name": {"categories": [file_names[fc] for fc in bundle.frames], "ordered": True},
         },
     }
     sys_block = soft_validate(sys_block_dict, ColumnBlockMeta)
@@ -204,302 +71,250 @@ def _process_annotated_data(
         )
     else:
         structure2[sys_block_name] = sys_block
-    meta_obj = meta_obj.model_copy(update={"structure": structure2})
+    return meta_obj.model_copy(update={"structure": structure2})
 
-    raw_data_concat = pd.concat(raw_data_dict.values()).reset_index(drop=True) if raw_data_dict else pd.DataFrame()
-    # Initialize concatenated DataFrame - start empty, will be built column by column
-    ndf_df = pd.DataFrame()
 
-    # Compute and store row index ranges for each file_code
-    file_index_ranges: dict[str, slice] = {}
-    current_idx = 0
-    for file_code, file_raw in raw_data_dict.items():
-        file_len = len(file_raw)
-        file_index_ranges[file_code] = slice(current_idx, current_idx + file_len)
-        current_idx += file_len
+def _gather_source(
+    bundle: SourceBundle, source_spec: str | dict[str, str], orig_cn: str, cn: str, generated: bool
+) -> pd.Series | None:
+    """Resolve and concatenate a column's source series across all files.
 
-    all_cns = dict()
+    Returns None when the column is missing/empty everywhere: declared in meta but absent
+    from the source files -> skipped in df (meta categories are reconciled later).
+    """
+    per_file_series: list[pd.Series] = []
+    for file_code, file_raw_data in bundle.frames.items():
+        # Determine source column name for this file:
+        # a dict maps file codes (with 'default' then orig_cn as fallbacks); a string applies to all files
+        if isinstance(source_spec, dict):
+            sn = source_spec.get(file_code, source_spec.get("default", orig_cn))
+        else:
+            sn = source_spec
+
+        if sn not in file_raw_data:
+            if not generated:  # bypass warning for columns marked as being generated later
+                warn(f"Column {sn} not found in file {file_code}")
+            s = pd.Series(index=file_raw_data.index, dtype=object, name=cn)  # Empty series with same index
+        elif file_raw_data[sn].isna().all():
+            warn(f"Column {sn} is empty in file {file_code} and thus ignored")
+            s = pd.Series(index=file_raw_data.index, dtype=object, name=cn)  # Empty series with same index
+        else:
+            s = file_raw_data[sn].copy()
+            s.name = cn  # Set name early
+        per_file_series.append(s)
+
+    if not per_file_series:
+        return None
+    s = pd.concat(per_file_series).reset_index(drop=True)
+    return None if s.isna().all() else s
+
+
+def _apply_transforms(
+    s: pd.Series, mcm: ColumnMeta, bundle: SourceBundle, ndf_df: pd.DataFrame, cn: str, hooks: HookEnv
+) -> pd.Series:
+    """Apply translate -> transform -> translate_after -> dtype coercion to a gathered series."""
+    if _is_series_of_lists(s):
+        return s
+    if s.dtype.name == "category":
+        s = s.astype("object")  # This makes it easier to use common ops like replace and fillna
+    if mcm.translate:
+        s = s.astype("str").replace(mcm.translate).replace("nan", None).replace("None", None)
+    if mcm.transform is not None and isinstance(mcm.transform, str):
+        # Transforms are evaluated per-file so they can reference the file's raw data (df)
+        # and the per-file view of the columns processed so far (ndf)
+        transformed_parts: list[pd.Series] = []
+        ranges = bundle.ranges()
+        for file_code, file_raw_data in bundle.frames.items():
+            s_local = s.iloc[ranges[file_code]]
+            transformed = hooks.eval(mcm.transform, s=s_local, df=file_raw_data, ndf=ndf_df.iloc[ranges[file_code]])
+            transformed_parts.append(pd.Series(transformed, index=s_local.index, name=cn))
+        s = pd.concat(transformed_parts, ignore_index=True)
+    if mcm.translate_after:
+        s = pd.Series(s).astype("str").replace(mcm.translate_after).replace("nan", None).replace("None", None)
+
+    if mcm.datetime:
+        s = pd.to_datetime(s, errors="coerce")
+    elif mcm.continuous:
+        s = pd.to_numeric(s, errors="coerce")
+    return s
+
+
+def _resolve_categories(s: pd.Series, mcm: ColumnMeta, cn: str) -> tuple[pd.Series, ColumnMeta]:
+    """Infer or coerce the series' categories, returning the updated column meta."""
+    if not mcm.categories or _is_series_of_lists(s):
+        return s, mcm
+
+    if mcm.categories == "infer":
+        # Check for ordered warning before we modify s
+        should_warn_ordered = mcm.ordered and not pd.api.types.is_numeric_dtype(s)
+        # s is the source of truth: it has the final translate -> transform -> translate_after values
+        present = set(s.dropna().unique())
+        if mcm.translate and not mcm.transform and set(mcm.translate.values()) >= present:
+            # Infer order from the translation dict; mapping can be many-to-one so dedup preserving order
+            cats = list(dict.fromkeys(str(c) for c in mcm.translate.values() if c in present))
+        else:
+            # Deterministic ordering: numeric dtype and numeric-like strings sort numerically,
+            # otherwise lexicographically
+            if should_warn_ordered:
+                warn(
+                    f"Ordered category {cn} had category: infer. "
+                    "This only works correctly if you want lexicographic ordering!"
+                )
+            s, cats = _deterministic_categories_and_values(s)
+        mcm = mcm.model_copy(update={"categories": cats})  # Persist inferred categories into metadata
+    elif pd.api.types.is_numeric_dtype(s):
+        # Numeric datatype being coerced into categorical - map to nearest category value
+        cats = mcm.categories
+        if not isinstance(cats, list):
+            raise ValueError(f"Categories for {cn} must be a list when series is numeric")
+        try:
+            fcats = np.array(cats).astype(float)
+            s_values_arr = np.asarray(s.values)
+            if s_values_arr.ndim == 0:
+                s_values_arr = s_values_arr.reshape(-1)
+            distances = np.abs(s_values_arr.reshape(-1, 1) - fcats.reshape(1, -1))
+            s = pd.Series(
+                np.array(cats)[distances.argmin(axis=1)],
+                index=s.index,
+                name=s.name,
+                dtype=pd.CategoricalDtype(categories=cats, ordered=mcm.ordered if mcm.ordered is not None else False),
+            )
+            return s, mcm  # Snapping cannot drop values, and s is already the right Categorical
+        except (ValueError, TypeError) as e:
+            raise ValueError(f"Categories for {cn} are not numeric: {cats}") from e
+    else:
+        cats = mcm.categories
+        if not isinstance(cats, list):
+            raise ValueError(f"Categories for {cn} must be a list")
+
+    if isinstance(cats, list):
+        dropped = set(s.dropna().unique()) - set(cats)
+        if dropped:
+            warn(f"Values for {cn} not in categories and will be dropped: {dropped}")
+        final_ordered = mcm.ordered if mcm.ordered is not None else False
+        s = pd.Series(pd.Categorical(s, categories=cats, ordered=final_ordered), name=cn)
+    return s, mcm
+
+
+def _apply_subgroup_transform(
+    bundle: SourceBundle, ndf_df: pd.DataFrame, transform: str, g_cols: list[str], hooks: HookEnv
+) -> pd.DataFrame:
+    """Apply a block-level subgroup transform per-file over the block's columns."""
+    # TODO: Add a subgroups field to ColumnBlockMeta if per-subgroup application is needed
+    transformed_parts: list[pd.DataFrame] = []
+    ranges = bundle.ranges()
+    for file_code, file_raw_data in bundle.frames.items():
+        idx_range = ranges[file_code]
+        transformed_gdf = hooks.eval(
+            transform,
+            gdf=ndf_df[g_cols].iloc[idx_range].copy(),
+            ndf=ndf_df.iloc[idx_range].copy(),  # Per-file processed data view
+            df=file_raw_data,  # Per-file raw data
+        )
+        transformed_parts.append(cast(pd.DataFrame, transformed_gdf))
+    transformed_combined = pd.concat(transformed_parts).reset_index(drop=True)
+    ndf_df[g_cols] = transformed_combined[g_cols].values
+    return ndf_df
+
+
+def _build_columns(bundle: SourceBundle, meta_obj: DataMeta, hooks: HookEnv) -> tuple[pd.DataFrame, DataMeta]:
+    """Build the processed dataframe column by column from the meta structure.
+
+    Returns the new dataframe and meta with the processed structure (create blocks
+    expanded into their generated groups).
+    """
+    raw_data_concat = bundle.concat(reset_index=True)
+    ndf_df = pd.DataFrame()  # Start empty, built column by column
+
+    all_cns: dict[str, str] = {}  # column/group name -> group that claimed it, for duplicate detection
     # Build new structure dict as we process groups (Pydantic models are immutable)
     new_structure: dict[str, ColumnBlockMeta] = {}
-    for group_name, group in meta_obj.structure.items():
+    for group in meta_obj.structure.values():
         if group.name in all_cns:
             raise Exception(f"Group name {group.name} duplicates a column name in group {all_cns[group.name]}")
         all_cns[group.name] = group.name
-        g_cols = []
-        # Process columns in this group
-        # group.columns is Dict[str, ColumnMeta]
-        # Note: scale metadata is already merged with column metadata
-        # by ColumnBlockMeta.merge_scale_with_columns validator
-        # Keep for forward-compat; metadata categories are reconciled later by _fix_meta_categories.
-        # (We do not remove missing columns from meta, we only skip materializing them into df.)
-        updated_columns: dict[str, ColumnMeta] = {}
-        for orig_cn, col_meta in group.columns.items():
-            # Work with Pydantic objects directly
-            # Get the merged column metadata (scale already merged in during validation)
-            mcm = col_meta
-            # Extract source from ColumnMeta - can be str or dict[str, str]
-            source_spec = col_meta.source if col_meta.source is not None else orig_cn
-            scale_meta = group.scale if group.scale is not None else None
 
-            # Col prefix is used to avoid name clashes when different groups naturally share same column names
-            # col_prefix is only in BlockScaleMeta, not ColumnMeta, so get it from scale_meta directly
-            col_prefix = scale_meta.col_prefix if scale_meta is not None and scale_meta.col_prefix is not None else None
-            cn = orig_cn
-            if col_prefix is not None:
-                cn = col_prefix + orig_cn
+        # Col prefix is used to avoid name clashes when different groups naturally share same column names
+        col_prefix = group.scale.col_prefix if group.scale is not None else None
+
+        # Note: scale metadata is already merged with column metadata by the
+        # ColumnBlockMeta.merge_scale_with_columns validator. Missing columns are not removed
+        # from meta, only skipped in df; their categories are reconciled later by _fix_meta_categories.
+        g_cols = []
+        for orig_cn, mcm in group.columns.items():
+            source_spec = mcm.source if mcm.source is not None else orig_cn
+            cn = col_prefix + orig_cn if col_prefix is not None else orig_cn
 
             # Detect duplicate columns in meta - including among those missing or generated
-            # Only flag if they are duplicates even after prefix
             if cn in all_cns:
                 raise Exception(f"Duplicate column name found: '{cn}' in {all_cns[cn]} and {group.name}")
             all_cns[cn] = group.name
 
-            if only_fix_categories:
-                source_spec = cn
-
-            # Extract columns from all files and concatenate immediately
-            per_file_series: list[pd.Series] = []
-            for file_code, file_raw_data in raw_data_dict.items():
-                # Determine source column name for this file
-                if isinstance(source_spec, dict):
-                    # Dict mapping: use file code, fallback to 'default', or use orig_cn
-                    sn = source_spec.get(file_code, source_spec.get("default", orig_cn))
-                else:
-                    # String: use for all files
-                    sn = source_spec
-
-                if sn not in file_raw_data:
-                    if not group.generated:  # bypass warning for columns marked as being generated later
-                        warn(f"Column {sn} not found in file {file_code}")
-                    # Create empty series with same index as file
-                    s = pd.Series(index=file_raw_data.index, dtype=object, name=cn)
-                    per_file_series.append(s)
-                    continue
-
-                if file_raw_data[sn].isna().all():
-                    warn(f"Column {sn} is empty in file {file_code} and thus ignored")
-                    # Create empty series with same index as file
-                    s = pd.Series(index=file_raw_data.index, dtype=object, name=cn)
-                    per_file_series.append(s)
-                    continue
-
-                # Extract raw column value - no processing yet
-                s = file_raw_data[sn].copy()
-                s.name = cn  # Set name early
-                per_file_series.append(s)
-
-            # Concatenate all per-file series immediately - now process on concatenated data
-            if not per_file_series:
-                # No valid series found, skip this column
+            s = _gather_source(bundle, source_spec, orig_cn, cn, group.generated)
+            if s is None:
                 continue
-
-            # Concatenated series ready for processing
-            s: pd.Series = pd.concat(per_file_series).reset_index(drop=True)
-
-            # Declared in meta but missing/empty in all source files -> drop from df and meta.
-            if s.isna().all():
-                continue
-
-            # Store original dtype info if categorical (before any conversions)
-            original_dtype = s.dtype
-            if not only_fix_categories and not _is_series_of_lists(s):
-                if original_dtype.name == "category":
-                    s = s.astype("object")  # This makes it easier to use common ops like replace and fillna
-                if mcm.translate:
-                    s = s.astype("str").replace(mcm.translate).replace("nan", None).replace("None", None)
-                if mcm.transform is not None and isinstance(mcm.transform, str):
-                    # For transform, process per-file using index ranges
-                    transformed_parts: list[pd.Series] = []
-                    for file_code, file_raw_data in raw_data_dict.items():
-                        idx_range = file_index_ranges[file_code]
-                        s_local = s.iloc[idx_range]
-                        ndf_local = ndf_df.iloc[idx_range]
-                        transformed = eval(
-                            mcm.transform,
-                            {
-                                "s": s_local,
-                                "df": file_raw_data,  # Per-file raw data
-                                "ndf": ndf_local,  # Per-file processed data view
-                                "pd": pd,
-                                "np": np,
-                                "stk": stk,
-                                **constants,
-                            },
-                        )
-
-                        s_out = pd.Series(transformed, index=s_local.index, name=cn)
-                        transformed_parts.append(s_out)
-                    s = pd.concat(transformed_parts, ignore_index=True)
-                if mcm.translate_after:
-                    s = (
-                        pd.Series(s)
-                        .astype("str")
-                        .replace(mcm.translate_after)
-                        .replace("nan", None)
-                        .replace("None", None)
-                    )
-
-                if mcm.datetime:
-                    s = pd.to_datetime(s, errors="coerce")
-                elif mcm.continuous:
-                    s = pd.to_numeric(s, errors="coerce")
-
+            s = _apply_transforms(s, mcm, bundle, ndf_df, cn, hooks)
             s.name = cn  # Ensure name is set
+            s, mcm = _resolve_categories(s, mcm, cn)
 
-            # Category inference on concatenated data
-            if mcm.categories and not _is_series_of_lists(s):
-                if mcm.categories == "infer":
-                    # Check for ordered warning before we modify s
-                    should_warn_ordered = mcm.ordered and not pd.api.types.is_numeric_dtype(s)
-                    # Infer categories from the transformed data (s has already gone through
-                    # translate -> transform -> translate_after pipeline)
-                    # Always use s as the source of truth - it has the final transformed values
-                    if mcm.translate and not mcm.transform and set(mcm.translate.values()) >= set(s.dropna().unique()):
-                        # Infer order from translation dict
-                        translate_values = list(mcm.translate.values())
-                        cats = [str(c) for c in translate_values if c in s.dropna().unique()]
-                        # As mapping can be many-to-one, we need to use unique and preserve order
-                        inferred_cats = list(dict.fromkeys(cats))
-                        # Update metadata with inferred categories (preserves translation dict order)
-                        mcm = mcm.model_copy(update={"categories": inferred_cats})
-                    else:
-                        # Deterministic ordering:
-                        # - numeric dtype -> numeric sort
-                        # - numeric-like strings -> numeric sort
-                        # - otherwise -> lexicographic sort
-                        if should_warn_ordered:
-                            warn(
-                                f"Ordered category {cn} had category: infer. "
-                                "This only works correctly if you want lexicographic ordering!"
-                            )
-                        s, inferred_cats = _deterministic_categories_and_values(s)
-                        # Update metadata with inferred categories
-                        mcm = mcm.model_copy(update={"categories": inferred_cats})
-                    cats = inferred_cats
-                elif pd.api.types.is_numeric_dtype(s):
-                    # Numeric datatype being coerced into categorical - map to nearest category value
-                    cats = mcm.categories
-                    if not isinstance(cats, list):
-                        raise ValueError(f"Categories for {cn} must be a list when series is numeric")
-
-                    try:
-                        fcats = np.array(cats).astype(float)
-                        s_values_arr = np.asarray(s.values)
-                        if s_values_arr.ndim == 0:
-                            s_values_arr = s_values_arr.reshape(-1)
-                        cats_array = np.array(cats)
-                        s_values_reshaped = s_values_arr.reshape(-1, 1)
-                        fcats_reshaped = fcats.reshape(1, -1)
-                        distances = np.abs(s_values_reshaped - fcats_reshaped)
-                        indices = distances.argmin(axis=1)
-                        s = pd.Series(
-                            cats_array[indices],
-                            index=s.index,
-                            name=s.name,
-                            dtype=pd.CategoricalDtype(
-                                categories=cats, ordered=mcm.ordered if mcm.ordered is not None else False
-                            ),
-                        )
-                    except (ValueError, TypeError) as e:
-                        raise ValueError(f"Categories for {cn} are not numeric: {cats}") from e
-                else:
-                    cats = mcm.categories
-                    if not isinstance(cats, list):
-                        raise ValueError(f"Categories for {cn} must be a list")
-
-                if isinstance(cats, list):
-                    dropped = set(s.dropna().unique()) - set(cats)
-                    if dropped:
-                        warn(f"Values for {cn} not in categories and will be dropped: {dropped}")
-                    # Use updated ordered flag if we modified it during inference
-                    final_ordered = mcm.ordered if mcm.ordered is not None else False
-                    s = pd.Series(
-                        pd.Categorical(s, categories=cats, ordered=final_ordered),
-                        name=cn,
-                    )
-
-            # Add column directly to concatenated DataFrame
             ndf_df[cn] = s
             g_cols.append(cn)
 
-            # Store updated column metadata (with inferred categories if applicable)
-            updated_columns[orig_cn] = mcm
-
         if group.subgroup_transform is not None:
-            # subgroups is not in ColumnBlockMeta, so we'll use g_cols as default
-            subgroups = [g_cols]  # TODO: Add subgroups field to ColumnBlockMeta if needed
-            for sg in subgroups:
-                # Apply per-file using index ranges
-                subgroup_transformed_parts: list[pd.DataFrame] = []
-                for file_code in raw_data_dict.keys():
-                    idx_range = file_index_ranges[file_code]
-                    gdf_local = ndf_df[sg].iloc[idx_range].copy()
-                    ndf_local = ndf_df.iloc[idx_range].copy()
-                    transformed_gdf = eval(
-                        group.subgroup_transform,
-                        {
-                            "gdf": gdf_local,
-                            "ndf": ndf_local,  # Per-file processed data view
-                            "df": file_raw_data,  # Per-file raw data
-                            "pd": pd,
-                            "np": np,
-                            "stk": stk,
-                            **constants,
-                        },
-                    )
-                    subgroup_transformed_parts.append(transformed_gdf)
-                # Concatenate and assign back
-                transformed_combined = pd.concat(subgroup_transformed_parts).reset_index(drop=True)
-                ndf_df[sg] = transformed_combined[sg].values
+            ndf_df = _apply_subgroup_transform(bundle, ndf_df, group.subgroup_transform, g_cols, hooks)
+
         # Handle create blocks - may add new groups to structure
         if group.create is not None:
             create_source_df = ndf_df.combine_first(raw_data_concat) if not raw_data_concat.empty else ndf_df
             for newdf, newmeta_dict in _create_new_columns_and_metas(
                 create_source_df,
                 group,
-                topics=constants.get("topics", None),
-                sets=constants.get("sets", None),
+                topics=hooks.constants.get("topics", None),
+                sets=hooks.constants.get("sets", None),
             ):
                 ndf_df = ndf_df.combine_first(newdf)
                 new_group_meta = soft_validate(newmeta_dict, ColumnBlockMeta)
                 new_structure[new_group_meta.name] = new_group_meta
-            # Create a copy of group without the create field
-            group = group.model_copy(update={"create": None})
+            group = group.model_copy(update={"create": None})  # The processed group no longer creates
 
-        # Add processed group to structure
         new_structure[group.name] = group
 
-    if meta_obj.postprocessing is not None and not only_fix_categories:
-        globs = {
-            "pd": pd,
-            "np": np,
-            "sp": sp,
-            "stk": stk,
-            "df": ndf_df,
-            **einfo,
-            **constants,
-        }
-        exec(_str_from_list(meta_obj.postprocessing), globs)
-        ndf_df = globs["df"]
-
     # Update meta with new structure (including any groups created during processing)
-    meta_obj = meta_obj.model_copy(update={"structure": new_structure})
+    return ndf_df, meta_obj.model_copy(update={"structure": new_structure})
 
-    # Fix categories after postprocessing
-    # Also replaces infer with the actual categories
-    meta_obj = _fix_meta_categories(meta_obj, ndf_df, warnings=True)
-    # Ensure we have a DataMeta object
-    if not isinstance(meta_obj, DataMeta):
-        meta_obj = soft_validate(meta_obj, DataMeta)
 
+def _apply_exclusions(ndf_df: pd.DataFrame, meta_obj: DataMeta, opts: ProcessOpts) -> Dataset:
+    """Filter out rows listed in meta `excluded` and optionally keep the original_inds column."""
     ndf_df["original_inds"] = np.arange(len(ndf_df))
-    if meta_obj.excluded and not ignore_exclusions:
+    if meta_obj.excluded and not opts.ignore_exclusions:
         excl_inds = [i for i, _ in meta_obj.excluded]
         ndf_df = ndf_df[~ndf_df["original_inds"].isin(excl_inds)]
-    if not add_original_inds:
+    if not opts.add_original_inds:
         ndf_df.drop(columns=["original_inds"], inplace=True)
+    return Dataset(ndf_df, meta_obj)
 
-    # Return with meta as dict if requested (for backward compatibility)
-    if return_meta:
-        return (ndf_df, meta_obj)
-    return ndf_df
+
+def process(bundle: SourceBundle, meta_obj: DataMeta, opts: ProcessOpts) -> Dataset:
+    """Run the annotation pipeline stages on loaded source data."""
+    hooks = HookEnv(bundle.env, meta_obj.constants)
+    file_names = _file_meta_map(bundle.frames)
+
+    # Run preprocessing per file
+    if meta_obj.preprocessing is not None:
+        for fc in bundle.frames:
+            bundle.frames[fc] = hooks.exec_df(
+                meta_obj.preprocessing, bundle.frames[fc], file_code=fc, file_name=file_names[fc]
+            )
+
+    # File provenance columns must survive end-to-end (also if preprocessing dropped/mutated them)
+    meta_obj = _inject_files_block(bundle, meta_obj, file_names)
+
+    ndf_df, meta_obj = _build_columns(bundle, meta_obj, hooks)
+
+    if meta_obj.postprocessing is not None:
+        ndf_df = hooks.exec_df(meta_obj.postprocessing, ndf_df)
+
+    # Fix categories after postprocessing; also replaces "infer" with the actual categories
+    meta_obj = _fix_meta_categories(meta_obj, ndf_df, warnings=True)
+
+    return _apply_exclusions(ndf_df, meta_obj, opts)

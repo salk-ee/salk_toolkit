@@ -8,7 +8,6 @@ from typing import Any, Callable, Literal, cast, overload
 
 import numpy as np
 import pandas as pd
-import pyreadstat  # type: ignore[import-untyped]
 import scipy as sp
 
 import salk_toolkit as stk
@@ -26,28 +25,44 @@ from salk_toolkit.validation import (
     soft_validate,
 )
 
-from salk_toolkit.io.core import ProcessedDataReturn, _str_from_list
-from salk_toolkit.io.meta import _fix_meta_categories, _is_categorical, fix_df_with_meta
-from salk_toolkit.io.parquet import read_parquet_with_metadata
-from salk_toolkit.io.pipeline import _process_annotated_data
-from salk_toolkit.io.sources import _load_data_files
+from salk_toolkit.io import readers
+from salk_toolkit.io.core import Dataset, ProcessOpts, _str_from_list
+from salk_toolkit.io.meta import _is_categorical, fix_df_with_meta
+from salk_toolkit.io.sources import _load_data_files, _load_dataset, _process_annotated_data
 
 
 @overload
 def read_annotated_data(
-    fname: str, infer: bool = ..., return_raw: bool = ..., *, return_meta: Literal[True], **kwargs: object
-) -> ProcessedDataReturn: ...
+    fname: str,
+    infer: bool = ...,
+    return_raw: bool = ...,
+    *,
+    return_meta: Literal[True],
+    ignore_exclusions: bool = ...,
+    add_original_inds: bool = ...,
+) -> Dataset: ...
 
 
 @overload
 def read_annotated_data(
-    fname: str, infer: bool = ..., return_raw: bool = ..., *, return_meta: Literal[False] = False, **kwargs: object
+    fname: str,
+    infer: bool = ...,
+    return_raw: bool = ...,
+    return_meta: Literal[False] = False,
+    *,
+    ignore_exclusions: bool = ...,
+    add_original_inds: bool = ...,
 ) -> pd.DataFrame: ...
 
 
 def read_annotated_data(
-    fname: str, infer: bool = True, return_raw: bool = False, return_meta: bool = False, **kwargs: object
-) -> pd.DataFrame | ProcessedDataReturn:
+    fname: str,
+    infer: bool = True,
+    return_raw: bool = False,
+    return_meta: bool = False,
+    ignore_exclusions: bool = False,
+    add_original_inds: bool = False,
+) -> pd.DataFrame | Dataset:
     """Read either a json annotation and process the data, or a processed parquet with the annotation attached.
 
     Args:
@@ -56,7 +71,8 @@ def read_annotated_data(
         return_raw: Whether to return raw unprocessed data (for debugging).
             Return_raw is here for easier debugging of metafiles and is not meant to be used in production.
         return_meta: Whether to return metadata along with data.
-        **kwargs: Additional arguments passed to processing functions.
+        ignore_exclusions: Whether to keep rows listed in meta `excluded`.
+        add_original_inds: Whether to keep the `original_inds` column in the result.
 
     Returns:
         DataFrame, or tuple of (DataFrame, metadata) if return_meta=True.
@@ -64,59 +80,21 @@ def read_annotated_data(
     _, ext = os.path.splitext(fname)
     data: pd.DataFrame | None = None
     meta_obj: DataMeta | None = None
-    if ext in {".json", ".yaml"}:
-        # Extract parameters from kwargs that are valid for _process_annotated_data
-        ignore_exclusions = bool(kwargs.get("ignore_exclusions", False))
-        only_fix_categories = bool(kwargs.get("only_fix_categories", False))
-        add_original_inds = bool(kwargs.get("add_original_inds", False))
-        # Pass all parameters explicitly to match overloads - return_meta=True means ProcessedDataReturn
-        data, meta_obj = _process_annotated_data(
-            meta_fname=fname,
-            return_meta=True,
-            return_raw=return_raw,
-            ignore_exclusions=ignore_exclusions,
-            only_fix_categories=only_fix_categories,
-            add_original_inds=add_original_inds,
-        )
-    elif ext == ".parquet":
-        data, full_meta = read_parquet_with_metadata(fname)
-        if full_meta is not None:
-            meta_obj = full_meta.data
+    opts = ProcessOpts(ignore_exclusions=ignore_exclusions, add_original_inds=add_original_inds)
+    if return_raw and ext in {".json", ".yaml"}:  # Concatenated raw source data, for debugging metafiles
+        data, meta_obj = _process_annotated_data(meta_fname=fname, opts=opts, return_raw=True)
+    elif ext in {".json", ".yaml", ".parquet"}:
+        data, meta_obj = _load_dataset(fname, opts)
 
-    if meta_obj is not None or not infer:
-        assert isinstance(data, pd.DataFrame), "Expected data to be DataFrame"
-        if return_meta:
-            return (data, meta_obj)
-        return data
+    if meta_obj is None and infer:
+        warn(f"Warning: using inferred meta for {fname}")
+        inferred_meta = infer_meta(fname, meta_file=False)
+        data, meta_obj = _process_annotated_data(data_file=fname, meta=inferred_meta, opts=opts, return_raw=return_raw)
 
-    warn(f"Warning: using inferred meta for {fname}")
-    inferred_meta = infer_meta(fname, meta_file=False)
-    # Extract parameters from kwargs that are valid for _process_annotated_data
-    ignore_exclusions = bool(kwargs.get("ignore_exclusions", False))
-    only_fix_categories = bool(kwargs.get("only_fix_categories", False))
-    add_original_inds = bool(kwargs.get("add_original_inds", False))
-    # Use conditional to match overloads based on return_meta value
-    # Pass return_meta first (after *) to help Pyright match overloads
+    assert isinstance(data, pd.DataFrame), "Expected data to be DataFrame"
     if return_meta:
-        return _process_annotated_data(
-            data_file=fname,
-            meta=inferred_meta,
-            return_meta=True,
-            return_raw=return_raw,
-            ignore_exclusions=ignore_exclusions,
-            only_fix_categories=only_fix_categories,
-            add_original_inds=add_original_inds,
-        )
-    else:
-        return _process_annotated_data(
-            data_file=fname,
-            meta=inferred_meta,
-            return_meta=False,
-            return_raw=return_raw,
-            ignore_exclusions=ignore_exclusions,
-            only_fix_categories=only_fix_categories,
-            add_original_inds=add_original_inds,
-        )
+        return Dataset(data, meta_obj)
+    return data
 
 
 max_cats = 50
@@ -198,27 +176,14 @@ def infer_meta(
         path, fname = os.path.split(data_file)
         ext = os.path.splitext(fname)[1].lower()[1:]
         meta["files"] = [{"file": fname, "opts": read_opts, "code": "F0"}]
-        if ext in ["csv", "gz"]:
-            csv_defaults: dict[str, Any] = {"low_memory": False}
-            if read_opts.get("engine") == "python":
-                csv_defaults.pop("low_memory")  # python engine doesn't support low_memory
-            df = pd.read_csv(data_file, **{**csv_defaults, **read_opts})  # type: ignore[call-overload]
-        elif ext in ["sav", "dta"]:
-            read_fn = getattr(pyreadstat, "read_" + ext)
-            df, sav_meta = read_fn(
-                data_file,
-                **{"apply_value_formats": True, "dates_as_pandas_datetime": True},
-                **read_opts,
-            )
-            col_labels = dict(
-                zip(sav_meta.column_names, sav_meta.column_labels)
-            )  # Make this data easy to access by putting it in meta as constant
-            if translate_fn:
-                col_labels = {k: translate_fn(v) for k, v in col_labels.items()}
-        elif ext == "parquet":
+        if ext == "parquet":
             df = pd.read_parquet(data_file, **read_opts)  # type: ignore[call-overload]
-        elif ext in ["xls", "xlsx", "xlsm", "xlsb", "odf", "ods", "odt"]:
-            df = pd.read_excel(data_file, **read_opts)  # type: ignore[call-overload]
+        elif ext in readers._TABULAR_EXTENSIONS:
+            df, fenv = readers._read_tabular(data_file, ext, cast(dict[str, Any], dict(read_opts)))
+            if fenv:  # sav/dta reader metadata: expose column labels for easy access as a constant
+                col_labels = dict(zip(cast(list[str], fenv["column_names"]), cast(list[str], fenv["column_labels"])))
+                if translate_fn:
+                    col_labels = {k: translate_fn(v) for k, v in col_labels.items()}
         else:
             raise Exception(f"Not a known file format {data_file}")
 
@@ -328,7 +293,7 @@ def infer_meta(
 def _data_with_inferred_meta(data_file: str, **kwargs: object) -> tuple[pd.DataFrame, DataMeta]:
     """Read data file and infer metadata if not present."""
     meta = infer_meta(data_file, meta_file=False, **kwargs)
-    df, meta_result = _process_annotated_data(meta=meta, data_file=data_file, return_meta=True)  # type: ignore[call-overload]
+    df, meta_result = _process_annotated_data(meta=meta, data_file=data_file)
     assert meta_result is not None, "Expected metadata to be present"
     return df, meta_result
 
@@ -404,7 +369,9 @@ def read_and_process_data(
     return_meta: Literal[False] = False,
     constants: Mapping[str, JSONValue] | None = ...,
     skip_postprocessing: bool = ...,
-    **kwargs: object,
+    *,
+    ignore_exclusions: bool = ...,
+    add_original_inds: bool = ...,
 ) -> pd.DataFrame: ...
 
 
@@ -414,7 +381,9 @@ def read_and_process_data(
     return_meta: Literal[True],
     constants: Mapping[str, JSONValue] | None = ...,
     skip_postprocessing: bool = ...,
-    **kwargs: object,
+    *,
+    ignore_exclusions: bool = ...,
+    add_original_inds: bool = ...,
 ) -> tuple[pd.DataFrame, DataMeta]: ...
 
 
@@ -423,7 +392,8 @@ def read_and_process_data(
     return_meta: bool = False,
     constants: Mapping[str, JSONValue] | None = None,
     skip_postprocessing: bool = False,
-    **kwargs: Any,
+    ignore_exclusions: bool = False,
+    add_original_inds: bool = False,
 ) -> pd.DataFrame | tuple[pd.DataFrame, DataMeta]:
     """Read and process data according to a description object.
 
@@ -432,7 +402,8 @@ def read_and_process_data(
         return_meta: Whether to return metadata along with data.
         constants: Dictionary of constants for preprocessing/postprocessing.
         skip_postprocessing: Whether to skip postprocessing step.
-        **kwargs: Additional arguments passed to file readers.
+        ignore_exclusions: Whether to keep rows listed in meta `excluded`.
+        add_original_inds: Whether to keep the `original_inds` column in the result.
 
     Returns:
         DataFrame, or tuple of (DataFrame, metadata) if return_meta=True.
@@ -453,11 +424,6 @@ def read_and_process_data(
     if isinstance(desc_obj, DataDescription) and desc_obj.data is not None:
         df, meta_obj, einfo = pd.DataFrame(data=desc_obj.data), None, {}
     else:
-        # Extract parameters from kwargs
-        ignore_exclusions = kwargs.get("ignore_exclusions", False)
-        only_fix_categories = kwargs.get("only_fix_categories", False)
-        add_original_inds = kwargs.get("add_original_inds", False)
-
         # Get files list from description
         if isinstance(desc_obj, DataDescription) and desc_obj.files:
             files_list = desc_obj.files
@@ -465,33 +431,23 @@ def read_and_process_data(
             raise ValueError("No files provided in DataDescription")
 
         # Load files directly
-        raw_data_dict, meta_raw, einfo = _load_data_files(
+        bundle = _load_data_files(
             files_list,
             path=None,
             read_opts={},
-            ignore_exclusions=ignore_exclusions,
-            only_fix_categories=only_fix_categories,
-            add_original_inds=add_original_inds,
+            opts=ProcessOpts(ignore_exclusions=ignore_exclusions, add_original_inds=add_original_inds),
         )
-
-        # Concatenate for backward compatibility
-        df = pd.concat(raw_data_dict.values())
-        if meta_raw is None:
-            meta_obj = None
-        elif isinstance(meta_raw, DataMeta):
-            meta_obj = meta_raw
-        else:
-            meta_obj = soft_validate(meta_raw, DataMeta, warnings=True)
-
-        # Ensure returned metadata categories reflect reconciled categoricals (including injected extra fields).
-        if meta_obj is not None:
-            meta_obj = _fix_meta_categories(meta_obj, df, warnings=False)
+        # Meta categories already reflect reconciled categoricals (incl. injected extra
+        # fields): _load_data_files runs _fix_meta_categories on the same frames.
+        df, meta_obj, einfo = bundle.concat(), bundle.meta, bundle.env
 
     if meta_obj is None and return_meta:
         raise Exception("No meta found on any of the files")
 
     # Perform transformation and filtering (only for DataDescription)
     if isinstance(desc_obj, DataDescription):
+        # One shared exec/eval namespace on purpose (unlike the per-hook HookEnv in the pipeline):
+        # names defined by preprocessing code stay visible to filter and postprocessing.
         globs = {"pd": pd, "np": np, "sp": sp, "stk": stk, "df": df, **einfo, **constants}
         if desc_obj.preprocessing:
             exec(_str_from_list(desc_obj.preprocessing), globs)
@@ -500,11 +456,7 @@ def read_and_process_data(
             globs["df"] = globs["df"][eval(desc_obj.filter, globs)]
         if desc_obj.merge:
             # Note: expects merge files to have corresponding meta in global DataMeta file
-            oldcols = globs["df"].columns
             globs["df"] = _perform_merges(globs["df"], desc_obj.merge, constants, meta_obj)
-            if kwargs.get("data_meta", False):
-                newcols = [col for col in globs["df"].columns if col not in oldcols]
-                globs["df"].loc[:, newcols] = fix_df_with_meta(globs["df"][newcols], kwargs["data_meta"])
         if desc_obj.postprocessing and not skip_postprocessing:
             exec(_str_from_list(desc_obj.postprocessing), globs)
         df = globs["df"]
@@ -513,16 +465,3 @@ def read_and_process_data(
         assert meta_obj is not None, "Meta should not be None when return_meta=True"
         return df, meta_obj
     return df
-
-
-def _find_type_in_dict(d: object, dtype: type, path: str = "") -> None:
-    """Find values of a specific type in a nested dictionary to debug non-serializable JSONs."""
-    print(d, path)
-    if isinstance(d, dict):
-        for k, v in d.items():
-            _find_type_in_dict(v, dtype, path + f"{k}:")
-    if isinstance(d, list):
-        for i, v in enumerate(d):
-            _find_type_in_dict(v, dtype, path + f"[{i}]")
-    elif isinstance(d, dtype):
-        raise Exception(f"Value {d} of type {dtype} found at {path}")

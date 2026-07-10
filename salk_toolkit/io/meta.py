@@ -1,4 +1,4 @@
-"""Metadata introspection, category reconciliation and dtype-fixing for DataMeta structures."""
+"""Metadata introspection and reconciliation helpers for DataMeta structures."""
 
 from collections.abc import Sequence
 from typing import TypeVar
@@ -50,6 +50,9 @@ def fix_df_with_meta(df: pd.DataFrame, dmeta: DataMeta) -> pd.DataFrame:
     return df
 
 
+# Helper functions designed to be used with the annotations
+
+
 def extract_column_meta(data_meta: DataMeta) -> dict[str, GroupOrColumnMeta]:
     """Convert data_meta into a dict where each group and column maps to their metadata dict."""
 
@@ -87,6 +90,10 @@ def extract_column_meta(data_meta: DataMeta) -> dict[str, GroupOrColumnMeta]:
     return res
 
 
+# Convert data_meta into a dict of group_name -> [column names]
+# TODO: deprecate - info available in extract_column_meta
+
+
 def group_columns_dict(data_meta: DataMeta) -> dict[str, list[str]]:
     """Get dictionary mapping group names to their column lists."""
 
@@ -101,6 +108,8 @@ def group_columns_dict(data_meta: DataMeta) -> dict[str, list[str]]:
         prefix = scale_meta.col_prefix if scale_meta is not None and scale_meta.col_prefix is not None else ""
         res[block.name] = [f"{prefix}{cn}" for cn in block.columns.keys()]
     return res
+
+    # return { g['name'] : [(t[0] if type(t)!=str else t) for t in g['columns']] for g in data_meta['structure'] }
 
 
 T_list_alias = TypeVar("T_list_alias")
