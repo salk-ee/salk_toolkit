@@ -4957,6 +4957,36 @@ class TestModelSpec:
         with pytest.raises(ValueError, match="model_spec.*ambiguous"):
             read_annotated_data(str(meta_file), return_meta=True)
 
+    def test_typed_block_declared_columns_kept_under_src(self, meta_file, csv_file):
+        """A typed block's explicitly declared raw columns survive under <name>_src
+        when the derived block takes the bare name (previously silently clobbered)."""
+        pd.DataFrame({"Qa": ["A", None], "Qb": ["A", "B"], "aux": ["u", "v"]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "topk",
+                    "name": "x",
+                    "from_columns": r"Q(\w)",
+                    "res_columns": r"R\1",
+                    "agg_index": 1,
+                    "na_vals": [],
+                    "columns": [["aux", {"categories": ["u", "v"]}]],
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        with pytest.warns(UserWarning, match="kept under 'x_src'"):
+            df, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        assert list(meta_obj.structure["x_src"].columns.keys()) == ["aux"]
+        assert meta_obj.structure["x"].type == "topk"  # derived block keeps the bare name
+        assert df["aux"].tolist() == ["u", "v"]
+        # Without declared columns there is no parent entry at all
+        meta["structure"][0].pop("columns")
+        write_json(meta_file, meta)
+        _, meta_obj2 = read_annotated_data(str(meta_file), return_meta=True)
+        assert "x_src" not in meta_obj2.structure
+
     def test_plain_block_model_spec_persists(self, meta_file, csv_file):
         """model_spec on a plain block survives processing, serialization and extract_column_meta."""
         from salk_toolkit.io import extract_column_meta

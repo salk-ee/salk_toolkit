@@ -271,15 +271,27 @@ def _build_columns(bundle: SourceBundle, meta_obj: DataMeta, hooks: HookEnv) -> 
             ndf_df = _apply_subgroup_transform(bundle, ndf_df, group.subgroup_transform, g_cols, hooks)
 
         if isinstance(group, (TopKBlock, MaxDiffBlock, OneHotBlock)):
-            # Specialized blocks: any explicitly declared raw columns were already processed
-            # as plain columns above; they are kept under a demoted plain block while the
-            # transform fans the block out into its derived sibling blocks.
-            demoted = _demote_to_plain(group)
-            new_structure[demoted.name] = demoted
+            # Specialized blocks: fan out into derived sibling blocks via the transform.
             source_df = _combine_first_preserving_order(ndf_df, raw_data_concat)
+            sib_metas: list[ColumnBlockMeta] = []
             for sdf, smeta in _process_block(group, source_df):
                 for c in sdf.columns:
                     ndf_df[c] = sdf[c]
+                sib_metas.append(smeta)
+            # Any explicitly declared raw columns were already processed as plain columns
+            # above; keep their meta under a demoted plain block. When a derived sibling
+            # takes the bare block name, the parent moves to <name>_src instead of being
+            # silently clobbered.
+            if group.columns:
+                demoted = _demote_to_plain(group)
+                if any(sm.name == demoted.name for sm in sib_metas):
+                    demoted = demoted.model_copy(update={"name": f"{demoted.name}_src"})
+                    warn(
+                        f"Block {group.name!r}: declared raw columns kept under {demoted.name!r} "
+                        f"(the derived block takes the bare name)"
+                    )
+                new_structure[demoted.name] = demoted
+            for smeta in sib_metas:
                 new_structure[smeta.name] = smeta
         else:
             new_structure[group.name] = group
