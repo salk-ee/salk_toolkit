@@ -13,11 +13,6 @@ from salk_toolkit.validation import DF, ColumnMeta, GroupOrColumnMeta, PBase, so
 from .common import AltairChart, FacetMeta, PlotInput
 
 
-# --------------------------------------------------------
-#          PLOT REGISTRY FUNCTIONS
-# --------------------------------------------------------
-
-
 class PlotMeta(PBase):
     """Metadata registered for each plot function via ``@stk_plot``."""
 
@@ -30,7 +25,6 @@ class PlotMeta(PBase):
     requires_factor: bool = False
     no_question_facet: bool = False
     agg_fn: Optional[str] = None
-    sample: Optional[int] = None
     group_sizes: bool = False
     sort_numeric_first_facet: bool = False
     no_faceting: bool = False
@@ -47,8 +41,6 @@ class PlotMeta(PBase):
 registry: Dict[str, Callable[..., Any]] = {}
 registry_meta: Dict[str, PlotMeta] = {}
 _registry_bootstrapped = False
-
-stk_plot_defaults = {"data_format": "longform"}
 
 
 def _ensure_plot_registry_loaded() -> None:
@@ -95,8 +87,7 @@ def stk_plot(plot_name: str, **r_kwargs: object) -> Callable[[Callable[..., obje
     def _decorator(gfunc: Callable[..., object]) -> Callable[..., object]:
         _ensure_plot_args_sync(gfunc, r_kwargs)
         registry[plot_name] = gfunc
-        meta_payload = {"name": plot_name, **stk_plot_defaults, **r_kwargs}
-        registry_meta[plot_name] = PlotMeta.model_validate(meta_payload)
+        registry_meta[plot_name] = PlotMeta.model_validate({"name": plot_name, **r_kwargs})
 
         return gfunc
 
@@ -208,10 +199,3 @@ def get_plot_meta(plot_name: str) -> PlotMeta | None:
     if plot_name not in registry_meta:
         return None
     return registry_meta[plot_name].model_copy(deep=True)
-
-
-def _get_all_plots() -> List[str]:
-    """List registered plot names in alphabetical order."""
-
-    _ensure_plot_registry_loaded()
-    return sorted(list(registry.keys()))

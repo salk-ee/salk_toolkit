@@ -13,13 +13,11 @@ from pydantic_extra_types.color import Color
 from salk_toolkit.validation import ColumnMeta, GroupOrColumnMeta, PlotDescriptor
 
 
-def _meta_to_plain(meta: ColumnMeta) -> Dict[str, Any]:
-    """Return a plain dict copy of column metadata."""
-
-    return meta.model_dump(mode="python")
-
-
-def _question_meta_clone(base_meta: GroupOrColumnMeta, categories: Sequence[str] | None = None) -> GroupOrColumnMeta:
+def _question_meta_clone(
+    base_meta: GroupOrColumnMeta,
+    categories: Sequence[str] | None = None,
+    colors: Dict[str, Any] | None = None,
+) -> GroupOrColumnMeta:
     """Produce a categorical copy of ``base_meta`` for the synthetic ``question`` column.
 
     ``continuous`` and ``ordered`` are cleared so question identity is nominal, not inherited from the group.
@@ -30,6 +28,8 @@ def _question_meta_clone(base_meta: GroupOrColumnMeta, categories: Sequence[str]
     clone.ordered = False
     if categories is not None:
         clone.categories = list(categories)
+    if colors:
+        clone.colors = colors
     return clone
 
 
@@ -93,11 +93,6 @@ def _normalize_color_dict(scale: Mapping[str, Color | str] | None) -> Dict[str, 
 
 # Type alias for all Altair chart types that plot functions may return
 AltairChart = alt.Chart | alt.LayerChart | alt.FacetChart | alt.VConcatChart | alt.HConcatChart | alt.ConcatChart
-
-
-# --------------------------------------------------------
-#          SHARED UTILITY FUNCTIONS
-# --------------------------------------------------------
 
 
 def _get_cat_num_vals(

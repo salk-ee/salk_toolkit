@@ -21,7 +21,6 @@ from .common import (
     FacetMeta,
     PlotInput,
     _get_cat_num_vals,
-    _meta_to_plain,
     _normalize_color_dict,
     special_columns,
 )
@@ -250,7 +249,7 @@ def create_plot(
                 if v == "pass":
                     facet_meta = col_meta.get(pi.facets[i].ocol)
                     if facet_meta:
-                        plot_args[k] = _meta_to_plain(facet_meta).get(k)
+                        plot_args[k] = facet_meta.model_dump(mode="python").get(k)
 
         factor_cols = factor_cols[n_inner:]  # Leave rest for external faceting
     pi.outer_factors = factor_cols
@@ -386,51 +385,19 @@ def create_plot(
                 )
             ]
         else:  # Use faceting
+
+            def _fdef(field: str) -> Dict[str, Any]:
+                return {"field": field, "type": "ordinal", "sort": utils.get_categories(data[field].dtype)}
+
+            row = alt.Row(**_fdef(pi.outer_factors[0]), header=alt.Header(labelOrient="top"))
+            base = _call_plot_fn().properties(**dims, **alt_properties)
             if n_facet_cols == 1:
-                plot = alt_wrapper(
-                    _call_plot_fn()
-                    .properties(**dims, **alt_properties)
-                    .facet(
-                        row=alt.Row(
-                            field=pi.outer_factors[0],
-                            type="ordinal",
-                            sort=utils.get_categories(data[pi.outer_factors[0]].dtype),
-                            header=alt.Header(labelOrient="top"),
-                        )
-                    )
-                )
+                plot = base.facet(row=row)
             elif len(pi.outer_factors) > 1:
-                plot = alt_wrapper(
-                    _call_plot_fn()
-                    .properties(**dims, **alt_properties)
-                    .facet(
-                        column=alt.Column(
-                            field=pi.outer_factors[1],
-                            type="ordinal",
-                            sort=utils.get_categories(data[pi.outer_factors[1]].dtype),
-                        ),
-                        row=alt.Row(
-                            field=pi.outer_factors[0],
-                            type="ordinal",
-                            sort=utils.get_categories(data[pi.outer_factors[0]].dtype),
-                            header=alt.Header(labelOrient="top"),
-                        ),
-                    )
-                )
+                plot = base.facet(column=alt.Column(**_fdef(pi.outer_factors[1])), row=row)
             else:  # n_facet_cols!=1 but just one facet
-                plot = alt_wrapper(
-                    _call_plot_fn()
-                    .properties(**dims, **alt_properties)
-                    .facet(
-                        alt.Facet(
-                            field=pi.outer_factors[0],
-                            type="ordinal",
-                            sort=utils.get_categories(data[pi.outer_factors[0]].dtype),
-                        ),
-                        columns=n_facet_cols,
-                    )
-                )
-            plot = plot.configure_view(discreteHeight={"step": 20})
+                plot = base.facet(alt.Facet(**_fdef(pi.outer_factors[0])), columns=n_facet_cols)
+            plot = alt_wrapper(plot).configure_view(discreteHeight={"step": 20})
     else:
         plot = alt_wrapper(
             _call_plot_fn().properties(**dims, **alt_properties).configure_view(discreteHeight={"step": 20})

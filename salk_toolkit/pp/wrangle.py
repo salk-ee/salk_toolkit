@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import cache
 from typing import Any, Dict, List, MutableMapping, Sequence
 
 import numpy as np
@@ -47,7 +48,7 @@ def pp_transform_data(
 
     # Figure out which columns we actually need
     weight_col = data_meta.weight_col or "row_weights"
-    factor_cols = list(pp_desc.factor_cols).copy()
+    factor_cols = list(pp_desc.factor_cols)
 
     # Ensure weight column is present (fill with 1.0 if not)
     if weight_col not in all_col_names:
@@ -56,7 +57,7 @@ def pp_transform_data(
     else:
         full_df = full_df.with_columns(pl.col(weight_col).fill_null(1.0))
 
-    # For transforming purposest, res_col is not a factor.
+    # For transforming purposes, res_col is not a factor.
     # It will be made one for categorical plots for plotting part, but for pp_transform_data, remove it
     if pp_desc.res_col in factor_cols:
         factor_cols.remove(pp_desc.res_col)
@@ -65,10 +66,10 @@ def pp_transform_data(
     cols = [pp_desc.res_col] + factor_cols + list(pp_desc.filter.keys() if pp_desc.filter else [])
     cols += [c for c in extra_cols if c in all_col_names and c not in cols]
 
-    # If any aliases are used, cconvert them to column names according to the data_meta
+    # If any aliases are used, convert them to column names according to the data_meta
     cols = [c for c in np.unique(list_aliases(cols, gc_dict)) if c in all_col_names]
 
-    # Remove draws_data if calcualted_draws is disabled
+    # Remove draws_data if calculated_draws is disabled
     draws_data = data_meta.draws_data or {}
     if not pp_desc.calculated_draws:
         draws_data = {}
@@ -88,26 +89,21 @@ def pp_transform_data(
     if need_id:
         # Add row id-s before filtering so draw indices line up with the original rows.
         full_df = full_df.with_row_index("id")
+        cols += ["id"]
 
     # The total row count is only needed to build draws. Compute it lazily (and once)
     # off this pre-filter snapshot so the common no-draws path avoids a full scan.
     counting_df = full_df
-    total_n_cached: int | None = None
-
-    def get_total_n() -> int:
-        nonlocal total_n_cached
-        if total_n_cached is None:
-            total_n_cached = int(counting_df.select(pl.len()).collect().item())
-        return total_n_cached
+    get_total_n = cache(lambda: int(counting_df.select(pl.len()).collect().item()))
 
     # For more customized filtering in dashboards
     # Has to be done before downselecting to only needed columns
     if pp_desc.pl_filter:
         full_df = full_df.filter(eval(pp_desc.pl_filter, {"pl": pl}))
 
-    if need_id:
-        cols += ["id"]
     df = full_df.select(cols)  # Select only the columns we need
+
+    res_cols = gc_dict.get(pp_desc.res_col, [pp_desc.res_col])
 
     # Filter the data with given filters
     if pp_desc.filter:
@@ -115,7 +111,6 @@ def pp_transform_data(
 
         # Project away columns that were only needed to compute the filter, so they don't
         # ride through the unpivot (which multiplies every carried column by n_questions)
-        res_cols = gc_dict.get(pp_desc.res_col, [pp_desc.res_col])
         needed = set(res_cols) | set(factor_cols) | set(base_cols) | {weight_col, "draw", "id"}
         keep = [c for c in cols if c in needed]
         if keep != cols:
@@ -145,8 +140,7 @@ def pp_transform_data(
     original_question_colors = original_question_meta.question_colors
 
     # Convert ordered categorical to continuous if we can
-    rcl = gc_dict.get(pp_desc.res_col, [pp_desc.res_col])
-    rcl = [c for c in rcl if c in cols]
+    rcl = [c for c in res_cols if c in cols]
     for rc in rcl:
         res_meta = c_meta[rc]
         if pp_desc.convert_res == "continuous":
@@ -219,10 +213,7 @@ def pp_transform_data(
         id_vars = [c for c in cols if (c not in value_vars or c in factor_cols)]
         prefix = original_question_meta.col_prefix or ""
         categories = [v.removeprefix(prefix) for v in value_vars]
-        question_meta = _question_meta_clone(original_question_meta, categories)
-        if original_question_colors:
-            question_meta.colors = original_question_colors
-        c_meta["question"] = question_meta
+        c_meta["question"] = _question_meta_clone(original_question_meta, categories, original_question_colors)
 
         draw_dfs: List[pl.DataFrame] = []
         if "draw" in cols and draws_data:
@@ -287,10 +278,9 @@ def pp_transform_data(
         n_questions = 1
         if "question" in factor_cols:
             filtered_df = filtered_df.with_columns(pl.lit(pp_desc.res_col).alias("question").cast(pl.Categorical))
-            question_meta = _question_meta_clone(original_question_meta, categories=[pp_desc.res_col])
-            if original_question_colors:
-                question_meta.colors = original_question_colors
-            c_meta["question"] = question_meta
+            c_meta["question"] = _question_meta_clone(
+                original_question_meta, [pp_desc.res_col], original_question_colors
+            )
 
     # Aggregate the data into right shape
     pi = _wrangle_data(filtered_df, c_meta, factor_cols, weight_col, pp_desc, n_questions, wide_value_vars)
@@ -334,8 +324,6 @@ def _wrangle_data(
     draws = plot_meta.draws
     data_format = plot_meta.data_format
 
-    # if pp_desc['res_col'] in factor_cols: factor_cols.remove(pp_desc['res_col']) # Res cannot also be a factor
-
     # Determine the groupby dimensions
     gb_dims = factor_cols + (["draw"] if draws else []) + (["id"] if plot_meta.data_format == "raw" else [])
 
@@ -349,16 +337,7 @@ def _wrangle_data(
 
     if data_format == "raw":
         value_col = res_col
-        if plot_meta.sample:
-            selected = raw_df.select(gb_dims + [res_col])
-            grouped = getattr(selected, "groupby", lambda *args: selected)(gb_dims)
-            sample_method = getattr(grouped, "sample", None)
-            if sample_method is not None:
-                data = sample_method(n=plot_meta.sample, with_replacement=True)
-            else:
-                data = grouped
-        else:
-            data = raw_df.select(gb_dims + [res_col])
+        data = raw_df.select(gb_dims + [res_col])
 
     elif data_format == "longform":
         agg_fn = pp_desc.agg_fn or "mean"
@@ -385,9 +364,6 @@ def _wrangle_data(
                 ]
                 data = pl.concat(parts)
                 data = data.with_columns(pl.col("percent").sum().over(gb + ["question"]).alias(weight_col))
-                if agg_fn == "mean":
-                    data = data.with_columns(pl.col("percent") / pl.col(weight_col))
-                # agg_fn is restricted to mean/sum by the wide-path guard
 
             else:  # Continuous: aggregate each question column per group
                 value_col = res_col
@@ -399,15 +375,15 @@ def _wrangle_data(
                 data = data.unpivot(
                     variable_name="question", value_name=res_col, index=gb + [weight_col], on=wide_value_vars
                 )
-                if agg_fn == "mean":
-                    data = data.with_columns(pl.col(res_col) / pl.col(weight_col))
 
+            # Wide-path guard restricts categorical groups to mean/sum, so this covers both branches
+            if agg_fn == "mean":
+                data = data.with_columns(pl.col(value_col) / pl.col(weight_col))
             data = data.with_columns(pl.col("question").cast(pl.Enum(wide_value_vars)))
             if gb == ["dummy_col"]:
                 data = data.drop("dummy_col")
 
-        # Check if categorical by looking at schema
-        elif isinstance(schema[res_col], (pl.Categorical, pl.Enum, pl.String)):
+        elif isinstance(schema[res_col], (pl.Categorical, pl.Enum, pl.String)):  # Categorical
             cat_col = res_col
             value_col = "percent"
 
@@ -434,7 +410,7 @@ def _wrangle_data(
                     .agg(pl.col([res_col, weight_col]).sum())
                 )
                 if agg_fn == "mean":
-                    data = data.with_columns(pl.col(res_col) / pl.col(weight_col).alias(res_col))
+                    data = data.with_columns(pl.col(res_col) / pl.col(weight_col))
             elif agg_fn == "posneg_mean":
                 # Needs prefix to avoid name conflict while aggregating
                 data = (
@@ -445,10 +421,10 @@ def _wrangle_data(
                         pl.col([res_col, weight_col]).sum(),
                         pl.col(["reverse_" + res_col, weight_col]).sum().name.prefix("reverse_"),
                     )
-                    .select(pl.exclude("reverse_N"))
+                    .select(pl.exclude("reverse_" + weight_col))
                     .rename({"reverse_reverse_" + res_col: "reverse_" + res_col})
-                    .with_columns(pl.col("reverse_" + res_col) / pl.col(weight_col).alias("reverse_" + res_col))
-                    .with_columns(pl.col(res_col) / pl.col(weight_col).alias(res_col))
+                    .with_columns(pl.col("reverse_" + res_col) / pl.col(weight_col))
+                    .with_columns(pl.col(res_col) / pl.col(weight_col))
                     .with_columns((pl.col(res_col) + pl.col("reverse_" + res_col)).alias("ordering_value"))
                 )
             else:  # median, min, max, etc. - ignore weight_col
