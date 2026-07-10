@@ -35,7 +35,6 @@ from .registry import (
     get_plot_fn as get_plot_fn,
     get_plot_meta as get_plot_meta,
     _ensure_plot_registry_loaded as _ensure_plot_registry_loaded,
-    _get_plot_fn as _get_plot_fn,
     _stk_deregister as _stk_deregister,
 )
 from .meta import (
