@@ -1,61 +1,61 @@
-D1,D2,D3,Q1,Q2r1,Q2r2,Q3r1,Q3r2,Q3r3,Q3r4,Q4_Version,Q4_1best,Q4_1worst,Q4_2best,Q4_2worst,Q4_3best,Q4_3worst
-Moteris,21,Aukštas,Valstiečiai,2,2,Ekonomika,NO TO: Sveikata,Gynyba,NO TO: Švietimas,1,Gynyba,Sveikata,Ekonomika,Gynyba,Sveikata,Gynyba
-Moteris,82,Aukštas,Tėvynės sąjunga,5,2,Ekonomika,Sveikata,NO TO: Gynyba,Švietimas,2,Ekonomika,Sveikata,Švietimas,Gynyba,Gynyba,Švietimas
-Moteris,45,Vidutinis,Tėvynės sąjunga,1,4,NO TO: Ekonomika,NO TO: Sveikata,Gynyba,NO TO: Švietimas,2,Švietimas,Sveikata,Sveikata,Švietimas,Švietimas,Ekonomika
-Vyras,28,Aukštas,Valstiečiai,7,6,Ekonomika,NO TO: Sveikata,Gynyba,Švietimas,1,Ekonomika,Sveikata,Gynyba,Ekonomika,Sveikata,Gynyba
-Vyras,53,Vidutinis,Valstiečiai,2,3,NO TO: Ekonomika,Sveikata,Gynyba,NO TO: Švietimas,2,Švietimas,Ekonomika,Švietimas,Sveikata,Švietimas,Ekonomika
-Moteris,77,Vidutinis,Valstiečiai,6,6,NO TO: Ekonomika,Sveikata,Gynyba,Švietimas,1,Ekonomika,Sveikata,Gynyba,Švietimas,Gynyba,Sveikata
-Moteris,58,Žemas,Kita partija,4,6,NO TO: Ekonomika,Sveikata,NO TO: Gynyba,Švietimas,1,Ekonomika,Gynyba,Švietimas,Gynyba,Švietimas,Gynyba
-Vyras,46,Žemas,Nežinau,4,1,Ekonomika,NO TO: Sveikata,NO TO: Gynyba,NO TO: Švietimas,1,Gynyba,Ekonomika,Švietimas,Gynyba,Švietimas,Sveikata
-Vyras,66,Aukštas,Kita partija,5,3,Ekonomika,NO TO: Sveikata,Gynyba,Švietimas,2,Švietimas,Sveikata,Sveikata,Švietimas,Gynyba,Ekonomika
-Vyras,18,Aukštas,Valstiečiai,5,7,Ekonomika,NO TO: Sveikata,Gynyba,NO TO: Švietimas,2,Švietimas,Ekonomika,Sveikata,Švietimas,Ekonomika,Gynyba
-Vyras,80,Žemas,Tėvynės sąjunga,3,7,Ekonomika,Sveikata,NO TO: Gynyba,NO TO: Švietimas,1,Gynyba,Ekonomika,Ekonomika,Švietimas,Sveikata,Gynyba
-Moteris,78,Aukštas,Socialdemokratai,3,5,Ekonomika,NO TO: Sveikata,Gynyba,Švietimas,2,Sveikata,Švietimas,Gynyba,Švietimas,Ekonomika,Gynyba
-Moteris,26,Vidutinis,Tėvynės sąjunga,5,5,Ekonomika,Sveikata,NO TO: Gynyba,NO TO: Švietimas,1,Gynyba,Ekonomika,Ekonomika,Gynyba,Sveikata,Švietimas
-Moteris,83,Žemas,Valstiečiai,6,4,NO TO: Ekonomika,Sveikata,Gynyba,NO TO: Švietimas,2,Ekonomika,Švietimas,Gynyba,Sveikata,Ekonomika,Gynyba
-Vyras,63,Vidutinis,Kita partija,4,7,Ekonomika,NO TO: Sveikata,NO TO: Gynyba,NO TO: Švietimas,1,Sveikata,Gynyba,Ekonomika,Gynyba,Sveikata,Gynyba
-Vyras,35,Vidutinis,Socialdemokratai,3,4,Ekonomika,Sveikata,NO TO: Gynyba,NO TO: Švietimas,1,Ekonomika,Sveikata,Ekonomika,Gynyba,Sveikata,Švietimas
-Vyras,79,Žemas,Kita partija,1,2,Ekonomika,Sveikata,NO TO: Gynyba,NO TO: Švietimas,2,Sveikata,Švietimas,Gynyba,Švietimas,Ekonomika,Gynyba
-Vyras,45,Žemas,Nežinau,6,5,NO TO: Ekonomika,NO TO: Sveikata,Gynyba,NO TO: Švietimas,1,Ekonomika,Gynyba,Švietimas,Ekonomika,Sveikata,Gynyba
-Moteris,26,Aukštas,Tėvynės sąjunga,6,7,Ekonomika,NO TO: Sveikata,NO TO: Gynyba,Švietimas,1,Gynyba,Ekonomika,Švietimas,Ekonomika,Gynyba,Švietimas
-Vyras,44,Aukštas,Valstiečiai,2,3,NO TO: Ekonomika,Sveikata,Gynyba,NO TO: Švietimas,2,Sveikata,Švietimas,Sveikata,Gynyba,Gynyba,Ekonomika
-Moteris,45,Aukštas,Valstiečiai,2,3,NO TO: Ekonomika,Sveikata,NO TO: Gynyba,NO TO: Švietimas,2,Sveikata,Ekonomika,Gynyba,Švietimas,Švietimas,Ekonomika
-Vyras,31,Žemas,Valstiečiai,1,1,NO TO: Ekonomika,Sveikata,Gynyba,Švietimas,1,Gynyba,Sveikata,Ekonomika,Švietimas,Švietimas,Gynyba
-Vyras,24,Žemas,Kita partija,7,3,Ekonomika,NO TO: Sveikata,NO TO: Gynyba,NO TO: Švietimas,2,Ekonomika,Švietimas,Sveikata,Švietimas,Švietimas,Gynyba
-Moteris,32,Žemas,Socialdemokratai,5,1,NO TO: Ekonomika,Sveikata,NO TO: Gynyba,Švietimas,1,Ekonomika,Gynyba,Gynyba,Ekonomika,Gynyba,Sveikata
-Moteris,31,Vidutinis,Nežinau,7,4,Ekonomika,Sveikata,Gynyba,NO TO: Švietimas,1,Sveikata,Ekonomika,Ekonomika,Švietimas,Gynyba,Sveikata
-Vyras,38,Aukštas,Tėvynės sąjunga,4,7,NO TO: Ekonomika,NO TO: Sveikata,NO TO: Gynyba,Švietimas,1,Ekonomika,Gynyba,Gynyba,Švietimas,Sveikata,Gynyba
-Moteris,42,Vidutinis,Valstiečiai,3,7,NO TO: Ekonomika,NO TO: Sveikata,Gynyba,NO TO: Švietimas,2,Švietimas,Sveikata,Švietimas,Gynyba,Ekonomika,Gynyba
-Vyras,40,Aukštas,Valstiečiai,1,1,NO TO: Ekonomika,Sveikata,Gynyba,Švietimas,2,Švietimas,Ekonomika,Gynyba,Sveikata,Gynyba,Ekonomika
-Vyras,18,Aukštas,Nežinau,6,6,NO TO: Ekonomika,Sveikata,Gynyba,NO TO: Švietimas,1,Gynyba,Sveikata,Švietimas,Gynyba,Švietimas,Sveikata
-Vyras,82,Vidutinis,Kita partija,3,4,Ekonomika,Sveikata,NO TO: Gynyba,NO TO: Švietimas,2,Švietimas,Sveikata,Švietimas,Sveikata,Švietimas,Gynyba
-Vyras,18,Vidutinis,Valstiečiai,2,4,NO TO: Ekonomika,Sveikata,Gynyba,Švietimas,2,Švietimas,Ekonomika,Švietimas,Gynyba,Švietimas,Ekonomika
-Moteris,54,Aukštas,Nežinau,3,1,Ekonomika,NO TO: Sveikata,Gynyba,NO TO: Švietimas,1,Ekonomika,Sveikata,Ekonomika,Gynyba,Gynyba,Sveikata
-Vyras,71,Aukštas,Nežinau,2,6,NO TO: Ekonomika,Sveikata,NO TO: Gynyba,Švietimas,1,Ekonomika,Sveikata,Ekonomika,Švietimas,Sveikata,Gynyba
-Vyras,24,Aukštas,Socialdemokratai,7,1,NO TO: Ekonomika,Sveikata,NO TO: Gynyba,Švietimas,2,Sveikata,Švietimas,Švietimas,Gynyba,Ekonomika,Švietimas
-Vyras,51,Žemas,Valstiečiai,7,7,Ekonomika,NO TO: Sveikata,Gynyba,Švietimas,2,Sveikata,Ekonomika,Švietimas,Gynyba,Ekonomika,Švietimas
-Vyras,58,Aukštas,Tėvynės sąjunga,2,2,NO TO: Ekonomika,NO TO: Sveikata,Gynyba,Švietimas,1,Gynyba,Ekonomika,Ekonomika,Švietimas,Gynyba,Švietimas
-Vyras,71,Žemas,Socialdemokratai,7,4,Ekonomika,NO TO: Sveikata,Gynyba,NO TO: Švietimas,2,Sveikata,Ekonomika,Gynyba,Švietimas,Gynyba,Švietimas
-Moteris,80,Žemas,Valstiečiai,4,4,NO TO: Ekonomika,NO TO: Sveikata,NO TO: Gynyba,Švietimas,2,Švietimas,Sveikata,Švietimas,Sveikata,Gynyba,Ekonomika
-Moteris,68,Aukštas,Nežinau,6,1,NO TO: Ekonomika,NO TO: Sveikata,NO TO: Gynyba,Švietimas,1,Sveikata,Ekonomika,Ekonomika,Švietimas,Gynyba,Švietimas
-Moteris,76,Vidutinis,Valstiečiai,7,4,NO TO: Ekonomika,Sveikata,NO TO: Gynyba,Švietimas,1,Sveikata,Ekonomika,Švietimas,Ekonomika,Gynyba,Sveikata
-Moteris,23,Žemas,Socialdemokratai,2,7,NO TO: Ekonomika,Sveikata,NO TO: Gynyba,NO TO: Švietimas,1,Ekonomika,Gynyba,Švietimas,Ekonomika,Švietimas,Sveikata
-Vyras,50,Vidutinis,Socialdemokratai,5,5,NO TO: Ekonomika,Sveikata,NO TO: Gynyba,NO TO: Švietimas,2,Ekonomika,Sveikata,Gynyba,Švietimas,Gynyba,Ekonomika
-Moteris,49,Žemas,Valstiečiai,7,6,Ekonomika,NO TO: Sveikata,Gynyba,Švietimas,2,Švietimas,Sveikata,Švietimas,Gynyba,Ekonomika,Švietimas
-Moteris,71,Vidutinis,Tėvynės sąjunga,4,3,NO TO: Ekonomika,Sveikata,NO TO: Gynyba,Švietimas,1,Gynyba,Sveikata,Švietimas,Gynyba,Gynyba,Švietimas
-Vyras,59,Žemas,Tėvynės sąjunga,3,4,NO TO: Ekonomika,NO TO: Sveikata,Gynyba,Švietimas,2,Sveikata,Ekonomika,Gynyba,Švietimas,Ekonomika,Švietimas
-Moteris,63,Vidutinis,Valstiečiai,3,5,Ekonomika,NO TO: Sveikata,Gynyba,NO TO: Švietimas,1,Ekonomika,Sveikata,Švietimas,Gynyba,Gynyba,Sveikata
-Vyras,80,Vidutinis,Tėvynės sąjunga,1,3,NO TO: Ekonomika,NO TO: Sveikata,Gynyba,Švietimas,1,Sveikata,Gynyba,Gynyba,Švietimas,Gynyba,Švietimas
-Vyras,76,Vidutinis,Valstiečiai,3,2,NO TO: Ekonomika,Sveikata,NO TO: Gynyba,NO TO: Švietimas,2,Ekonomika,Sveikata,Sveikata,Gynyba,Švietimas,Gynyba
-Vyras,85,Aukštas,Valstiečiai,1,7,Ekonomika,NO TO: Sveikata,Gynyba,NO TO: Švietimas,2,Ekonomika,Švietimas,Sveikata,Gynyba,Gynyba,Ekonomika
-Moteris,55,Aukštas,Socialdemokratai,6,7,Ekonomika,NO TO: Sveikata,NO TO: Gynyba,Švietimas,2,Sveikata,Švietimas,Gynyba,Švietimas,Ekonomika,Gynyba
-Vyras,79,Žemas,Tėvynės sąjunga,4,4,Ekonomika,NO TO: Sveikata,NO TO: Gynyba,NO TO: Švietimas,1,Ekonomika,Gynyba,Ekonomika,Gynyba,Sveikata,Švietimas
-Moteris,84,Vidutinis,Kita partija,4,3,Ekonomika,Sveikata,NO TO: Gynyba,Švietimas,1,Ekonomika,Sveikata,Gynyba,Ekonomika,Sveikata,Gynyba
-Moteris,27,Žemas,Tėvynės sąjunga,4,4,Ekonomika,Sveikata,NO TO: Gynyba,Švietimas,1,Sveikata,Gynyba,Švietimas,Gynyba,Sveikata,Gynyba
-Vyras,43,Vidutinis,Tėvynės sąjunga,5,2,Ekonomika,NO TO: Sveikata,Gynyba,NO TO: Švietimas,1,Ekonomika,Sveikata,Gynyba,Švietimas,Gynyba,Sveikata
-Vyras,56,Aukštas,Kita partija,3,5,Ekonomika,Sveikata,NO TO: Gynyba,Švietimas,1,Sveikata,Gynyba,Švietimas,Gynyba,Sveikata,Gynyba
-Moteris,20,Aukštas,Valstiečiai,5,1,NO TO: Ekonomika,NO TO: Sveikata,Gynyba,Švietimas,2,Sveikata,Ekonomika,Švietimas,Gynyba,Švietimas,Gynyba
-Moteris,78,Vidutinis,Kita partija,3,3,NO TO: Ekonomika,Sveikata,NO TO: Gynyba,NO TO: Švietimas,2,Sveikata,Švietimas,Gynyba,Švietimas,Švietimas,Ekonomika
-Vyras,29,Vidutinis,Valstiečiai,3,1,Ekonomika,NO TO: Sveikata,Gynyba,NO TO: Švietimas,2,Sveikata,Ekonomika,Sveikata,Švietimas,Švietimas,Gynyba
-Vyras,24,Žemas,Valstiečiai,5,2,NO TO: Ekonomika,NO TO: Sveikata,Gynyba,Švietimas,2,Ekonomika,Sveikata,Švietimas,Sveikata,Švietimas,Ekonomika
-Vyras,19,Aukštas,Kita partija,1,2,NO TO: Ekonomika,NO TO: Sveikata,NO TO: Gynyba,Švietimas,1,Gynyba,Ekonomika,Gynyba,Švietimas,Švietimas,Gynyba
+D1,D2,D3,Q1,Q2r1,Q2r2,Q3r1,Q3r2,Q3r3,Q3r4,Q4_Version,Q4_1best,Q4_1worst,Q4_1set,Q4_2best,Q4_2worst,Q4_2set,Q4_3best,Q4_3worst,Q4_3set
+Moteris,21,Aukštas,Valstiečiai,2,2,Ekonomika,NO TO: Sveikata,Gynyba,NO TO: Švietimas,1,3,2,"[1, 2, 3]",1,3,"[1, 3, 4]",2,3,"[2, 3, 4]"
+Moteris,82,Aukštas,Tėvynės sąjunga,5,2,Ekonomika,Sveikata,NO TO: Gynyba,Švietimas,2,1,2,"[1, 2, 4]",4,3,"[2, 3, 4]",3,4,"[1, 3, 4]"
+Moteris,45,Vidutinis,Tėvynės sąjunga,1,4,NO TO: Ekonomika,NO TO: Sveikata,Gynyba,NO TO: Švietimas,2,4,2,"[1, 2, 4]",2,4,"[2, 3, 4]",4,1,"[1, 3, 4]"
+Vyras,28,Aukštas,Valstiečiai,7,6,Ekonomika,NO TO: Sveikata,Gynyba,Švietimas,1,1,2,"[1, 2, 3]",3,1,"[1, 3, 4]",2,3,"[2, 3, 4]"
+Vyras,53,Vidutinis,Valstiečiai,2,3,NO TO: Ekonomika,Sveikata,Gynyba,NO TO: Švietimas,2,4,1,"[1, 2, 4]",4,2,"[2, 3, 4]",4,1,"[1, 3, 4]"
+Moteris,77,Vidutinis,Valstiečiai,6,6,NO TO: Ekonomika,Sveikata,Gynyba,Švietimas,1,1,2,"[1, 2, 3]",3,4,"[1, 3, 4]",3,2,"[2, 3, 4]"
+Moteris,58,Žemas,Kita partija,4,6,NO TO: Ekonomika,Sveikata,NO TO: Gynyba,Švietimas,1,1,3,"[1, 2, 3]",4,3,"[1, 3, 4]",4,3,"[2, 3, 4]"
+Vyras,46,Žemas,Nežinau,4,1,Ekonomika,NO TO: Sveikata,NO TO: Gynyba,NO TO: Švietimas,1,3,1,"[1, 2, 3]",4,3,"[1, 3, 4]",4,2,"[2, 3, 4]"
+Vyras,66,Aukštas,Kita partija,5,3,Ekonomika,NO TO: Sveikata,Gynyba,Švietimas,2,4,2,"[1, 2, 4]",2,4,"[2, 3, 4]",3,1,"[1, 3, 4]"
+Vyras,18,Aukštas,Valstiečiai,5,7,Ekonomika,NO TO: Sveikata,Gynyba,NO TO: Švietimas,2,4,1,"[1, 2, 4]",2,4,"[2, 3, 4]",1,3,"[1, 3, 4]"
+Vyras,80,Žemas,Tėvynės sąjunga,3,7,Ekonomika,Sveikata,NO TO: Gynyba,NO TO: Švietimas,1,3,1,"[1, 2, 3]",1,4,"[1, 3, 4]",2,3,"[2, 3, 4]"
+Moteris,78,Aukštas,Socialdemokratai,3,5,Ekonomika,NO TO: Sveikata,Gynyba,Švietimas,2,2,4,"[1, 2, 4]",3,4,"[2, 3, 4]",1,3,"[1, 3, 4]"
+Moteris,26,Vidutinis,Tėvynės sąjunga,5,5,Ekonomika,Sveikata,NO TO: Gynyba,NO TO: Švietimas,1,3,1,"[1, 2, 3]",1,3,"[1, 3, 4]",2,4,"[2, 3, 4]"
+Moteris,83,Žemas,Valstiečiai,6,4,NO TO: Ekonomika,Sveikata,Gynyba,NO TO: Švietimas,2,1,4,"[1, 2, 4]",3,2,"[2, 3, 4]",1,3,"[1, 3, 4]"
+Vyras,63,Vidutinis,Kita partija,4,7,Ekonomika,NO TO: Sveikata,NO TO: Gynyba,NO TO: Švietimas,1,2,3,"[1, 2, 3]",1,3,"[1, 3, 4]",2,3,"[2, 3, 4]"
+Vyras,35,Vidutinis,Socialdemokratai,3,4,Ekonomika,Sveikata,NO TO: Gynyba,NO TO: Švietimas,1,1,2,"[1, 2, 3]",1,3,"[1, 3, 4]",2,4,"[2, 3, 4]"
+Vyras,79,Žemas,Kita partija,1,2,Ekonomika,Sveikata,NO TO: Gynyba,NO TO: Švietimas,2,2,4,"[1, 2, 4]",3,4,"[2, 3, 4]",1,3,"[1, 3, 4]"
+Vyras,45,Žemas,Nežinau,6,5,NO TO: Ekonomika,NO TO: Sveikata,Gynyba,NO TO: Švietimas,1,1,3,"[1, 2, 3]",4,1,"[1, 3, 4]",2,3,"[2, 3, 4]"
+Moteris,26,Aukštas,Tėvynės sąjunga,6,7,Ekonomika,NO TO: Sveikata,NO TO: Gynyba,Švietimas,1,3,1,"[1, 2, 3]",4,1,"[1, 3, 4]",3,4,"[2, 3, 4]"
+Vyras,44,Aukštas,Valstiečiai,2,3,NO TO: Ekonomika,Sveikata,Gynyba,NO TO: Švietimas,2,2,4,"[1, 2, 4]",2,3,"[2, 3, 4]",3,1,"[1, 3, 4]"
+Moteris,45,Aukštas,Valstiečiai,2,3,NO TO: Ekonomika,Sveikata,NO TO: Gynyba,NO TO: Švietimas,2,2,1,"[1, 2, 4]",3,4,"[2, 3, 4]",4,1,"[1, 3, 4]"
+Vyras,31,Žemas,Valstiečiai,1,1,NO TO: Ekonomika,Sveikata,Gynyba,Švietimas,1,3,2,"[1, 2, 3]",1,4,"[1, 3, 4]",4,3,"[2, 3, 4]"
+Vyras,24,Žemas,Kita partija,7,3,Ekonomika,NO TO: Sveikata,NO TO: Gynyba,NO TO: Švietimas,2,1,4,"[1, 2, 4]",2,4,"[2, 3, 4]",4,3,"[1, 3, 4]"
+Moteris,32,Žemas,Socialdemokratai,5,1,NO TO: Ekonomika,Sveikata,NO TO: Gynyba,Švietimas,1,1,3,"[1, 2, 3]",3,1,"[1, 3, 4]",3,2,"[2, 3, 4]"
+Moteris,31,Vidutinis,Nežinau,7,4,Ekonomika,Sveikata,Gynyba,NO TO: Švietimas,1,2,1,"[1, 2, 3]",1,4,"[1, 3, 4]",3,2,"[2, 3, 4]"
+Vyras,38,Aukštas,Tėvynės sąjunga,4,7,NO TO: Ekonomika,NO TO: Sveikata,NO TO: Gynyba,Švietimas,1,1,3,"[1, 2, 3]",3,4,"[1, 3, 4]",2,3,"[2, 3, 4]"
+Moteris,42,Vidutinis,Valstiečiai,3,7,NO TO: Ekonomika,NO TO: Sveikata,Gynyba,NO TO: Švietimas,2,4,2,"[1, 2, 4]",4,3,"[2, 3, 4]",1,3,"[1, 3, 4]"
+Vyras,40,Aukštas,Valstiečiai,1,1,NO TO: Ekonomika,Sveikata,Gynyba,Švietimas,2,4,1,"[1, 2, 4]",3,2,"[2, 3, 4]",3,1,"[1, 3, 4]"
+Vyras,18,Aukštas,Nežinau,6,6,NO TO: Ekonomika,Sveikata,Gynyba,NO TO: Švietimas,1,3,2,"[1, 2, 3]",4,3,"[1, 3, 4]",4,2,"[2, 3, 4]"
+Vyras,82,Vidutinis,Kita partija,3,4,Ekonomika,Sveikata,NO TO: Gynyba,NO TO: Švietimas,2,4,2,"[1, 2, 4]",4,2,"[2, 3, 4]",4,3,"[1, 3, 4]"
+Vyras,18,Vidutinis,Valstiečiai,2,4,NO TO: Ekonomika,Sveikata,Gynyba,Švietimas,2,4,1,"[1, 2, 4]",4,3,"[2, 3, 4]",4,1,"[1, 3, 4]"
+Moteris,54,Aukštas,Nežinau,3,1,Ekonomika,NO TO: Sveikata,Gynyba,NO TO: Švietimas,1,1,2,"[1, 2, 3]",1,3,"[1, 3, 4]",3,2,"[2, 3, 4]"
+Vyras,71,Aukštas,Nežinau,2,6,NO TO: Ekonomika,Sveikata,NO TO: Gynyba,Švietimas,1,1,2,"[1, 2, 3]",1,4,"[1, 3, 4]",2,3,"[2, 3, 4]"
+Vyras,24,Aukštas,Socialdemokratai,7,1,NO TO: Ekonomika,Sveikata,NO TO: Gynyba,Švietimas,2,2,4,"[1, 2, 4]",4,3,"[2, 3, 4]",1,4,"[1, 3, 4]"
+Vyras,51,Žemas,Valstiečiai,7,7,Ekonomika,NO TO: Sveikata,Gynyba,Švietimas,2,2,1,"[1, 2, 4]",4,3,"[2, 3, 4]",1,4,"[1, 3, 4]"
+Vyras,58,Aukštas,Tėvynės sąjunga,2,2,NO TO: Ekonomika,NO TO: Sveikata,Gynyba,Švietimas,1,3,1,"[1, 2, 3]",1,4,"[1, 3, 4]",3,4,"[2, 3, 4]"
+Vyras,71,Žemas,Socialdemokratai,7,4,Ekonomika,NO TO: Sveikata,Gynyba,NO TO: Švietimas,2,2,1,"[1, 2, 4]",3,4,"[2, 3, 4]",3,4,"[1, 3, 4]"
+Moteris,80,Žemas,Valstiečiai,4,4,NO TO: Ekonomika,NO TO: Sveikata,NO TO: Gynyba,Švietimas,2,4,2,"[1, 2, 4]",4,2,"[2, 3, 4]",3,1,"[1, 3, 4]"
+Moteris,68,Aukštas,Nežinau,6,1,NO TO: Ekonomika,NO TO: Sveikata,NO TO: Gynyba,Švietimas,1,2,1,"[1, 2, 3]",1,4,"[1, 3, 4]",3,4,"[2, 3, 4]"
+Moteris,76,Vidutinis,Valstiečiai,7,4,NO TO: Ekonomika,Sveikata,NO TO: Gynyba,Švietimas,1,2,1,"[1, 2, 3]",4,1,"[1, 3, 4]",3,2,"[2, 3, 4]"
+Moteris,23,Žemas,Socialdemokratai,2,7,NO TO: Ekonomika,Sveikata,NO TO: Gynyba,NO TO: Švietimas,1,1,3,"[1, 2, 3]",4,1,"[1, 3, 4]",4,2,"[2, 3, 4]"
+Vyras,50,Vidutinis,Socialdemokratai,5,5,NO TO: Ekonomika,Sveikata,NO TO: Gynyba,NO TO: Švietimas,2,1,2,"[1, 2, 4]",3,4,"[2, 3, 4]",3,1,"[1, 3, 4]"
+Moteris,49,Žemas,Valstiečiai,7,6,Ekonomika,NO TO: Sveikata,Gynyba,Švietimas,2,4,2,"[1, 2, 4]",4,3,"[2, 3, 4]",1,4,"[1, 3, 4]"
+Moteris,71,Vidutinis,Tėvynės sąjunga,4,3,NO TO: Ekonomika,Sveikata,NO TO: Gynyba,Švietimas,1,3,2,"[1, 2, 3]",4,3,"[1, 3, 4]",3,4,"[2, 3, 4]"
+Vyras,59,Žemas,Tėvynės sąjunga,3,4,NO TO: Ekonomika,NO TO: Sveikata,Gynyba,Švietimas,2,2,1,"[1, 2, 4]",3,4,"[2, 3, 4]",1,4,"[1, 3, 4]"
+Moteris,63,Vidutinis,Valstiečiai,3,5,Ekonomika,NO TO: Sveikata,Gynyba,NO TO: Švietimas,1,1,2,"[1, 2, 3]",4,3,"[1, 3, 4]",3,2,"[2, 3, 4]"
+Vyras,80,Vidutinis,Tėvynės sąjunga,1,3,NO TO: Ekonomika,NO TO: Sveikata,Gynyba,Švietimas,1,2,3,"[1, 2, 3]",3,4,"[1, 3, 4]",3,4,"[2, 3, 4]"
+Vyras,76,Vidutinis,Valstiečiai,3,2,NO TO: Ekonomika,Sveikata,NO TO: Gynyba,NO TO: Švietimas,2,1,2,"[1, 2, 4]",2,3,"[2, 3, 4]",4,3,"[1, 3, 4]"
+Vyras,85,Aukštas,Valstiečiai,1,7,Ekonomika,NO TO: Sveikata,Gynyba,NO TO: Švietimas,2,1,4,"[1, 2, 4]",2,3,"[2, 3, 4]",3,1,"[1, 3, 4]"
+Moteris,55,Aukštas,Socialdemokratai,6,7,Ekonomika,NO TO: Sveikata,NO TO: Gynyba,Švietimas,2,2,4,"[1, 2, 4]",3,4,"[2, 3, 4]",1,3,"[1, 3, 4]"
+Vyras,79,Žemas,Tėvynės sąjunga,4,4,Ekonomika,NO TO: Sveikata,NO TO: Gynyba,NO TO: Švietimas,1,1,3,"[1, 2, 3]",1,3,"[1, 3, 4]",2,4,"[2, 3, 4]"
+Moteris,84,Vidutinis,Kita partija,4,3,Ekonomika,Sveikata,NO TO: Gynyba,Švietimas,1,1,2,"[1, 2, 3]",3,1,"[1, 3, 4]",2,3,"[2, 3, 4]"
+Moteris,27,Žemas,Tėvynės sąjunga,4,4,Ekonomika,Sveikata,NO TO: Gynyba,Švietimas,1,2,3,"[1, 2, 3]",4,3,"[1, 3, 4]",2,3,"[2, 3, 4]"
+Vyras,43,Vidutinis,Tėvynės sąjunga,5,2,Ekonomika,NO TO: Sveikata,Gynyba,NO TO: Švietimas,1,1,2,"[1, 2, 3]",3,4,"[1, 3, 4]",3,2,"[2, 3, 4]"
+Vyras,56,Aukštas,Kita partija,3,5,Ekonomika,Sveikata,NO TO: Gynyba,Švietimas,1,2,3,"[1, 2, 3]",4,3,"[1, 3, 4]",2,3,"[2, 3, 4]"
+Moteris,20,Aukštas,Valstiečiai,5,1,NO TO: Ekonomika,NO TO: Sveikata,Gynyba,Švietimas,2,2,1,"[1, 2, 4]",4,3,"[2, 3, 4]",4,3,"[1, 3, 4]"
+Moteris,78,Vidutinis,Kita partija,3,3,NO TO: Ekonomika,Sveikata,NO TO: Gynyba,NO TO: Švietimas,2,2,4,"[1, 2, 4]",3,4,"[2, 3, 4]",4,1,"[1, 3, 4]"
+Vyras,29,Vidutinis,Valstiečiai,3,1,Ekonomika,NO TO: Sveikata,Gynyba,NO TO: Švietimas,2,2,1,"[1, 2, 4]",2,4,"[2, 3, 4]",4,3,"[1, 3, 4]"
+Vyras,24,Žemas,Valstiečiai,5,2,NO TO: Ekonomika,NO TO: Sveikata,Gynyba,Švietimas,2,1,2,"[1, 2, 4]",4,2,"[2, 3, 4]",4,1,"[1, 3, 4]"
+Vyras,19,Aukštas,Kita partija,1,2,NO TO: Ekonomika,NO TO: Sveikata,NO TO: Gynyba,Švietimas,1,3,1,"[1, 2, 3]",3,4,"[1, 3, 4]",4,3,"[2, 3, 4]"

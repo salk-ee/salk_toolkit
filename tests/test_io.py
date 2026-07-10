@@ -27,7 +27,15 @@ from salk_toolkit.io import (
     read_parquet_metadata,
     infer_meta,
 )
-from salk_toolkit.validation import soft_validate, DataMeta, ColumnMeta, ColumnBlockMeta, BlockScaleMeta
+from salk_toolkit.validation import (
+    soft_validate,
+    DataMeta,
+    ColumnMeta,
+    ColumnBlockMeta,
+    BlockScaleMeta,
+    TopKBlock,
+    MaxDiffBlock,
+)
 from salk_toolkit.utils import read_json
 
 
@@ -304,15 +312,13 @@ class TestReadAnnotatedData:
             "file": "test.csv",
             "structure": [
                 {
+                    "type": "topk",
                     "name": "topkcols",
                     "columns": ["id", "q1_1", "q1_2", "q1_3", "q2_1", "q2_2", "q2_3"],
-                    "create": {
-                        "type": "topk",
-                        "from_columns": r"q(\d+)_(\d+)",
-                        "na_vals": ["not_selected"],
-                        "res_columns": r"q\1_R\2",
-                        "translate_after": {"1": "USA", "2": "Canada", "3": "Mexico"},
-                    },
+                    "from_columns": r"q(\d+)_(\d+)",
+                    "na_vals": ["not_selected"],
+                    "res_columns": r"q\1_R\2",
+                    "scale": {"translate_after": {"1": "USA", "2": "Canada", "3": "Mexico"}},
                 }
             ],
         }
@@ -344,8 +350,8 @@ class TestReadAnnotatedData:
         )
         expected_structure = [
             {"name": "topkcols", "columns": ["id", "q1_1", "q1_2", "q1_3", "q2_1", "q2_2", "q2_3"]},
-            {"name": "topkcols_topk_1", "columns": ["q1_R1"]},
-            {"name": "topkcols_topk_2", "columns": ["q2_R1", "q2_R2", "q2_R3"]},
+            {"name": "topkcols_1", "columns": ["q1_R1"]},
+            {"name": "topkcols_2", "columns": ["q2_R1", "q2_R2", "q2_R3"]},
         ]
         assert_frame_equal(
             diffs.fillna(pd.NA),
@@ -354,18 +360,31 @@ class TestReadAnnotatedData:
             check_categorical=False,
         )
         serialized_meta = data_meta.model_dump(mode="json")
-        structure_wo_files = [b for b in serialized_meta["structure"] if b.get("name") != "files"]
+        structure_wo_files = [
+            {"name": b["name"], "columns": b["columns"]}
+            for b in serialized_meta["structure"]
+            if b.get("name") != "files"
+        ]
         assert sorted(structure_wo_files, key=lambda x: x["name"]) == sorted(
             expected_structure, key=lambda x: x["name"]
         )
+
+        # Generated topk blocks are themselves TopKBlock instances; `type` survives.
+        topk_block = data_meta.structure["topkcols_1"]
+        assert isinstance(topk_block, TopKBlock)
+        assert topk_block.type == "topk"
+        # Resolved column lists replace regex patterns on output
+        assert isinstance(topk_block.from_columns, list)
+        assert isinstance(topk_block.res_columns, list)
+        assert topk_block.segments() == [(list(topk_block.columns.keys()), None, False)]
 
         # Also test that we can give from_columns and res_cols as lists (no subgroups possible here)
         # TODO: Can be a separate test, but there'd be a lot of boilerplate code.
         from_cols = ["q1_1", "q1_2", "q1_3"]  # Note the parentheses to specify the regex group for translate
         res_cols = ["q1_R1", "q1_R2", "q1_R3"]
-        meta["structure"][0]["create"]["from_columns"] = from_cols
-        meta["structure"][0]["create"]["res_columns"] = res_cols
-        meta["structure"][0]["create"]["from_prefix"] = "q1_"
+        meta["structure"][0]["from_columns"] = from_cols
+        meta["structure"][0]["res_columns"] = res_cols
+        meta["structure"][0]["from_prefix"] = "q1_"
         write_json(meta_file, meta)
         data_df2, data_meta2 = read_and_process_data(str(meta_file), return_meta=True)
         assert "q1_R1" in data_df2.columns
@@ -378,14 +397,12 @@ class TestReadAnnotatedData:
             "file": "test.csv",
             "structure": [
                 {
+                    "type": "topk",
                     "name": "topkcols",
                     "columns": ["id", "a1", "a2"],
-                    "create": {
-                        "type": "topk",
-                        "from_columns": r"a(\d+)",
-                        "na_vals": ["this_string_is_not_in_the_data"],
-                        "res_columns": r"a_R\1",
-                    },
+                    "from_columns": r"a(\d+)",
+                    "na_vals": ["this_string_is_not_in_the_data"],
+                    "res_columns": r"a_R\1",
                 }
             ],
         }
@@ -424,8 +441,8 @@ class TestReadAnnotatedData:
             actual_cols = set(actual_block.columns.keys()) if actual_block.columns else set()
             expected_cols = set(expected_block.columns.keys()) if expected_block.columns else set()
 
-            # For maxdiff_maxdiff, optionally check columns match DataFrame
-            if block_name == "maxdiff_maxdiff" and data_df is not None:
+            # For the output maxdiff block, optionally check columns match DataFrame
+            if block_name == "maxdiff" and isinstance(actual_block, MaxDiffBlock) and data_df is not None:
                 df_cols = set(data_df.columns) - {"file_code", "file_name"}
                 assert actual_cols == df_cols, (
                     f"Block {block_name} columns {actual_cols} should match DataFrame columns {df_cols}"
@@ -475,24 +492,17 @@ class TestReadAnnotatedData:
             "maxdiff": ColumnBlockMeta(
                 name="maxdiff",
                 scale=BlockScaleMeta(categories=topics),
-                columns={},
-                create=None,
-            ),
-            "maxdiff_maxdiff": ColumnBlockMeta(
-                name="maxdiff_maxdiff",
-                scale=BlockScaleMeta(categories=topics),
                 columns={col: ColumnMeta() for col in all_columns},
-                create=None,
             ),
         }
 
         if setindex_column and setindex_meta:
-            structure["maxdiff_maxdiff"].columns[setindex_column] = setindex_meta
+            structure["maxdiff"].columns[setindex_column] = setindex_meta
 
         return structure
 
     def test_maxdiff_create_block(self, meta_file, csv_file):
-        """Test max diff create block."""
+        """Reference example: maxdiff annotation with items and choice_sets in the create block."""
         np.random.seed(42)
 
         columns = [f"Q2_{k}best" for k in range(1, 11)]
@@ -519,24 +529,20 @@ class TestReadAnnotatedData:
         C = A[i, j, best]
         D = A[i, j, worst]
 
+        items = {str(i + 1): t for i, t in enumerate(topics.tolist())}
         meta = {
             "file": "test.csv",
-            "constants": {
-                "topics": topics.tolist(),
-                "sets": sets.tolist(),
-            },
             "structure": [
                 {
+                    "type": "maxdiff",
                     "name": "maxdiff",
                     "columns": [],
-                    "scale": {"categories": "topics"},
-                    "create": {
-                        "type": "maxdiff",
-                        "best_columns": r"Q2_(\d+?)best",
-                        "worst_columns": r"Q2_(\d+?)worst",
-                        "set_columns": r"Q2_\1set",
-                        "setindex_column": ["Q2_Version", {"continuous": True, "categories": None}],
-                    },
+                    "scale": {"categories": topics.tolist(), "translate": items},
+                    "best_columns": r"Q2_(\d+?)best",
+                    "worst_columns": r"Q2_(\d+?)worst",
+                    "set_columns": r"Q2_\1set",
+                    "setindex_column": ["Q2_Version", {"continuous": True, "categories": None}],
+                    "choice_sets": sets.tolist(),
                 }
             ],
         }
@@ -582,6 +588,73 @@ class TestReadAnnotatedData:
             check_q2_version=True,
             expected_topics=topics.tolist(),
         )
+
+    def test_input_df_columns_topk_onehot_maxdiff(self):
+        """Each block type reports the df-columns safe to pre-translate. Topk/onehot
+        use from_columns. MaxDiff reports best+worst+set for ``resolved`` input_format
+        (cells are scalar index strings) but best+worst only for ``choice_sets``
+        (set cells hold lists and are not pre-translated)."""
+        from salk_toolkit.validation import TopKBlock, MaxDiffBlock, OneHotBlock
+
+        df = pd.DataFrame({"a": [1], "b": [1], "c": [1], "d": [1]})
+        tk = TopKBlock(name="t", from_columns=["a", "b"], res_columns=["R1", "R2"])
+        assert tk.input_df_columns(df) == ["a", "b"]
+
+        oh = OneHotBlock(name="o", from_columns=["a", "c"])
+        assert oh.input_df_columns(df) == ["a", "c"]
+
+        md_resolved = MaxDiffBlock(
+            name="m",
+            best_columns=["a"],
+            worst_columns=["b"],
+            set_columns=["c"],
+            input_format="resolved",
+        )
+        assert set(md_resolved.input_df_columns(df)) == {"a", "b", "c"}
+
+        md_choice_sets = MaxDiffBlock(
+            name="m",
+            best_columns=["a"],
+            worst_columns=["b"],
+            set_columns=["c"],
+            input_format="choice_sets",
+        )
+        assert set(md_choice_sets.input_df_columns(df)) == {"a", "b"}
+
+    def test_maxdiff_explode_resolves_role_columns_per_sibling(self, meta_file, csv_file):
+        """After subgroup_explode the source regex in best/worst/set_columns is replaced
+        by per-sibling concrete lists; the transform never sees regex."""
+        from salk_toolkit.io.create_blocks import _subgroup_explode
+        from salk_toolkit.validation import MaxDiffBlock
+
+        df = pd.DataFrame(
+            {
+                "Q_A_1best": ["x"],
+                "Q_A_1worst": ["x"],
+                "Q_A_1set": [["x"]],
+                "Q_A_2best": ["x"],
+                "Q_A_2worst": ["x"],
+                "Q_A_2set": [["x"]],
+                "Q_B_1best": ["x"],
+                "Q_B_1worst": ["x"],
+                "Q_B_1set": [["x"]],
+            }
+        )
+        block = MaxDiffBlock(
+            name="md",
+            from_columns=r"Q_([AB])_\d+best",  # used by explode to enumerate siblings
+            best_columns=r"Q_([AB])_(\d+)best",
+            worst_columns=r"Q_([AB])_(\d+)worst",
+            set_columns=r"Q_\1_\2set",
+            scale=BlockScaleMeta(translate={"1": "Alpha"}),
+        )
+        siblings = _subgroup_explode(block, df)
+        by_label = {s.name.removeprefix("md_"): s for s in siblings}
+        assert set(by_label) == {"A", "B"}
+        sib_a = by_label["A"]
+        assert isinstance(sib_a.best_columns, list) and sib_a.best_columns == ["Q_A_1best", "Q_A_2best"]
+        assert isinstance(sib_a.worst_columns, list) and sib_a.worst_columns == ["Q_A_1worst", "Q_A_2worst"]
+        assert isinstance(sib_a.set_columns, list) and sib_a.set_columns == ["Q_A_1set", "Q_A_2set"]
 
     def test_maxdiff_create_block_explicit_sets(self, meta_file, csv_file):
         """Ensure explicit set definitions are parsed for every serialization mode."""
@@ -646,22 +719,18 @@ class TestReadAnnotatedData:
                 data[f"Q2_{col}set"] = [serialize(row_sets[row][block_idx], mode) for row in range(num_rows)]
             return pd.DataFrame(data)
 
+        items = {str(i + 1): t for i, t in enumerate(topics)}
         meta = {
             "file": "test.csv",
-            "constants": {
-                "topics": topics,
-            },
             "structure": [
                 {
+                    "type": "maxdiff",
                     "name": "maxdiff",
                     "columns": [],
-                    "scale": {"categories": "topics"},
-                    "create": {
-                        "type": "maxdiff",
-                        "best_columns": r"Q2_(\d+?)best",
-                        "worst_columns": r"Q2_(\d+?)worst",
-                        "set_columns": r"Q2_\1set",
-                    },
+                    "scale": {"categories": topics, "translate": items},
+                    "best_columns": r"Q2_(\d+?)best",
+                    "worst_columns": r"Q2_(\d+?)worst",
+                    "set_columns": r"Q2_\1set",
                 }
             ],
         }
@@ -704,6 +773,539 @@ class TestReadAnnotatedData:
                 expected_structure,
                 data_df=None,  # Don't check DataFrame columns for this test
             )
+
+    def test_topk_no_subgroups(self, meta_file, csv_file):
+        """TopK with a single regex group (= agg group) produces one block named {name}.
+
+        scale.translate_after maps the numeric agg-group value to the display name.
+        """
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "topk",
+                    "name": "issue_importance",
+                    "columns": ["Q6r1", "Q6r2", "Q6r3"],
+                    "from_columns": r"Q6r(\d+)",
+                    "res_columns": r"Q6p_R\1",
+                    "agg_index": 1,
+                    "na_vals": ["NO TO: Cost of living", "NO TO: Healthcare", "NO TO: Pensions"],
+                    "scale": {
+                        "categories": "infer",
+                        "translate_after": {
+                            "1": "Cost of living",
+                            "2": "Healthcare",
+                            "3": "Pensions",
+                        },
+                    },
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        df = pd.DataFrame(
+            {
+                "Q6r1": ["Cost of living", "NO TO: Cost of living", "Cost of living"],
+                "Q6r2": ["NO TO: Healthcare", "Healthcare", "Healthcare"],
+                "Q6r3": ["Pensions", "Pensions", "NO TO: Pensions"],
+            }
+        )
+        df.to_csv_file(csv_file)
+        data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
+
+        assert "issue_importance" in data_meta.structure
+        # Cell values are the translated issue names (R1 = lowest agg-group index selected)
+        assert data_df["Q6p_R1"].tolist() == ["Cost of living", "Healthcare", "Cost of living"]
+
+        block = data_meta.structure["issue_importance"]
+        assert isinstance(block, TopKBlock)
+        assert set(block.columns.keys()) == {"Q6p_R1", "Q6p_R2"}
+        assert isinstance(block.from_columns, list) and isinstance(block.res_columns, list)
+
+    def test_topk_one_subgroup(self, meta_file, csv_file):
+        """TopK with 2 regex groups (1 subgroup dim).
+
+        `subgroup_labels` labels the non-agg group; produces one block per group value.
+        """
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "topk",
+                    "name": "issue ownership",
+                    "columns": ["Q7r1c1", "Q7r1c2", "Q7r2c1", "Q7r2c2"],
+                    "from_columns": r"Q7r(\d+)c(\d+)",
+                    "res_columns": r"Q7r\1_R\2",
+                    "agg_index": 2,
+                    "subgroup_labels": {"1": {"1": "economics", "2": "healthcare"}},
+                    "na_vals": ["not_selected"],
+                    "scale": {
+                        "categories": "infer",
+                        "translate_after": {"1": "Party A", "2": "Party B"},
+                    },
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        df = pd.DataFrame(
+            {
+                "Q7r1c1": ["selected", "not_selected", "selected"],
+                "Q7r1c2": ["not_selected", "selected", "not_selected"],
+                "Q7r2c1": ["selected", "not_selected", "selected"],
+                "Q7r2c2": ["selected", "selected", "not_selected"],
+            }
+        )
+        df.to_csv_file(csv_file)
+        data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
+
+        assert "issue ownership_economics" in data_meta.structure
+        assert "issue ownership_healthcare" in data_meta.structure
+
+        econ_block = data_meta.structure["issue ownership_economics"]
+        assert isinstance(econ_block, TopKBlock)
+        assert all(c.startswith("Q7r1_R") for c in econ_block.columns)
+        assert data_df["Q7r1_R1"].tolist() == ["Party A", "Party B", "Party A"]
+
+        # Subgroup siblings are independent TopKBlocks with narrowed resolved column lists.
+        assert econ_block.type == "topk"
+        assert econ_block.from_columns == ["Q7r1c1", "Q7r1c2"]
+        assert econ_block.res_columns == ["Q7r1_R1", "Q7r1_R2"]
+        assert econ_block.segments() == [(list(econ_block.columns.keys()), None, False)]
+
+    def test_topk_two_subgroup_dimensions(self, meta_file, csv_file):
+        """TopK with 3 regex groups, 2 subgroup dimensions.
+
+        Block labels concatenate non-agg group labels with `_`.
+        """
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "topk",
+                    "name": "survey",
+                    "columns": [
+                        "Q_A_1_1",
+                        "Q_A_1_2",
+                        "Q_A_2_1",
+                        "Q_A_2_2",
+                        "Q_B_1_1",
+                        "Q_B_1_2",
+                        "Q_B_2_1",
+                        "Q_B_2_2",
+                    ],
+                    "from_columns": r"Q_(\w+)_(\d+)_(\d+)",
+                    "res_columns": r"Q_\1_\2_R\3",
+                    "agg_index": 3,
+                    "subgroup_labels": {
+                        "1": {"A": "Estonia", "B": "Latvia"},
+                        "2": {"1": "economics", "2": "healthcare"},
+                    },
+                    "na_vals": ["no"],
+                    "scale": {
+                        "categories": "infer",
+                        "translate_after": {"1": "Party X", "2": "Party Y"},
+                    },
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        df = pd.DataFrame(
+            {
+                "Q_A_1_1": ["yes", "no"],
+                "Q_A_1_2": ["no", "yes"],
+                "Q_A_2_1": ["yes", "yes"],
+                "Q_A_2_2": ["no", "no"],
+                "Q_B_1_1": ["no", "yes"],
+                "Q_B_1_2": ["yes", "no"],
+                "Q_B_2_1": ["yes", "no"],
+                "Q_B_2_2": ["no", "yes"],
+            }
+        )
+        df.to_csv_file(csv_file)
+        _data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
+
+        # Four blocks: all country × issue combinations
+        for combo in ["Estonia_economics", "Estonia_healthcare", "Latvia_economics", "Latvia_healthcare"]:
+            assert f"survey_{combo}" in data_meta.structure
+
+        ee_block = data_meta.structure["survey_Estonia_economics"]
+        assert isinstance(ee_block, TopKBlock)
+        assert all(c.startswith("Q_A_1_R") for c in ee_block.columns)
+        # Each sibling is an independent TopKBlock with its own narrowed from_columns.
+        assert ee_block.from_columns == ["Q_A_1_1", "Q_A_1_2"]
+        assert ee_block.segments() == [(list(ee_block.columns.keys()), None, False)]
+
+    def test_maxdiff_segments_shape(self, meta_file, csv_file):
+        """MaxDiff output block exposes leedu-compatible ordinal ranking segments."""
+        items = {"1": "A", "2": "B", "3": "C"}
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "maxdiff",
+                    "name": "maxdiff",
+                    "columns": [],
+                    "best_columns": r"Q_(\d+)best",
+                    "worst_columns": r"Q_(\d+)worst",
+                    "set_columns": r"Q_\1set",
+                    "scale": {"categories": "infer", "translate": items},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        df = pd.DataFrame(
+            {
+                "Q_1best": ["A", "B"],
+                "Q_1worst": ["C", "A"],
+                "Q_1set": [["A", "B", "C"], ["A", "B", "C"]],
+                "Q_2best": ["B", "C"],
+                "Q_2worst": ["A", "B"],
+                "Q_2set": [["A", "B", "C"], ["A", "B", "C"]],
+            }
+        )
+        df.to_csv_file(csv_file)
+        _data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
+        block = data_meta.structure["maxdiff"]
+        assert isinstance(block, MaxDiffBlock)
+        # Question-aligned lists with the same order, two segments per question (best>set, set>worst).
+        best_columns = block.best_columns
+        worst_columns = block.worst_columns
+        set_columns = block.set_columns
+        assert isinstance(best_columns, list)
+        assert isinstance(worst_columns, list)
+        assert isinstance(set_columns, list)
+        q = len(best_columns)
+        segs = block.segments()
+        assert len(segs) == 2 * q
+        for k in range(q):
+            assert segs[k] == ([best_columns[k]], [set_columns[k]], True)
+            assert segs[q + k] == ([set_columns[k]], [worst_columns[k]], True)
+
+    def test_maxdiff_with_translate(self, meta_file, csv_file):
+        """MaxDiff with `scale.translate` mapping 1-based index strings to display-language topics.
+
+        The source stores best/worst cells as 1-based index strings ("1","2","3"); pre-transform
+        translate element-wise replaces those with display-language topic names ("Economy" etc.).
+        The same dict defines the topic universe for `setindex_column` lookups.
+        """
+        translate = {"1": "Economy", "2": "Health", "3": "Education"}
+        display_topics = ["Economy", "Health", "Education"]
+        choice_sets = [
+            [[1, 2, 3], [2, 3, 1], [1, 3, 2]],  # version 1
+            [[3, 1, 2], [1, 2, 3], [3, 2, 1]],  # version 2
+        ]
+        parquet_file = csv_file.with_suffix(".parquet")
+        meta = {
+            "file": str(parquet_file),
+            "structure": [
+                {
+                    "type": "maxdiff",
+                    "name": "maxdiff",
+                    "columns": [],
+                    "best_columns": r"Q_(\d+)best",
+                    "worst_columns": r"Q_(\d+)worst",
+                    "set_columns": r"Q_\1set",
+                    "setindex_column": ["Q_Version", {"continuous": True}],
+                    "choice_sets": choice_sets,
+                    "scale": {"categories": "infer", "translate": translate},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        # Best/worst cells are 1-based index strings; pre-transform translate renames them.
+        # Parquet preserves the string dtype (CSV would reparse "1" as int).
+        df = pd.DataFrame(
+            {
+                "Q_Version": [1, 2, 1],
+                "Q_1best": ["1", "3", "2"],
+                "Q_1worst": ["2", "1", "1"],
+                "Q_2best": ["3", "1", "3"],
+                "Q_2worst": ["1", "2", "1"],
+                "Q_3best": ["1", "3", "1"],
+                "Q_3worst": ["3", "1", "3"],
+            }
+        )
+        df.to_parquet(parquet_file)
+        data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
+
+        block = data_meta.structure["maxdiff"]
+        assert isinstance(block, MaxDiffBlock)
+        assert "Q_1best" in block.columns
+        assert "Q_1set" in block.columns
+
+        # Cell values translated into display language
+        assert data_df["Q_1best"].tolist() == ["Economy", "Education", "Health"]
+        assert set(data_df["Q_1best"].cat.categories) == set(display_topics)
+
+        # Output block is a MaxDiffBlock with resolved column lists; input-only directives cleared.
+        assert block.type == "maxdiff"
+        assert block.choice_sets is None
+        assert isinstance(block.best_columns, list)
+        assert isinstance(block.worst_columns, list)
+        assert isinstance(block.set_columns, list)
+        # Translated vocabulary lives on the scale categories.
+        assert block.scale is not None and set(block.scale.categories or []) == set(display_topics)
+
+    def test_maxdiff_items_no_translate(self, meta_file, csv_file):
+        """MaxDiff with scale.translate already in target language (no additional translation)."""
+        items = {"1": "Economy", "2": "Health", "3": "Education"}
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "maxdiff",
+                    "name": "maxdiff",
+                    "columns": [],
+                    "best_columns": r"Q_(\d+)best",
+                    "worst_columns": r"Q_(\d+)worst",
+                    "set_columns": r"Q_\1set",
+                    "scale": {"categories": "infer", "translate": items},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        df = pd.DataFrame(
+            {
+                "Q_1best": ["Economy", "Health", "Education"],
+                "Q_1worst": ["Education", "Economy", "Health"],
+                "Q_1set": [
+                    ["Economy", "Health", "Education"],
+                    ["Economy", "Health", "Education"],
+                    ["Economy", "Health", "Education"],
+                ],
+            }
+        )
+        df.to_csv_file(csv_file)
+        data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
+
+        block = data_meta.structure["maxdiff"]
+        assert isinstance(block, MaxDiffBlock)
+        # Cell values are the item names directly (no translation needed — cells already in target vocab)
+        assert data_df["Q_1best"].tolist() == ["Economy", "Health", "Education"]
+
+    def test_maxdiff_inline_index_tokens(self, meta_file, csv_file):
+        """Inline MaxDiff with integer-list tokens in set cells and index strings in
+        best/worst cells. scale.translate maps index strings to display names."""
+        # CSV reparses "1" as int, breaking .replace() against string-keyed translate
+        # dict, so we write the fixture as parquet (preserves string dtype).
+        parquet_file = csv_file.with_suffix(".parquet")
+        meta = {
+            "file": str(parquet_file),
+            "structure": [
+                {
+                    "type": "maxdiff",
+                    "name": "md",
+                    "columns": [],
+                    "best_columns": ["Q_1best"],
+                    "worst_columns": ["Q_1worst"],
+                    "set_columns": ["Q_1set"],
+                    "scale": {
+                        "categories": "infer",
+                        "translate": {"1": "Economy", "2": "Health", "3": "Education"},
+                    },
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        df = pd.DataFrame(
+            {
+                "Q_1best": ["1", "3", "2"],
+                "Q_1worst": ["2", "1", "1"],
+                "Q_1set": [[1, 2, 3], [1, 2, 3], [1, 2, 3]],
+            }
+        )
+        df.to_parquet(parquet_file)
+        data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
+
+        assert data_df["Q_1best"].tolist() == ["Economy", "Education", "Health"]
+        assert data_df["Q_1worst"].tolist() == ["Health", "Economy", "Economy"]
+        assert list(data_df["Q_1set"].iloc[0]) == ["Economy", "Health", "Education"]
+        block = data_meta.structure["md"]
+        assert set(block.scale.categories or []) == {"Economy", "Health", "Education"}
+
+    def test_maxdiff_inline_name_tokens(self, meta_file, csv_file):
+        """Inline MaxDiff with raw-language names in best/worst cells.
+        scale.translate maps raw names to display names — same dict-key space
+        as cell contents, NOT integer positions. Uses input_format='resolved'
+        because the index-keyed ``choice_sets`` transform requires
+        integer-sortable translate keys.
+
+        Note: the pre-transform translate is scalar-cell ``.replace`` and cannot
+        run over list-valued cells; set_columns are required by MaxDiff schema
+        but we exclude them from translate scope by asserting on best/worst only."""
+        # Parquet preserves object-list dtype across the read.
+        parquet_file = csv_file.with_suffix(".parquet")
+        meta = {
+            "file": str(parquet_file),
+            "structure": [
+                {
+                    "type": "maxdiff",
+                    "name": "md",
+                    "columns": [],
+                    "best_columns": ["Q_1best"],
+                    "worst_columns": ["Q_1worst"],
+                    "set_columns": ["Q_1set"],
+                    "input_format": "resolved",
+                    "scale": {
+                        "categories": ["Economy", "Health", "Education"],
+                        "translate": {
+                            "Ekonomika": "Economy",
+                            "Sveikata": "Health",
+                            "Svietimas": "Education",
+                        },
+                    },
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        # Set cells are scalar comma-strings; translate is a scalar-value replace
+        # which does NOT match substrings, so set cells pass through untouched.
+        # This test pins the best/worst translation behaviour; set-cell translate
+        # for resolved+list-cells is not supported by the current pipeline.
+        df = pd.DataFrame(
+            {
+                "Q_1best": ["Ekonomika", "Svietimas", "Sveikata"],
+                "Q_1worst": ["Sveikata", "Ekonomika", "Ekonomika"],
+                "Q_1set": ["Ekonomika", "Ekonomika", "Ekonomika"],
+            }
+        )
+        df.to_parquet(parquet_file)
+        data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
+
+        assert data_df["Q_1best"].tolist() == ["Economy", "Education", "Health"]
+        assert data_df["Q_1worst"].tolist() == ["Health", "Economy", "Economy"]
+        # Set cells also element-replaced by translate (scalar form).
+        assert data_df["Q_1set"].tolist() == ["Economy", "Economy", "Economy"]
+
+    def test_maxdiff_setindex_lookup(self, meta_file, csv_file):
+        """MaxDiff driven by setindex_column + choice_sets metadata. scale.translate
+        replaces the old choice_mapping: it's both the index->name source for the
+        setindex lookup AND the cell translator for best/worst."""
+        choice_sets = [
+            [[1, 2, 3], [2, 3, 1], [1, 3, 2]],
+            [[3, 1, 2], [1, 2, 3], [3, 2, 1]],
+        ]
+        # Use parquet to preserve string dtype on integer-string best/worst cells.
+        parquet_file = csv_file.with_suffix(".parquet")
+        meta = {
+            "file": str(parquet_file),
+            "structure": [
+                {
+                    "type": "maxdiff",
+                    "name": "md",
+                    "columns": [],
+                    "best_columns": r"Q_(\d+)best",
+                    "worst_columns": r"Q_(\d+)worst",
+                    "set_columns": r"Q_\1set",
+                    "setindex_column": ["Q_Version", {"continuous": True}],
+                    "choice_sets": choice_sets,
+                    "scale": {
+                        "categories": "infer",
+                        "translate": {"1": "Economy", "2": "Health", "3": "Education"},
+                    },
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        df = pd.DataFrame(
+            {
+                "Q_Version": [1, 2, 1],
+                "Q_1best": ["1", "3", "2"],
+                "Q_1worst": ["2", "1", "1"],
+                "Q_2best": ["3", "1", "3"],
+                "Q_2worst": ["1", "2", "1"],
+                "Q_3best": ["1", "3", "1"],
+                "Q_3worst": ["3", "1", "3"],
+            }
+        )
+        df.to_parquet(parquet_file)
+        data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
+
+        assert list(data_df["Q_1set"].iloc[0]) == ["Economy", "Health", "Education"]
+        assert list(data_df["Q_1set"].iloc[1]) == ["Education", "Economy", "Health"]
+        assert data_df["Q_1best"].tolist() == ["Economy", "Education", "Health"]
+        assert data_df["Q_1worst"].tolist() == ["Health", "Economy", "Economy"]
+
+        block = data_meta.structure["md"]
+        assert block.choice_sets is None
+        assert isinstance(block.best_columns, list)
+        assert set(block.scale.categories or []) == {"Economy", "Health", "Education"}
+
+    def test_maxdiff_translate_after_is_deprecated(self, meta_file, csv_file):
+        """scale.translate_after on a MaxDiff block must be a hard fail with a
+        message pointing at scale.translate."""
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "maxdiff",
+                    "name": "md",
+                    "columns": [],
+                    "best_columns": ["Q_1best"],
+                    "worst_columns": ["Q_1worst"],
+                    "set_columns": ["Q_1set"],
+                    "scale": {"translate_after": {"1": "Economy"}},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        df = pd.DataFrame({"Q_1best": ["1"], "Q_1worst": ["1"], "Q_1set": [[1]]})
+        df.to_csv_file(csv_file)
+
+        with pytest.raises(ValueError, match=r"(?i)translate_after.*maxdiff.*scale\.translate"):
+            read_and_process_data(str(meta_file), return_meta=True)
+
+    def test_topk_scale_translate_feeds_na_vals_detection(self, meta_file, csv_file):
+        """Pre-translate fires before na_vals check: translated sentinel is dropped, raw form is not."""
+        # Row 0: Qa=raw_keep, Qb=raw_drop. Row 1: Qa=raw_drop, Qb=raw_keep.
+        # Pre-translate: raw_drop -> <drop> (matches na_vals, dropped), raw_keep -> keep.
+        # After drop: each row has exactly ONE non-NA cell, so only one result column (Ra) survives.
+        # Without pre-translate: na_vals=["<drop>"] never matches "raw_drop", both cells survive,
+        # leftpack fills Ra AND Rb for every row → two result columns.
+        pd.DataFrame({"Qa": ["raw_keep", "raw_drop"], "Qb": ["raw_drop", "raw_keep"]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "topk",
+                    "name": "q",
+                    "from_columns": r"Q(\w)",
+                    "res_columns": r"R\1",
+                    "agg_index": 1,
+                    "na_vals": ["<drop>"],
+                    "scale": {
+                        "translate": {"raw_keep": "keep", "raw_drop": "<drop>"},
+                    },
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        ndf, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        out = meta_obj.structure["q"]
+        assert out.input_format == "onehot"
+        res_cols = [c for c in ndf.columns if c.startswith("R")]
+        # If pre-translate fired: only 1 non-NA cell per row → dropna(how="all") removes Rb → 1 result col.
+        # If pre-translate did NOT fire: 2 non-NA cells per row → 2 result columns survive.
+        assert len(res_cols) == 1
+
+    def test_scale_translate_none_is_noop(self, meta_file, csv_file):
+        """Blocks without scale.translate pass through unchanged without error."""
+        pd.DataFrame({"Qa": ["A", None], "Qb": [None, "B"]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "topk",
+                    "name": "q",
+                    "from_columns": r"Q(\w)",
+                    "res_columns": r"R\1",
+                    "agg_index": 1,
+                    "na_vals": [],
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        _, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        assert "q" in meta_obj.structure
 
 
 class TestColumnTransformations:
@@ -1895,6 +2497,34 @@ class TestMultipleFiles:
 
 class TestReadAndProcessData:
     """Test read_and_process_data function"""
+
+    def test_category_subset_in_last_file_still_unions(self, temp_dir):
+        """Case B: when the LAST file lists fewer categories for a shared column, combined
+        categories still union across files (not truncated to last)."""
+        csv1 = temp_dir / "cb1.csv"
+        csv2 = temp_dir / "cb2.csv"
+        pd.DataFrame({"id": [1, 2, 3], "region": ["North", "South", "East"]}).to_csv_file(csv1)
+        pd.DataFrame({"id": [4, 5], "region": ["North", "South"]}).to_csv_file(csv2)
+        meta1 = temp_dir / "cb1.json"
+        meta2 = temp_dir / "cb2.json"
+        write_json(
+            meta1,
+            {
+                "file": "cb1.csv",
+                "structure": [
+                    {"name": "main", "columns": ["id", ["region", {"categories": ["North", "South", "East"]}]]}
+                ],
+            },
+        )
+        write_json(
+            meta2,
+            {
+                "file": "cb2.csv",
+                "structure": [{"name": "main", "columns": ["id", ["region", {"categories": ["North", "South"]}]]}],
+            },
+        )
+        df = read_and_process_data({"files": [{"file": str(meta1)}, {"file": str(meta2)}]})
+        assert set(df["region"].cat.categories) == {"North", "South", "East"}
 
     def test_string_shorthand(self, csv_file, sample_csv_data):
         """Test string shorthand for simple file loading"""
@@ -3261,9 +3891,17 @@ class TestMultiSourceColumns:
             ],
             "structure": [
                 {
+                    "name": "ids",
+                    "columns": {"id": {}},
+                },
+                {
+                    "type": "topk",
                     "name": "demographics",
+                    "scale": {
+                        "categories": "infer",
+                        "translate_after": {"1": "Mentioned", "2": "Not mentioned"},
+                    },
                     "columns": {
-                        "id": {},
                         "topk_1": {
                             "source": {
                                 "F0": "topk_col1",
@@ -3281,14 +3919,10 @@ class TestMultiSourceColumns:
                             "categories": "infer",
                         },
                     },
-                    "create": {
-                        "type": "topk",
-                        "from_columns": r"topk_(\d)",
-                        "na_vals": ["Not mentioned", "No", "False"],
-                        "res_columns": r"topk_R\1",
-                        "translate_after": {"1": "USA", "2": "Canada"},
-                    },
-                }
+                    "from_columns": r"topk_(\d)",
+                    "na_vals": ["Not mentioned", "No", "False"],
+                    "res_columns": r"topk_R\1",
+                },
             ],
         }
         write_json(meta_file, meta)
@@ -3301,16 +3935,10 @@ class TestMultiSourceColumns:
             {"file": "file2.csv", "opts": {}, "code": "F1"},
             {"file": "file3.csv", "opts": {}, "code": "F2"},
         ]
-        # Core structure entries should match (additional system blocks may also be present)
-        assert {"name": "demographics_topk", "columns": ["topk_R1", "topk_R2"]} in dumped["structure"]
-        assert {
-            "name": "demographics",
-            "columns": [
-                "id",
-                ["topk_1", {"categories": ["False", "Mentioned", "No", "True", "Yes"]}],
-                ["topk_2", {"categories": ["False", "Mentioned", "No", "Not mentioned", "True", "Yes"]}],
-            ],
-        } in dumped["structure"]
+        # Single-sibling topk: child uses bare block name, overwriting the demoted parent.
+        topk_block = next((b for b in dumped["structure"] if b.get("name") == "demographics"), None)
+        assert topk_block is not None
+        assert topk_block["columns"] == ["topk_R1", "topk_R2"]
         # System file metadata block is injected implicitly for multi-file inputs
         sys_blocks = [b for b in dumped["structure"] if b.get("name") == "files"]
         assert len(sys_blocks) == 1
@@ -3321,17 +3949,198 @@ class TestMultiSourceColumns:
         sys_cols = {c[0] if isinstance(c, list) else c for c in sysb.get("columns", [])}
         assert {"file_code", "file_name"}.issubset(sys_cols)
         expected_data = [
-            ["F0", 1, "Yes", "No", "USA", None],
-            ["F0", 2, "No", "Yes", "Canada", None],
-            ["F1", 3, "Mentioned", "Mentioned", "USA", "Canada"],
-            ["F1", 4, "Mentioned", "Not mentioned", "USA", None],
-            ["F2", 5, "True", "False", "USA", None],
-            ["F2", 6, "False", "True", "Canada", None],
+            ["F0", 1, "Yes", "No", "Mentioned", None],
+            ["F0", 2, "No", "Yes", "Not mentioned", None],
+            ["F1", 3, "Mentioned", "Mentioned", "Mentioned", "Not mentioned"],
+            ["F1", 4, "Mentioned", "Not mentioned", "Mentioned", None],
+            ["F2", 5, "True", "False", "Mentioned", None],
+            ["F2", 6, "False", "True", "Not mentioned", None],
         ]
         edf = pd.DataFrame(expected_data, columns=["file_code", "id", "topk_1", "topk_2", "topk_R1", "topk_R2"])
         # data_df may contain additional system columns (file_ind, file_name) in multi-file mode
         assert_frame_equal(data_df[edf.columns], edf, check_dtype=False, check_categorical=False)
         assert {"file_name"}.issubset(data_df.columns)
+
+
+class TestStructureMerge:
+    """Multi-file loads union block structure (blocks + columns), not metas[-1]."""
+
+    def test_column_subset_battery_unions_across_files(self, temp_dir):
+        """File1 lists a 3-column battery; file2 (LAST) lists a 2-column subset.
+        The combined meta must expose all 3 columns (the union), file2-only rows NaN
+        on the file1-only column."""
+        csv1 = temp_dir / "sm1.csv"
+        csv2 = temp_dir / "sm2.csv"
+        pd.DataFrame(
+            {"id": [1, 2], "trust_a": ["Yes", "No"], "trust_b": ["Yes", "No"], "trust_c": ["Yes", "No"]}
+        ).to_csv_file(csv1)
+        pd.DataFrame({"id": [3, 4], "trust_a": ["Yes", "No"], "trust_b": ["Yes", "No"]}).to_csv_file(csv2)
+        meta1 = temp_dir / "sm1.json"
+        meta2 = temp_dir / "sm2.json"
+        write_json(
+            meta1,
+            {
+                "file": "sm1.csv",
+                "structure": [
+                    {"name": "meta", "columns": ["id"]},
+                    {
+                        "name": "trust",
+                        "scale": {"categories": ["No", "Yes"], "ordered": True},
+                        "columns": ["trust_a", "trust_b", "trust_c"],
+                    },
+                ],
+            },
+        )
+        write_json(
+            meta2,
+            {
+                "file": "sm2.csv",
+                "structure": [
+                    {"name": "meta", "columns": ["id"]},
+                    {
+                        "name": "trust",
+                        "scale": {"categories": ["No", "Yes"], "ordered": True},
+                        "columns": ["trust_a", "trust_b"],
+                    },
+                ],
+            },
+        )
+
+        df, meta = read_and_process_data({"files": [{"file": str(meta1)}, {"file": str(meta2)}]}, return_meta=True)
+
+        # The combined meta must list all 3 columns (the union), not just file2's subset.
+        assert set(meta.structure["trust"].columns.keys()) == {"trust_a", "trust_b", "trust_c"}
+
+        assert "trust_c" in df.columns
+        by_id = df.set_index("id")
+        assert by_id.loc[1, "trust_c"] == "Yes" and by_id.loc[2, "trust_c"] == "No"
+        assert pd.isna(by_id.loc[3, "trust_c"]) and pd.isna(by_id.loc[4, "trust_c"])
+
+    def test_merge_data_metas_unions_columns_directly(self):
+        """Direct unit test of _merge_data_metas: column union, file order preserved."""
+        from salk_toolkit.io.meta import _merge_data_metas
+
+        m1 = make_data_meta(
+            {
+                "structure": [
+                    {
+                        "name": "trust",
+                        "scale": {"categories": ["No", "Yes"], "ordered": True},
+                        "columns": ["trust_a", "trust_b", "trust_c"],
+                    }
+                ]
+            }
+        )
+        m2 = make_data_meta(
+            {
+                "structure": [
+                    {
+                        "name": "trust",
+                        "scale": {"categories": ["No", "Yes"], "ordered": True},
+                        "columns": ["trust_a", "trust_b"],
+                    }
+                ]
+            }
+        )
+
+        merged = _merge_data_metas([m1, m2])
+        assert set(merged.structure["trust"].columns.keys()) == {"trust_a", "trust_b", "trust_c"}
+        assert list(merged.structure["trust"].columns.keys()) == ["trust_a", "trust_b", "trust_c"]
+
+    def test_block_only_in_first_file_survives(self, temp_dir):
+        """A block present only in file1 must survive the merge (today metas[-1] drops it)."""
+        csv1 = temp_dir / "bs1.csv"
+        csv2 = temp_dir / "bs2.csv"
+        pd.DataFrame({"id": [1, 2], "shared": ["Yes", "No"], "extra": ["Yes", "No"]}).to_csv_file(csv1)
+        pd.DataFrame({"id": [3, 4], "shared": ["Yes", "No"]}).to_csv_file(csv2)
+        meta1 = temp_dir / "bs1.json"
+        meta2 = temp_dir / "bs2.json"
+        write_json(
+            meta1,
+            {
+                "file": "bs1.csv",
+                "structure": [
+                    {"name": "meta", "columns": ["id"]},
+                    {"name": "common", "scale": {"categories": ["No", "Yes"]}, "columns": ["shared"]},
+                    {"name": "april_only", "scale": {"categories": ["No", "Yes"]}, "columns": ["extra"]},
+                ],
+            },
+        )
+        write_json(
+            meta2,
+            {
+                "file": "bs2.csv",
+                "structure": [
+                    {"name": "meta", "columns": ["id"]},
+                    {"name": "common", "scale": {"categories": ["No", "Yes"]}, "columns": ["shared"]},
+                ],
+            },
+        )
+        df, meta = read_and_process_data({"files": [{"file": str(meta1)}, {"file": str(meta2)}]}, return_meta=True)
+        assert "april_only" in meta.structure
+        assert "extra" in df.columns
+        by_id = df.set_index("id")
+        assert by_id.loc[1, "extra"] == "Yes"
+        assert pd.isna(by_id.loc[3, "extra"])
+
+    def test_identical_structures_are_noop(self):
+        """Identical structures across files -> merged structure equals the inputs'."""
+        from salk_toolkit.io.meta import _merge_data_metas
+
+        spec = {
+            "file": "x.csv",
+            "structure": [
+                {"name": "b1", "scale": {"categories": ["No", "Yes"], "ordered": True}, "columns": ["a", "c"]},
+                {"name": "b2", "columns": [["n", {"continuous": True}]]},
+            ],
+        }
+        m1 = make_data_meta(spec)
+        m2 = make_data_meta(spec)
+        merged = _merge_data_metas([m1, m2])
+        assert list(merged.structure.keys()) == ["b1", "b2"]
+        assert list(merged.structure["b1"].columns.keys()) == ["a", "c"]
+        assert merged.structure["b1"].scale.categories == ["No", "Yes"]
+        assert merged.structure["b1"].scale.ordered is True
+        assert merged.structure["b2"].columns["n"].continuous is True
+
+    def test_category_superset_unions(self):
+        """A column's categories union across files (existing order, then missing appended)."""
+        from salk_toolkit.io.meta import _merge_data_metas
+
+        m1 = make_data_meta(
+            {"file": "x.csv", "structure": [{"name": "b", "columns": [["q", {"categories": ["Low", "High"]}]]}]}
+        )
+        m2 = make_data_meta(
+            {
+                "file": "y.csv",
+                "structure": [{"name": "b", "columns": [["q", {"categories": ["High", "Mid", "VeryHigh"]}]]}],
+            }
+        )
+        merged = _merge_data_metas([m1, m2])
+        assert merged.structure["b"].columns["q"].categories == ["Low", "High", "Mid", "VeryHigh"]
+
+    def test_block_type_mismatch_raises(self):
+        """A block with conflicting types across files (plain vs topk) is a hard conflict."""
+        from salk_toolkit.io.meta import _merge_data_metas
+
+        m1 = make_data_meta({"file": "x.csv", "structure": [{"name": "b", "columns": ["q"]}]})  # plain
+        m2 = make_data_meta(
+            {
+                "file": "y.csv",
+                "structure": [{"type": "topk", "name": "b", "from_columns": "Q(\\d+)", "res_columns": "R\\1"}],
+            }
+        )  # topk
+        with pytest.raises(ValueError, match="type mismatch"):
+            _merge_data_metas([m1, m2])
+
+    def test_column_order_first_file_then_appended(self):
+        """Columns keep file1 order; later files' new columns are appended in their order."""
+        from salk_toolkit.io.meta import _merge_data_metas
+
+        m1 = make_data_meta({"file": "x.csv", "structure": [{"name": "b", "columns": ["a", "b", "c"]}]})
+        m2 = make_data_meta({"file": "y.csv", "structure": [{"name": "b", "columns": ["b", "d", "a", "e"]}]})
+        merged = _merge_data_metas([m1, m2])
+        assert list(merged.structure["b"].columns.keys()) == ["a", "b", "c", "d", "e"]
 
 
 class TestInferMetaDeepL:
@@ -3380,6 +4189,640 @@ class TestInferMetaDeepL:
         col_entry = main_block["columns"][0]
         col_meta = col_entry[2] if len(col_entry) > 2 else col_entry[1]
         assert "translate" in col_meta
+
+
+class TestPipelineSchema:
+    """Test pipeline schema validation for new block-processing fields."""
+
+    def test_plain_block_accepts_from_columns_and_subgroup_labels(self) -> None:
+        """Verify plain blocks accept from_columns and subgroup_labels without validation errors."""
+        from salk_toolkit.validation import soft_validate, ColumnBlockMeta
+
+        b = soft_validate(
+            {"name": "q", "from_columns": r"Q(\d+)_(\w+)", "subgroup_labels": {"1": {"1": "econ"}}, "columns": {}},
+            ColumnBlockMeta,
+        )
+        assert b.from_columns == r"Q(\d+)_(\w+)"
+        assert b.subgroup_labels == {"1": {"1": "econ"}}
+
+    def test_topk_schema_has_input_format_and_drops_old_fields(self):
+        """Verify TopKBlock has input_format and no longer has groups or translate_values."""
+        from salk_toolkit.validation import TopKBlock
+
+        assert "input_format" in TopKBlock.model_fields
+        assert "subgroup_labels" in TopKBlock.model_fields  # inherited
+        assert "groups" not in TopKBlock.model_fields
+        assert "translate_values" not in TopKBlock.model_fields
+
+    def test_legacy_nested_create_with_type_raises(self):
+        """A block carrying both `type` and a legacy `create` field must fail loud,
+        not silently drop the create directives via extra='ignore'."""
+        from salk_toolkit.validation import _default_block_type
+
+        with pytest.raises(ValueError, match="create"):
+            _default_block_type({"type": "plain", "name": "b", "create": {"type": "topk", "from_columns": "Q(\\d+)"}})
+
+    def test_legacy_maxdiff_block_fields_raise(self):
+        """Removed MaxDiff block-level fields (topics/sets/choice_mapping/items) must
+        raise a helpful migration error rather than be silently ignored."""
+        from salk_toolkit.validation import _default_block_type
+
+        for legacy in ("topics", "sets", "choice_mapping", "items"):
+            with pytest.raises(ValueError, match=legacy):
+                _default_block_type({"type": "maxdiff", "name": "md", legacy: "whatever"})
+
+    def test_legacy_topk_block_fields_raise(self):
+        """Removed TopK block-level fields (translate_values/groups) must raise."""
+        from salk_toolkit.validation import _default_block_type
+
+        for legacy in ("translate_values", "groups"):
+            with pytest.raises(ValueError, match=legacy):
+                _default_block_type({"type": "topk", "name": "t", legacy: {"1": "x"}})
+
+    def test_onehot_choices_rejects_dict(self):
+        """OneHotBlock no longer accepts the unreachable Dict[str, list] choices form;
+        a dict must fail validation rather than silently corrupt to its keys."""
+        from salk_toolkit.validation import soft_validate, OneHotBlock
+
+        with pytest.raises(Exception):
+            soft_validate(
+                {"type": "onehot", "name": "sm", "from_columns": r"M_(\d+)", "choices": {"g": ["A", "B"]}},
+                OneHotBlock,
+                warnings=True,
+            )
+
+    def test_topk_segments_ranked_and_unranked(self):
+        """Verify segments() returns chain for ranked formats and single entry for flat ones."""
+        from salk_toolkit.validation import soft_validate, TopKBlock
+
+        b = soft_validate(
+            {
+                "type": "topk",
+                "name": "t",
+                "from_columns": ["R1", "R2", "R3"],
+                "res_columns": ["R1", "R2", "R3"],
+                "input_format": "ranked_leftpack",
+                "columns": {"R1": {}, "R2": {}, "R3": {}},
+            },
+            TopKBlock,
+        )
+        assert b.segments() == [
+            (["R1"], ["R2", "R3"], True),
+            (["R2"], ["R3"], True),
+            (["R1", "R2", "R3"], None, False),
+        ]
+        b2 = b.model_copy(update={"input_format": "leftpacked"})
+        assert b2.segments() == [(["R1", "R2", "R3"], None, False)]
+
+    def test_maxdiff_schema_has_input_format_and_renamed_fields(self):
+        """Verify MaxDiffBlock has input_format; choice_mapping/items/translate removed."""
+        from salk_toolkit.validation import MaxDiffBlock
+
+        assert "input_format" in MaxDiffBlock.model_fields
+        assert "choice_mapping" not in MaxDiffBlock.model_fields
+        assert "items" not in MaxDiffBlock.model_fields
+        assert "translate" not in MaxDiffBlock.model_fields
+
+    def test_onehot_block_dispatched_by_discriminator(self):
+        """Verify type=onehot is dispatched to OneHotBlock by the discriminated union."""
+        from salk_toolkit.validation import soft_validate, DataMeta, OneHotBlock
+
+        meta = soft_validate(
+            {
+                "structure": {
+                    "sm": {
+                        "type": "onehot",
+                        "name": "sm",
+                        "from_columns": r"M_(\d+)",
+                        "columns": {},
+                    }
+                }
+            },
+            DataMeta,
+        )
+        assert isinstance(meta.structure["sm"], OneHotBlock)
+        assert meta.structure["sm"].input_format == "leftpacked"
+
+    def test_onehot_block_fields(self):
+        """Verify OneHotBlock fields validate and default correctly."""
+        from salk_toolkit.validation import soft_validate, OneHotBlock
+
+        b = soft_validate(
+            {
+                "type": "onehot",
+                "name": "sm",
+                "from_columns": r"vQ12_M_(\d+)",
+                "input_format": "leftpacked",
+                "choices": ["Facebook", "TikTok"],
+                "res_prefix": "sm_",
+                "na_vals": ["99"],
+            },
+            OneHotBlock,
+        )
+        assert b.input_format == "leftpacked"
+        assert b.choices == ["Facebook", "TikTok"]
+        assert b.res_prefix == "sm_"
+        assert b.na_vals == ["99"]
+        assert not hasattr(b, "segments")
+
+    def test_topk_leftpacked_skip_passthrough(self, meta_file, csv_file):
+        """input_format=leftpacked skips the transform and passes R1..Rk through."""
+        pd.DataFrame({"X_R1": ["A", "B"], "X_R2": ["B", None]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "topk",
+                    "name": "x",
+                    "from_columns": ["X_R1", "X_R2"],
+                    "res_columns": ["X_R1", "X_R2"],
+                    "input_format": "leftpacked",
+                    "scale": {"categories": "infer"},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        _, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        out = meta_obj.structure["x"]
+        assert list(out.columns.keys()) == ["X_R1", "X_R2"]
+        assert out.input_format == "leftpacked"
+        assert out.segments() == [(["X_R1", "X_R2"], None, False)]
+
+    def test_topk_ranked_leftpack_segments_chain(self, meta_file, csv_file):
+        """input_format=ranked_leftpack skips transform and segments() returns ordered chain."""
+        pd.DataFrame({"X_R1": ["A", "B"], "X_R2": ["B", None]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "topk",
+                    "name": "x",
+                    "from_columns": ["X_R1", "X_R2"],
+                    "res_columns": ["X_R1", "X_R2"],
+                    "input_format": "ranked_leftpack",
+                    "scale": {"categories": "infer"},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        _, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        assert meta_obj.structure["x"].segments() == [
+            (["X_R1"], ["X_R2"], True),
+            (["X_R1", "X_R2"], None, False),
+        ]
+
+    def test_topk_leftpacked_mismatch_raises(self, meta_file, csv_file):
+        """res_columns != from_columns hard-fails on skip transforms."""
+        pd.DataFrame({"X_R1": ["A"]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "topk",
+                    "name": "x",
+                    "from_columns": ["X_R1"],
+                    "res_columns": ["X_R1", "X_R2"],
+                    "input_format": "leftpacked",
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        with pytest.raises(ValueError, match="res_columns to match from_columns"):
+            read_annotated_data(str(meta_file), return_meta=True)
+
+    def test_topk_ranked_onehot_raises(self, meta_file, csv_file):
+        """ranked_onehot is a scaffold — hard-fails with NotImplementedError."""
+        pd.DataFrame({"Qa": [1, 2], "Qb": [2, 1]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "topk",
+                    "name": "x",
+                    "from_columns": r"Q(\w)",
+                    "res_columns": r"R\1",
+                    "agg_index": 1,
+                    "input_format": "ranked_onehot",
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        with pytest.raises(NotImplementedError, match="ranked_onehot"):
+            read_annotated_data(str(meta_file), return_meta=True)
+
+    def test_topk_truncate_drops_non_na_hard_fails(self, meta_file, csv_file):
+        """k=N with more than N non-NA selections per row hard-fails."""
+        pd.DataFrame({"Qa": ["A", None], "Qb": ["A", "B"], "Qc": ["A", "C"]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "topk",
+                    "name": "x",
+                    "from_columns": r"Q(\w)",
+                    "res_columns": r"R\1",
+                    "agg_index": 1,
+                    "k": 2,
+                    "na_vals": [],
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        with pytest.raises(ValueError, match="truncation to k=2"):
+            read_annotated_data(str(meta_file), return_meta=True)
+
+    def test_maxdiff_multi_sibling_keyed_end_to_end(self, meta_file, csv_file):
+        """Multi-sibling maxdiff with keyed choice_sets produces N sibling blocks.
+
+        `scale.translate` is flat per-block (shared topic universe across siblings); only
+        `choice_sets` supports the sibling-keyed dict form.
+        """
+        parquet_file = csv_file.with_suffix(".parquet")
+        pd.DataFrame(
+            {
+                "Q_g1_b": ["A", "B"],
+                "Q_g1_w": ["B", "A"],
+                "Q_g1_set": [["A", "B"], ["A", "B"]],
+                "Q_g2_b": ["A", "B"],
+                "Q_g2_w": ["B", "A"],
+                "Q_g2_set": [["A", "B"], ["A", "B"]],
+                "V": [1, 1],
+            }
+        ).to_parquet(parquet_file)
+        meta = {
+            "file": str(parquet_file),
+            "structure": [
+                {
+                    "type": "maxdiff",
+                    "name": "md",
+                    "from_columns": r"Q_(\w+)_b",
+                    "best_columns": r"Q_(\w+)_b",
+                    "worst_columns": r"Q_(\w+)_w",
+                    "set_columns": r"Q_\1_set",
+                    "setindex_column": "V",
+                    "subgroup_labels": {"1": {"g1": "g1", "g2": "g2"}},
+                    "choice_sets": {
+                        "g1": [[[1, 2]]],
+                        "g2": [[[1, 2]]],
+                    },
+                    "scale": {"translate": {"1": "A", "2": "B"}},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        _, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        assert "md_g1" in meta_obj.structure
+        assert "md_g2" in meta_obj.structure
+
+    def test_maxdiff_single_sibling_rejects_keyed_choice_sets(self, meta_file, csv_file):
+        """Single-sibling maxdiff with dict-shaped choice_sets → hard fail."""
+        pd.DataFrame(
+            {
+                "Q_b": ["A", "B"],
+                "Q_w": ["B", "A"],
+                "Q_set": [["A", "B"], ["A", "B"]],
+                "V": [1, 1],
+            }
+        ).to_parquet(csv_file.with_suffix(".parquet"))
+        meta = {
+            "file": str(csv_file.with_suffix(".parquet")),
+            "structure": [
+                {
+                    "type": "maxdiff",
+                    "name": "md",
+                    "best_columns": ["Q_b"],
+                    "worst_columns": ["Q_w"],
+                    "set_columns": ["Q_set"],
+                    "setindex_column": "V",
+                    "choice_sets": {"econ": [[[1, 2]]]},
+                    "scale": {"translate": {"1": "A", "2": "B"}},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        with pytest.raises(ValueError, match="single sibling.*keyed"):
+            read_annotated_data(str(meta_file), return_meta=True)
+
+    def test_maxdiff_resolved_three_independent_regexes(self, meta_file, csv_file):
+        """input_format=resolved with three regexes aligned by capture-group value."""
+        parquet_file = csv_file.with_suffix(".parquet")
+        pd.DataFrame(
+            {
+                "Q1_b_1": ["A", "B"],
+                "Q1_w_1": ["B", "A"],
+                "Q1_set_abc_1": [["A", "B"], ["A", "B"]],
+                "Q1_b_2": ["B", "A"],
+                "Q1_w_2": ["A", "B"],
+                "Q1_set_abc_2": [["A", "B"], ["A", "B"]],
+            }
+        ).to_parquet(parquet_file)
+        meta = {
+            "file": str(parquet_file),
+            "structure": [
+                {
+                    "type": "maxdiff",
+                    "name": "md",
+                    "input_format": "resolved",
+                    "best_columns": r"Q1_b_(\d+)",
+                    "worst_columns": r"Q1_w_(\d+)",
+                    "set_columns": r"Q1_set_abc_(\d+)",
+                    "scale": {"categories": ["A", "B"]},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        _, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        out = meta_obj.structure["md"]
+        assert sorted(out.best_columns) == ["Q1_b_1", "Q1_b_2"]
+        assert sorted(out.worst_columns) == ["Q1_w_1", "Q1_w_2"]
+        assert sorted(out.set_columns) == ["Q1_set_abc_1", "Q1_set_abc_2"]
+        segs = out.segments()
+        assert len(segs) == 4
+
+    def test_maxdiff_resolved_explicit_lists(self, meta_file, csv_file):
+        """input_format=resolved with explicit column lists aligned positionally."""
+        parquet_file = csv_file.with_suffix(".parquet")
+        pd.DataFrame(
+            {
+                "best1": ["A", "B"],
+                "worst1": ["B", "A"],
+                "set1": [["A", "B"], ["A", "B"]],
+                "best2": ["B", "A"],
+                "worst2": ["A", "B"],
+                "set2": [["A", "B"], ["A", "B"]],
+            }
+        ).to_parquet(parquet_file)
+        meta = {
+            "file": str(parquet_file),
+            "structure": [
+                {
+                    "type": "maxdiff",
+                    "name": "md",
+                    "input_format": "resolved",
+                    "best_columns": ["best1", "best2"],
+                    "worst_columns": ["worst1", "worst2"],
+                    "set_columns": ["set1", "set2"],
+                    "scale": {"categories": ["A", "B"]},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        _, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        out = meta_obj.structure["md"]
+        assert out.best_columns == ["best1", "best2"]
+        assert len(out.segments()) == 4
+
+    def test_maxdiff_resolved_incomplete_alignment_hard_fails(self, meta_file, csv_file):
+        """Missing a role column for one capture key → hard fail."""
+        parquet_file = csv_file.with_suffix(".parquet")
+        pd.DataFrame(
+            {
+                "Q1_b_1": ["A"],
+                "Q1_w_1": ["B"],
+            }
+        ).to_parquet(parquet_file)
+        meta = {
+            "file": str(parquet_file),
+            "structure": [
+                {
+                    "type": "maxdiff",
+                    "name": "md",
+                    "input_format": "resolved",
+                    "best_columns": r"Q1_b_(\d+)",
+                    "worst_columns": r"Q1_w_(\d+)",
+                    "set_columns": r"Q1_set_abc_(\d+)",
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        with pytest.raises(ValueError, match="incomplete alignment"):
+            read_annotated_data(str(meta_file), return_meta=True)
+
+    def test_onehot_leftpacked_explicit_choices(self, meta_file, csv_file):
+        """Leftpacked onehot with explicit choices emits one boolean column per choice."""
+        pd.DataFrame({"M_1": ["FB", "TT"], "M_2": ["TT", None], "M_3": [None, "FB"]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "onehot",
+                    "name": "sm",
+                    "from_columns": r"M_(\d+)",
+                    "input_format": "leftpacked",
+                    "choices": ["FB", "TT"],
+                    "res_prefix": "sm_",
+                    "scale": {"categories": [False, True]},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        ndf, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        assert sorted(meta_obj.structure["sm"].columns.keys()) == ["sm_FB", "sm_TT"]
+        assert list(ndf["sm_FB"]) == [True, True]
+        assert list(ndf["sm_TT"]) == [True, True]
+
+    def test_onehot_leftpacked_inferred_choices(self, meta_file, csv_file):
+        """choices=None derives the sorted union from observed cells."""
+        pd.DataFrame({"M_1": ["A", "B"], "M_2": ["B", None]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "onehot",
+                    "name": "x",
+                    "from_columns": r"M_(\d+)",
+                    "input_format": "leftpacked",
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        _, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        assert sorted(meta_obj.structure["x"].columns.keys()) == ["x_A", "x_B"]
+
+    def test_onehot_unknown_value_hard_fails(self, meta_file, csv_file):
+        """Explicit choices that don't cover observed cells hard-fails."""
+        pd.DataFrame({"M_1": ["A", "ZZ"]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "onehot",
+                    "name": "x",
+                    "from_columns": ["M_1"],
+                    "input_format": "leftpacked",
+                    "choices": ["A"],
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        with pytest.raises(ValueError, match="not in choices"):
+            read_annotated_data(str(meta_file), return_meta=True)
+
+    def test_onehot_wide_passthrough(self, meta_file, csv_file):
+        """input_format=wide: columns pass through as-is; choices inferred from res_prefix when None."""
+        pd.DataFrame({"sm_FB": [True, False], "sm_TT": [False, True]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "onehot",
+                    "name": "sm",
+                    "from_columns": ["sm_FB", "sm_TT"],
+                    "input_format": "wide",
+                    "res_prefix": "sm_",
+                    "scale": {"categories": [False, True]},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        ndf, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        out = meta_obj.structure["sm"]
+        assert out.input_format == "wide"
+        assert sorted(out.columns.keys()) == ["sm_FB", "sm_TT"]
+        assert out.choices == ["FB", "TT"]
+
+
+class TestInternalPipelineHelpers:
+    """Tests for _match_columns and _subgroup_explode internal helpers."""
+
+    def test_match_columns_regex(self):
+        """Regex pattern matches columns against DataFrame columns."""
+        import pandas as pd
+        from salk_toolkit.io.create_blocks import _match_columns
+        from salk_toolkit.validation import soft_validate, ColumnBlockMeta
+
+        df = pd.DataFrame(columns=["Q1_a", "Q1_b", "Q2_a", "other"])
+        b = soft_validate({"name": "t", "from_columns": r"Q(\d+)_(\w+)", "columns": {}}, ColumnBlockMeta)
+        assert _match_columns(b, df) == ["Q1_a", "Q1_b", "Q2_a"]
+
+    def test_match_columns_list(self):
+        """List pattern returns exactly the listed columns."""
+        import pandas as pd
+        from salk_toolkit.io.create_blocks import _match_columns
+        from salk_toolkit.validation import soft_validate, ColumnBlockMeta
+
+        df = pd.DataFrame(columns=["a", "b", "c"])
+        b = soft_validate({"name": "t", "from_columns": ["a", "c"], "columns": {}}, ColumnBlockMeta)
+        assert _match_columns(b, df) == ["a", "c"]
+
+    def test_match_columns_empty_raises(self):
+        """ValueError raised when no columns match the pattern."""
+        import pandas as pd
+        import pytest
+        from salk_toolkit.io.create_blocks import _match_columns
+        from salk_toolkit.validation import soft_validate, ColumnBlockMeta
+
+        b = soft_validate({"name": "t", "from_columns": r"X_(\w+)", "columns": {}}, ColumnBlockMeta)
+        with pytest.raises(ValueError, match="No columns matched"):
+            _match_columns(b, pd.DataFrame(columns=["Q2_a"]))
+
+    def test_explode_topk_one_nonagg_dim(self):
+        """TopK with one non-agg dimension produces one sibling per subgroup value."""
+        import pandas as pd
+        from salk_toolkit.io.create_blocks import _subgroup_explode
+        from salk_toolkit.validation import soft_validate, TopKBlock
+
+        df = pd.DataFrame(columns=["Q7r1c1", "Q7r1c2", "Q7r2c1", "Q7r2c2"])
+        b = soft_validate(
+            {
+                "type": "topk",
+                "name": "io",
+                "from_columns": r"Q7r(\d+)c(\d+)",
+                "res_columns": r"Q7r\1_R\2",
+                "agg_index": 2,
+                "subgroup_labels": {"1": {"1": "econ", "2": "health"}},
+            },
+            TopKBlock,
+        )
+        sibs = _subgroup_explode(b, df)
+        assert [s.name for s in sibs] == ["io_econ", "io_health"]
+        assert sibs[0].from_columns == ["Q7r1c1", "Q7r1c2"]
+
+    def test_explode_plain_multi_capture(self):
+        """Multi-capture regex with no agg_index produces one sibling per unique column."""
+        import pandas as pd
+        from salk_toolkit.io.create_blocks import _subgroup_explode
+        from salk_toolkit.validation import soft_validate, ColumnBlockMeta
+
+        df = pd.DataFrame(columns=["Q1_a", "Q1_b", "Q2_a", "Q2_b"])
+        b = soft_validate({"name": "p", "from_columns": r"Q(\d+)_(\w+)", "columns": {}}, ColumnBlockMeta)
+        sibs = _subgroup_explode(b, df)
+        assert {s.name for s in sibs} == {"p_1_a", "p_1_b", "p_2_a", "p_2_b"}
+
+    def test_explode_no_subgroups_bare_name(self):
+        """Single capture group that is the agg axis yields one sibling with block name unchanged."""
+        import pandas as pd
+        from salk_toolkit.io.create_blocks import _subgroup_explode
+        from salk_toolkit.validation import soft_validate, TopKBlock
+
+        df = pd.DataFrame(columns=["Qa", "Qb"])
+        b = soft_validate(
+            {"type": "topk", "name": "io", "from_columns": r"Q(\w)", "res_columns": r"R\1", "agg_index": 1}, TopKBlock
+        )
+        sibs = _subgroup_explode(b, df)
+        assert len(sibs) == 1
+        assert sibs[0].name == "io"
+        assert sibs[0].from_columns == ["Qa", "Qb"]
+
+    def test_explode_list_from_columns_single_sibling(self):
+        """List from_columns always yields exactly one sibling."""
+        import pandas as pd
+        from salk_toolkit.io.create_blocks import _subgroup_explode
+        from salk_toolkit.validation import soft_validate, ColumnBlockMeta
+
+        df = pd.DataFrame(columns=["a", "b"])
+        b = soft_validate({"name": "p", "from_columns": ["a", "b"], "columns": {}}, ColumnBlockMeta)
+        sibs = _subgroup_explode(b, df)
+        assert len(sibs) == 1
+        assert sibs[0].name == "p"
+        assert sibs[0].from_columns == ["a", "b"]
+
+    def test_explode_agg_index_out_of_range_raises(self):
+        """agg_index beyond the regex group count hard-fails."""
+        import pandas as pd
+        import pytest
+        from salk_toolkit.io.create_blocks import _subgroup_explode
+        from salk_toolkit.validation import soft_validate, TopKBlock
+
+        df = pd.DataFrame(columns=["Qa", "Qb"])
+        b = soft_validate(
+            {"type": "topk", "name": "io", "from_columns": r"Q(\w)", "res_columns": r"R\1", "agg_index": 5},
+            TopKBlock,
+        )
+        with pytest.raises(ValueError, match="agg_index=5 out of range"):
+            _subgroup_explode(b, df)
+
+    def test_get_subgroup_config_strict_dispatch(self):
+        """_get_subgroup_config enforces flat-for-single, keyed-for-multi."""
+        from salk_toolkit.io.create_blocks import _get_subgroup_config
+
+        # Single sibling + flat form: pass-through.
+        flat_cs = [[[1, 2]]]
+        assert _get_subgroup_config(flat_cs, "md", "md") is flat_cs
+        flat_cm = {"1": "A"}
+        assert _get_subgroup_config(flat_cm, "md", "md") is flat_cm
+
+        # Single sibling + keyed form: hard fail.
+        with pytest.raises(ValueError, match="single sibling.*keyed"):
+            _get_subgroup_config({"g1": [[[1, 2]]]}, "md", "md")
+        with pytest.raises(ValueError, match="single sibling.*keyed"):
+            _get_subgroup_config({"g1": {"1": "A"}}, "md", "md")
+
+        # Multi-sibling + flat form: hard fail.
+        with pytest.raises(ValueError, match="multiple siblings.*flat"):
+            _get_subgroup_config(flat_cs, "md_g1", "md")
+
+        # Multi-sibling + keyed form, valid key: returns the entry.
+        picked = _get_subgroup_config({"g1": [[[1, 2]]], "g2": [[[3, 4]]]}, "md_g1", "md")
+        assert picked == [[[1, 2]]]
+
+        # Multi-sibling + keyed form, missing key: hard fail.
+        with pytest.raises(ValueError, match="sibling 'g2' missing"):
+            _get_subgroup_config({"g1": [[[1, 2]]]}, "md_g2", "md")
+
+        # None returns None regardless of sibling shape.
+        assert _get_subgroup_config(None, "md", "md") is None
+        assert _get_subgroup_config(None, "md_g1", "md") is None
 
 
 if __name__ == "__main__":

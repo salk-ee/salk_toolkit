@@ -10,6 +10,9 @@ from salk_toolkit.validation import (
     ColumnBlockMeta,
     ColumnMeta,
     DataMeta,
+    MaxDiffBlock,
+    OneHotBlock,
+    TopKBlock,
     soft_validate,
 )
 
@@ -21,7 +24,11 @@ from salk_toolkit.io.core import (
     _deterministic_categories_and_values,
     _is_series_of_lists,
 )
-from salk_toolkit.io.create_blocks import _create_new_columns_and_metas
+from salk_toolkit.io.create_blocks import (
+    _combine_first_preserving_order,
+    _demote_to_plain,
+    _process_block,
+)
 from salk_toolkit.io.meta import _fix_meta_categories
 
 
@@ -263,24 +270,38 @@ def _build_columns(bundle: SourceBundle, meta_obj: DataMeta, hooks: HookEnv) -> 
         if group.subgroup_transform is not None:
             ndf_df = _apply_subgroup_transform(bundle, ndf_df, group.subgroup_transform, g_cols, hooks)
 
-        # Handle create blocks - may add new groups to structure
-        if group.create is not None:
-            create_source_df = ndf_df.combine_first(raw_data_concat) if not raw_data_concat.empty else ndf_df
-            for newdf, newmeta_dict in _create_new_columns_and_metas(
-                create_source_df,
-                group,
-                topics=hooks.constants.get("topics", None),
-                sets=hooks.constants.get("sets", None),
-            ):
-                ndf_df = ndf_df.combine_first(newdf)
-                new_group_meta = soft_validate(newmeta_dict, ColumnBlockMeta)
-                new_structure[new_group_meta.name] = new_group_meta
-            group = group.model_copy(update={"create": None})  # The processed group no longer creates
-
-        new_structure[group.name] = group
+        if isinstance(group, (TopKBlock, MaxDiffBlock, OneHotBlock)):
+            # Specialized blocks: any explicitly declared raw columns were already processed
+            # as plain columns above; they are kept under a demoted plain block while the
+            # transform fans the block out into its derived sibling blocks.
+            demoted = _demote_to_plain(group)
+            new_structure[demoted.name] = demoted
+            source_df = _combine_first_preserving_order(ndf_df, raw_data_concat)
+            for sdf, smeta in _process_block(group, source_df):
+                for c in sdf.columns:
+                    ndf_df[c] = sdf[c]
+                new_structure[smeta.name] = smeta
+        else:
+            new_structure[group.name] = group
 
     # Update meta with new structure (including any groups created during processing)
     return ndf_df, meta_obj.model_copy(update={"structure": new_structure})
+
+
+def _recast_hook_created_columns(ndf_df: pd.DataFrame, meta_obj: DataMeta) -> None:
+    """Snap columns that postprocessing created (or replaced) back to their declared
+    categorical dtype. Columns already categorical were cast during the main pass and
+    are left untouched, preserving their inferred category order."""
+    for group in meta_obj.structure.values():
+        if group.type != "plain":
+            continue
+        prefix = group.scale.col_prefix if group.scale and group.scale.col_prefix else ""
+        for orig_cn, mcm in group.columns.items():
+            cn = prefix + orig_cn
+            if cn not in ndf_df.columns or ndf_df[cn].dtype.name == "category":
+                continue
+            s, _ = _resolve_categories(ndf_df[cn], mcm, cn)
+            ndf_df[cn] = s
 
 
 def _apply_exclusions(ndf_df: pd.DataFrame, meta_obj: DataMeta, opts: ProcessOpts) -> Dataset:
@@ -313,6 +334,7 @@ def process(bundle: SourceBundle, meta_obj: DataMeta, opts: ProcessOpts) -> Data
 
     if meta_obj.postprocessing is not None:
         ndf_df = hooks.exec_df(meta_obj.postprocessing, ndf_df)
+        _recast_hook_created_columns(ndf_df, meta_obj)
 
     # Fix categories after postprocessing; also replaces "infer" with the actual categories
     meta_obj = _fix_meta_categories(meta_obj, ndf_df, warnings=True)

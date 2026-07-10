@@ -84,17 +84,18 @@
     },
     {
       "name": "issue_importance",
-      "create": {
-        "type": "topk",
-        "from_columns": "Q3r(\\d+)",
-        "res_columns": "Q3_R\\1",
-        "agg_index": 1,
-        "na_vals": [
-          "NO TO: Ekonomika",
-          "NO TO: Sveikata",
-          "NO TO: Gynyba",
-          "NO TO: Švietimas"
-        ],
+      "type": "topk",
+      "from_columns": "Q3r(\\d+)",
+      "res_columns": "Q3_R\\1",
+      "agg_index": 1,
+      "na_vals": [
+        "NO TO: Ekonomika",
+        "NO TO: Sveikata",
+        "NO TO: Gynyba",
+        "NO TO: Švietimas"
+      ],
+      "scale": {
+        "categories": "infer",
         "translate_after": {
           "1": "Economy",
           "2": "Healthcare",
@@ -102,7 +103,6 @@
           "4": "Education"
         }
       },
-      "scale": { "categories": "infer" },
       "columns": []
     }
   ]
