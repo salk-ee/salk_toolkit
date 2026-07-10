@@ -34,6 +34,7 @@ __all__ = [
 from salk_toolkit.io.core import Dataset, HookEnv, ProcessOpts, SourceBundle  # noqa: F401
 from salk_toolkit.io.datasets import infer_meta, read_and_process_data, read_annotated_data
 from salk_toolkit.io.meta import (
+    _fix_meta_categories,  # noqa: F401  # imported from here by salk_internal_package.sampling.meta
     extract_column_meta,
     fix_df_with_meta,  # noqa: F401  # imported from here by dashboard
     group_columns_dict,
