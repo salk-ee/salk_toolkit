@@ -372,7 +372,6 @@ def read_and_process_data(
     *,
     ignore_exclusions: bool = ...,
     add_original_inds: bool = ...,
-    **kwargs: object,
 ) -> pd.DataFrame: ...
 
 
@@ -385,7 +384,6 @@ def read_and_process_data(
     *,
     ignore_exclusions: bool = ...,
     add_original_inds: bool = ...,
-    **kwargs: object,
 ) -> tuple[pd.DataFrame, DataMeta]: ...
 
 
@@ -396,7 +394,6 @@ def read_and_process_data(
     skip_postprocessing: bool = False,
     ignore_exclusions: bool = False,
     add_original_inds: bool = False,
-    **kwargs: Any,
 ) -> pd.DataFrame | tuple[pd.DataFrame, DataMeta]:
     """Read and process data according to a description object.
 
@@ -411,8 +408,6 @@ def read_and_process_data(
     Returns:
         DataFrame, or tuple of (DataFrame, metadata) if return_meta=True.
     """
-    if kwargs:
-        warn(f"read_and_process_data got unknown arguments which are ignored: {sorted(kwargs)}")
     if constants is None:
         constants = {}
     if isinstance(desc, str):

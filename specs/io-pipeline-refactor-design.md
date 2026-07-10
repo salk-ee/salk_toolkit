@@ -150,16 +150,16 @@ return `Dataset`.
   `@overload` pair on `return_meta` — the only overloads remaining, without the duplicated
   `if return_meta:` double-call.
 - `read_and_process_data(desc, return_meta=False, constants=None,
-  skip_postprocessing=False, *, ignore_exclusions=False, add_original_inds=False,
-  **kwargs)` — desc normalization (str / dict / `DataDescription`), inline `data` dicts,
+  skip_postprocessing=False, *, ignore_exclusions=False, add_original_inds=False)`
+  — desc normalization (str / dict / `DataDescription`), inline `data` dicts,
   then loading via the same `_load_data_files` as everything else (its private
   load-concat path and its duplicate `_fix_meta_categories` pass are deleted —
   category reconciliation happens once, inside `_load_data_files`) followed by the consumption stages through `HookEnv`:
   preprocessing, `filter`, `_perform_merges` (semantics unchanged: provenance columns
   dropped on the merge side, overlap error, row-loss warning, `fix_df_with_meta` on the
-  merged frame), postprocessing gated by `skip_postprocessing`. Unknown `**kwargs` keys
-  produce a warning instead of being silently swallowed (this surfaces the existing
-  `file_map=` call in SIP's `proxy_builder.py`, which has never had an effect).
+  merged frame), postprocessing gated by `skip_postprocessing`. The `**kwargs` swallow is gone
+  entirely: unknown arguments are now a TypeError. (Its only caller was the ineffective
+  `file_map=` in SIP's `proxy_builder.py`, removed by salk_internal_package#95.)
 - `io/__init__.py` re-exports the current `__all__` plus the names other modules import
   from `salk_toolkit.io` today: `fix_df_with_meta` (dashboard), `read_json` (explorer,
   tests) and `_fix_meta_categories` (SIP `sampling/meta.py`). In-repo test imports of
@@ -217,8 +217,6 @@ Each phase lands as its own commit with the full test suite green:
 
 ## Out of scope
 
-- Fixing `proxy_builder.py`'s ineffective `file_map=` argument (a SIP change; the new
-  unknown-kwarg warning makes it visible).
 - Honoring `file_map=` as a real per-call parameter (the global `set_file_map` remains the
-  mechanism).
+  mechanism; SIP's ineffective `file_map=` threading is removed by salk_internal_package#95).
 - Any behavior change to hooks, create blocks, category inference, or merge semantics.
