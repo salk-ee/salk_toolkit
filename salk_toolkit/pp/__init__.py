@@ -32,15 +32,13 @@ from .registry import (
     registry as registry,
     registry_meta as registry_meta,
     stk_plot as stk_plot,
-    stk_plot_defaults as stk_plot_defaults,
     get_plot_fn as get_plot_fn,
     get_plot_meta as get_plot_meta,
     _ensure_plot_registry_loaded as _ensure_plot_registry_loaded,
-    _get_all_plots as _get_all_plots,
-    _get_plot_fn as _get_plot_fn,
     _stk_deregister as _stk_deregister,
 )
 from .meta import (
+    _extract_column_meta_cached as _extract_column_meta_cached,
     _update_data_meta_with_pp_desc as _update_data_meta_with_pp_desc,
 )
 from .matching import (
