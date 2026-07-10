@@ -7,7 +7,7 @@ description: Create, validate, align and audit stk (salk_toolkit) JSON data meta
 
 ## Overview
 
-STK annotations are JSON files (`*_meta.json`) that describe how to transform raw survey data (`.sav`, `.csv`, `.parquet`) into a standardised, English-language, typed DataFrame. The authoritative schema lives in `salk_toolkit/validation.py` (`DataMeta`); processing logic lives in `salk_toolkit/io.py`.
+STK annotations are JSON files (`*_meta.json`) that describe how to transform raw survey data (`.sav`, `.csv`, `.parquet`) into a standardised, English-language, typed DataFrame. The authoritative schema lives in `salk_toolkit/validation.py` (`DataMeta`); processing logic lives in the `salk_toolkit/io/` package (`pipeline.py` for plain blocks, `create_blocks.py` for topk/maxdiff/onehot).
 
 Always read these two files before starting annotation work — the schema evolves.
 
@@ -102,6 +102,26 @@ df = read_and_process_data({
     ]
 })
 ```
+
+### Combining waves: make translations agree (IMPORTANT)
+
+Each wave is processed with its own meta and the outputs are concatenated; the
+final category list is the **union of the distinct output values**. There is **no
+warning** if waves disagree, so two pitfalls are silent:
+
+- **Translations must map to the same canonical name.** If wave 1 maps `"1" → "Healthcare"`
+  and wave 2 maps `"1" → "Health care"` (or leaves it untranslated), you get two
+  separate categories that should have been one. The same raw index (`1`..`9`) can
+  legitimately mean *different things* in different surveys — that's exactly why the
+  loader can't auto-detect this. It is your job to make the per-wave `translate` /
+  `translate_after` dicts resolve to an identical set of output names.
+- **Differing menus across waves are not flagged.** If an item was offered in wave 2
+  but not wave 1, it simply appears in the union with NA for wave-1 rows. The ranking
+  models (TopK/MaxDiff `segments()`) compare a respondent's picks against the *full*
+  merged category set, so wave-1 respondents will be treated as ranking their picks
+  above an item they were never shown. If wave menus genuinely differ, model the
+  waves separately (or carry the choice set explicitly) rather than relying on the
+  union.
 
 ## JSON Structure Quick Reference
 
@@ -254,88 +274,74 @@ Every block in the annotation (the top-level `DataMeta`, any entry in `structure
 
 If you find yourself wanting to explain a choice to the user in chat, write that explanation into `comment` as well — future readers of the JSON will thank you.
 
-## TopK Blocks
+## TopK / MaxDiff / OneHot Blocks
+
+These specialized block types carry a top-level `type` discriminator and are
+processed by `_process_block` in `salk_toolkit/io/create_blocks.py`. The full reference (all fields,
+`input_format` variants, the translate pipeline, and migration from old files)
+lives in **[specs/block-processing.md](../../../specs/block-processing.md)** — read
+it before authoring these blocks. The essentials:
+
+> **No nested `create`.** The legacy `"create": { ... }` wrapper and the removed
+> block-level fields (`topics`, `sets`, `choice_mapping`, `items`, `translate_values`,
+> `groups`) now **raise at load time**. Put `type` at the top level and flatten the
+> rest onto the block.
+
+### TopK
 
 For "select top K" questions (e.g. "which 3 issues matter most?"):
 
 ```json
 {
+  "type": "topk",
   "name": "issue_importance_top3",
-  "create": {
-    "type": "topk",
-    "from_columns": "Q6r(\\d+)",
-    "res_columns": "Q6p_R\\1",
-    "agg_index": 1,
-    "na_vals": ["NO TO: ...", "..."],
-    "translate_after": { "1": "Cost of living", "2": "Healthcare" }
-  },
-  "scale": { "categories": "infer" },
+  "from_columns": "Q6r(\\d+)",
+  "res_columns": "Q6p_R\\1",
+  "agg_index": 1,
+  "na_vals": ["NO TO: ...", "..."],
+  "input_format": "onehot",
+  "scale": { "translate_after": { "1": "Cost of living", "2": "Healthcare" } },
   "columns": []
 }
 ```
 
-- `from_columns`: regex matching source columns (or explicit list)
-- `res_columns`: output column template (or explicit list matching from_columns)
-- `agg_index`: which regex group indexes the items (1-indexed; -1 = last)
-- `na_vals`: values meaning "not selected" — replaced with NA
-- `translate_after`: map item indices to readable names (applied first)
-- `from_prefix`: if `from_columns` is a list, strip this prefix for translation
+- `from_columns` / `res_columns`: regex (with capture groups) or explicit lists.
+- `agg_index`: which regex group indexes the items (1-based; -1 = last).
+- `na_vals`: values meaning "not selected" — replaced with NA.
+- `scale.translate_after`: maps the reshaped output values (indices or local names)
+  to final English names; its values become the output `categories`.
+- `input_format`: `onehot` (default), `leftpacked`, or the `ranked_*` variants — see the doc.
 
-The `columns` list in a topk block is usually **empty** — output columns are auto-generated. However, some topk blocks (e.g. issue ownership) list the raw source columns alongside the `create` block when those columns are also needed for other purposes.
-
-### TopK translate pipeline
-
-After the one-hot columns are reshaped (cell value becomes the column's regex-group label), translations are applied in order:
-
-1. **`create.translate_after`** — maps raw regex-group labels (typically numeric indices like `"1"`, `"2"`) to readable names.
-2. **`scale.translate`** — maps those names (or the original text if `translate_after` was not used) to final English output names. When `scale.translate` is present, its values become the output `categories` list.
-
-In practice you use **one or the other**, not both:
-- Numeric one-hot columns → use `translate_after` to go from index → English name.
-- Text-valued one-hot columns (e.g. party names in the local language) → use `scale.translate` to go from local name → English short code.
-
-## MaxDiff Blocks
-
-For best-worst scaling / maxdiff experiments:
+### MaxDiff
 
 ```json
 {
+  "type": "maxdiff",
   "name": "maxdiff",
-  "create": {
-    "type": "maxdiff",
-    "best_columns": "Q6_(\\d+?)best",
-    "worst_columns": "Q6_(\\d+?)worst",
-    "set_columns": "Q6_\\1set",
-    "setindex_column": ["Q6_Version", { "continuous": true }],
-    "topics": null,
-    "sets": null
-  },
-  "scale": {
-    "categories": "infer",
-    "translate": { "Local topic 1": "English topic 1", "...": "..." }
-  },
+  "best_columns": "Q6_(\\d+?)best",
+  "worst_columns": "Q6_(\\d+?)worst",
+  "set_columns": "Q6_\\1set",
+  "setindex_column": ["Q6_Version", { "continuous": true }],
+  "input_format": "choice_sets",
+  "scale": { "categories": "infer", "translate": { "1": "English topic 1", "2": "..." } },
   "columns": []
 }
 ```
 
-- `best_columns` / `worst_columns`: regex or list matching best/worst choice columns
-- `set_columns`: regex template or list for the set-membership columns
-- `setindex_column`: column containing set version index (with optional meta). Mutually exclusive with explicit set_columns data in the file.
-- `topics`: list of all topic strings (typically in `constants`)
-- `sets`: list of lists of 1-indexed topic indices per version (typically in `constants`)
-- Scale `translate` maps local-language topics to English
+- `scale.translate` maps 1-based index strings to topic names; it is both the topic
+  universe for `setindex_column` lookups and the element-wise translator for raw
+  best/worst/set cells. There is **no `translate_after`** for maxdiff.
+- `input_format`: `choice_sets` (default) or `resolved` — see the doc.
 
-### MaxDiff translate pipeline
+> **Two maxdiff routes.** The STK `MaxDiffBlock` transform above (int-index cells,
+> required `set_columns`) is distinct from how maxdiff is usually modelled: in
+> production the best/worst/set columns are kept as plain name-categorical columns and
+> fed to the SIP `ordinal_ranking` model via a hand-written `structure` (shown-set
+> column as the comparison set). Check the model_desc before assuming a survey's
+> maxdiff uses this STK transform.
 
-All translation happens through **`scale.translate`** (there is no `translate_after` for maxdiff). The flow:
-
-1. **`topics`** defines the full topic list (usually via `constants`) in the source language.
-2. **`scale.translate`** maps each source-language topic to its English name, producing `effective_topics`.
-3. `effective_topics` is used everywhere: best/worst column values are translated and cast to categorical with this list; set columns resolve topic indices through this list; the output meta carries `effective_topics` as its categories.
-
-So `scale.translate` is where all the naming happens for maxdiff — it controls both the cell values and the category list.
-
-When using `setindex_column`, `topics` and `sets` must be defined (usually via constants). The columns list should be **empty**.
+The `columns` list for these blocks is usually **empty** — output columns are
+auto-generated.
 
 ## Conventions (MUST follow)
 
@@ -477,6 +483,6 @@ A complete minimal example lives in `.cursor/skills/stk-data-annotations/example
 ## For more details
 
 - Schema: `salk_toolkit/validation.py` — `DataMeta`, `ColumnMeta`, `ColumnBlockMeta`, `TopKBlock`, `MaxDiffBlock`
-- Processing: `salk_toolkit/io.py` — `_process_annotated_data`, `infer_meta`, `_fix_meta_categories`
+- Processing: `salk_toolkit/io/` — `sources.py` (`_process_annotated_data`), `pipeline.py`, `create_blocks.py`, `meta.py` (`_fix_meta_categories`), `datasets.py` (`infer_meta`)
 - Cursor rule: `salk_toolkit/.cursor/rules/data_annotations.mdc`
 - Examples: look at recent `*_meta.json` files in the sandbox repo for real-world patterns

@@ -37,6 +37,9 @@ __all__ = [
     "GroupOrColumnMeta",
     "ElectoralSystem",
     "MandatesDict",
+    "MaxDiffBlock",
+    "OneHotBlock",
+    "TopKBlock",
 ]
 
 from collections.abc import Mapping
@@ -60,7 +63,11 @@ from typing import (
     get_origin,
     get_type_hints,
     TypeAlias,
+    TYPE_CHECKING,
 )
+
+if TYPE_CHECKING:
+    import pandas as pd
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -217,28 +224,6 @@ class BlockScaleMeta(ColumnMeta):
     question_colors: Dict[str, Color] = DF(dict)  # Dict mapping columns to different colors
 
 
-class TopKBlock(PBase):
-    type: Literal["topk"] = "topk"
-    k: Union[int, Literal["max"]] = "max"
-    from_columns: Union[str, List[str]]
-    res_columns: Union[str, List[str]]  # Has to be list if from_columns is list
-    agg_index: int = -1
-    na_vals: Optional[List[str]] = []
-    translate_after: Dict[str, str] = DF(dict)
-    from_prefix: Optional[str] = None  # If from_columns is list, prefix will be removed to enable translation
-
-
-class MaxDiffBlock(PBase):
-    type: Literal["maxdiff"] = "maxdiff"
-    name: Optional[str] = None
-    best_columns: Union[str, List[str]]
-    worst_columns: Union[str, List[str]]
-    set_columns: Optional[Union[str, List[str]]] = None  # Mutually exclusive with setindex. Only one is specified.
-    setindex_column: Optional[Union[str, List[object]]] = None  # Keeps metadata tuple used in annotations.
-    topics: Optional[List[str]] = None
-    sets: Optional[List[List[int]]] = None
-
-
 # Import _cs_lst_to_dict for BeforeValidator (needs to be at runtime)
 from salk_toolkit.serialization import _cs_lst_to_dict  # noqa: E402
 
@@ -246,6 +231,10 @@ ColSpec = Annotated[Dict[str, ColumnMeta], BeforeValidator(_cs_lst_to_dict)]
 
 
 class ColumnBlockMeta(PBase):
+    """Plain column block. Specialized blocks (`TopKBlock`, `MaxDiffBlock`) inherit from this
+    and are dispatched on the `type` discriminator in :data:`BlockSpec`."""
+
+    type: Literal["plain"] = "plain"
     name: str  # Name of the block
     scale: Optional[BlockScaleMeta] = None  # Shared column meta for all columns inside the block
 
@@ -257,7 +246,9 @@ class ColumnBlockMeta(PBase):
     # Block level flags
     generated: bool = False  # This block is for data that is generated, i.e. not initially in the file.
     hidden: bool = False  # Use this to hide the block in explorer.py
-    create: Union[TopKBlock, MaxDiffBlock, None] = None
+
+    from_columns: Optional[Union[str, List[str]]] = None
+    subgroup_labels: Optional[Dict[str, Dict[str, str]]] = None
 
     @model_validator(mode="after")
     def merge_scale_with_columns(self, info: ValidationInfo) -> Self:
@@ -292,6 +283,25 @@ class ColumnBlockMeta(PBase):
         object.__setattr__(self, "columns", merged_columns)
         return self
 
+    def resolve_role_columns(self, df: "pd.DataFrame", sibling_label: str) -> Dict[str, Any]:
+        """Return a dict of field-name -> concrete-list updates that narrow any
+        regex-valued column-role fields to this sibling's columns. Default: no roles
+        beyond `from_columns` (already handled by `_narrow_sibling`)."""
+        return {}
+
+    def input_df_columns(self, df: "pd.DataFrame") -> List[str]:
+        """Return every df-column this block reads. Default: `from_columns`,
+        resolved via regex if necessary."""
+        import re as _re
+
+        pattern = self.from_columns
+        if pattern is None:
+            return [c for c in self.columns.keys() if c in df.columns]
+        if isinstance(pattern, list):
+            return list(pattern)
+        regex = _re.compile(pattern)
+        return [c for c in df.columns if regex.match(c)]
+
     @model_serializer(mode="wrap")
     def _serialize_model(
         self, handler: Callable[[BaseModel], dict[str, Any]], info: SerializationInfo
@@ -302,25 +312,338 @@ class ColumnBlockMeta(PBase):
         return serialize_column_block_meta(self, handler, info)
 
 
-def _cb_lst_to_dict(lst: Sequence[dict[str, object]] | dict[str, dict[str, object]]) -> dict[str, dict[str, object]]:
-    """Again, convert list to dict for easier debugging in case errors get thrown.
+class TopKBlock(ColumnBlockMeta):
+    """Block for top-K aggregation of multi-select columns. The stored output
+    block is an instance of this class; its `from_columns` / `res_columns`
+    fields are resolved to `List[str]` by :mod:`salk_toolkit.io` (no regex on
+    output). Input-only directives (`subgroup_labels` from the base class)
+    are cleared on output."""
 
-    Transform list of block specs to dictionary format.
+    type: Literal["topk"] = "topk"  # type: ignore[assignment]
+
+    columns: ColSpec = DF(dict)
+    k: Union[int, Literal["max"]] = Field(
+        default="max", description="Number of ranked slots to keep ('max' = as many as the data supports)."
+    )
+    # Source columns: an explicit list, or a regex whose capture group(s) index items/subgroups.
+    from_columns: Union[str, List[str]]  # type: ignore[assignment]
+    res_columns: Union[str, List[str]] = Field(
+        description="Output column names; a regex substitution template (e.g. 'R\\1') when from_columns is a regex."
+    )
+    agg_index: int = Field(
+        default=-1, description="Which regex capture group indexes the items (1-based; -1 = last group)."
+    )
+    na_vals: Optional[List[str]] = Field(
+        default_factory=list, description="Raw cell values treated as missing before aggregation."
+    )
+    from_prefix: Optional[str] = None
+
+    input_format: Literal["onehot", "ranked_onehot", "leftpacked", "ranked_leftpack"] = Field(
+        default="onehot",
+        description=(
+            "Shape of the raw data: 'onehot' = one 0/1 column per item; 'leftpacked' = R1..Rk columns "
+            "already holding chosen item names; 'ranked_*' variants additionally treat slot order as a ranking."
+        ),
+    )
+
+    def segments(self) -> List[Tuple[List[str], Optional[List[str]], bool]]:
+        """Return ordinal-ranking segments for this resolved TopKBlock."""
+        cols = list(self.columns.keys())
+        if self.input_format in ("onehot", "leftpacked"):
+            return [(cols, None, False)]
+        if len(cols) < 2:
+            return [(cols, None, False)] if cols else []
+        chain: List[Tuple[List[str], Optional[List[str]], bool]] = []
+        for i in range(len(cols) - 1):
+            chain.append(([cols[i]], cols[i + 1 :], True))
+        chain.append((cols, None, False))
+        return chain
+
+
+class MaxDiffBlock(ColumnBlockMeta):
+    """Block for MaxDiff best-worst scaling experiments. The stored output
+    block is an instance of this class; `best_columns` / `worst_columns` /
+    `set_columns` are resolved to `List[str]` by :mod:`salk_toolkit.io`,
+    index-aligned by question. Input-only directives are cleared on output.
+
+    Translation: `scale.translate` is a `Dict[str, str]` mapping 1-based-index
+    strings (``"1"``, ``"2"``, ...) to target-language display names. It is
+    used as the topic universe for ``setindex_column`` lookups AND as an
+    element-wise translator (via ``_apply_pre_transform_translate``) for raw
+    best/worst/set cells when those cells hold index strings. ``scale.translate_after``
+    is not supported on MaxDiff blocks and raises ``ValueError`` at read time.
     """
-    # If already a dict, return as-is
-    if isinstance(lst, dict):
-        return lst
 
-    result: dict[str, dict[str, object]] = {}
+    type: Literal["maxdiff"] = "maxdiff"  # type: ignore[assignment]
+
+    columns: ColSpec = DF(dict)
+    best_columns: Union[str, List[str]] = Field(
+        description="Columns (list or regex) holding the 'best' pick per question."
+    )
+    worst_columns: Union[str, List[str]] = Field(
+        description="Columns (list or regex) holding the 'worst' pick per question."
+    )
+    set_columns: Optional[Union[str, List[str]]] = Field(
+        default=None,
+        description="Columns naming the items shown in each question. For input_format='choice_sets' a "
+        "substitution template against best_columns; for 'resolved' an independent regex.",
+    )
+    setindex_column: Optional[Union[str, List[object]]] = None
+
+    input_format: Literal["choice_sets", "resolved"] = Field(
+        default="choice_sets",
+        description=(
+            "'choice_sets' = best/worst cells hold item indices and choice_sets/set lists define each question's "
+            "options; 'resolved' = best/worst/set columns are already aligned per question."
+        ),
+    )
+
+    choice_sets: Optional[Union[List[List[List[int]]], Dict[str, List[List[List[int]]]]]] = None
+
+    @model_validator(mode="after")
+    def _reject_translate_after(self, info: ValidationInfo) -> Self:
+        if self.scale is not None and self.scale.translate_after:
+            raise ValueError(
+                f"MaxDiffBlock {self.name!r}: scale.translate_after is deprecated for "
+                f"maxdiff; use scale.translate (pre-transform) instead."
+            )
+        return self
+
+    def segments(self) -> List[Tuple[List[str], List[str], bool]]:
+        """Return ordinal-ranking segments for this resolved MaxDiff block."""
+        best = self.best_columns
+        worst = self.worst_columns
+        sets = self.set_columns
+        if not (isinstance(best, list) and isinstance(worst, list) and isinstance(sets, list)):
+            raise TypeError(
+                f"MaxDiffBlock.segments() requires resolved lists; got best={best!r}, worst={worst!r}, sets={sets!r}"
+            )
+        if not best:
+            return []
+        return [([best[k]], [sets[k]], True) for k in range(len(best))] + [
+            ([sets[k]], [worst[k]], True) for k in range(len(best))
+        ]
+
+    def resolve_role_columns(self, df: "pd.DataFrame", sibling_label: str) -> Dict[str, Any]:
+        """Resolve `best_columns` / `worst_columns` / `set_columns` to this sibling's
+        concrete df-columns. Shape depends on `input_format`:
+
+        - ``choice_sets`` (default): `best`/`worst` are label-keyed regexes; `set_columns`
+          is a substitution template applied to matched best cols. Matched best/worst
+          columns are sorted by the last capture group (as int if parseable) to match
+          the transform's question-index ordering.
+
+        - ``resolved``: no sibling narrowing, no substitution. If all three roles are
+          regexes they are matched and aligned here by shared capture-group key (raising
+          on incomplete alignment); otherwise each regex role is matched independently and
+          explicit lists are kept as-is (the transform length-checks those).
+        """
+        import re as _re
+
+        updates: Dict[str, Any] = {}
+
+        def _match_all(patt: "_re.Pattern[str]") -> list[str]:
+            return [c for c in df.columns if patt.match(c)]
+
+        def _match_labeled(patt: "_re.Pattern[str]") -> list[str]:
+            return [
+                c
+                for c in df.columns
+                if (m := patt.match(c)) is not None and (not sibling_label or m.group(1) == sibling_label)
+            ]
+
+        def _sort_by_last_group(cols: list[str], patt: "_re.Pattern[str]") -> list[str]:
+            def _key(col: str) -> tuple[int, Any]:
+                m = patt.match(col)
+                if m is None or not m.groups():
+                    return (1, col)
+                last = m.groups()[-1]
+                try:
+                    return (0, int(last))
+                except (TypeError, ValueError):
+                    return (0, last)
+
+            return sorted(cols, key=_key)
+
+        if self.input_format == "resolved":
+            all_regex = (
+                isinstance(self.best_columns, str)
+                and isinstance(self.worst_columns, str)
+                and isinstance(self.set_columns, str)
+            )
+            if all_regex:
+                bp = _re.compile(cast(str, self.best_columns))
+                wp = _re.compile(cast(str, self.worst_columns))
+                sp = _re.compile(cast(str, self.set_columns))
+                by_key: Dict[str, List[Optional[str]]] = {}
+                for c in df.columns:
+                    if (m := bp.match(c)) is not None:
+                        by_key.setdefault(m.group(1), [None, None, None])[0] = c
+                    if (m := wp.match(c)) is not None:
+                        by_key.setdefault(m.group(1), [None, None, None])[1] = c
+                    if (m := sp.match(c)) is not None:
+                        by_key.setdefault(m.group(1), [None, None, None])[2] = c
+                missing = [(k, t) for k, t in by_key.items() if None in t]
+                if missing:
+                    raise ValueError(f"MaxDiff resolved: incomplete alignment: {missing}")
+                keys = sorted(by_key, key=lambda s: int(s) if s.isdigit() else s)
+                triples = [by_key[k] for k in keys]
+                updates["best_columns"] = [t[0] for t in triples]
+                updates["worst_columns"] = [t[1] for t in triples]
+                updates["set_columns"] = [t[2] for t in triples]
+                return updates
+            if isinstance(self.best_columns, str):
+                updates["best_columns"] = _match_all(_re.compile(self.best_columns))
+            if isinstance(self.worst_columns, str):
+                updates["worst_columns"] = _match_all(_re.compile(self.worst_columns))
+            if isinstance(self.set_columns, str):
+                updates["set_columns"] = _match_all(_re.compile(self.set_columns))
+            return updates
+
+        # input_format == "choice_sets"
+        if isinstance(self.best_columns, str):
+            best_re = _re.compile(self.best_columns)
+            sib_best = _sort_by_last_group(_match_labeled(best_re), best_re)
+            updates["best_columns"] = sib_best
+            if isinstance(self.worst_columns, str):
+                worst_re = _re.compile(self.worst_columns)
+                updates["worst_columns"] = _sort_by_last_group(_match_labeled(worst_re), worst_re)
+            if isinstance(self.set_columns, str):
+                # substitution template against best_re
+                updates["set_columns"] = [best_re.sub(self.set_columns, c) for c in sib_best]
+        return updates
+
+    def input_df_columns(self, df: "pd.DataFrame") -> List[str]:
+        """Columns whose raw cell values are safe to pre-translate. For
+        ``input_format="resolved"`` this is best + worst + set (all scalar index
+        strings). For ``input_format="choice_sets"`` set cells hold list values
+        and must be excluded — pre-translate is applied to best + worst only."""
+        out: list[str] = []
+
+        def _collect(spec: object) -> None:
+            if spec is None:
+                return
+            if isinstance(spec, list):
+                out.extend(spec)
+                return
+            if isinstance(spec, str):
+                import re as _re
+
+                r = _re.compile(spec)
+                out.extend(c for c in df.columns if r.match(c))
+                return
+            raise TypeError(f"MaxDiff column role must be str or list; got {type(spec)}")
+
+        _collect(self.best_columns)
+        _collect(self.worst_columns)
+        if self.input_format == "resolved":
+            _collect(self.set_columns)
+        # Preserve order, drop duplicates.
+        seen: set[str] = set()
+        uniq: list[str] = []
+        for c in out:
+            if c not in seen:
+                seen.add(c)
+                uniq.append(c)
+        return uniq
+
+
+class OneHotBlock(ColumnBlockMeta):
+    """Block that widens leftpacked rank-position columns into one boolean
+    column per choice. If `choices` is None, the choice list is derived as
+    the sorted union of non-null cell values across matched columns
+    (excluding `na_vals`)."""
+
+    type: Literal["onehot"] = "onehot"  # type: ignore[assignment]
+
+    columns: ColSpec = DF(dict)
+    # Source columns: an explicit list or a regex.
+    from_columns: Union[str, List[str]]  # type: ignore[assignment]
+
+    input_format: Literal["leftpacked", "wide"] = Field(
+        default="leftpacked",
+        description=(
+            "'leftpacked' = M_1..M_n columns hold chosen choice names packed left; "
+            "'wide' = one column per choice already."
+        ),
+    )
+
+    choices: Optional[List[str]] = Field(
+        default=None,
+        description="Explicit choice list; if None, derived as the sorted union of non-null cell values "
+        "(excluding na_vals).",
+    )
+    res_prefix: Optional[str] = None
+    na_vals: Optional[List[str]] = None
+
+
+def _cb_lst_to_dict(lst: Sequence[object] | dict[str, object]) -> dict[str, object]:
+    """Transform list of block specs to dictionary format keyed by block name,
+    defaulting missing ``type`` to ``"plain"`` so the discriminated union validates
+    old-shape annotations without an explicit ``type`` field."""
+    if isinstance(lst, dict):
+        return {k: _default_block_type(v) for k, v in lst.items()}
+
+    result: dict[str, object] = {}
     for block in lst:
-        name = block.get("name")
-        if not isinstance(name, str):
+        if isinstance(block, BaseModel):
+            name_val = getattr(block, "name", None)
+        elif isinstance(block, dict):
+            name_val = block.get("name")
+        else:
+            raise TypeError("Block specification must be a dict or BaseModel instance.")
+        if not isinstance(name_val, str):
             raise TypeError("Each block specification must contain a 'name' field of type str.")
-        result[name] = block
+        result[name_val] = _default_block_type(block)
     return result
 
 
-BlockSpec = Annotated[Dict[str, ColumnBlockMeta], BeforeValidator(_cb_lst_to_dict)]
+# Block-level fields removed by the create-refactor. Because ``PBase`` uses
+# ``extra="ignore"``, leaving these unguarded would silently drop the directive and
+# mis-process the block; we reject them loudly so stale annotations fail fast.
+_LEGACY_BLOCK_FIELDS = {
+    "topics": "MaxDiff topic names now come from scale.translate (1-based index -> name).",
+    "sets": "MaxDiff set columns are declared via set_columns / setindex_column.",
+    "choice_mapping": "Folded into scale.translate.",
+    "items": "Folded into scale.translate.",
+    "row_labels": "Folded into scale.translate.",
+    "translate_values": "TopK index->name translation now lives in scale.translate_after.",
+    "groups": "Subgroup naming now uses subgroup_labels.",
+}
+
+
+def _default_block_type(block: object) -> object:
+    """Ensure a block dict carries a ``type`` discriminator (default ``"plain"``).
+    Passes Pydantic model instances through untouched. Raises on legacy schema shapes
+    (the nested ``create`` field or removed block-level fields) so silently-lost
+    TopK/MaxDiff processing becomes a loud, actionable failure."""
+    if isinstance(block, BaseModel):
+        return block
+    if not isinstance(block, dict):
+        raise TypeError("Block specification must be a dict or BaseModel instance.")
+    if "create" in block:
+        raise ValueError(
+            f"Block {block.get('name')!r} uses the legacy nested 'create' field, which is no "
+            "longer supported. Hoist create.type to the top level as 'type' and flatten the "
+            "create fields onto the block (e.g. {'type': 'topk', 'name': ..., 'from_columns': ...}). "
+            "See specs/block-processing.md."
+        )
+    legacy = [f for f in _LEGACY_BLOCK_FIELDS if f in block]
+    if legacy:
+        hints = "; ".join(f"'{f}': {_LEGACY_BLOCK_FIELDS[f]}" for f in legacy)
+        raise ValueError(
+            f"Block {block.get('name')!r} uses removed block field(s) {legacy}. {hints} See specs/block-processing.md."
+        )
+    if "type" not in block:
+        return {"type": "plain", **block}
+    return block
+
+
+_BlockUnion = Annotated[
+    Union[TopKBlock, MaxDiffBlock, OneHotBlock, ColumnBlockMeta],
+    Field(discriminator="type"),
+]
+BlockSpec = Annotated[Dict[str, _BlockUnion], BeforeValidator(_cb_lst_to_dict)]
 
 
 class FileDesc(BaseModel):
