@@ -2457,7 +2457,7 @@ class TestMetadataUtilities:
 
     def test_get_original_column_names_bug_fix(self):
         """Test that get_original_column_names handles strings correctly (bug fix)"""
-        from salk_toolkit.io import _get_original_column_names as get_original_column_names
+        from salk_toolkit.io.meta import _get_original_column_names as get_original_column_names
 
         # Test simple string columns (this was the bug case)
         meta_simple = make_data_meta(
@@ -3107,6 +3107,36 @@ class TestMultiSourceColumns:
         assert "value" in df.columns
         assert df.loc[df["file_code"] == "F0", "value"].notna().all()
         assert df.loc[df["file_code"] == "F1", "value"].isna().all()
+
+    def test_multi_source_per_file_opts_do_not_leak(self, temp_dir):
+        """One file's read opts must not become the fallback for subsequent files"""
+        file1 = temp_dir / "semi.csv"
+        file2 = temp_dir / "comma.csv"
+        meta_file = temp_dir / "meta.json"
+
+        file1.write_text("id;value\n1;10\n2;20\n")
+        file2.write_text("id,value\n3,30\n4,40\n")
+
+        meta = {
+            "files": [
+                {"file": "semi.csv", "code": "F0", "opts": {"sep": ";"}},
+                {"file": "comma.csv", "code": "F1"},
+            ],
+            "structure": [
+                {
+                    "name": "test",
+                    "columns": {
+                        "id": {"continuous": True},
+                        "value": {"continuous": True},
+                    },
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+
+        df = read_annotated_data(str(meta_file))
+        assert df["value"].notna().all()
+        assert sorted(df["value"]) == [10, 20, 30, 40]
 
     def test_multi_source_preprocessing_per_file(self, temp_dir):
         """Test preprocessing runs per file with correct context"""

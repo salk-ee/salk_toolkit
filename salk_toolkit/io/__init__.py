@@ -31,14 +31,10 @@ __all__ = [
     "update_meta_with_model_fields",
 ]
 
-from salk_toolkit.io.core import (  # noqa: F401
-    _convert_datetime_series_to_categorical,
-    _convert_number_series_to_categorical,
-)
+from salk_toolkit.io.core import Dataset, HookEnv, ProcessOpts, SourceBundle  # noqa: F401
 from salk_toolkit.io.datasets import infer_meta, read_and_process_data, read_annotated_data
 from salk_toolkit.io.meta import (
     _fix_meta_categories,  # noqa: F401  # imported from here by salk_internal_package.sampling.meta
-    _get_original_column_names,  # noqa: F401  # imported from here by tests
     extract_column_meta,
     fix_df_with_meta,  # noqa: F401  # imported from here by dashboard
     group_columns_dict,
@@ -46,6 +42,7 @@ from salk_toolkit.io.meta import (
     update_meta_with_model_fields,
 )
 from salk_toolkit.io.parquet import (
+    get_stk_commit,  # noqa: F401
     read_parquet_metadata,
     read_parquet_with_metadata,
     replace_data_meta_in_parquet,

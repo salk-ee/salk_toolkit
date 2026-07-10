@@ -522,7 +522,7 @@ class TestTimeAndRandomUtilities:
 
     def test_str_series_roundtrip_with_io_converters(self):
         """Test helpers on the string output of IO converters."""
-        from salk_toolkit.io import _convert_datetime_series_to_categorical, _convert_number_series_to_categorical
+        from salk_toolkit.io.core import _convert_datetime_series_to_categorical, _convert_number_series_to_categorical
 
         # numeric strings -> formatted numeric strings
         num_s = pd.Series(["1", "2.5", None, "-4"])

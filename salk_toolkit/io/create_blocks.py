@@ -469,7 +469,6 @@ def _create_topk_metas_and_dfs_list(
 
 CreateBlockModel = TopKBlock | MaxDiffBlock
 
-
 create_block_type_to_create_fn: dict[str, Callable] = {
     "topk": _create_topk_metas_and_dfs,  # type: ignore[assignment]
     "maxdiff": _create_maxdiff_metas_and_dfs,  # type: ignore[assignment]

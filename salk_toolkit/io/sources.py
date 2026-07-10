@@ -1,15 +1,15 @@
-"""Loading of data files into per-file dataframes, including nested annotated sources."""
+"""Loading of data sources into per-file SourceBundles, including nested annotated sources."""
 
 import os
-import warnings
 from collections.abc import Iterable
 from typing import Any, cast
 
 import pandas as pd
-import pyreadstat  # type: ignore[import-untyped]
 
 from salk_toolkit import utils
 from salk_toolkit.utils import (
+    read_json,
+    read_yaml,
     warn,
 )
 from salk_toolkit.validation import (
@@ -19,8 +19,10 @@ from salk_toolkit.validation import (
 )
 
 from salk_toolkit.io import readers
-from salk_toolkit.io.core import _deterministic_categories_and_values
+from salk_toolkit.io.core import Dataset, ProcessOpts, SourceBundle, _deterministic_categories_and_values
 from salk_toolkit.io.meta import _fix_meta_categories
+from salk_toolkit.io.parquet import read_parquet_with_metadata
+from salk_toolkit.io.pipeline import process
 
 
 def _reconcile_categories(
@@ -106,19 +108,16 @@ def _load_data_files(
     data_files: list[FileDesc],
     path: str | None,
     read_opts: dict[str, Any] | None = None,
-    ignore_exclusions: bool = False,
-    only_fix_categories: bool = False,
-    add_original_inds: bool = False,
-) -> tuple[dict[str, pd.DataFrame], DataMeta | None, dict[str, object]]:
+    opts: ProcessOpts = ProcessOpts(),
+) -> SourceBundle:
     """Internal helper to load files defined in metadata or descriptions.
 
-    Returns per-file dataframes keyed by file code, keeping them separate for per-file processing.
+    Returns a SourceBundle keeping the per-file dataframes separate for per-file processing.
     """
 
-    from salk_toolkit.io.datasets import read_annotated_data  # deferred import breaks the sources<->datasets cycle
-
     raw_data_dict: dict[str, pd.DataFrame] = {}
-    metas, einfo = [], {}
+    meta: DataMeta | None = None
+    einfo: dict[str, object] = {}
     if read_opts is None:
         read_opts = {}
 
@@ -135,7 +134,8 @@ def _load_data_files(
 
     for fi, fd in enumerate(data_files):
         data_file = fd.file
-        opts = fd.opts or read_opts
+        fopts = fd.opts or read_opts
+        result_meta: DataMeta | None = None
         file_code = fd.code if fd.code is not None else f"F{fi}"  # Default to F0, F1, F2, etc.
         if path:
             # path is guaranteed to be str here due to the if check
@@ -152,36 +152,15 @@ def _load_data_files(
             if extension == "json":
                 warn(f"Processing {data_file}")  # Print this to separate warnings for input jsons from main
             # Pass in orig_data_file here as it might loop back to this function here and we need to preserve paths
-            raw_data, result_meta = read_annotated_data(
-                cast(str, data_file),
-                infer=False,
-                return_meta=True,
-                ignore_exclusions=ignore_exclusions,
-                only_fix_categories=only_fix_categories,
-                add_original_inds=add_original_inds,
-            )
+            raw_data, result_meta = _load_dataset(cast(str, data_file), opts)
             if result_meta is not None:
-                metas.append(soft_validate(result_meta, DataMeta, warnings=True))
-        elif extension in ["csv", "gz"]:
-            read_opts = cast(dict[str, Any], opts) if opts else {}
-            csv_defaults: dict[str, Any] = {"low_memory": False}
-            if read_opts.get("engine") == "python":
-                csv_defaults.pop("low_memory")  # python engine doesn't support low_memory
-            raw_data = pd.read_csv(cast(str, mapped_file), **{**csv_defaults, **read_opts})  # type: ignore[call-overload]
-        elif extension in ["sav", "dta"]:
-            read_fn = getattr(pyreadstat, "read_" + (mapped_file[-3:]).lower())
-            with warnings.catch_warnings():  # While pyreadstat has not been updated to pandas 2.2 standards
-                warnings.simplefilter("ignore")
-                read_opts = cast(dict[str, Any], opts) if opts else {}
-                raw_data, fmeta = read_fn(
-                    cast(str, mapped_file),
-                    **{"apply_value_formats": True, "dates_as_pandas_datetime": True},
-                    **read_opts,
-                )
-                einfo.update(fmeta.__dict__)  # Allow the fields in meta to be used just like self-defined constants
-        elif extension in ["xls", "xlsx", "xlsm", "xlsb", "odf", "ods", "odt"]:
-            read_opts = cast(dict[str, Any], opts) if opts else {}
-            raw_data = pd.read_excel(cast(str, mapped_file), **read_opts)  # type: ignore[call-overload]
+                # TODO: one should also merge the structures in case the columns don't match
+                meta = soft_validate(result_meta, DataMeta, warnings=True)  # Last annotated source wins
+        elif extension in readers._TABULAR_EXTENSIONS:
+            raw_data, fenv = readers._read_tabular(
+                cast(str, mapped_file), extension, cast(dict[str, Any], fopts) if fopts else {}
+            )
+            einfo.update(fenv)  # Allow the fields in reader meta to be used just like self-defined constants
         else:
             raise Exception(f"Not a known file format for {data_file}: {extension}")
 
@@ -201,11 +180,7 @@ def _load_data_files(
         # we must NOT overwrite its internal per-file provenance columns (file_code/file_name),
         # otherwise we'd collapse them into a single file.
         preserve_annotated_multi = (
-            extension in ["json", "yaml", "parquet"]
-            and "result_meta" in locals()
-            and result_meta is not None
-            and getattr(result_meta, "files", None) is not None
-            and len(cast(list[object], getattr(result_meta, "files"))) > 1
+            result_meta is not None and result_meta.files is not None and len(result_meta.files) > 1
         )
         if not preserve_annotated_multi:
             raw_data["file_code"] = file_code
@@ -222,22 +197,89 @@ def _load_data_files(
 
         raw_data_dict[file_code] = raw_data
 
-    if metas:  # Do we have any metainfo?
-        meta = metas[-1]
+    if meta is None:  # Do we have any metainfo?
+        return SourceBundle(frames=raw_data_dict, env=einfo)
 
-        # Reconcile categoricals across files: pd.concat collapses categoricals with
-        # different category lists to object dtype, so we need to re-unify them first.
-        if len(raw_data_dict) > 1:
-            reconciled_dtypes = _reconcile_categories(raw_data_dict, warnings=False)
-            for fc, rdf in raw_data_dict.items():
-                for col, dtype in reconciled_dtypes.items():
-                    if col in rdf.columns:
-                        raw_data_dict[fc][col] = rdf[col].astype("object").astype(dtype)
+    # Reconcile categoricals across files: pd.concat collapses categoricals with
+    # different category lists to object dtype, so we need to re-unify them first.
+    if len(raw_data_dict) > 1:
+        reconciled_dtypes = _reconcile_categories(raw_data_dict, warnings=False)
+        for fc, rdf in raw_data_dict.items():
+            for col, dtype in reconciled_dtypes.items():
+                if col in rdf.columns:
+                    raw_data_dict[fc][col] = rdf[col].astype("object").astype(dtype)
 
-        # This will fix categories inside meta too - use concatenated view for this
-        fdf = pd.concat(raw_data_dict.values())
-        meta = _fix_meta_categories(meta, fdf, warnings=False)
-        # TODO: one should also merge the structures in case the columns don't match
-        return raw_data_dict, meta, einfo
+    # This will fix categories inside meta too - use concatenated view for this
+    fdf = pd.concat(raw_data_dict.values())
+    meta = _fix_meta_categories(meta, fdf, warnings=False)
+    return SourceBundle(frames=raw_data_dict, env=einfo, meta=meta)
+
+
+def _read_meta_input(meta_fname: str | None, meta: DataMeta | dict[str, object] | None) -> DataMeta:
+    """Load the metafile (or accept an in-memory meta dict) and validate to DataMeta."""
+    meta_input: DataMeta | dict[str, object] | None = meta
+    if meta_fname is not None:
+        metafile = cast(dict[str, str], readers.stk_file_map).get(meta_fname, meta_fname)
+        ext = os.path.splitext(metafile)[1]
+        if ext == ".yaml":
+            meta_raw = read_yaml(metafile)
+        elif ext == ".json":
+            meta_raw = read_json(metafile)
+        else:
+            raise Exception(f"Unknown meta file format {ext} for file: {meta_fname}")
+        assert isinstance(meta_raw, dict), "Meta file must contain a dict"
+        meta_input = dict(meta_raw)  # Cast to ensure object values
+    if meta_input is None:
+        raise ValueError("Metadata cannot be None")
+    return soft_validate(meta_input, DataMeta, warnings=True)
+
+
+def _load_meta_sources(
+    meta_obj: DataMeta, meta_fname: str | None, data_file: str | None, opts: ProcessOpts
+) -> SourceBundle:
+    """Resolve the meta's file list (or a data_file override) and load it into a SourceBundle."""
+    if data_file is not None:
+        # data_file override: use it directly
+        files_list = [FileDesc(file=data_file, opts=meta_obj.read_opts)]
+    elif meta_obj.files is not None:
+        files_list = meta_obj.files
     else:
-        return raw_data_dict, None, einfo
+        raise ValueError("No files provided in metadata")
+
+    bundle = _load_data_files(
+        files_list,
+        path=meta_fname if meta_fname is not None else data_file,
+        read_opts=meta_obj.read_opts,
+        opts=opts,
+    )
+    if bundle.meta is not None:
+        warn("Processing main meta file")  # Print this to separate warnings for input jsons from main
+    return bundle
+
+
+def _load_dataset(path: str, opts: ProcessOpts) -> Dataset:
+    """Load an already-annotated source: a metafile or a parquet with embedded meta. No inference."""
+    ext = os.path.splitext(path)[1]
+    if ext in {".json", ".yaml"}:
+        return _process_annotated_data(meta_fname=path, opts=opts)
+    df, full_meta = read_parquet_with_metadata(path)
+    return Dataset(df, full_meta.data if full_meta is not None else None)
+
+
+# Default usage with mature metafile: _process_annotated_data(<metafile name>)
+# When figuring out the metafile, it can also be run as: _process_annotated_data(meta=<dict>, data_file=<>)
+
+
+def _process_annotated_data(
+    meta_fname: str | None = None,
+    meta: DataMeta | dict[str, object] | None = None,
+    data_file: str | None = None,
+    opts: ProcessOpts = ProcessOpts(),
+    return_raw: bool = False,
+) -> Dataset:
+    """Process annotated data according to metadata specifications."""
+    meta_obj = _read_meta_input(meta_fname, meta)
+    bundle = _load_meta_sources(meta_obj, meta_fname, data_file, opts)
+    if return_raw:  # Concatenated raw data, for debugging metafiles
+        return Dataset(bundle.concat(), meta_obj)
+    return process(bundle, meta_obj, opts)
