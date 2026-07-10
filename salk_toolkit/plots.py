@@ -1169,7 +1169,7 @@ def _cat_to_cont_axis(
 
     # Date-like strings -> parse to datetime and use temporal axis.
     if utils.is_date_str_series(raw):
-        x_dt = pd.to_datetime(raw, errors="coerce")
+        x_dt = pd.to_datetime(raw, errors="coerce", format="mixed")
         # Keep cont axis values JSON-friendly and timezone-stable:
         # use explicit UTC instants so Vega doesn't show local-time shifts (02 AM, etc.).
         data[cont_col] = x_dt.dt.strftime("%Y-%m-%dT00:00:00").where(x_dt.notna(), None)
