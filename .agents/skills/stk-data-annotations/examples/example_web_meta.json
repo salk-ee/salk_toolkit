@@ -9,17 +9,7 @@
       "LVŽS": "#4aa35a",
       "Other": "lightgrey",
       "Don't know": "grey"
-    },
-    "md_topics": [
-      "Ekonomika",
-      "Sveikata",
-      "Gynyba",
-      "Švietimas"
-    ],
-    "md_sets": [
-      [[1, 2, 3], [1, 3, 4], [2, 3, 4]],
-      [[1, 2, 4], [2, 3, 4], [1, 3, 4]]
-    ]
+    }
   },
   "files": [{ "file": "example_web_data.csv", "code": "W" }],
   "structure": [
