@@ -3,7 +3,7 @@ processing options, the hook execution environment, and shared series helpers.""
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import NamedTuple, TypeAlias, cast
+from typing import NamedTuple, cast
 
 import numpy as np
 import pandas as pd
@@ -31,9 +31,6 @@ class Dataset(NamedTuple):
 
     df: pd.DataFrame
     meta: DataMeta | None
-
-
-ProcessedDataReturn: TypeAlias = Dataset
 
 
 @dataclass

@@ -3108,6 +3108,36 @@ class TestMultiSourceColumns:
         assert df.loc[df["file_code"] == "F0", "value"].notna().all()
         assert df.loc[df["file_code"] == "F1", "value"].isna().all()
 
+    def test_multi_source_per_file_opts_do_not_leak(self, temp_dir):
+        """One file's read opts must not become the fallback for subsequent files"""
+        file1 = temp_dir / "semi.csv"
+        file2 = temp_dir / "comma.csv"
+        meta_file = temp_dir / "meta.json"
+
+        file1.write_text("id;value\n1;10\n2;20\n")
+        file2.write_text("id,value\n3,30\n4,40\n")
+
+        meta = {
+            "files": [
+                {"file": "semi.csv", "code": "F0", "opts": {"sep": ";"}},
+                {"file": "comma.csv", "code": "F1"},
+            ],
+            "structure": [
+                {
+                    "name": "test",
+                    "columns": {
+                        "id": {"continuous": True},
+                        "value": {"continuous": True},
+                    },
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+
+        df = read_annotated_data(str(meta_file))
+        assert df["value"].notna().all()
+        assert sorted(df["value"]) == [10, 20, 30, 40]
+
     def test_multi_source_preprocessing_per_file(self, temp_dir):
         """Test preprocessing runs per file with correct context"""
         file1 = temp_dir / "file1.csv"

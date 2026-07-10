@@ -8,6 +8,8 @@ import pandas as pd
 
 from salk_toolkit import utils
 from salk_toolkit.utils import (
+    read_json,
+    read_yaml,
     warn,
 )
 from salk_toolkit.validation import (
@@ -20,7 +22,7 @@ from salk_toolkit.io import readers
 from salk_toolkit.io.core import Dataset, ProcessOpts, SourceBundle, _deterministic_categories_and_values
 from salk_toolkit.io.meta import _fix_meta_categories
 from salk_toolkit.io.parquet import read_parquet_with_metadata
-from salk_toolkit.io.pipeline import _read_meta_input, process
+from salk_toolkit.io.pipeline import process
 
 
 def _reconcile_categories(
@@ -114,7 +116,8 @@ def _load_data_files(
     """
 
     raw_data_dict: dict[str, pd.DataFrame] = {}
-    metas, einfo = [], {}
+    meta: DataMeta | None = None
+    einfo: dict[str, object] = {}
     if read_opts is None:
         read_opts = {}
 
@@ -151,10 +154,12 @@ def _load_data_files(
             # Pass in orig_data_file here as it might loop back to this function here and we need to preserve paths
             raw_data, result_meta = _load_dataset(cast(str, data_file), opts)
             if result_meta is not None:
-                metas.append(soft_validate(result_meta, DataMeta, warnings=True))
+                # TODO: one should also merge the structures in case the columns don't match
+                meta = soft_validate(result_meta, DataMeta, warnings=True)  # Last annotated source wins
         elif extension in readers._TABULAR_EXTENSIONS:
-            read_opts = cast(dict[str, Any], fopts) if fopts else {}
-            raw_data, fenv = readers._read_tabular(cast(str, mapped_file), extension, read_opts)
+            raw_data, fenv = readers._read_tabular(
+                cast(str, mapped_file), extension, cast(dict[str, Any], fopts) if fopts else {}
+            )
             einfo.update(fenv)  # Allow the fields in reader meta to be used just like self-defined constants
         else:
             raise Exception(f"Not a known file format for {data_file}: {extension}")
@@ -192,9 +197,8 @@ def _load_data_files(
 
         raw_data_dict[file_code] = raw_data
 
-    if not metas:  # Do we have any metainfo?
+    if meta is None:  # Do we have any metainfo?
         return SourceBundle(frames=raw_data_dict, env=einfo)
-    meta = metas[-1]
 
     # Reconcile categoricals across files: pd.concat collapses categoricals with
     # different category lists to object dtype, so we need to re-unify them first.
@@ -208,8 +212,26 @@ def _load_data_files(
     # This will fix categories inside meta too - use concatenated view for this
     fdf = pd.concat(raw_data_dict.values())
     meta = _fix_meta_categories(meta, fdf, warnings=False)
-    # TODO: one should also merge the structures in case the columns don't match
     return SourceBundle(frames=raw_data_dict, env=einfo, meta=meta)
+
+
+def _read_meta_input(meta_fname: str | None, meta: DataMeta | dict[str, object] | None) -> DataMeta:
+    """Load the metafile (or accept an in-memory meta dict) and validate to DataMeta."""
+    meta_input: DataMeta | dict[str, object] | None = meta
+    if meta_fname is not None:
+        metafile = cast(dict[str, str], readers.stk_file_map).get(meta_fname, meta_fname)
+        ext = os.path.splitext(metafile)[1]
+        if ext == ".yaml":
+            meta_raw = read_yaml(metafile)
+        elif ext == ".json":
+            meta_raw = read_json(metafile)
+        else:
+            raise Exception(f"Unknown meta file format {ext} for file: {meta_fname}")
+        assert isinstance(meta_raw, dict), "Meta file must contain a dict"
+        meta_input = dict(meta_raw)  # Cast to ensure object values
+    if meta_input is None:
+        raise ValueError("Metadata cannot be None")
+    return soft_validate(meta_input, DataMeta, warnings=True)
 
 
 def _load_meta_sources(

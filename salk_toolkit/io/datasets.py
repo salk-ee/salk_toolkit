@@ -8,7 +8,6 @@ from typing import Any, Callable, Literal, cast, overload
 
 import numpy as np
 import pandas as pd
-import pyreadstat  # type: ignore[import-untyped]
 import scipy as sp
 
 import salk_toolkit as stk
@@ -26,10 +25,10 @@ from salk_toolkit.validation import (
     soft_validate,
 )
 
-from salk_toolkit.io.core import Dataset, ProcessedDataReturn, ProcessOpts, _str_from_list
+from salk_toolkit.io import readers
+from salk_toolkit.io.core import Dataset, ProcessOpts, _str_from_list
 from salk_toolkit.io.meta import _is_categorical, fix_df_with_meta
-from salk_toolkit.io.parquet import read_parquet_with_metadata
-from salk_toolkit.io.sources import _load_data_files, _process_annotated_data
+from salk_toolkit.io.sources import _load_data_files, _load_dataset, _process_annotated_data
 
 
 @overload
@@ -41,7 +40,7 @@ def read_annotated_data(
     return_meta: Literal[True],
     ignore_exclusions: bool = ...,
     add_original_inds: bool = ...,
-) -> ProcessedDataReturn: ...
+) -> Dataset: ...
 
 
 @overload
@@ -63,7 +62,7 @@ def read_annotated_data(
     return_meta: bool = False,
     ignore_exclusions: bool = False,
     add_original_inds: bool = False,
-) -> pd.DataFrame | ProcessedDataReturn:
+) -> pd.DataFrame | Dataset:
     """Read either a json annotation and process the data, or a processed parquet with the annotation attached.
 
     Args:
@@ -82,12 +81,10 @@ def read_annotated_data(
     data: pd.DataFrame | None = None
     meta_obj: DataMeta | None = None
     opts = ProcessOpts(ignore_exclusions=ignore_exclusions, add_original_inds=add_original_inds)
-    if ext in {".json", ".yaml"}:
-        data, meta_obj = _process_annotated_data(meta_fname=fname, opts=opts, return_raw=return_raw)
-    elif ext == ".parquet":
-        data, full_meta = read_parquet_with_metadata(fname)
-        if full_meta is not None:
-            meta_obj = full_meta.data
+    if return_raw and ext in {".json", ".yaml"}:  # Concatenated raw source data, for debugging metafiles
+        data, meta_obj = _process_annotated_data(meta_fname=fname, opts=opts, return_raw=True)
+    elif ext in {".json", ".yaml", ".parquet"}:
+        data, meta_obj = _load_dataset(fname, opts)
 
     if meta_obj is None and infer:
         warn(f"Warning: using inferred meta for {fname}")
@@ -179,27 +176,14 @@ def infer_meta(
         path, fname = os.path.split(data_file)
         ext = os.path.splitext(fname)[1].lower()[1:]
         meta["files"] = [{"file": fname, "opts": read_opts, "code": "F0"}]
-        if ext in ["csv", "gz"]:
-            csv_defaults: dict[str, Any] = {"low_memory": False}
-            if read_opts.get("engine") == "python":
-                csv_defaults.pop("low_memory")  # python engine doesn't support low_memory
-            df = pd.read_csv(data_file, **{**csv_defaults, **read_opts})  # type: ignore[call-overload]
-        elif ext in ["sav", "dta"]:
-            read_fn = getattr(pyreadstat, "read_" + ext)
-            df, sav_meta = read_fn(
-                data_file,
-                **{"apply_value_formats": True, "dates_as_pandas_datetime": True},
-                **read_opts,
-            )
-            col_labels = dict(
-                zip(sav_meta.column_names, sav_meta.column_labels)
-            )  # Make this data easy to access by putting it in meta as constant
-            if translate_fn:
-                col_labels = {k: translate_fn(v) for k, v in col_labels.items()}
-        elif ext == "parquet":
+        if ext == "parquet":
             df = pd.read_parquet(data_file, **read_opts)  # type: ignore[call-overload]
-        elif ext in ["xls", "xlsx", "xlsm", "xlsb", "odf", "ods", "odt"]:
-            df = pd.read_excel(data_file, **read_opts)  # type: ignore[call-overload]
+        elif ext in readers._TABULAR_EXTENSIONS:
+            df, fenv = readers._read_tabular(data_file, ext, cast(dict[str, Any], dict(read_opts)))
+            if fenv:  # sav/dta reader metadata: expose column labels for easy access as a constant
+                col_labels = dict(zip(cast(list[str], fenv["column_names"]), cast(list[str], fenv["column_labels"])))
+                if translate_fn:
+                    col_labels = {k: translate_fn(v) for k, v in col_labels.items()}
         else:
             raise Exception(f"Not a known file format {data_file}")
 
@@ -467,6 +451,8 @@ def read_and_process_data(
 
     # Perform transformation and filtering (only for DataDescription)
     if isinstance(desc_obj, DataDescription):
+        # One shared exec/eval namespace on purpose (unlike the per-hook HookEnv in the pipeline):
+        # names defined by preprocessing code stay visible to filter and postprocessing.
         globs = {"pd": pd, "np": np, "sp": sp, "stk": stk, "df": df, **einfo, **constants}
         if desc_obj.preprocessing:
             exec(_str_from_list(desc_obj.preprocessing), globs)

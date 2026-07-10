@@ -1,16 +1,11 @@
 """The annotation pipeline: stages that turn a SourceBundle + DataMeta into a processed Dataset."""
 
-import os
 from typing import cast
 
 import numpy as np
 import pandas as pd
 
-from salk_toolkit.utils import (
-    read_json,
-    read_yaml,
-    warn,
-)
+from salk_toolkit.utils import warn
 from salk_toolkit.validation import (
     ColumnBlockMeta,
     ColumnMeta,
@@ -18,7 +13,6 @@ from salk_toolkit.validation import (
     soft_validate,
 )
 
-from salk_toolkit.io import readers
 from salk_toolkit.io.core import (
     Dataset,
     HookEnv,
@@ -41,25 +35,6 @@ def _file_meta_map(dfs: dict[str, pd.DataFrame]) -> dict[str, str]:
     if fm.duplicated(["file_code"]).any() or fm.duplicated(["file_name"]).any():
         raise ValueError("file_code/file_name must be 1-to-1")
     return dict(zip(fm["file_code"], fm["file_name"]))
-
-
-def _read_meta_input(meta_fname: str | None, meta: DataMeta | dict[str, object] | None) -> DataMeta:
-    """Load the metafile (or accept an in-memory meta dict) and validate to DataMeta."""
-    meta_input: DataMeta | dict[str, object] | None = meta
-    if meta_fname is not None:
-        metafile = cast(dict[str, str], readers.stk_file_map).get(meta_fname, meta_fname)
-        ext = os.path.splitext(metafile)[1]
-        if ext == ".yaml":
-            meta_raw = read_yaml(metafile)
-        elif ext == ".json":
-            meta_raw = read_json(metafile)
-        else:
-            raise Exception(f"Unknown meta file format {ext} for file: {meta_fname}")
-        assert isinstance(meta_raw, dict), "Meta file must contain a dict"
-        meta_input = dict(meta_raw)  # Cast to ensure object values
-    if meta_input is None:
-        raise ValueError("Metadata cannot be None")
-    return soft_validate(meta_input, DataMeta, warnings=True)
 
 
 def _inject_files_block(bundle: SourceBundle, meta_obj: DataMeta, file_names: dict[str, str]) -> DataMeta:
@@ -204,6 +179,7 @@ def _resolve_categories(s: pd.Series, mcm: ColumnMeta, cn: str) -> tuple[pd.Seri
                 name=s.name,
                 dtype=pd.CategoricalDtype(categories=cats, ordered=mcm.ordered if mcm.ordered is not None else False),
             )
+            return s, mcm  # Snapping cannot drop values, and s is already the right Categorical
         except (ValueError, TypeError) as e:
             raise ValueError(f"Categories for {cn} are not numeric: {cats}") from e
     else:
@@ -224,20 +200,20 @@ def _apply_subgroup_transform(
     bundle: SourceBundle, ndf_df: pd.DataFrame, transform: str, g_cols: list[str], hooks: HookEnv
 ) -> pd.DataFrame:
     """Apply a block-level subgroup transform per-file over the block's columns."""
-    for sg in [g_cols]:  # TODO: Add subgroups field to ColumnBlockMeta if needed
-        transformed_parts: list[pd.DataFrame] = []
-        ranges = bundle.ranges()
-        for file_code, file_raw_data in bundle.frames.items():
-            idx_range = ranges[file_code]
-            transformed_gdf = hooks.eval(
-                transform,
-                gdf=ndf_df[sg].iloc[idx_range].copy(),
-                ndf=ndf_df.iloc[idx_range].copy(),  # Per-file processed data view
-                df=file_raw_data,  # Per-file raw data
-            )
-            transformed_parts.append(cast(pd.DataFrame, transformed_gdf))
-        transformed_combined = pd.concat(transformed_parts).reset_index(drop=True)
-        ndf_df[sg] = transformed_combined[sg].values
+    # TODO: Add a subgroups field to ColumnBlockMeta if per-subgroup application is needed
+    transformed_parts: list[pd.DataFrame] = []
+    ranges = bundle.ranges()
+    for file_code, file_raw_data in bundle.frames.items():
+        idx_range = ranges[file_code]
+        transformed_gdf = hooks.eval(
+            transform,
+            gdf=ndf_df[g_cols].iloc[idx_range].copy(),
+            ndf=ndf_df.iloc[idx_range].copy(),  # Per-file processed data view
+            df=file_raw_data,  # Per-file raw data
+        )
+        transformed_parts.append(cast(pd.DataFrame, transformed_gdf))
+    transformed_combined = pd.concat(transformed_parts).reset_index(drop=True)
+    ndf_df[g_cols] = transformed_combined[g_cols].values
     return ndf_df
 
 
