@@ -159,10 +159,12 @@ def extract_column_meta(data_meta: DataMeta) -> dict[str, GroupOrColumnMeta]:
             # Convert BlockScaleMeta to GroupOrColumnMeta by dumping and adding columns field
             group_dict = scale_meta.model_dump(mode="python")
             group_dict["columns"] = group_columns
+            if block.model_spec is not None:
+                group_dict["model_spec"] = block.model_spec
             res[block.name] = soft_validate(group_dict, GroupOrColumnMeta)
         else:
             # No scale, create empty GroupOrColumnMeta with just columns
-            res[block.name] = GroupOrColumnMeta(columns=group_columns)
+            res[block.name] = GroupOrColumnMeta(columns=group_columns, model_spec=block.model_spec)
 
         for cn, col_meta in block.columns.items():
             # Note: scale metadata is already merged with column metadata by

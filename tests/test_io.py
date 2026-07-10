@@ -4825,5 +4825,164 @@ class TestInternalPipelineHelpers:
         assert _get_subgroup_config(None, "md_g1", "md") is None
 
 
+class TestModelSpec:
+    """model_spec: observation-model description stamped onto processed blocks."""
+
+    def test_topk_default_model_spec(self, meta_file, csv_file):
+        """TopK output block gets the default ordinal_ranking spec: picks above rest, unordered."""
+        pd.DataFrame({"Qa": ["A", None], "Qb": ["A", "B"]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "topk",
+                    "name": "x",
+                    "from_columns": r"Q(\w)",
+                    "res_columns": r"R\1",
+                    "agg_index": 1,
+                    "na_vals": [],
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        _, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        out = meta_obj.structure["x"]
+        cols = list(out.columns.keys())
+        assert out.model_spec == {"structure": [[cols, None]], "ordered": False}
+        # The demoted raw-columns parent does not carry a spec
+        assert all(b.model_spec is None for n, b in meta_obj.structure.items() if n != "x")
+
+    def test_topk_ranked_model_spec_ordered(self, meta_file, csv_file):
+        """ranked_* input formats mark the spec ordered (slot order is a ranking)."""
+        pd.DataFrame({"X_R1": ["A", "B"], "X_R2": ["B", None]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "topk",
+                    "name": "x",
+                    "from_columns": ["X_R1", "X_R2"],
+                    "res_columns": ["X_R1", "X_R2"],
+                    "input_format": "ranked_leftpack",
+                    "scale": {"categories": "infer"},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        _, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        assert meta_obj.structure["x"].model_spec == {
+            "structure": [[["X_R1", "X_R2"], None]],
+            "ordered": True,
+        }
+
+    def test_maxdiff_default_model_spec(self, meta_file, csv_file):
+        """MaxDiff output block gets one best > set > worst chain per question."""
+        items = {"1": "Economy", "2": "Health", "3": "Education"}
+        parquet_file = csv_file.with_suffix(".parquet")
+        meta = {
+            "file": str(parquet_file),
+            "structure": [
+                {
+                    "type": "maxdiff",
+                    "name": "md",
+                    "columns": [],
+                    "best_columns": r"Q_(\d+)best",
+                    "worst_columns": r"Q_(\d+)worst",
+                    "set_columns": r"Q_\1set",
+                    "scale": {"categories": "infer", "translate": items},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        pd.DataFrame(
+            {
+                "Q_1best": ["Economy", "Health"],
+                "Q_1worst": ["Education", "Economy"],
+                "Q_1set": [["Economy", "Health", "Education"]] * 2,
+                "Q_2best": ["Health", "Education"],
+                "Q_2worst": ["Economy", "Health"],
+                "Q_2set": [["Economy", "Health", "Education"]] * 2,
+            }
+        ).to_parquet(parquet_file)
+        _, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        assert meta_obj.structure["md"].model_spec == {
+            "structure": [
+                [["Q_1best"], ["Q_1set"], ["Q_1worst"]],
+                [["Q_2best"], ["Q_2set"], ["Q_2worst"]],
+            ]
+        }
+
+    def test_authored_model_spec_passthrough(self, meta_file, csv_file):
+        """An authored model_spec on the block wins over the type default."""
+        pd.DataFrame({"Qa": ["A", None], "Qb": ["A", "B"]}).to_csv(csv_file, index=False)
+        spec = {"structure": [[["Ra"], ["Rb"]]], "model": "Thurstone"}
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "topk",
+                    "name": "x",
+                    "from_columns": r"Q(\w)",
+                    "res_columns": r"R\1",
+                    "agg_index": 1,
+                    "na_vals": [],
+                    "model_spec": spec,
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        _, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        assert meta_obj.structure["x"].model_spec == spec
+
+    def test_model_spec_multi_sibling_raises(self, meta_file, csv_file):
+        """model_spec on a block that explodes into subgroups is ambiguous -> hard fail."""
+        pd.DataFrame({"Q_A_1": ["x", None], "Q_A_2": [None, "x"], "Q_B_1": ["x", None], "Q_B_2": ["x", None]}).to_csv(
+            csv_file, index=False
+        )
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "topk",
+                    "name": "x",
+                    "from_columns": r"Q_(\w)_(\d)",
+                    "res_columns": r"R_\1_\2",
+                    "agg_index": 2,
+                    "na_vals": [],
+                    "model_spec": {"structure": [[["R_A_1"], None]]},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        with pytest.raises(ValueError, match="model_spec.*ambiguous"):
+            read_annotated_data(str(meta_file), return_meta=True)
+
+    def test_plain_block_model_spec_persists(self, meta_file, csv_file):
+        """model_spec on a plain block survives processing, serialization and extract_column_meta."""
+        from salk_toolkit.io import extract_column_meta
+        from salk_toolkit.validation import soft_validate, DataMeta
+
+        pd.DataFrame({"b1": ["A", "B"], "w1": ["B", "A"]}).to_csv(csv_file, index=False)
+        spec = {"structure": [[["b1"], ["w1"]]]}
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "name": "ranking",
+                    "model_spec": spec,
+                    "columns": [["b1", {"categories": "infer"}], ["w1", {"categories": "infer"}]],
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        _, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        assert meta_obj.structure["ranking"].model_spec == spec
+        # extract_column_meta carries it on the group entry
+        assert extract_column_meta(meta_obj)["ranking"].model_spec == spec
+        # JSON round-trip preserves it
+        rt = soft_validate(meta_obj.model_dump(mode="json"), DataMeta)
+        assert rt.structure["ranking"].model_spec == spec
+
+
 if __name__ == "__main__":
     pytest.main([__file__])

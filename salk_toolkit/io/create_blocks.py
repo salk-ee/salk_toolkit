@@ -164,11 +164,22 @@ def _process_block(
     else:
         siblings = _subgroup_explode(block, df)
 
+    if block.model_spec is not None and len(siblings) > 1:
+        raise ValueError(
+            f"Block {block.name!r}: model_spec on a block that explodes into {len(siblings)} "
+            f"sibling blocks is ambiguous and not supported; the siblings get per-sibling defaults"
+        )
+
     for sib in siblings:
         cols = sib.input_df_columns(df)
         df_t = _apply_pre_transform_translate(sib, df, cols)
         sdf, meta = _apply_transform(sib, df_t, source_block=block)
         sdf, meta = _apply_post_transform_translate(sib, sdf, meta)
+        # Stamp the observation-model description onto the output block: an authored
+        # model_spec wins, else the type default (ordinal_ranking for topk/maxdiff).
+        spec = block.model_spec or meta.default_model_spec()
+        if spec is not None:
+            meta = meta.model_copy(update={"model_spec": spec})
         yield sdf, meta
 
 
@@ -767,8 +778,10 @@ def _demote_to_plain(block: ColumnBlockMeta) -> ColumnBlockMeta:
     directives (from_columns, subgroup_labels) are cleared."""
     kwargs = {k: getattr(block, k) for k in ColumnBlockMeta.model_fields if k != "type"}
     # Clear input-only directives that are not part of the demoted plain block
+    # (model_spec belongs to the derived output block, not the raw-columns parent)
     kwargs["from_columns"] = None
     kwargs["subgroup_labels"] = None
+    kwargs["model_spec"] = None
     return ColumnBlockMeta(**kwargs)
 
 

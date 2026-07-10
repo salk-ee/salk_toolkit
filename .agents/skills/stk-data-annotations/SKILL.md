@@ -345,6 +345,13 @@ For "select top K" questions (e.g. "which 3 issues matter most?"):
 The `columns` list for these blocks is usually **empty** — output columns are
 auto-generated.
 
+**Modeling hookup (`model_spec`).** Processed topk/maxdiff blocks automatically
+carry a `model_spec` — the SIP observation-model description their block name
+resolves to (an `ordinal_ranking` structure by default), so the block name can be
+used directly as a model output. Any block may set `model_spec` explicitly to
+override the default or to route a plain block (e.g. hand-kept best/set/worst
+columns) to any OM — see specs/block-processing.md.
+
 ## Conventions (MUST follow)
 
 1. **English**: All category names, labels, and column names in English.

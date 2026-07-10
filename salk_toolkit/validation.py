@@ -217,6 +217,8 @@ class GroupOrColumnMeta(ColumnMeta):
     """Column metadata that can optionally describe a grouped question."""
 
     columns: Optional[List[str]] = None
+    # Carried from the block by `extract_column_meta` (see ColumnBlockMeta.model_spec).
+    model_spec: Optional[Dict[str, Any]] = None
 
 
 # This is for the block-level 'scale' group - basically same as ColumnMeta but with a few extras
@@ -249,6 +251,11 @@ class ColumnBlockMeta(PBase):
 
     from_columns: Optional[Union[str, List[str]]] = None
     subgroup_labels: Optional[Dict[str, Dict[str, str]]] = None
+
+    # Observation-model description for modeling: the dict a SIP `res_cols` entry would hold
+    # (any OM, e.g. {"structure": [...]} for ordinal_ranking). Typed blocks stamp a default onto
+    # their output blocks; authors can set it on any block to route the block name to that OM.
+    model_spec: Optional[Dict[str, Any]] = None
 
     @model_validator(mode="after")
     def merge_scale_with_columns(self, info: ValidationInfo) -> Self:
@@ -301,6 +308,12 @@ class ColumnBlockMeta(PBase):
             return list(pattern)
         regex = _re.compile(pattern)
         return [c for c in df.columns if regex.match(c)]
+
+    def default_model_spec(self) -> Optional[Dict[str, Any]]:
+        """Observation-model description this block resolves to when no explicit
+        `model_spec` is authored. Plain blocks have none; typed blocks stamp an
+        ordinal_ranking spec onto their processed output blocks."""
+        return None
 
     @model_serializer(mode="wrap")
     def _serialize_model(
@@ -358,6 +371,18 @@ class TopKBlock(ColumnBlockMeta):
             chain.append(([cols[i]], cols[i + 1 :], True))
         chain.append((cols, None, False))
         return chain
+
+    def default_model_spec(self) -> Optional[Dict[str, Any]]:
+        """ordinal_ranking: picked items rank above the rest of the item pool
+        (`[cols, None]`); the ranked input formats additionally treat slot order
+        as a ranking within the picks."""
+        cols = list(self.columns.keys())
+        if not cols:
+            return None
+        return {
+            "structure": [[cols, None]],
+            "ordered": self.input_format in ("ranked_onehot", "ranked_leftpack"),
+        }
 
 
 class MaxDiffBlock(ColumnBlockMeta):
@@ -423,6 +448,13 @@ class MaxDiffBlock(ColumnBlockMeta):
         return [([best[k]], [sets[k]], True) for k in range(len(best))] + [
             ([sets[k]], [worst[k]], True) for k in range(len(best))
         ]
+
+    def default_model_spec(self) -> Optional[Dict[str, Any]]:
+        """ordinal_ranking: one weak-order chain per question — best > shown set > worst."""
+        best, worst, sets = self.best_columns, self.worst_columns, self.set_columns
+        if not (isinstance(best, list) and isinstance(worst, list) and isinstance(sets, list)) or not best:
+            return None
+        return {"structure": [[[b], [s], [w]] for b, s, w in zip(best, sets, worst)]}
 
     def resolve_role_columns(self, df: "pd.DataFrame", sibling_label: str) -> Dict[str, Any]:
         """Resolve `best_columns` / `worst_columns` / `set_columns` to this sibling's
