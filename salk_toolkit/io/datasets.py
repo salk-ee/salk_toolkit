@@ -27,7 +27,7 @@ from salk_toolkit.validation import (
 )
 
 from salk_toolkit.io.core import Dataset, ProcessedDataReturn, ProcessOpts, _str_from_list
-from salk_toolkit.io.meta import _fix_meta_categories, _is_categorical, fix_df_with_meta
+from salk_toolkit.io.meta import _is_categorical, fix_df_with_meta
 from salk_toolkit.io.parquet import read_parquet_with_metadata
 from salk_toolkit.io.sources import _load_data_files, _process_annotated_data
 
@@ -458,11 +458,9 @@ def read_and_process_data(
             read_opts={},
             opts=ProcessOpts(ignore_exclusions=ignore_exclusions, add_original_inds=add_original_inds),
         )
+        # Meta categories already reflect reconciled categoricals (incl. injected extra
+        # fields): _load_data_files runs _fix_meta_categories on the same frames.
         df, meta_obj, einfo = bundle.concat(), bundle.meta, bundle.env
-
-        # Ensure returned metadata categories reflect reconciled categoricals (including injected extra fields).
-        if meta_obj is not None:
-            meta_obj = _fix_meta_categories(meta_obj, df, warnings=False)
 
     if meta_obj is None and return_meta:
         raise Exception("No meta found on any of the files")
