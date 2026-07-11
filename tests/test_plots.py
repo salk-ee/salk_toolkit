@@ -6,7 +6,7 @@ Tests all e2e_plot configurations defined in `salk_toolkit/plots.py`.
 import json
 import sys
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 import altair as alt
 import pandas as pd
@@ -67,7 +67,7 @@ class TestPlots:
     def _run_plot_test(
         self,
         test_name: str,
-        config: Mapping[str, Any],
+        config: dict[str, Any],
         data_file: str | Path | None = None,
         full_df: Any | None = None,
         data_meta: DataMeta | None = None,
@@ -105,6 +105,7 @@ class TestPlots:
             result = e2e_plot(config, data_file, **test_kwargs)
 
         self._assert_chart_matches_reference(test_name, result, matches_dict, recompute, float_tolerance)
+        assert not isinstance(result, pd.DataFrame)
         return result
 
     def _assert_chart_matches_reference(
@@ -634,6 +635,7 @@ class TestPlots:
             "plot_args": {"sample_size": 37},
         }
         data = e2e_plot(config, str(self.data_file), width=800, return_data=True)
+        assert isinstance(data, pd.DataFrame)
 
         assert len(data) == 37 * data["question"].nunique()
 
@@ -647,6 +649,7 @@ class TestPlots:
             "internal_facet": True,
         }
         data = e2e_plot(config, str(self.data_file), width=800, return_data=True)
+        assert isinstance(data, pd.DataFrame)
 
         assert len(data) == min(1000, data["id"].nunique()) * data["question"].nunique()
 
@@ -835,6 +838,7 @@ class TestPlotUtilities:
         df_num = pd.DataFrame({"x": ["1", "2.5", "3"]})
         x_axis, out = _cat_to_cont_axis(df_num.copy(), {"col": "x", "order": ["1", "2.5", "3"]})
         x_dict = x_axis.to_dict()
+        assert isinstance(x_dict, dict)
         assert x_dict["type"] == "quantitative"
         assert x_dict["field"] == "x_cont"
         assert out["x"].tolist() == ["1", "2.5", "3"]
@@ -844,6 +848,7 @@ class TestPlotUtilities:
         df_dt = pd.DataFrame({"x": ["2020-01-01", "2020-01-02"]})
         x_axis, out = _cat_to_cont_axis(df_dt.copy(), {"col": "x", "order": ["2020-01-01", "2020-01-02"]})
         x_dict = x_axis.to_dict()
+        assert isinstance(x_dict, dict)
         assert x_dict["type"] == "temporal"
         assert x_dict["field"] == "x_cont"
         assert len(x_dict["axis"]["values"]) == 2  # explicit start/end ticks
@@ -856,6 +861,7 @@ class TestPlotUtilities:
         df_nom = pd.DataFrame({"x": ["b", "a"]})
         x_axis, out = _cat_to_cont_axis(df_nom.copy(), {"col": "x", "order": ["b", "a"]})
         x_dict = x_axis.to_dict()
+        assert isinstance(x_dict, dict)
         assert x_dict["type"] == "nominal"
         assert out["x"].tolist() == ["b", "a"]
 
