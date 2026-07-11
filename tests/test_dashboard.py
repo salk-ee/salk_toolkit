@@ -126,7 +126,9 @@ def test_bypass_auth_manager_language_change(monkeypatch: pytest.MonkeyPatch) ->
     manager.change_user("dev-user", {"lang": "et"})
 
     assert manager.user["lang"] == "et"
-    assert session_state["bypass_user"]["lang"] == "et"
+    stored_user = session_state["bypass_user"]
+    assert isinstance(stored_user, dict)
+    assert stored_user["lang"] == "et"
 
 
 def test_sdb_prefers_bypass_over_oauth(monkeypatch: pytest.MonkeyPatch) -> None:

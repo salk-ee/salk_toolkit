@@ -97,6 +97,7 @@ def test_update_data_meta_with_pp_desc_adds_res_meta_and_updates_columns() -> No
 
     # Validate metadata for the newly added response block
     assert "likert_question" in col_meta
+    assert col_meta["likert_question"].columns is not None
     new_res_col = col_meta["likert_question"].columns[0]
     assert new_res_col.startswith("likert_")
     assert col_meta[new_res_col].categories == ["Low", "Medium", "High"]
