@@ -187,7 +187,7 @@ In a dashboard context, `salk_dashboard_tools.plot.pp_data(pp_desc, af)` is the 
 
 ## `create_plot_payload` — plot-shaped data + metadata (PlotPayload v1)
 
-`return_data=True` stops *before* the plot function — you get the aggregate, not the geometry. `create_plot_payload` runs the plot function's own shaping code (`return_df=True` early-return inside each `payload=True` plot fn) and serializes the result plus everything a renderer needs, per facet-grid cell:
+`return_data=True` stops *before* the plot function — you get the aggregate, not the geometry. `create_plot_payload` runs the plot's own shaping code and serializes the result plus everything a renderer needs, per facet-grid cell. It uses two paths per plot: `payload=True` plots early-return their prepared frame on `return_df` (the authoritative path); every other chart-producing plot falls back to building its Altair chart and reading the frame / color-scale / geo back off it — so coverage is **universal**, no per-plot annotation required.
 
 ```python
 from salk_toolkit.pp import pp_transform_data, create_plot_payload, UnsupportedPayloadError
@@ -203,7 +203,7 @@ Use it when:
 - **Another plotting engine renders** (the ECharts path in dms-plots-api `/plot-data`) — the payload is the full contract; no Vega spec scraping.
 - **CSV / tabular exports of "the numbers behind the chart"** — each cell's `data` is column-wise: `pd.DataFrame(cell["data"]).to_csv(...)`. Prefer this over `return_data=True` when the export should match what the chart displays (e.g. boxplot whisker stats, likert start/end segments, maxdiff Most/Least split) rather than the raw aggregate.
 
-Coverage: only plots registered with `payload=True` (check `get_plot_meta(name).payload`); unported plots (`violin`, `boxplots-raw`, ...) raise `UnsupportedPayloadError` — catch it and fall back to the Vega path. The flag is opt-in because porting a plot means restructuring its fn so *all* frame shaping happens before the `return_df` early-return (and shared facet objects are replaced, not mutated) — it can't just be flipped on. Per-plot payload frames are pinned to equal the Altair chart's frame in `tests/test_plot_payload.py`; a new payload-capable plot needs that consistency test plus a payload smoke test.
+Coverage is universal: any chart-producing plot yields a payload. `UnsupportedPayloadError` fires only when a plot returns no chart/frame at all (e.g. `coalition_applet`, a streamlit-only widget) and hasn't opted into `return_df` — catch it and fall back to the Vega path. `get_plot_meta(name).payload` is **not** a coverage gate; it just marks which plots take the authoritative `return_df` path (shares the plot's shaping code, decoupled from Altair internals) vs. the chart-introspection fallback. Adding `payload=True` to a plot is an optimization/robustness choice — restructure its fn so *all* frame shaping precedes the `return_df` early-return, replace (don't mutate) shared facet objects, and pin its frame against the chart in `tests/test_plot_payload.py`. The fallback reads data off `chart.data` (or a `transform_lookup`'s table for geo plots), so it's coupled to Altair's object model; a plot whose chart layers carry *different* frames should opt into `return_df` to declare the canonical one.
 
 ## `matching_plots` — use it before forcing a plot
 
