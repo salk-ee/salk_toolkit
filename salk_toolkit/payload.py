@@ -1,9 +1,17 @@
-"""PlotPayload v1: serialize a plot's prepared data + descriptor for non-Vega renderers (e.g. ECharts)."""
+"""PlotPayload v1: serialize a plot's data + descriptor for non-Vega renderers (e.g. ECharts).
+
+Two extraction paths, picked per plot:
+- `payload=True` plots early-return their prepared `PlotInput` on `return_df` -- the authoritative
+  path (shares the plot's shaping code, decoupled from Altair's chart internals).
+- every other chart-producing plot falls back to building its Altair chart and reading the frame /
+  color-scale / geo back off it, so payload coverage is universal without per-plot annotation.
+"""
 
 __all__ = ["create_plot_payload", "UnsupportedPayloadError"]
 
 import itertools as it
-from typing import Any, Callable, Dict, List, Optional, Sequence, cast
+from copy import deepcopy
+from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, cast
 
 import altair as alt
 import numpy as np
@@ -14,14 +22,130 @@ from salk_toolkit.pp import FacetMeta, PlotInput, _get_plot_fn, _normalize_color
 from salk_toolkit.utils import clean_kwargs
 from salk_toolkit.validation import PlotDescriptor
 
+# ColorBrewer stops for Vega's "yellowgreen"/"redyellowgreen" schemes -- Vega resolves scheme names
+# to hex only at render, so the resolved ramp is never on the chart object. Used by the fallback
+# path; the `payload=True` matrix/geoplot supply their own resolved stops via `extras`.
+_SCHEME_STOPS: Dict[str, List[str]] = {
+    "yellowgreen": ["#ffffe5", "#f7fcb9", "#d9f0a3", "#addd8e", "#78c679", "#41ab5d", "#238443", "#006837", "#004529"],
+    "redyellowgreen": [
+        "#a50026",
+        "#d73027",
+        "#f46d43",
+        "#fdae61",
+        "#fee08b",
+        "#ffffbf",
+        "#d9ef8b",
+        "#a6d96a",
+        "#66bd63",
+        "#1a9850",
+        "#006837",
+    ],  # noqa: E501
+}
+
 
 class UnsupportedPayloadError(Exception):
-    """Raised for plots without payload support (`payload=False` in their `@stk_plot` meta)."""
+    """Raised when a plot yields no extractable data frame (e.g. a streamlit-only widget, no `return_df`)."""
 
     def __init__(self, plot: str) -> None:
         """Store the unsupported plot name on `.plot` for callers to inspect."""
-        super().__init__(f"No payload support registered for plot '{plot}'")
+        super().__init__(f"Plot '{plot}' produced no payload-extractable data")
         self.plot = plot
+
+
+# ---- chart introspection (fallback path) ---------------------------------------------------
+# These read data / scale / geo off a built Altair chart. They are coupled to Altair's object
+# model: attribute reads return `_PropertySetter` proxies and transform `from` lives under the
+# schema key `"from"` (not `.from_`), so we read via `.to_dict()` / `[...]` where needed.
+
+
+def _seq(x: object) -> list:
+    """Altair-aware list coercion: None / Undefined -> []."""
+    return [] if x is None or x is alt.Undefined else list(cast(Sequence[Any], x))
+
+
+def _walk(chart: object) -> Iterator[object]:
+    """Yield a chart and every nested sub-chart (layer / concat / facet spec)."""
+    yield chart
+    for attr in ("layer", "hconcat", "vconcat", "concat"):
+        for sub in _seq(getattr(chart, attr, None)):
+            yield from _walk(sub)
+    spec = getattr(chart, "spec", alt.Undefined)
+    if spec is not alt.Undefined and spec is not None:
+        yield from _walk(spec)
+
+
+def _sk(obj: object, key: str) -> object:
+    """Schema-key read on an altair object (`obj["key"]`), tolerating attribute-proxy shadowing."""
+    try:
+        return obj[key]  # type: ignore[index]
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _lookup_from(t: object) -> object:
+    """The `from` of a transform_lookup -- stored under schema-key `"from"`, not the `.from_` attr."""
+    return _sk(t, "from") or getattr(t, "_kwds", {}).get("from_")
+
+
+def _chart_frame(chart: object) -> Optional[pd.DataFrame]:
+    """The DataFrame a chart draws from: a transform_lookup's survey table, else `.data`."""
+    for c in _walk(chart):
+        for t in _seq(getattr(c, "transform", None)):
+            fdata = getattr(_lookup_from(t), "data", None)
+            if isinstance(fdata, pd.DataFrame):
+                return fdata
+        cdata = getattr(c, "data", None)
+        if isinstance(cdata, pd.DataFrame):
+            return cdata
+    return None
+
+
+def _chart_scale(chart: object) -> Optional[Dict[str, Any]]:
+    """A continuous color scale as {stops: [hex], domain: [...]} -- None for categorical color."""
+    for c in _walk(chart):
+        color = getattr(getattr(c, "encoding", None), "color", None)
+        if color in (None, alt.Undefined):
+            continue
+        try:
+            d = color.to_dict()
+        except Exception:  # noqa: BLE001 -- alt.condition() colors etc.
+            continue
+        sc = d.get("scale") if isinstance(d, dict) and d.get("type") == "quantitative" else None
+        if not isinstance(sc, dict):
+            continue
+        if isinstance(sc.get("range"), (list, tuple)):  # explicit hex ramp
+            return {"stops": list(sc["range"]), "domain": sc.get("domain")}
+        if sc.get("scheme") in _SCHEME_STOPS:  # named scheme
+            domain = [sc.get("domainMin"), sc.get("domainMid", 0), sc.get("domainMax")]
+            return {"stops": _SCHEME_STOPS[sc["scheme"]], "domain": domain}
+    return None
+
+
+def _chart_geo(chart: object) -> Optional[Dict[str, Any]]:
+    """Geo join spec off a geoshape mark: url + object + region_key + name_property."""
+    for c in _walk(chart):
+        mark = getattr(c, "mark", None)
+        if (mark if isinstance(mark, str) else getattr(mark, "type", None)) != "geoshape":
+            continue
+        region_key = name_property = None
+        for t in _seq(getattr(c, "transform", None)):
+            lookup = _sk(t, "lookup")
+            region_key = _sk(_lookup_from(t), "key")
+            if isinstance(lookup, str) and lookup.startswith("properties."):
+                name_property = lookup[len("properties.") :]
+        cdata = getattr(c, "data", None)
+        src = cdata.to_dict() if cdata is not None and hasattr(cdata, "to_dict") else {}
+        feature = src.get("format", {}).get("feature") if isinstance(src, dict) else None
+        geo: Dict[str, Any] = {
+            "url": src.get("url") if isinstance(src, dict) else None,
+            "format": "topojson" if feature is not None else "geojson",
+            "region_key": region_key,
+            "name_property": name_property,
+        }
+        if feature is not None:
+            geo["object"] = feature
+        return geo
+    return None
 
 
 def _to_json_scalar(v: object) -> object:
@@ -67,15 +191,14 @@ def _facet_colors(facet: FacetMeta) -> Optional[Dict[str, str]]:
     return {str(c): palette[i % len(palette)] for i, c in enumerate(facet.order)}
 
 
-def _cell(cell_pi: PlotInput, title: str, keys: Dict[str, Any]) -> Dict[str, Any]:
-    """Serialize one prepared `PlotInput` into a `cells[i][j]` entry."""
-    data = cell_pi.data
-    columns = list(data.columns)
+def _cell(frame: pd.DataFrame, title: str, keys: Dict[str, Any]) -> Dict[str, Any]:
+    """Serialize one cell's DataFrame into a `cells[i][j]` entry."""
+    columns = list(frame.columns)
     return {
         "title": title,
         "keys": keys,
         "columns": columns,
-        "data": {c: _serialize_column(data[c]) for c in columns},
+        "data": {c: _serialize_column(frame[c]) for c in columns},
     }
 
 
@@ -86,13 +209,12 @@ def create_plot_payload(
 ) -> Dict[str, Any]:
     """Serialize a `PlotInput` + `PlotDescriptor` into a PlotPayload v1 dict.
 
-    Runs the `create_plot` dry-run pipeline, then calls the plot function per grid cell with
-    `return_df=True` to get its prepared frame. Raises `UnsupportedPayloadError` for plots
-    without `payload=True` in their meta.
+    Dry-runs `create_plot`, then per grid cell either early-returns the plot's prepared frame
+    (`payload=True` plots, via `return_df`) or builds its Altair chart and reads the frame /
+    scale / geo back off it. Raises `UnsupportedPayloadError` only when a cell yields no frame.
     """
     plot_meta = get_plot_meta(pp_desc.plot)
-    if plot_meta is None or not plot_meta.payload:
-        raise UnsupportedPayloadError(pp_desc.plot)
+    uses_return_df = plot_meta is not None and plot_meta.payload
 
     dry_pi = create_plot(pi, pp_desc, dry_run=True, escape_labels=False, translate=translate)
     assert isinstance(dry_pi, PlotInput)
@@ -110,27 +232,33 @@ def create_plot_payload(
         for f in dry_pi.facets
     ]
 
-    # Each cell gets fresh container copies; objects inside them (e.g. FacetMeta) stay shared
-    # across cells and must be replaced, not mutated, by the plot fn.
     combs = list(it.product(*[utils.get_categories(data[fc].dtype) for fc in outer_factors]))
-    extras: Dict[str, Any] = {}
+    scale = geo = None
     cell_list: List[Dict[str, Any]] = []
     for comb in combs:  # `it.product()` of no factors yields one empty comb = one cell
+        # deepcopy facets: fallback (stock) plots may reorder FacetMeta in place across shared cells
         cell_pi = dry_pi.model_copy(
             update={
                 "data": data[(data[outer_factors] == comb).all(axis=1)] if comb else data,
                 "extras": dict(dry_pi.extras),
-                "facets": list(dry_pi.facets),
+                "facets": deepcopy(dry_pi.facets),
                 "plot_args": dict(dry_pi.plot_args),
-                "return_df": True,
+                "return_df": uses_return_df,
             }
         )
-        cell_pi = plot_fn(cell_pi, **plot_kwargs)
-        if not isinstance(cell_pi, PlotInput):
-            raise UnsupportedPayloadError(pp_desc.plot)
-        extras.update(cell_pi.extras or {})
+        result = plot_fn(cell_pi, **plot_kwargs)
+        if uses_return_df and isinstance(result, PlotInput):  # authoritative path
+            frame = result.data
+            scale = scale or (result.extras or {}).get("scale")
+            geo = geo or (result.extras or {}).get("geo")
+        else:  # fallback: read it back off the built chart
+            frame = _chart_frame(result)
+            if frame is None:
+                raise UnsupportedPayloadError(pp_desc.plot)
+            scale = scale or _chart_scale(result)
+            geo = geo or _chart_geo(result)
         keys = {oc: _to_json_scalar(v) for oc, v in zip(outer_factors, comb)}
-        cell_list.append(_cell(cell_pi, "-".join(map(str, comb)), keys))
+        cell_list.append(_cell(frame, "-".join(map(str, comb)), keys))
 
     cells = [list(row) for row in utils.batch(cell_list, n_facet_cols)]
     value_range = [_to_json_scalar(v) for v in dry_pi.value_range] if dry_pi.value_range is not None else None
@@ -151,7 +279,7 @@ def create_plot_payload(
             "requested_cols": pp_desc.n_facet_cols,
         },
         "cells": cells,
-        "scale": extras.get("scale"),
-        "geo": extras.get("geo"),
+        "scale": scale,
+        "geo": geo,
         "plot_args": {k: v for k, v in dry_pi.plot_args.items() if not str(k).startswith("_")},
     }

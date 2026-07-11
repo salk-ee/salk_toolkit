@@ -619,6 +619,9 @@ def make_start_end(
 ) -> pd.DataFrame:
     """Compute start/end positions for split likert bars."""
 
+    if len(x) == 0:  # empty phantom group (per-cell payload filters an outer facet to one value)
+        return x
+
     if len(x) != len(cat_order):
         shared = x.to_dict(orient="records")[0]
         # Fill in missing rows with value zero so they would just be skipped

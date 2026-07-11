@@ -1,5 +1,6 @@
 """Tests for `create_plot_payload` (PlotPayload v1) and the `PlotInput.return_df` plot contract."""
 
+import altair as alt
 import numpy as np
 import pandas as pd
 import pytest
@@ -123,12 +124,42 @@ def test_payload_synthesizes_default_palette_for_uncolored_facet(barbell_cell_pi
     assert group["colors"] == {"Group A": "#c00000", "Group B": "#00c000"}
 
 
-def test_payload_unsupported_raises(small_pi_fixture, ppd_columns):
-    """A plot without `payload=True` in its meta (e.g. `violin`) raises `UnsupportedPayloadError`."""
+def test_payload_fallback_covers_non_payload_plot(small_pi_fixture):
+    """A plot without `payload=True` is still covered: its frame is read off the built chart."""
 
-    ppd = ppd_columns.model_copy(update={"plot": "violin"})
-    with pytest.raises(stk_payload.UnsupportedPayloadError):
-        pp.create_plot_payload(small_pi_fixture, ppd)
+    marker = pd.DataFrame({"x": [1, 2, 3], "y": [4.0, 5.0, 6.0]})
+
+    @pp.stk_plot("__test_fallback_plot")  # note: no payload=True
+    def _fn(p):
+        return alt.Chart(marker).mark_point().encode(x="x:Q", y="y:Q")
+
+    try:
+        assert pp.get_plot_meta("__test_fallback_plot").payload is False
+        ppd = PlotDescriptor(plot="__test_fallback_plot", res_col="score", factor_cols=["group.a", "group.b"])
+        pl = pp.create_plot_payload(small_pi_fixture, ppd)
+        # every cell carries the frame pulled off the chart's `.data`
+        for row in pl["cells"]:
+            for cell in row:
+                assert cell["data"]["x"] == [1, 2, 3]
+                assert cell["data"]["y"] == [4.0, 5.0, 6.0]
+    finally:
+        pp._stk_deregister("__test_fallback_plot")
+
+
+def test_payload_no_frame_raises():
+    """A plot yielding no chart/frame (e.g. a streamlit-only widget) raises `UnsupportedPayloadError`."""
+
+    @pp.stk_plot("__test_no_frame_plot")
+    def _fn(p):
+        return None  # like a streamlit widget: nothing to extract
+
+    try:
+        ppd = PlotDescriptor(plot="__test_no_frame_plot", res_col="score")
+        pi = PlotInput(data=pd.DataFrame({"score": [1.0, 2.0]}), col_meta={}, value_col="score")
+        with pytest.raises(stk_payload.UnsupportedPayloadError):
+            pp.create_plot_payload(pi, ppd)
+    finally:
+        pp._stk_deregister("__test_no_frame_plot")
     # Same class importable from pp for backwards compatibility
     assert pp.UnsupportedPayloadError is stk_payload.UnsupportedPayloadError
 
@@ -263,6 +294,42 @@ def test_payload_likert_bars_smoke(likert_cell_pi_and_ppd):
     cell = pl["cells"][0][0]
     assert {"start", "end"}.issubset(cell["columns"])
     assert len(pl["facets"][0]["neutrals"]) > 0
+
+
+def test_make_start_end_empty_group_returns_empty():
+    """Empty phantom groups (per-cell payload filters an outer facet) return empty, not IndexError."""
+
+    cats = ["a", "b", "c"]
+    empty = pd.DataFrame({"cat": pd.Categorical([], categories=cats, ordered=True), "val": []})
+    out = stk_plots.make_start_end(empty, value_col="val", cat_col="cat", cat_order=cats, neutral=[1], n_negative=1)
+    assert len(out) == 0
+
+
+def test_payload_likert_bars_faceted_no_crash():
+    """likert_bars with an OUTER facet: per-cell filtering used to crash make_start_end (IndexError)."""
+
+    cats = ["Strongly disagree", "Disagree", "Neutral", "Agree", "Strongly agree"]
+    shares = [0.1, 0.2, 0.2, 0.3, 0.2]
+    rows = [{"gender": g, "agree": c, "share": s} for g in ["Male", "Female"] for c, s in zip(cats, shares)]
+    data = pd.DataFrame(rows)
+    data["agree"] = pd.Categorical(data["agree"], categories=cats, ordered=True)
+    data["gender"] = pd.Categorical(data["gender"], categories=["Male", "Female"])
+    col_meta = {
+        "agree": GroupOrColumnMeta(categories=cats, ordered=True, likert=True, neutral_middle="Neutral"),
+        "gender": GroupOrColumnMeta(categories=["Male", "Female"]),
+    }
+    pi = PlotInput(data=data, col_meta=col_meta, value_col="share")
+    ppd = PlotDescriptor(plot="likert_bars", res_col="share", factor_cols=["agree", "gender"])
+
+    pl = pp.create_plot_payload(pi, ppd)
+
+    assert pl["outer_factors"] == ["gender"]
+    assert sum(len(row) for row in pl["cells"]) == 2  # one cell per gender, neither crashes
+    for row in pl["cells"]:
+        for cell in row:
+            assert {"start", "end"}.issubset(cell["columns"])
+            # each cell carries only its own gender's rows
+            assert len(set(cell["data"]["gender"])) == 1
 
 
 @pytest.fixture
