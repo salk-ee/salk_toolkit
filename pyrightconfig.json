@@ -1,0 +1,26 @@
+{
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "basic",
+  "include": [
+    "salk_toolkit",
+    "tests"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    "**/.ipynb_checkpoints",
+    "**.ipynb"
+  ],
+  "reportUnknownMemberType": false,
+  "reportUnknownArgumentType": false,
+  "reportUnknownVariableType": false,
+  "reportAttributeAccessIssue": false,
+  "reportArgumentType": false,
+  "reportReturnType": true,
+  "reportCallIssue": true,
+  "reportOptionalIterable": true,
+  "reportIndexIssue": true,
+  "reportOptionalSubscript": true,
+  "reportOptionalMemberAccess": true,
+  "reportOptionalOperand": true,
+  "reportGeneralTypeIssues": true
+}

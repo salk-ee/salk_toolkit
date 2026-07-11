@@ -106,29 +106,7 @@ docformat = "google"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
-[tool.pyright]
-pythonVersion = "3.12"
-typeCheckingMode = "basic"
-include = [
-    "salk_toolkit",
-    "tests",
-]
-reportUnknownMemberType = false
-reportUnknownArgumentType = false
-reportUnknownVariableType = false
-reportAttributeAccessIssue = false
-reportArgumentType = false
-reportReturnType = true
-reportCallIssue = true
-reportOptionalIterable = true
-reportIndexIssue = true
-reportOptionalSubscript = true
-reportOptionalMemberAccess = true
-reportOptionalOperand = true
-reportGeneralTypeIssues = true
-exclude = [
-    "tests",
-    "**/__pycache__",
-    "**/.ipynb_checkpoints",
-    "**.ipynb",
-]
+# Pyright configuration lives in pyrightconfig.json (at the repo root) rather than
+# here: a root-level pyrightconfig.json is discovered before any parent-directory
+# config during pyright's upward search, which keeps type-checking scoped to this
+# package when the repo is checked out inside a larger workspace.
