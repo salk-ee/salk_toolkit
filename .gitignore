@@ -16,6 +16,7 @@ tags
 *.sav
 *.csv
 *.json
+!pyrightconfig.json
 *.parquet
 
 # Byte-compiled / optimized / DLL files
