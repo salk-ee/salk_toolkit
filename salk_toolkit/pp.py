@@ -132,9 +132,8 @@ class PlotInput:
     alt_properties: Dict[str, Any] = field(default_factory=dict)
     outer_factors: List[str] = field(default_factory=list)
     plot_args: Dict[str, Any] = field(default_factory=dict)
-    extras: Dict[str, Any] = field(default_factory=dict)  # plot -> payload side-channel (e.g. "scale", "geo")
     n_facet_cols: Optional[int] = None  # stashed by create_plot for payload consumers
-    return_df: bool = False  # plot fns with payload=True return the prepared PlotInput instead of a chart
+    return_df: bool = False  # payload=True plots return the prepared PlotInput instead of a chart
 
     def model_copy(self, *, deep: bool = False, update: dict[str, Any] | None = None) -> "PlotInput":
         """Backwards-compatible copy helper (mirrors the old Pydantic API used internally)."""

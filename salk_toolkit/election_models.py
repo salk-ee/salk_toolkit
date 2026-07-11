@@ -401,7 +401,6 @@ def _simulate_if_needed(
     },
     as_is=True,
     priority=-500,
-    payload=True,
 )
 def mandate_plot(
     p: PlotInput,
@@ -411,7 +410,7 @@ def mandate_plot(
     width: int | None = None,
     alt_properties: Mapping[str, object] | None = None,
     sim_done: bool = False,
-) -> AltairChart | PlotInput:
+) -> AltairChart:
     """Per-district mandate probability distributions from an election simulation."""
 
     if len(p.facets) < 2:
@@ -419,8 +418,6 @@ def mandate_plot(
     if p.outer_factors:
         raise ValueError("mandate_plot does not support outer factors")
 
-    p = shallow_copy(p)
-    p.data = p.data.copy()
     f0, f1 = p.facets[0], p.facets[1]
     tf = p.translate or (lambda s: s)
     width = width or p.width
@@ -428,7 +425,7 @@ def mandate_plot(
     if alt_properties:
         alt_props.update(dict(alt_properties))
 
-    df = _simulate_if_needed(p, mandates, electoral_system, value_col, sim_done)
+    df = _simulate_if_needed(p, mandates, electoral_system, value_col, sim_done).copy()
 
     df[f1.col] = df[f1.col].replace({"Compensation": tf("Compensation")})
 
@@ -454,10 +451,6 @@ def mandate_plot(
     el_cols = [i for i, v in eliminate.items() if v]
     res = res[~res[f0.col].isin(el_cols)]
     cat_order = list(eliminate[~eliminate].index)
-
-    p.data = res
-    if p.return_df:
-        return p
 
     f_width = max(50, width / len(cat_order)) if width is not None else 50
 
@@ -564,7 +557,6 @@ def _party_dist_chart(ddf: pd.DataFrame, f0: FacetMeta, tf: Callable[[str], str]
     as_is=True,
     n_facets=(2, 2),
     priority=-500,
-    payload=True,
 )
 def party_mandates(
     p: PlotInput,
@@ -572,7 +564,7 @@ def party_mandates(
     electoral_system: ElectoralSystem | Mapping[str, object] | None = None,
     value_col: str | None = None,
     sim_done: bool = False,
-) -> AltairChart | PlotInput:
+) -> AltairChart:
     """Mandate-count distribution per party from an election simulation."""
 
     if len(p.facets) < 2:
@@ -580,7 +572,6 @@ def party_mandates(
     if p.outer_factors:
         raise ValueError("party_mandates does not support outer factors")
 
-    p = shallow_copy(p)
     tf = p.translate or (lambda s: s)
     f0 = p.facets[0]
 
@@ -588,11 +579,7 @@ def party_mandates(
     odf = sdf.groupby(["draw", f0.col])["mandates"].sum().reset_index()
     odf["over_t"] = odf["mandates"] > 0
 
-    p.data = _party_mandate_dists(odf, f0.col, tf)
-    if p.return_df:
-        return p
-
-    return _party_dist_chart(p.data, f0, tf)
+    return _party_dist_chart(_party_mandate_dists(odf, f0.col, tf), f0, tf)
 
 
 @stk_plot(

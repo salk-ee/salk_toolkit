@@ -1,5 +1,7 @@
 """Tests for `create_plot_payload` (PlotPayload v1) and the `PlotInput.return_df` plot contract."""
 
+from types import SimpleNamespace
+
 import altair as alt
 import numpy as np
 import pandas as pd
@@ -14,17 +16,22 @@ from salk_toolkit.validation import DataMeta, ElectoralSystem, GroupOrColumnMeta
 
 
 def prepared(plot_fn, cell_pi, **kwargs):
-    """Call a plot fn with `return_df=True` and assert it returns the prepared PlotInput."""
+    """Build the plot's chart and return (in `.data`) the frame the payload fallback reads off it."""
 
-    out = plot_fn(cell_pi.model_copy(update={"return_df": True}), **kwargs)
-    assert isinstance(out, PlotInput)
-    return out
+    chart = plot_fn(cell_pi, **kwargs)
+    frame = stk_payload._chart_frame(chart)
+    assert frame is not None, "payload fallback found no frame on the chart"
+    return SimpleNamespace(data=frame)
 
 
 def test_payload_flag_in_plot_meta():
-    """`payload=True` in `@stk_plot` marks payload support; unported plots stay False."""
+    """`payload=True` marks the authoritative return_df path (only non-chart plots); the rest
+    are covered by the chart-extraction fallback, so the flag is not a coverage gate."""
 
-    assert pp.get_plot_meta("columns").payload is True
+    # coalition_applet is a streamlit widget (no chart) -> must use return_df
+    assert pp.get_plot_meta("coalition_applet").payload is True
+    # chart plots go through the fallback, so they carry no flag
+    assert pp.get_plot_meta("columns").payload is False
     assert pp.get_plot_meta("violin").payload is False
 
 
@@ -175,22 +182,19 @@ def test_payload_matches_altair_frame(small_pi_fixture, ppd_columns):
 
 @pytest.fixture
 def registered_mutating_two_factor_plot():
-    """Register a payload-capable plot that mutates `p.extras`/`p.facets` in place and records
-    what each call saw on entry, so a test can detect cross-cell leakage."""
+    """Register a plot that appends to `p.facets` in place and records what each call saw on
+    entry, so a test can detect cross-cell leakage (the payload deepcopies facets per cell)."""
 
-    seen_extras: list[dict] = []
     seen_n_facets: list[int] = []
 
     @pp.stk_plot("__test_mutating_plot", payload=True)
     def _plot_fn(p):
-        seen_extras.append(dict(p.extras))
         seen_n_facets.append(len(p.facets))
-        p.extras["scale"] = f"cell-{len(seen_extras)}"
-        p.facets.append(FacetMeta(col=f"mutant-{len(seen_extras)}", ocol=f"mutant-{len(seen_extras)}"))
+        p.facets.append(FacetMeta(col=f"mutant-{len(seen_n_facets)}", ocol=f"mutant-{len(seen_n_facets)}"))
         return p
 
     try:
-        yield "__test_mutating_plot", seen_extras, seen_n_facets
+        yield "__test_mutating_plot", seen_n_facets
     finally:
         pp._stk_deregister("__test_mutating_plot")
 
@@ -199,21 +203,21 @@ def registered_mutating_two_factor_plot():
 def ppd_mutating_two_factors(registered_mutating_two_factor_plot):
     """Two-factor descriptor with one column inner, so the other stays outer -> multiple cells."""
 
-    plot_name, seen_extras, seen_n_facets = registered_mutating_two_factor_plot
+    plot_name, seen_n_facets = registered_mutating_two_factor_plot
     ppd = PlotDescriptor(
         plot=plot_name,
         res_col="score",
         factor_cols=["group.a", "group.b"],
         internal_facet=1,
     )
-    return ppd, seen_extras, seen_n_facets
+    return ppd, seen_n_facets
 
 
 def test_create_plot_payload_no_cross_cell_aliasing(small_pi_fixture, ppd_mutating_two_factors):
-    """Each cell gets fresh facets/extras/plot_args containers; the top-level facets block
-    reflects the dry run untouched by any cell's mutations."""
+    """Each cell gets a fresh (deep-copied) facets container; a cell's in-place mutation does not
+    leak into the next cell, and the top-level facets block reflects the untouched dry run."""
 
-    ppd, seen_extras, seen_n_facets = ppd_mutating_two_factors
+    ppd, seen_n_facets = ppd_mutating_two_factors
 
     dry_pi = pp.create_plot(small_pi_fixture, ppd, dry_run=True, escape_labels=False)
     assert len(dry_pi.facets) == 1
@@ -221,8 +225,7 @@ def test_create_plot_payload_no_cross_cell_aliasing(small_pi_fixture, ppd_mutati
 
     pl = pp.create_plot_payload(small_pi_fixture, ppd)
 
-    assert len(seen_extras) == 3  # 3 outer categories -> 3 cells
-    assert seen_extras == [{} for _ in seen_extras], f"cross-cell extras leakage: {seen_extras}"
+    assert len(seen_n_facets) == 3  # 3 outer categories -> 3 cells
     assert seen_n_facets == [1, 1, 1], f"cross-cell facets leakage: {seen_n_facets}"
     assert [f["col"] for f in pl["facets"]] == dry_facet_cols
 
@@ -711,8 +714,8 @@ def test_geoplot_geojson_format_omits_object(geoplot_cell_pi_and_ppd):
     pi, ppd = geoplot_cell_pi_and_ppd
     cell_pi = pp.create_plot(pi, ppd, dry_run=True, escape_labels=False)
 
-    out = prepared(stk_plots.geoplot, cell_pi, topo_feature=("https://example.com/estonia.geojson", "geojson", "NAME"))
-    assert out.extras["geo"] == {
+    chart = stk_plots.geoplot(cell_pi, topo_feature=("https://example.com/estonia.geojson", "geojson", "NAME"))
+    assert stk_payload._chart_geo(chart) == {
         "url": "https://example.com/estonia.geojson",
         "format": "geojson",
         "region_key": "region",
@@ -785,13 +788,13 @@ def test_geobest_return_df_matches_chart_lookup_frame(geobest_cell_pi_and_ppd):
 
 
 def test_geobest_geojson_format_omits_object(geobest_cell_pi_and_ppd):
-    """`format: geojson` must not carry an `object` key (shared `_geo_extras` contract)."""
+    """`format: geojson` must not carry an `object` key (shared `_chart_geo` contract)."""
 
     pi, ppd = geobest_cell_pi_and_ppd
     cell_pi = pp.create_plot(pi, ppd, dry_run=True, escape_labels=False)
 
-    out = prepared(stk_plots.geobest, cell_pi, topo_feature=("https://example.com/estonia.geojson", "geojson", "NAME"))
-    assert out.extras["geo"] == {
+    chart = stk_plots.geobest(cell_pi, topo_feature=("https://example.com/estonia.geojson", "geojson", "NAME"))
+    assert stk_payload._chart_geo(chart) == {
         "url": "https://example.com/estonia.geojson",
         "format": "geojson",
         "region_key": "region",

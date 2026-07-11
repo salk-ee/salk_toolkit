@@ -236,22 +236,19 @@ def create_plot_payload(
     scale = geo = None
     cell_list: List[Dict[str, Any]] = []
     for comb in combs:  # `it.product()` of no factors yields one empty comb = one cell
-        # deepcopy facets: fallback (stock) plots may reorder FacetMeta in place across shared cells
+        # deepcopy facets: plots may reorder FacetMeta in place across the shared cells
         cell_pi = dry_pi.model_copy(
             update={
                 "data": data[(data[outer_factors] == comb).all(axis=1)] if comb else data,
-                "extras": dict(dry_pi.extras),
                 "facets": deepcopy(dry_pi.facets),
                 "plot_args": dict(dry_pi.plot_args),
                 "return_df": uses_return_df,
             }
         )
         result = plot_fn(cell_pi, **plot_kwargs)
-        if uses_return_df and isinstance(result, PlotInput):  # authoritative path
+        if uses_return_df and isinstance(result, PlotInput):  # authoritative path (return_df)
             frame = result.data
-            scale = scale or (result.extras or {}).get("scale")
-            geo = geo or (result.extras or {}).get("geo")
-        else:  # fallback: read it back off the built chart
+        else:  # fallback: read frame / scale / geo back off the built chart
             frame = _chart_frame(result)
             if frame is None:
                 raise UnsupportedPayloadError(pp_desc.plot)
