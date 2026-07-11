@@ -1435,6 +1435,14 @@ def _wrangle_data(
 
             data[c] = pd.Categorical(data[c], u_cats, ordered=meta.ordered)
 
+    # polars group_by returns groups in a nondeterministic hash order; impose a stable order on the
+    # grouping keys so rendered specs and plot payloads are reproducible run-to-run. Sorted after the
+    # categorical fix above so it follows the deterministic meta category order (not polars' hash
+    # codes). Row order is presentation-irrelevant -- plots re-sort by facet order for display.
+    sort_cols = [c for c in gb_dims + [res_col] if c in data.columns]
+    if sort_cols:
+        data = data.sort_values(sort_cols, kind="stable").reset_index(drop=True)
+
     return PlotInput(
         data=data,
         col_meta=dict(col_meta),  # As this has been adjusted for discretization etc
