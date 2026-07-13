@@ -123,6 +123,13 @@
     0,
     []
   ],
+  "party_mandates": [
+    -2000500,
+    [
+      "mandates",
+      "electoral_system"
+    ]
+  ],
   "stacked_columns": [
     40,
     []

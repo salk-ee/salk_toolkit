@@ -124,13 +124,21 @@
     ]
   ],
   "maxdiff": [
-    10,
-    []
+    -1000000,
+    [
+      "continuous_only"
+    ]
   ],
   "ordered_population": [
     -1000000,
     [
       "raw_data"
+    ]
+  ],
+  "party_mandates": [
+    -1000000,
+    [
+      "n_facets"
     ]
   ],
   "stacked_columns": [

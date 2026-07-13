@@ -118,13 +118,22 @@
     []
   ],
   "maxdiff": [
-    20,
-    []
+    -1000000,
+    [
+      "continuous_only"
+    ]
   ],
   "ordered_population": [
     -1000000,
     [
       "raw_data"
+    ]
+  ],
+  "party_mandates": [
+    -2000480,
+    [
+      "mandates",
+      "electoral_system"
     ]
   ],
   "stacked_columns": [

@@ -19,6 +19,7 @@ from salk_toolkit.validation import (
     ColumnMeta,
     DataMeta,
     ElectoralSystem,
+    PlotDescriptor,
     soft_validate,
 )
 
@@ -583,6 +584,29 @@ class TestPlots:
             "res_col": "thermometer",
         }
         self._run_plot_test("test_maxdiff", config, recompute=recompute, float_tolerance=3e-2)
+
+    def test_maxdiff_survives_translation(self):
+        """Regression: the `reverse_` maxdiff companion column must survive a non-identity
+        `translate` (the stk_explorer path), or maxdiff raises its missing-companion ValueError."""
+
+        from salk_toolkit.dashboard import default_translate
+        from salk_toolkit.pp import pp_transform_data, create_plot
+
+        ldf, full_meta = read_parquet_with_metadata(str(self.data_file), lazy=True)
+        assert full_meta is not None and full_meta.data is not None
+        config = {
+            "factor_cols": ["question"],
+            "filter": {},
+            "internal_facet": True,
+            "plot": "maxdiff",
+            "plot_args": {},
+            "res_col": "thermometer",
+        }
+        ppd = soft_validate(config, PlotDescriptor)
+        pi = pp_transform_data(ldf, full_meta.data, ppd)
+        # Must not raise: the `reverse_` companion has to survive translation.
+        chart = create_plot(pi, ppd, translate=default_translate, width=400)
+        assert chart is not None
 
     @pytest.mark.skip(reason="Very hard to make deterministic (tried but failed)")
     def test_ordered_population(self, recompute):

@@ -284,11 +284,12 @@ stk_plot("boxplots-raw", data_format="raw", n_facets=(1, 2), priority=0)(boxplot
     transform_fn="ordered-topbot1",
     agg_fn="posneg_mean",
     draws=True,
+    continuous=True,
     n_facets=(1, 2),
     group_sizes=True,
 )
 def maxdiff_manual(p: PlotInput) -> AltairChart:
-    """Render MaxDiff results as categorical columns."""
+    """Render MaxDiff results as a Most/Least important tornado (`kind` column marks the sides)."""
 
     data = p.data.copy()
     if not p.facets:
@@ -298,17 +299,18 @@ def maxdiff_manual(p: PlotInput) -> AltairChart:
     f1 = p.facets[1] if len(p.facets) > 1 else None
     fmt = p.val_format
 
-    reverse_val_col = next(
-        filter(
-            lambda s: p.value_col.lower() in s.lower() and "reverse" in s.lower(),
-            data.columns,
+    # Located by prefix: `p.value_col` may carry a display label unrelated to the raw name
+    reverse_val_col = next((s for s in data.columns if s.startswith("reverse_")), None)
+    if reverse_val_col is None:
+        raise ValueError(
+            "maxdiff plot requires maxdiff scores -- no 'reverse_<col>' companion column "
+            f"found alongside value column '{p.value_col}'. This plot only supports "
+            "maxdiff-score data (paired best/worst shares), not arbitrary continuous columns."
         )
-    )
 
     if fmt.endswith("%"):
         data[p.value_col] *= 100
-        if reverse_val_col in data.columns:
-            data[reverse_val_col] *= 100
+        data[reverse_val_col] *= 100
         fmt = fmt[:-1] + "f"
 
     minv, maxv = data[p.value_col].min(), data[p.value_col].max()
@@ -600,10 +602,13 @@ def make_start_end(
 ) -> pd.DataFrame:
     """Compute start/end positions for split likert bars."""
 
+    if len(x) == 0:  # empty phantom group (per-cell payload filters an outer facet to one value)
+        return x
+
     if len(x) != len(cat_order):
         shared = x.to_dict(orient="records")[0]
         # Fill in missing rows with value zero so they would just be skipped
-        mdf = pd.DataFrame({cat_col: pd.Categorical(cat_order, cat_order, ordered=True)})
+        mdf = pd.DataFrame({cat_col: pd.Categorical(list(cat_order), categories=list(cat_order), ordered=True)})
         x = pd.merge(mdf, x, on=cat_col, how="left").fillna({**shared, value_col: 0})
     x = x.sort_values(by=cat_col)
 
@@ -767,9 +772,17 @@ def density(
     stacked: bool = False,
     bw: float | None = None,
 ) -> AltairChart:
-    """Stacked (or overlapped) density plot for continuous responses."""
+    """Stacked (or overlapped) density plot: per-group 1D KDE over a shared 101-point grid."""
 
     data = p.data.copy()
+
+    # Typed error for API callers that skip e2e_plot's applicability guard
+    if not pd.api.types.is_numeric_dtype(data[p.value_col]):
+        raise ValueError(
+            f"density plot requires a continuous (numeric) observation; "
+            f"'{p.value_col}' is categorical -- pick a continuous measure or another plot type"
+        )
+
     f0 = p.facets[0] if p.facets else None
     gb_cols = utils.gb_cols_with_tooltip_fields(
         p.outer_factors + [f.col for f in p.facets],
@@ -786,6 +799,8 @@ def density(
     ls = np.linspace(np.nextafter(vmin, -np.inf), np.nextafter(vmax, np.inf), 101)
     if bw is None:
         bw = kde_bw(data[[p.value_col]])
+    # observed=True: on the payload/matrix-of-plots per-cell frames, observed=False would
+    # manufacture a phantom zero-density curve per unobserved outer-facet category
     ndata = utils.gb_in_apply(
         data,
         gb_cols,
@@ -795,6 +810,7 @@ def density(
         ls=ls,
         scale=stacked,
         bw=bw,
+        observed=True,
     ).reset_index()
     _clean_levels(ndata)
 

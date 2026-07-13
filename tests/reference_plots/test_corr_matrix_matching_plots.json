@@ -131,6 +131,12 @@
     10,
     []
   ],
+  "party_mandates": [
+    -1000000,
+    [
+      "n_facets"
+    ]
+  ],
   "stacked_columns": [
     -1000000,
     [
