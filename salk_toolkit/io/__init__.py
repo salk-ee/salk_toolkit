@@ -46,6 +46,7 @@ from salk_toolkit.io.meta import (
     update_meta_with_model_fields,
 )
 from salk_toolkit.io.parquet import (
+    custom_meta_key,  # noqa: F401  # imported from here by dms-plots-api
     read_parquet_metadata,
     read_parquet_with_metadata,
     replace_data_meta_in_parquet,
