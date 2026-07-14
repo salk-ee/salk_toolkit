@@ -115,17 +115,15 @@ def test_payload_shape_columns(small_pi_fixture, ppd_columns):
         assert f["colors"] is None or all(isinstance(c, str) for c in f["colors"].values())
 
 
-def test_payload_synthesizes_default_palette_for_uncolored_facet(barbell_cell_pi_and_ppd):
-    """A facet with no metadata colors gets salk's default palette as plain hex; explicit colors stay."""
-
-    from salk_toolkit.utils import altair_default_config
+def test_payload_uncolored_facet_colors_stay_none(barbell_cell_pi_and_ppd):
+    """A facet with no metadata colors carries None (renderer applies its own default,
+    matching the spec path — dms#40 parity finding); explicit colors stay."""
 
     pi, ppd = barbell_cell_pi_and_ppd
     pl = pp.create_plot_payload(pi, ppd)
-    palette = altair_default_config["range"]["category"]
 
     question = next(f for f in pl["facets"] if f["col"] == "question")
-    assert question["colors"] == {"Q1": palette[0], "Q2": palette[1], "Q3": palette[2]}
+    assert question["colors"] is None
 
     group = next(f for f in pl["facets"] if f["col"] == "group")
     assert group["colors"] == {"Group A": "#c00000", "Group B": "#00c000"}
@@ -827,17 +825,15 @@ def test_payload_geobest_smoke(geobest_cell_pi_and_ppd):
 
 
 def test_payload_geobest_null_colors_smoke(geobest_cell_pi_and_ppd):
-    """An uncolored winner facet resolves to salk's default palette as plain hex, not None."""
-
-    from salk_toolkit.utils import altair_default_config
+    """An uncolored winner facet stays None; renderers own the fallback (the dms
+    frontend covers this exact case — its plotDataGeobestNullColors fixture)."""
 
     pi, ppd = geobest_cell_pi_and_ppd
     pi.col_meta["candidate"] = GroupOrColumnMeta(categories=["Alice", "Bob"])
 
     pl = pp.create_plot_payload(pi, ppd)
-    palette = altair_default_config["range"]["category"]
     assert pl["facets"][0]["col"] == "candidate"
-    assert pl["facets"][0]["colors"] == {"Alice": palette[0], "Bob": palette[1]}
+    assert pl["facets"][0]["colors"] is None
 
 
 @pytest.fixture
