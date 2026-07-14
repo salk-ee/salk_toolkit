@@ -183,12 +183,10 @@ def _plain_colors(facet: FacetMeta) -> Optional[Dict[str, str]]:
 
 
 def _facet_colors(facet: FacetMeta) -> Optional[Dict[str, str]]:
-    """Facet colors as plain hex; falls back to salk's default palette (what Vega would render)."""
-    plain = _plain_colors(facet)
-    if plain is not None or not facet.order:
-        return plain
-    palette = utils.altair_default_config["range"]["category"]
-    return {str(c): palette[i % len(palette)] for i, c in enumerate(facet.order)}
+    """Facet colors as plain hex, or None when the meta declares none — the spec
+    path leaves such facets to the renderer's default scheme, so inventing colors
+    here made the two paths render differently (dms#40 parity finding)."""
+    return _plain_colors(facet)
 
 
 def _cell(frame: pd.DataFrame, title: str, keys: Dict[str, Any]) -> Dict[str, Any]:
