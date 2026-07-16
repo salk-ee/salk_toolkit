@@ -177,11 +177,8 @@ def load_file(input_file: str) -> dict[str, object]:
     data_meta = full_meta.data
     mmeta = full_meta.model
     columns = ldf.collect_schema().names()
-    n0 = ldf.select(pl.len()).collect().item()
-    n = data_meta.total_size or n0  # fallback to row count
     return {
         "data": ldf,
-        "total_size": n,
         "data_meta": data_meta,
         "model_meta": mmeta,
         "columns": columns,
@@ -412,7 +409,7 @@ with st.sidebar:  # .expander("Select dimensions"):
     # print(f"localStorage.setItem('args','{json.dumps(args)}');")
     st_js(f"localStorage.setItem('session_state','{json.dumps(dict(st.session_state)).replace("'", "\\'")}');")
 
-    # Make all dimensions explicit now that plot is selected (as that can affect the factor columns)
+    # Make all dimensions explicit now that plot is selected (as that can affect the facet dimensions)
     args["facet_dims"] = impute_facet_dims(args, c_meta, plot_meta)
 
     import pprint
@@ -517,12 +514,8 @@ else:
                 publish_mode=publish_mode,
             )
 
-            # n_questions = pi['data']['question'].nunique() if 'question' in pi['data'] else 1
-            # st.write('Based on %.1f%% of data' %
-            #   (100*pi['n_datapoints']/(len(loaded[ifile]['data_n'])*n_questions)))
-            total_size = loaded[ifile]["total_size"]
-            denominator = float(total_size) if total_size is not None else 1.0
-            st.write("Based on %.1f%% of data" % (100 * pi.filtered_size / denominator))
+            if pi.total_n:
+                st.write("Based on %.1f%% of data" % (100 * pi.filtered_size / pi.total_n))
 
             if i == 0 and st.session_state.get("custom_spec"):
                 custom_spec = deepcopy(st.session_state["custom_spec"])

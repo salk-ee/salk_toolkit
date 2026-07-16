@@ -24,7 +24,7 @@ from salk_toolkit.validation import PlotDescriptor
 
 # ColorBrewer stops for Vega's "yellowgreen"/"redyellowgreen" schemes -- Vega resolves scheme names
 # to hex only at render, so the resolved ramp is never on the chart object. Used by the fallback
-# path; the `payload=True` matrix/geoplot supply their own resolved stops via `extras`.
+# (chart-scraping) path's `_chart_scale`.
 _SCHEME_STOPS: Dict[str, List[str]] = {
     "yellowgreen": ["#ffffe5", "#f7fcb9", "#d9f0a3", "#addd8e", "#78c679", "#41ab5d", "#238443", "#006837", "#004529"],
     "redyellowgreen": [
@@ -170,7 +170,10 @@ def _serialize_column(series: pd.Series) -> List[Any]:
 
 
 def _plain_colors(facet: FacetMeta) -> Optional[Dict[str, str]]:
-    """Reduce a facet's Altair-ready `colors` (Scale / dict / Undefined) to a plain hex map or None."""
+    """Reduce a facet's Altair-ready `colors` (Scale / dict / Undefined) to a plain hex map or None.
+
+    None means the meta declares no colors: the facet is the renderer's to colour
+    (its default categorical scheme)."""
     colors = facet.colors
     if isinstance(colors, alt.Scale):
         domain, rng = colors.domain, colors.range
@@ -180,13 +183,6 @@ def _plain_colors(facet: FacetMeta) -> Optional[Dict[str, str]]:
     if isinstance(colors, dict):
         return _normalize_color_dict(cast(Dict[str, Any], colors))
     return None
-
-
-def _facet_colors(facet: FacetMeta) -> Optional[Dict[str, str]]:
-    """Facet colors as plain hex, or None when the meta declares none.
-
-    Uncolored facets are the renderer's to colour (its default categorical scheme)."""
-    return _plain_colors(facet)
 
 
 def _cell(
@@ -230,12 +226,12 @@ def create_plot_payload(
 
     # Sourced from dry_pi before the per-cell loop so cell mutations can't corrupt it
     facets_payload = [
-        {"col": f.col, "order": list(f.order), "colors": _facet_colors(f), "neutrals": list(f.neutrals)}
+        {"col": f.col, "order": list(f.order), "colors": _plain_colors(f), "neutrals": list(f.neutrals)}
         for f in dry_pi.facets
     ]
 
     combs = list(it.product(*[utils.get_categories(data[fc].dtype) for fc in outer_factors]))
-    scale = geo = None
+    geo = None
     cell_list: List[Dict[str, Any]] = []
     for comb in combs:  # `it.product()` of no factors yields one empty comb = one cell
         # deepcopy facets: plots may reorder FacetMeta in place across the shared cells
@@ -256,12 +252,13 @@ def create_plot_payload(
             if frame is None:
                 raise UnsupportedPayloadError(pp_desc.plot)
             cell_scale = _chart_scale(result)
-            scale = scale or cell_scale
             geo = geo or _chart_geo(result)
         keys = {oc: _to_json_scalar(v) for oc, v in zip(outer_factors, comb)}
         cell_list.append(_cell(frame, "-".join(map(str, comb)), keys, scale=cell_scale))
 
     cells = [list(row) for row in utils.batch(cell_list, n_facet_cols)]
+    # Top-level scale kept for back-compat: the first per-cell scale
+    scale = next((c["scale"] for c in cell_list if c["scale"]), None)
     value_range = [_to_json_scalar(v) for v in dry_pi.value_range] if dry_pi.value_range is not None else None
 
     return {
@@ -275,7 +272,9 @@ def create_plot_payload(
         "value_range": value_range,
         "facets": facets_payload,
         "outer_factors": outer_factors,
-        # Invariant: outer_factors == facet_dims[n_inner:]
+        # facet_dims/n_inner: the resolved facet split in descriptor vocabulary (pre-translation).
+        # outer_factors is the rendered view of facet_dims[n_inner:] — identical for <=1 outer facet
+        # and no translate; otherwise translated, reversed, and (>2) merged into one joined key.
         "facet_dims": list(dry_pi.facet_dims),
         "n_inner": dry_pi.n_inner,
         "grid": {

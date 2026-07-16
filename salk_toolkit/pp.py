@@ -134,7 +134,9 @@ class PlotInput:
     outer_factors: List[str] = field(default_factory=list)
     plot_args: Dict[str, Any] = field(default_factory=dict)
     n_facet_cols: Optional[int] = None  # stashed by create_plot for payload consumers
-    facet_dims: List[str] = field(default_factory=list)  # resolved facets; outer_factors == facet_dims[n_inner:]
+    # Resolved facet split in descriptor vocabulary; outer_factors is the rendered view of
+    # facet_dims[n_inner:] (translated; for >=2 outer facets also reversed and possibly merged)
+    facet_dims: List[str] = field(default_factory=list)
     n_inner: int = 0  # how many facet_dims the plot consumes as inner facets
     return_df: bool = False  # payload=True plots return the prepared PlotInput instead of a chart
 
@@ -1067,7 +1069,7 @@ def pp_transform_data(
 
     # Figure out which columns we actually need
     weight_col = data_meta.weight_col or "row_weights"
-    facet_dims = list(pp_desc.facet_dims).copy()
+    facet_dims = list(pp_desc.facet_dims)
 
     # Ensure weight column is present (fill with 1.0 if not)
     if weight_col not in all_col_names:
@@ -1095,10 +1097,13 @@ def pp_transform_data(
 
     # Add row id-s and find count - both need to happen before filtering
     full_df = full_df.with_row_index("id")
-    counts = full_df.select(pl.len().alias("n"), pl.col(weight_col).sum().alias("w")).collect()
-    total_n = counts["n"].item()
-    # Prefer the meta-supplied population total; fall back to the pre-filter weight sum
-    total_weight = data_meta.total_size if data_meta.total_size is not None else counts["w"].item()
+    # Prefer the meta-supplied population total; only sum the weight column when actually needed
+    if data_meta.total_size is not None:
+        n_rows = full_df.select(pl.len()).collect().item()
+        total_weight = data_meta.total_size
+    else:
+        counts = full_df.select(pl.len().alias("n"), pl.col(weight_col).sum().alias("w")).collect()
+        n_rows, total_weight = counts["n"].item(), counts["w"].item()
 
     # For more customized filtering in dashboards
     # Has to be done before downselecting to only needed columns
@@ -1114,7 +1119,7 @@ def pp_transform_data(
     else:
         filtered_df = df
 
-    # Discretize factor columns that are numeric
+    # Discretize facet dimensions that are numeric
     for c in facet_dims:
         if c in cols and schema[c].is_numeric():
             current_meta = c_meta.get(c)
@@ -1205,8 +1210,8 @@ def pp_transform_data(
     # Compute draws if needed - Nb: also applies if the draws are shared for the group of questions
     if "draw" in cols and pp_desc.res_col in draws_data:
         uid, ndraws = draws_data[pp_desc.res_col]
-        draws = utils.stable_draws(total_n, ndraws, uid)
-        draw_df = pl.DataFrame({"draw": draws, "id": np.arange(0, total_n)})
+        draws = utils.stable_draws(n_rows, ndraws, uid)
+        draw_df = pl.DataFrame({"draw": draws, "id": np.arange(0, n_rows)})
         filtered_df = filtered_df.drop("draw").join(draw_df.lazy(), on=["id"], how="left")
 
     # If res_col is a group of questions, melt i.e. unpivot the questions and handle draws if needed
@@ -1227,9 +1232,9 @@ def pp_transform_data(
                 if c in draws_data:
                     uid, ndraws = draws_data[c]
                     if (uid, ndraws) not in ddf_cache:
-                        draws = utils.stable_draws(total_n, ndraws, uid)
+                        draws = utils.stable_draws(n_rows, ndraws, uid)
                         ddf_cache[(uid, ndraws)] = pl.DataFrame(
-                            {"draw": draws, "question": c, "id": np.arange(0, total_n)}
+                            {"draw": draws, "question": c, "id": np.arange(0, n_rows)}
                         )
                     ddf = ddf_cache[(uid, ndraws)]
                     draw_dfs.append(ddf)
@@ -1269,9 +1274,8 @@ def pp_transform_data(
             c_meta["question"] = question_meta
 
     # Aggregate the data into right shape
-    pi = _wrangle_data(filtered_df, c_meta, facet_dims, weight_col, pp_desc, n_questions)
+    pi = _wrangle_data(filtered_df, c_meta, facet_dims, weight_col, pp_desc, n_questions, float(total_weight))
 
-    pi.total_n = float(total_weight)
     pi.val_format = val_format
     pi.val_range = val_range  # Currently not used
 
@@ -1294,6 +1298,7 @@ def _wrangle_data(
     weight_col: str,
     pp_desc: PlotDescriptor,
     n_questions: int,
+    total_n: float = 0.0,
 ) -> PlotInput:
     """Aggregate filtered data into a structured ``PlotInput`` model for create_plot."""
 
@@ -1305,8 +1310,6 @@ def _wrangle_data(
 
     draws = plot_meta.draws
     data_format = plot_meta.data_format
-
-    # if pp_desc['res_col'] in facet_dims: facet_dims.remove(pp_desc['res_col']) # Res cannot also be a factor
 
     # Determine the groupby dimensions
     gb_dims = facet_dims + (["draw"] if draws else []) + (["id"] if plot_meta.data_format == "raw" else [])
@@ -1457,6 +1460,7 @@ def _wrangle_data(
         value_col=value_col,
         cat_col=cat_col,
         filtered_size=filtered_size,
+        total_n=total_n,
     )
 
 
@@ -1577,7 +1581,7 @@ def _create_tooltip(
     return tooltips, data
 
 
-def _remove_from_internal_fcols(cname: str, facet_dims: List[str], n_inner: int) -> int:
+def _remove_from_inner_facets(cname: str, facet_dims: List[str], n_inner: int) -> int:
     """Shift ``cname`` out of the inner facet slice while preserving order."""
 
     if cname not in facet_dims[:n_inner]:
@@ -1606,8 +1610,8 @@ def _inner_outer_facets(
 
     # If question facet as inner facet for a no_question_facet plot, just move it out
     if plot_meta.no_question_facet:
-        n_inner = _remove_from_internal_fcols("question", facet_dims, n_inner)
-        n_inner = _remove_from_internal_fcols(res_col, facet_dims, n_inner)
+        n_inner = _remove_from_inner_facets("question", facet_dims, n_inner)
+        n_inner = _remove_from_inner_facets(res_col, facet_dims, n_inner)
 
     return facet_dims, n_inner
 
@@ -1656,9 +1660,8 @@ def create_plot(
     plot_args = {**dict(pi.plot_args), **dict(pp_desc.plot_args or {})}
     pi.plot_args = plot_args
 
-    # Get list of factor columns (adding question and category if needed)
-    facet_dims_input = list(pp_desc.facet_dims or [])
-    facet_dims, n_inner = _inner_outer_facets(facet_dims_input, pp_desc, plot_meta)
+    # Get list of facet dimensions (adding question and category if needed)
+    facet_dims, n_inner = _inner_outer_facets(list(pp_desc.facet_dims or []), pp_desc, plot_meta)
 
     # Reorder categories if required
     if pp_desc.sort:

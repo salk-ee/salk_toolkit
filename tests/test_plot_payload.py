@@ -1096,7 +1096,8 @@ def test_payload_coalition_applet_smoke(election_pi_and_ppd):
 
 def test_payload_echoes_resolved_facet_dims(small_pi_fixture, ppd_columns):
     """facet_dims = the resolved facet dimensions (matching /dimensions vocabulary);
-    n_inner splits it so that outer_factors == facet_dims[n_inner:]."""
+    n_inner splits it. outer_factors is the rendered view of facet_dims[n_inner:] --
+    identical here (<=1 outer facet, no translate); >=2 outer facets get reversed/merged."""
 
     pl = pp.create_plot_payload(small_pi_fixture, ppd_columns)
     assert pl["facet_dims"] == ["group.a", "group.b"]
@@ -1112,7 +1113,6 @@ def test_payload_factor_split_counts_inner_facets(likert_cell_pi_and_ppd):
     assert "agree" in pl["facet_dims"]
     assert pl["outer_factors"] == []
     assert pl["n_inner"] == len(pl["facet_dims"])
-    assert pl["facet_dims"][pl["n_inner"] :] == pl["outer_factors"]
 
 
 def test_payload_carries_per_cell_scale_for_faceted_geo(geoplot_cell_pi_and_ppd):
