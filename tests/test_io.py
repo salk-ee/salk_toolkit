@@ -1851,6 +1851,17 @@ class TestAdvancedFeatures:
         with pytest.raises(ValueError, match="not unique"):
             read_annotated_data(str(meta_file))
 
+    def test_raw_row_id_column_is_not_adopted_as_identity(self, csv_file, meta_file):
+        """A raw file's own 'row_id' column is a reserved-name collision, overwritten not inherited."""
+        pd.DataFrame({"row_id": ["x", "y", "z"], "resp": [7, 8, 9], "value": [1, 2, 3]}).to_csv_file(csv_file)
+        write_json(
+            meta_file,
+            {"file": "test.csv", "id_col": "resp", "structure": [{"name": "t", "columns": ["resp", "value"]}]},
+        )
+        # id_col wins; the stray user row_id column must not become identity.
+        df = read_annotated_data(str(meta_file))
+        assert list(df.index) == ["F0::7", "F0::8", "F0::9"]
+
     def test_nested_exclusions_compose(self, temp_dir):
         """Outer exclusions key on the stable id and are unaffected by inner filter changes."""
         (temp_dir / "w.csv").write_text("resp,val\n101,10\n102,20\n103,30\n104,40\n")
@@ -3385,10 +3396,11 @@ class TestMultiSourceColumns:
         data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
 
         dumped = data_meta.model_dump(mode="json")
+        # FileDesc serialization strips default/None fields (empty opts, unset id_col) via serialize_pbase.
         assert dumped["files"] == [
-            {"file": "file1.csv", "opts": {}, "code": "F0"},
-            {"file": "file2.csv", "opts": {}, "code": "F1"},
-            {"file": "file3.csv", "opts": {}, "code": "F2"},
+            {"file": "file1.csv", "code": "F0"},
+            {"file": "file2.csv", "code": "F1"},
+            {"file": "file3.csv", "code": "F2"},
         ]
         # Core structure entries should match (additional system blocks may also be present)
         assert {"name": "demographics_topk", "columns": ["topk_R1", "topk_R2"]} in dumped["structure"]

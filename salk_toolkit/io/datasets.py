@@ -27,6 +27,7 @@ from salk_toolkit.validation import (
 )
 
 from salk_toolkit.io.core import (
+    PROVENANCE_COLUMNS,
     ROW_ID,
     ProcessedDataReturn,
     _str_from_list,
@@ -107,8 +108,10 @@ def read_annotated_data(
     add_original_inds = bool(kwargs.get("add_original_inds", False))
     # Use conditional to match overloads based on return_meta value
     # Pass return_meta first (after *) to help Pyright match overloads
+    # finalize_row_index keeps this path's return shape consistent with the annotated branch
+    # above (the return_raw path in _process_annotated_data does not index by row_id on its own).
     if return_meta:
-        return _process_annotated_data(
+        idata, imeta = _process_annotated_data(
             data_file=fname,
             meta=inferred_meta,
             return_meta=True,
@@ -117,15 +120,18 @@ def read_annotated_data(
             only_fix_categories=only_fix_categories,
             add_original_inds=add_original_inds,
         )
+        return (finalize_row_index(idata), imeta)
     else:
-        return _process_annotated_data(
-            data_file=fname,
-            meta=inferred_meta,
-            return_meta=False,
-            return_raw=return_raw,
-            ignore_exclusions=ignore_exclusions,
-            only_fix_categories=only_fix_categories,
-            add_original_inds=add_original_inds,
+        return finalize_row_index(
+            _process_annotated_data(
+                data_file=fname,
+                meta=inferred_meta,
+                return_meta=False,
+                return_raw=return_raw,
+                ignore_exclusions=ignore_exclusions,
+                only_fix_categories=only_fix_categories,
+                add_original_inds=add_original_inds,
+            )
         )
 
 
@@ -352,14 +358,14 @@ def _repair_merge_row_ids(mdf: pd.DataFrame, tag: str) -> None:
     per-group suffix. Both are deterministic since merge output order is deterministic.
     """
     rid = mdf[ROW_ID]
-    if rid.isna().any():
-        na_mask = rid.isna()
-        mdf.loc[na_mask, ROW_ID] = [f"{tag}::{i}" for i in range(int(na_mask.sum()))]
+    na_mask = rid.isna()
+    if na_mask.any():
+        mdf.loc[na_mask, ROW_ID] = f"{tag}::" + pd.RangeIndex(int(na_mask.sum())).astype(str)
         rid = mdf[ROW_ID]
-    if rid.duplicated().any():
-        dup_mask = rid.duplicated(keep=False)
-        cc = mdf.groupby(ROW_ID).cumcount()
-        mdf.loc[dup_mask, ROW_ID] = rid[dup_mask].astype(str) + "::m" + cc[dup_mask].astype(str)
+    dup_mask = rid.duplicated(keep=False)
+    if dup_mask.any():
+        cc = mdf.loc[dup_mask].groupby(ROW_ID).cumcount()
+        mdf.loc[dup_mask, ROW_ID] = rid[dup_mask].astype(str) + "::m" + cc.astype(str)
 
 
 def _perform_merges(
@@ -399,7 +405,7 @@ def _perform_merges(
         # Drop system provenance columns from the merge-side to avoid suffix collisions.
         # Keep them on the left df (the main dataset) only.
         ndf = ndf.drop(
-            columns=[c for c in ["file_code", "file_name", ROW_ID] if c in ndf.columns and c not in on],
+            columns=[c for c in [*PROVENANCE_COLUMNS, ROW_ID] if c in ndf.columns and c not in on],
             errors="ignore",
         )
         overlap = (set(df.columns) & set(ndf.columns)) - set(on)

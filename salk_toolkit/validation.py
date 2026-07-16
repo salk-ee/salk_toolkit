@@ -74,6 +74,7 @@ from pydantic import (
     ValidationError,
 )
 from pydantic_extra_types.color import Color
+import numpy as np
 
 from salk_toolkit.utils import JSONValue, replace_constants
 
@@ -335,12 +336,14 @@ class FileDesc(BaseModel):
     id_col: Optional[str] = None  # Column in this file that uniquely identifies rows - overrides DataMeta.id_col
 
     @model_serializer(mode="wrap")
-    def _serialize(self, handler: Callable[[BaseModel], dict[str, Any]]) -> dict[str, Any]:
-        """Drop ``id_col`` from output when unset, to keep serialized metas free of ``id_col: null`` noise."""
-        d = handler(self)
-        if d.get("id_col") is None:
-            d.pop("id_col", None)
-        return d
+    def _serialize(self, handler: Callable[[BaseModel], dict[str, Any]], info: SerializationInfo) -> dict[str, Any]:
+        """Strip None/default fields (``id_col``, ``code``, empty ``opts``) via the shared serializer.
+
+        Extra ``extra="allow"`` fields (e.g. wave labels) are not model fields, so they survive.
+        """
+        from salk_toolkit.serialization import serialize_pbase
+
+        return serialize_pbase(self, handler, info)
 
 
 def _normalize_data_desc_input(meta: Any, read_opts_key: str = "read_opts") -> Any:  # noqa: ANN401
@@ -441,7 +444,9 @@ class DataMeta(PBase):
         """
         if isinstance(v, list):
             for entry in v:
-                if isinstance(entry, (list, tuple)) and entry and isinstance(entry[0], int):
+                # bool is an int subclass but never a valid position; np.integer is not an int subclass.
+                first = entry[0] if isinstance(entry, (list, tuple)) and entry else None
+                if isinstance(first, (int, np.integer)) and not isinstance(first, bool):
                     raise ValueError(
                         f"excluded entry {entry!r} uses a positional integer row index. "
                         "Exclusions are now keyed on the stable string row_id (e.g. 'F0::42' "

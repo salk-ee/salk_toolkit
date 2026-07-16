@@ -23,6 +23,7 @@ from salk_toolkit.validation import (
 
 from salk_toolkit.io import readers
 from salk_toolkit.io.core import (
+    PROVENANCE_COLUMNS,
     ROW_ID,
     ProcessedDataReturn,
     _deterministic_categories_and_values,
@@ -40,7 +41,7 @@ from salk_toolkit.io.sources import _load_data_files
 def _file_meta_map(dfs: dict[str, pd.DataFrame]) -> dict[str, str]:
     """Return mapping of file_code -> file_name, requiring a 1-to-1 relationship."""
     fm = (
-        pd.concat((df[["file_code", "file_name"]] for df in dfs.values()), ignore_index=True)
+        pd.concat((df[list(PROVENANCE_COLUMNS)] for df in dfs.values()), ignore_index=True)
         .assign(file_code=lambda d: d.file_code.astype(str), file_name=lambda d: d.file_name.astype(str))
         .drop_duplicates()
     )
@@ -136,13 +137,15 @@ def _process_annotated_data(
             warn("Processing main meta file")  # Print this to separate warnings for input jsons from main
     elif isinstance(raw_data, dict):
         # Directly-injected frames may lack ids: mint a positional one per file_code.
+        # copy(deep=False) so we add the column without mutating the caller's frame.
         raw_data_dict = {
-            fc: (df if ROW_ID in df.columns else mint_positional_row_id(df.copy(), fc)) for fc, df in raw_data.items()
+            fc: (df if ROW_ID in df.columns else mint_positional_row_id(df.copy(deep=False), fc))
+            for fc, df in raw_data.items()
         }
         einfo = {}
     else:
         # Backward compatibility: single DataFrame -> treat as single-file dict
-        single = raw_data if ROW_ID in raw_data.columns else mint_positional_row_id(raw_data.copy(), "F0")
+        single = raw_data if ROW_ID in raw_data.columns else mint_positional_row_id(raw_data.copy(deep=False), "F0")
         raw_data_dict = {"F0": single}
         einfo = {}
 
@@ -518,11 +521,12 @@ def _process_annotated_data(
     # by an inner meta simply matches nothing here).
     if meta_obj.excluded and not ignore_exclusions:
         excl_ids = [rid for rid, _ in meta_obj.excluded]
-        present = set(ndf_df[ROW_ID])
-        missing = [rid for rid in excl_ids if rid not in present]
+        mask = ndf_df[ROW_ID].isin(excl_ids)
+        matched = set(ndf_df[ROW_ID][mask])
+        missing = [rid for rid in excl_ids if rid not in matched]
         if missing:
             warn(f"{len(missing)} excluded row_id(s) not present in data (already filtered upstream?): {missing[:5]}")
-        ndf_df = ndf_df[~ndf_df[ROW_ID].isin(excl_ids)]
+        ndf_df = ndf_df[~mask]
 
     if not add_original_inds:
         ndf_df.drop(columns=["original_inds"], inplace=True)

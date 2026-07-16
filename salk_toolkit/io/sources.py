@@ -19,7 +19,7 @@ from salk_toolkit.validation import (
 )
 
 from salk_toolkit.io import readers
-from salk_toolkit.io.core import ROW_ID, _deterministic_categories_and_values
+from salk_toolkit.io.core import ROW_ID, _deterministic_categories_and_values, mint_positional_row_id
 from salk_toolkit.io.meta import _fix_meta_categories
 
 
@@ -102,19 +102,19 @@ def _reconcile_categories(
     return reconciled
 
 
-def _assign_row_id(df: pd.DataFrame, file_code: str, id_col: str | None, data_file: str) -> None:
+def _assign_row_id(df: pd.DataFrame, file_code: str, id_col: str | None, data_file: str, inherited: bool) -> None:
     """Assign or extend the stable ``ROW_ID`` column in place.
 
-    Nested/annotated sources already carry a row id (as a column after the caller lifts it
-    from the index) - we only prepend this level's ``file_code``. Raw leaf files get a fresh
-    ``{file_code}::{leaf}`` id, where ``leaf`` is the declared ``id_col`` value (validated
-    unique + non-null) or the 0-based within-file position.
+    ``inherited`` means this frame came from a nested annotated/parquet source and already
+    carries a row id (lifted from its index by the caller) - we only prepend this level's
+    ``file_code``. Otherwise it is a raw leaf file and gets a fresh ``{file_code}::{leaf}``
+    id, where ``leaf`` is the declared ``id_col`` value (validated unique + non-null) or the
+    0-based within-file position. A stray ``row_id`` *column* in a raw file is a reserved-name
+    collision and is overwritten, mirroring how ``file_code``/``file_name`` are handled.
     """
-    prefix = f"{file_code}::"
-    if ROW_ID in df.columns:  # nested annotated source: extend the existing path
-        df[ROW_ID] = prefix + df[ROW_ID].astype(str)
-        return
-    if id_col is not None:  # natural key: survives row reorders / re-exports of the source
+    if inherited:  # nested annotated source: extend the existing path
+        df[ROW_ID] = f"{file_code}::" + df[ROW_ID].astype(str)
+    elif id_col is not None:  # natural key: survives row reorders / re-exports of the source
         if id_col not in df.columns:
             raise ValueError(f"id_col '{id_col}' not found in {data_file}")
         col = df[id_col]
@@ -122,9 +122,9 @@ def _assign_row_id(df: pd.DataFrame, file_code: str, id_col: str | None, data_fi
             raise ValueError(f"id_col '{id_col}' has null values in {data_file}")
         if col.duplicated().any():
             raise ValueError(f"id_col '{id_col}' is not unique within {data_file}")
-        df[ROW_ID] = prefix + col.astype(str)
+        df[ROW_ID] = f"{file_code}::" + col.astype(str)
     else:  # fall back to within-file position (deterministic for a byte-stable source)
-        df[ROW_ID] = [f"{prefix}{i}" for i in range(len(df))]
+        mint_positional_row_id(df, file_code)
 
 
 def _load_data_files(
@@ -216,7 +216,10 @@ def _load_data_files(
         # A nested/annotated source (or a parquet with embedded ids) comes back indexed by
         # ROW_ID; lift it to a column so it survives the internal reset_index(drop=True) churn
         # (re-indexed at the outer boundary) and so _assign_row_id can extend the path below.
-        if raw_data.index.name == ROW_ID:
+        # Only such a lifted id counts as inherited - a raw file's own `row_id` column is a
+        # reserved-name collision, not an id to build on.
+        inherited_row_id = raw_data.index.name == ROW_ID
+        if inherited_row_id:
             raw_data = raw_data.reset_index()
 
         # If data is multi-indexed, flatten the index
@@ -253,7 +256,7 @@ def _load_data_files(
             raw_data[k] = pd.Categorical([v] * len(raw_data), categories=cats)
 
         # Stamp the stable row id (per-file id_col overrides the meta-level default).
-        _assign_row_id(raw_data, file_code, fd.id_col or id_col, cast(str, data_file))
+        _assign_row_id(raw_data, file_code, fd.id_col or id_col, cast(str, data_file), inherited_row_id)
 
         raw_data_dict[file_code] = raw_data
 

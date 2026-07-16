@@ -40,10 +40,13 @@ ProcessedDataReturn: TypeAlias = tuple[pd.DataFrame, DataMeta | None]
 
 ROW_ID = "row_id"
 
+# Per-file provenance columns injected into every row (paired, must stay 1-to-1).
+PROVENANCE_COLUMNS = ("file_code", "file_name")
+
 
 def mint_positional_row_id(df: pd.DataFrame, file_code: str = "F0") -> pd.DataFrame:
     """Assign a fresh positional ``{file_code}::{i}`` row id in place (leaf files, inline data)."""
-    df[ROW_ID] = [f"{file_code}::{i}" for i in range(len(df))]
+    df[ROW_ID] = file_code + "::" + pd.RangeIndex(len(df)).astype(str)
     return df
 
 
