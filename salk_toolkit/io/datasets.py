@@ -26,7 +26,15 @@ from salk_toolkit.validation import (
     soft_validate,
 )
 
-from salk_toolkit.io.core import ProcessedDataReturn, _str_from_list
+from salk_toolkit.io.core import (
+    PROVENANCE_COLUMNS,
+    ROW_ID,
+    ProcessedDataReturn,
+    _str_from_list,
+    assert_row_id_intact,
+    finalize_row_index,
+    mint_positional_row_id,
+)
 from salk_toolkit.io.meta import _fix_meta_categories, _is_categorical, fix_df_with_meta
 from salk_toolkit.io.parquet import read_parquet_with_metadata
 from salk_toolkit.io.pipeline import _process_annotated_data
@@ -85,6 +93,9 @@ def read_annotated_data(
 
     if meta_obj is not None or not infer:
         assert isinstance(data, pd.DataFrame), "Expected data to be DataFrame"
+        # Idempotent for the json/yaml path (already row_id-indexed); mints positional ids for a
+        # legacy parquet written before stable ids existed.
+        data = finalize_row_index(data)
         if return_meta:
             return (data, meta_obj)
         return data
@@ -97,8 +108,10 @@ def read_annotated_data(
     add_original_inds = bool(kwargs.get("add_original_inds", False))
     # Use conditional to match overloads based on return_meta value
     # Pass return_meta first (after *) to help Pyright match overloads
+    # finalize_row_index keeps this path's return shape consistent with the annotated branch
+    # above (the return_raw path in _process_annotated_data does not index by row_id on its own).
     if return_meta:
-        return _process_annotated_data(
+        idata, imeta = _process_annotated_data(
             data_file=fname,
             meta=inferred_meta,
             return_meta=True,
@@ -107,15 +120,18 @@ def read_annotated_data(
             only_fix_categories=only_fix_categories,
             add_original_inds=add_original_inds,
         )
+        return (finalize_row_index(idata), imeta)
     else:
-        return _process_annotated_data(
-            data_file=fname,
-            meta=inferred_meta,
-            return_meta=False,
-            return_raw=return_raw,
-            ignore_exclusions=ignore_exclusions,
-            only_fix_categories=only_fix_categories,
-            add_original_inds=add_original_inds,
+        return finalize_row_index(
+            _process_annotated_data(
+                data_file=fname,
+                meta=inferred_meta,
+                return_meta=False,
+                return_raw=return_raw,
+                ignore_exclusions=ignore_exclusions,
+                only_fix_categories=only_fix_categories,
+                add_original_inds=add_original_inds,
+            )
         )
 
 
@@ -333,6 +349,18 @@ def _data_with_inferred_meta(data_file: str, **kwargs: object) -> tuple[pd.DataF
     return df, meta_result
 
 
+def _repair_merge_row_ids(mdf: pd.DataFrame, tag: str) -> None:
+    """Restore ROW_ID uniqueness after a horizontal merge, in place (corner case).
+
+    Left ids are kept where already unique (many-to-one enrich). Right-only rows (NaN id, from
+    ``right``/``outer`` joins) collapse to ``tag`` and any id duplicated by a one-to-many/``cross``
+    join gets a deterministic ``::m{k}`` suffix - merge output order is deterministic.
+    """
+    rid = mdf[ROW_ID].fillna(tag)
+    dup = rid.duplicated(keep=False)
+    mdf[ROW_ID] = rid.mask(dup, rid + "::m" + rid.groupby(rid).cumcount().astype(str))
+
+
 def _perform_merges(
     df: pd.DataFrame,
     merges: SingleMergeSpec | list[SingleMergeSpec],
@@ -355,14 +383,14 @@ def _perform_merges(
     if not isinstance(merges, list):
         merges = [merges]
 
-    for ms in merges:
+    for merge_idx, ms in enumerate(merges):
         # ms is always a SingleMergeSpec Pydantic model
         file = ms.file
         on = ms.on if isinstance(ms.on, list) else [ms.on]
         add = ms.add
         how = ms.how
 
-        ndf = read_and_process_data(file, constants=constants)
+        ndf = read_and_process_data(file, constants=constants).reset_index()  # lift row_id out of the index
         if add:
             ms_on = on
             ms_add = list(add) if isinstance(add, list) else [add]
@@ -370,7 +398,7 @@ def _perform_merges(
         # Drop system provenance columns from the merge-side to avoid suffix collisions.
         # Keep them on the left df (the main dataset) only.
         ndf = ndf.drop(
-            columns=[c for c in ["file_code", "file_name"] if c in ndf.columns and c not in on],
+            columns=[c for c in [*PROVENANCE_COLUMNS, ROW_ID] if c in ndf.columns and c not in on],
             errors="ignore",
         )
         overlap = (set(df.columns) & set(ndf.columns)) - set(on)
@@ -384,6 +412,8 @@ def _perform_merges(
         if data_meta is not None:
             ndf = fix_df_with_meta(ndf, data_meta)
         mdf = pd.merge(df, ndf, on=on, how=how)
+        if ROW_ID in mdf.columns:
+            _repair_merge_row_ids(mdf, f"merge{merge_idx}")
 
         for c in on:
             mdf[c] = mdf[c].astype(df[c].dtype)
@@ -452,6 +482,7 @@ def read_and_process_data(
     # Check if desc_obj is DataDescription with inline data
     if isinstance(desc_obj, DataDescription) and desc_obj.data is not None:
         df, meta_obj, einfo = pd.DataFrame(data=desc_obj.data), None, {}
+        mint_positional_row_id(df)  # inline data has no source-file ids
     else:
         # Extract parameters from kwargs
         ignore_exclusions = kwargs.get("ignore_exclusions", False)
@@ -495,6 +526,7 @@ def read_and_process_data(
         globs = {"pd": pd, "np": np, "sp": sp, "stk": stk, "df": df, **einfo, **constants}
         if desc_obj.preprocessing:
             exec(_str_from_list(desc_obj.preprocessing), globs)
+            assert_row_id_intact(globs["df"], "DataDescription preprocessing")
 
         if desc_obj.filter:
             globs["df"] = globs["df"][eval(desc_obj.filter, globs)]
@@ -507,7 +539,11 @@ def read_and_process_data(
                 globs["df"].loc[:, newcols] = fix_df_with_meta(globs["df"][newcols], kwargs["data_meta"])
         if desc_obj.postprocessing and not skip_postprocessing:
             exec(_str_from_list(desc_obj.postprocessing), globs)
+            assert_row_id_intact(globs["df"], "DataDescription postprocessing")
         df = globs["df"]
+
+    # Stable, unique, deterministic index at the return boundary.
+    df = finalize_row_index(df)
 
     if return_meta:
         assert meta_obj is not None, "Meta should not be None when return_meta=True"

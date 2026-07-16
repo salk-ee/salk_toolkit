@@ -332,7 +332,8 @@ class TestReadAnnotatedData:
         data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
 
         newcols = data_df.columns.difference(df.columns).difference(["file_code", "file_name"])
-        diffs = data_df[newcols].replace("<NA>", pd.NA)
+        # data_df is now indexed by the stable row_id; drop it to compare values against a RangeIndex.
+        diffs = data_df[newcols].replace("<NA>", pd.NA).reset_index(drop=True)
         expected_result = pd.DataFrame(
             [
                 ["USA", "USA", "Canada", "Mexico"],
@@ -572,7 +573,7 @@ class TestReadAnnotatedData:
         expected_df["file_code"] = "F0"
         expected_df["file_name"] = "test_meta.json"
         expected_df = expected_df[sorted(expected_df.columns)]
-        assert_frame_equal(data_df, expected_df, check_dtype=False, check_categorical=False)
+        assert_frame_equal(data_df.reset_index(drop=True), expected_df, check_dtype=False, check_categorical=False)
 
         # Compare structures
         self._assert_structure_matches(
@@ -691,7 +692,7 @@ class TestReadAnnotatedData:
             expected_df = expected_df[data_df.columns]
 
             assert_frame_equal(
-                data_df,
+                data_df.reset_index(drop=True),
                 expected_df,
                 check_dtype=False,
                 check_categorical=False,
@@ -1750,16 +1751,17 @@ class TestAdvancedFeatures:
         assert df["final"].tolist() == [101, 102, 103, 104, 105]
 
     def test_exclusions_handling(self, csv_file, meta_file):
-        """Test exclusions handling"""
+        """Exclusions are keyed by the stable row_id, here derived from a declared id_col."""
         pd.DataFrame({"value": [1, 2, 3, 4, 5], "id": [1, 2, 3, 4, 5]}).to_csv_file(csv_file)
 
         meta = {
             "file": "test.csv",
+            "id_col": "id",  # row_id becomes F0::<id>
             "structure": [{"name": "test", "columns": ["id", "value"]}],
             "excluded": [
-                [1, "test exclusion"],
-                [3, "another exclusion"],
-            ],  # Exclude rows 1 and 3
+                ["F0::1", "test exclusion"],
+                ["F0::3", "another exclusion"],
+            ],  # Exclude the rows whose id is 1 and 3
         }
         write_json(meta_file, meta)
 
@@ -1767,9 +1769,40 @@ class TestAdvancedFeatures:
 
         # Should have 3 rows (original 5 minus 2 excluded)
         assert len(df) == 3
+        assert df.index.name == "row_id"
+        assert df.index.is_unique
         # Should not contain excluded rows
-        assert 1 not in df.index.tolist()
-        assert 3 not in df.index.tolist()
+        assert "F0::1" not in df.index.tolist()
+        assert "F0::3" not in df.index.tolist()
+
+    def test_exclusions_unmatched_id_warns(self, csv_file, meta_file):
+        """An exclusion id that matches no row warns (typo guard) but does not fail the load."""
+        pd.DataFrame({"value": [1, 2, 3]}).to_csv_file(csv_file)
+
+        meta = {
+            "file": "test.csv",
+            "structure": [{"name": "test", "columns": ["value"]}],
+            "excluded": [["F0::0", "real"], ["F0::nonexistent", "typo"]],
+        }
+        write_json(meta_file, meta)
+
+        with pytest.warns(UserWarning, match="not present in data"):
+            df = read_annotated_data(str(meta_file))
+        assert len(df) == 2  # only the real match is dropped
+
+    def test_exclusions_reject_positional_int(self, csv_file, meta_file):
+        """Legacy positional-int exclusions are rejected with a migration message."""
+        pd.DataFrame({"value": [1, 2, 3, 4, 5]}).to_csv_file(csv_file)
+
+        meta = {
+            "file": "test.csv",
+            "structure": [{"name": "test", "columns": ["value"]}],
+            "excluded": [[1, "legacy positional"]],
+        }
+        write_json(meta_file, meta)
+
+        with pytest.raises(Exception, match="positional integer"):
+            read_annotated_data(str(meta_file))
 
     def test_ignore_exclusions_parameter(self, csv_file, meta_file):
         """Test ignore_exclusions parameter"""
@@ -1778,7 +1811,7 @@ class TestAdvancedFeatures:
         meta = {
             "file": "test.csv",
             "structure": [{"name": "test", "columns": ["value"]}],
-            "excluded": [[1, "test exclusion"], [3, "another exclusion"]],
+            "excluded": [["F0::1", "test exclusion"], ["F0::3", "another exclusion"]],
         }
         write_json(meta_file, meta)
 
@@ -1786,6 +1819,103 @@ class TestAdvancedFeatures:
 
         # Should have all 5 rows when ignoring exclusions
         assert len(df) == 5
+
+    def test_row_id_index_positional(self, csv_file, meta_file):
+        """Without id_col, the index is a deterministic within-file positional row_id."""
+        pd.DataFrame({"value": [10, 20, 30]}).to_csv_file(csv_file)
+        write_json(meta_file, {"file": "test.csv", "structure": [{"name": "t", "columns": ["value"]}]})
+
+        df = read_annotated_data(str(meta_file))
+        assert df.index.name == "row_id"
+        assert list(df.index) == ["F0::0", "F0::1", "F0::2"]
+        assert df.index.is_unique
+
+    def test_row_id_index_natural_key(self, csv_file, meta_file):
+        """A declared id_col produces {file_code}::{id} row ids that survive row reordering."""
+        pd.DataFrame({"resp": [101, 102, 103], "value": [10, 20, 30]}).to_csv_file(csv_file)
+        write_json(
+            meta_file,
+            {"file": "test.csv", "id_col": "resp", "structure": [{"name": "t", "columns": ["resp", "value"]}]},
+        )
+
+        df = read_annotated_data(str(meta_file))
+        assert list(df.index) == ["F0::101", "F0::102", "F0::103"]
+
+    def test_row_id_natural_key_must_be_unique(self, csv_file, meta_file):
+        """A non-unique id_col is a hard error."""
+        pd.DataFrame({"resp": [1, 1, 2], "value": [10, 20, 30]}).to_csv_file(csv_file)
+        write_json(
+            meta_file,
+            {"file": "test.csv", "id_col": "resp", "structure": [{"name": "t", "columns": ["resp", "value"]}]},
+        )
+        with pytest.raises(ValueError, match="not unique"):
+            read_annotated_data(str(meta_file))
+
+    def test_raw_row_id_column_is_not_adopted_as_identity(self, csv_file, meta_file):
+        """A raw file's own 'row_id' column is a reserved-name collision, overwritten not inherited."""
+        pd.DataFrame({"row_id": ["x", "y", "z"], "resp": [7, 8, 9], "value": [1, 2, 3]}).to_csv_file(csv_file)
+        write_json(
+            meta_file,
+            {"file": "test.csv", "id_col": "resp", "structure": [{"name": "t", "columns": ["resp", "value"]}]},
+        )
+        # id_col wins; the stray user row_id column must not become identity.
+        df = read_annotated_data(str(meta_file))
+        assert list(df.index) == ["F0::7", "F0::8", "F0::9"]
+
+    def test_nested_exclusions_compose(self, temp_dir):
+        """Outer exclusions key on the stable id and are unaffected by inner filter changes."""
+        (temp_dir / "w.csv").write_text("resp,val\n101,10\n102,20\n103,30\n104,40\n")
+        inner = temp_dir / "inner_meta.json"
+        write_json(
+            inner,
+            {
+                "file": "w.csv",
+                "id_col": "resp",
+                "structure": [{"name": "g", "columns": ["resp", "val"]}],
+                "excluded": [["F0::102", "inner drops 102"]],
+            },
+        )
+        outer = temp_dir / "outer_meta.json"
+        write_json(
+            outer,
+            {
+                "files": [{"file": "inner_meta.json", "code": "M"}],
+                "structure": [{"name": "g", "columns": ["resp", "val"]}],
+                "excluded": [["M::F0::101", "outer drops 101"]],
+            },
+        )
+
+        # inner drops 102, outer drops 101 -> 103, 104 remain, with the full nested path id.
+        df = read_annotated_data(str(outer))
+        assert list(df.index) == ["M::F0::103", "M::F0::104"]
+
+        # Toggle the inner filter to also drop 103; the outer reference to 101 still resolves.
+        write_json(
+            inner,
+            {
+                "file": "w.csv",
+                "id_col": "resp",
+                "structure": [{"name": "g", "columns": ["resp", "val"]}],
+                "excluded": [["F0::102", "x"], ["F0::103", "now dropped too"]],
+            },
+        )
+        df2 = read_annotated_data(str(outer))
+        assert list(df2.index) == ["M::F0::104"]
+
+    def test_row_id_survives_parquet_roundtrip(self, csv_file, meta_file, temp_dir):
+        """Writing a processed frame to parquet and reading it back preserves the row_id index."""
+        pd.DataFrame({"resp": [101, 102, 103], "value": [10, 20, 30]}).to_csv_file(csv_file)
+        write_json(
+            meta_file,
+            {"file": "test.csv", "id_col": "resp", "structure": [{"name": "t", "columns": ["resp", "value"]}]},
+        )
+        df, meta = read_annotated_data(str(meta_file), return_meta=True)
+
+        pq = temp_dir / "processed.parquet"
+        write_parquet_with_metadata(df, {"data": meta}, str(pq))
+        df2 = read_annotated_data(str(pq))
+        assert df2.index.name == "row_id"
+        assert list(df2.index) == list(df.index)
 
     def test_column_prefixing(self, csv_file, meta_file):
         """Test column prefixing"""
@@ -1994,6 +2124,22 @@ class TestReadAndProcessData:
 
         with pytest.raises(ValueError, match="suffix"):
             read_and_process_data(desc)
+
+    def test_merge_fanout_keeps_unique_row_id(self, temp_dir):
+        """A one-to-many merge keeps left ids where unique and suffixes the fanned-out duplicates."""
+        main_csv = temp_dir / "main.csv"
+        merge_csv = temp_dir / "merge.csv"
+        # main row 'A' matches two merge rows -> fan-out; 'B' matches one.
+        pd.DataFrame({"municipality": ["A", "B"], "val": [1, 2]}).to_csv_file(main_csv)
+        pd.DataFrame({"municipality": ["A", "A", "B"], "extra": ["p", "q", "r"]}).to_csv_file(merge_csv)
+
+        df = read_and_process_data({"file": str(main_csv), "merge": {"file": str(merge_csv), "on": "municipality"}})
+
+        assert len(df) == 3
+        assert df.index.name == "row_id"
+        assert df.index.is_unique
+        # The fanned-out left row (F0::0) is suffixed; the singleton (F0::1) keeps its id.
+        assert sorted(df.index) == ["F0::0::m0", "F0::0::m1", "F0::1"]
 
     def test_merge_applies_categorical_conversion_from_metadata(self, temp_dir):
         """Merged columns should be converted to categorical based on metadata definitions."""
@@ -3266,10 +3412,11 @@ class TestMultiSourceColumns:
         data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
 
         dumped = data_meta.model_dump(mode="json")
+        # FileDesc serialization strips default/None fields (empty opts, unset id_col) via serialize_pbase.
         assert dumped["files"] == [
-            {"file": "file1.csv", "opts": {}, "code": "F0"},
-            {"file": "file2.csv", "opts": {}, "code": "F1"},
-            {"file": "file3.csv", "opts": {}, "code": "F2"},
+            {"file": "file1.csv", "code": "F0"},
+            {"file": "file2.csv", "code": "F1"},
+            {"file": "file3.csv", "code": "F2"},
         ]
         # Core structure entries should match (additional system blocks may also be present)
         assert {"name": "demographics_topk", "columns": ["topk_R1", "topk_R2"]} in dumped["structure"]
@@ -3300,7 +3447,7 @@ class TestMultiSourceColumns:
         ]
         edf = pd.DataFrame(expected_data, columns=["file_code", "id", "topk_1", "topk_2", "topk_R1", "topk_R2"])
         # data_df may contain additional system columns (file_ind, file_name) in multi-file mode
-        assert_frame_equal(data_df[edf.columns], edf, check_dtype=False, check_categorical=False)
+        assert_frame_equal(data_df[edf.columns].reset_index(drop=True), edf, check_dtype=False, check_categorical=False)
         assert {"file_name"}.issubset(data_df.columns)
 
 

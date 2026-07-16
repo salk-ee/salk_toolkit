@@ -23,10 +23,15 @@ from salk_toolkit.validation import (
 
 from salk_toolkit.io import readers
 from salk_toolkit.io.core import (
+    PROVENANCE_COLUMNS,
+    ROW_ID,
     ProcessedDataReturn,
     _deterministic_categories_and_values,
     _is_series_of_lists,
     _str_from_list,
+    assert_row_id_intact,
+    finalize_row_index,
+    mint_positional_row_id,
 )
 from salk_toolkit.io.create_blocks import _create_new_columns_and_metas
 from salk_toolkit.io.meta import _fix_meta_categories
@@ -36,7 +41,7 @@ from salk_toolkit.io.sources import _load_data_files
 def _file_meta_map(dfs: dict[str, pd.DataFrame]) -> dict[str, str]:
     """Return mapping of file_code -> file_name, requiring a 1-to-1 relationship."""
     fm = (
-        pd.concat((df[["file_code", "file_name"]] for df in dfs.values()), ignore_index=True)
+        pd.concat((df[list(PROVENANCE_COLUMNS)] for df in dfs.values()), ignore_index=True)
         .assign(file_code=lambda d: d.file_code.astype(str), file_name=lambda d: d.file_name.astype(str))
         .drop_duplicates()
     )
@@ -126,15 +131,22 @@ def _process_annotated_data(
             ignore_exclusions=ignore_exclusions,
             only_fix_categories=only_fix_categories,
             add_original_inds=add_original_inds,
+            id_col=meta_obj.id_col,
         )
         if inp_meta is not None:
             warn("Processing main meta file")  # Print this to separate warnings for input jsons from main
     elif isinstance(raw_data, dict):
-        raw_data_dict = raw_data
+        # Directly-injected frames may lack ids: mint a positional one per file_code.
+        # copy(deep=False) so we add the column without mutating the caller's frame.
+        raw_data_dict = {
+            fc: (df if ROW_ID in df.columns else mint_positional_row_id(df.copy(deep=False), fc))
+            for fc, df in raw_data.items()
+        }
         einfo = {}
     else:
         # Backward compatibility: single DataFrame -> treat as single-file dict
-        raw_data_dict = {"F0": raw_data}
+        single = raw_data if ROW_ID in raw_data.columns else mint_positional_row_id(raw_data.copy(deep=False), "F0")
+        raw_data_dict = {"F0": single}
         einfo = {}
 
     if return_raw:
@@ -167,6 +179,7 @@ def _process_annotated_data(
             }
             exec(_str_from_list(meta_obj.preprocessing), globs)
             raw_data_dict[file_code] = globs["df"]
+            assert_row_id_intact(raw_data_dict[file_code], f"preprocessing of {file_code}")
 
     # Ensure file metadata columns always survive end-to-end (also if preprocessing dropped/mutated them).
     file_names_in_order: list[str] = []
@@ -469,6 +482,14 @@ def _process_annotated_data(
         # Add processed group to structure
         new_structure[group.name] = group
 
+    # Carry the stable row id through: it is a system column (not part of the meta structure)
+    # so it is not rebuilt column-by-column. ndf_df is positionally aligned with raw_data_concat
+    # here (same rows, same order), so copy it over by position.
+    if not raw_data_concat.empty:
+        if len(ndf_df) != len(raw_data_concat):
+            raise ValueError("row count changed during column processing - cannot align stable row ids")
+        ndf_df[ROW_ID] = raw_data_concat[ROW_ID].to_numpy()
+
     if meta_obj.postprocessing is not None and not only_fix_categories:
         globs = {
             "pd": pd,
@@ -481,6 +502,7 @@ def _process_annotated_data(
         }
         exec(_str_from_list(meta_obj.postprocessing), globs)
         ndf_df = globs["df"]
+        assert_row_id_intact(ndf_df, "postprocessing")
 
     # Update meta with new structure (including any groups created during processing)
     meta_obj = meta_obj.model_copy(update={"structure": new_structure})
@@ -492,12 +514,25 @@ def _process_annotated_data(
     if not isinstance(meta_obj, DataMeta):
         meta_obj = soft_validate(meta_obj, DataMeta)
 
+    # Positional counter over the processed frame - kept only on request; no longer drives exclusions.
     ndf_df["original_inds"] = np.arange(len(ndf_df))
+
+    # Apply meta exclusions by stable row id (composes across nesting - an id already filtered
+    # by an inner meta simply matches nothing here).
     if meta_obj.excluded and not ignore_exclusions:
-        excl_inds = [i for i, _ in meta_obj.excluded]
-        ndf_df = ndf_df[~ndf_df["original_inds"].isin(excl_inds)]
+        excl_ids = [rid for rid, _ in meta_obj.excluded]
+        mask = ndf_df[ROW_ID].isin(excl_ids)
+        matched = set(ndf_df[ROW_ID][mask])
+        missing = [rid for rid in excl_ids if rid not in matched]
+        if missing:
+            warn(f"{len(missing)} excluded row_id(s) not present in data (already filtered upstream?): {missing[:5]}")
+        ndf_df = ndf_df[~mask]
+
     if not add_original_inds:
         ndf_df.drop(columns=["original_inds"], inplace=True)
+
+    # Stable, unique, deterministic index at the return boundary.
+    ndf_df = finalize_row_index(ndf_df)
 
     # Return with meta as dict if requested (for backward compatibility)
     if return_meta:

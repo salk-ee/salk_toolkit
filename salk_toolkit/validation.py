@@ -67,12 +67,14 @@ from pydantic import (
     Field,
     SerializationInfo,
     ValidationInfo,
+    field_validator,
     model_validator,
     model_serializer,
     BeforeValidator,
     ValidationError,
 )
 from pydantic_extra_types.color import Color
+import numpy as np
 
 from salk_toolkit.utils import JSONValue, replace_constants
 
@@ -331,6 +333,17 @@ class FileDesc(BaseModel):
     file: str
     opts: Dict = DF(dict)
     code: Optional[str] = None  # Short code identifier for the file (e.g., 'F1', 'F2' or 'wave1', 'wave2')
+    id_col: Optional[str] = None  # Column in this file that uniquely identifies rows - overrides DataMeta.id_col
+
+    @model_serializer(mode="wrap")
+    def _serialize(self, handler: Callable[[BaseModel], dict[str, Any]], info: SerializationInfo) -> dict[str, Any]:
+        """Strip None/default fields (``id_col``, ``code``, empty ``opts``) via the shared serializer.
+
+        Extra ``extra="allow"`` fields (e.g. wave labels) are not model fields, so they survive.
+        """
+        from salk_toolkit.serialization import serialize_pbase
+
+        return serialize_pbase(self, handler, info)
 
 
 def _normalize_data_desc_input(meta: Any, read_opts_key: str = "read_opts") -> Any:  # noqa: ANN401
@@ -413,11 +426,34 @@ class DataMeta(PBase):
     postprocessing: Optional[Union[str, List[str]]] = None  # Performed after columns and blocks have been processed
 
     weight_col: Optional[str] = None  # Column to use for weighting - overriden by model to population weight column
+    id_col: Optional[str] = None  # Raw column uniquely identifying rows within each file (e.g. respondent id)
 
-    # List of data points that should be excluded in alyses
-    excluded: List[Tuple[int, str]] = []  # Index of row + str  reason for exclusion
+    # List of data points that should be excluded in analyses
+    excluded: List[Tuple[str, str]] = []  # (row_id, reason) - row_id is the stable string id, not a position
     total_size: Optional[float] = None  # Optional total population size override
     draws_data: Dict[str, Tuple[str, int]] = DF(dict)  # Precomputed draws info keyed by column
+
+    @field_validator("excluded", mode="before")
+    @classmethod
+    def _reject_positional_excluded(cls, v: Any) -> Any:  # noqa: ANN401  # pydantic validators require Any
+        """Fail loudly on the legacy positional-int exclusion format.
+
+        ``excluded`` is now ``(row_id, reason)`` keyed on the stable string row id, not an
+        absolute position into the concatenated frame. Legacy ``[[int, reason], ...]`` metas
+        must be migrated - see specs/stable-row-index-design.md.
+        """
+        if isinstance(v, list):
+            for entry in v:
+                # bool is an int subclass but never a valid position; np.integer is not an int subclass.
+                first = entry[0] if isinstance(entry, (list, tuple)) and entry else None
+                if isinstance(first, (int, np.integer)) and not isinstance(first, bool):
+                    raise ValueError(
+                        f"excluded entry {entry!r} uses a positional integer row index. "
+                        "Exclusions are now keyed on the stable string row_id (e.g. 'F0::42' "
+                        "or 'F0::<respondent_id>'). Migrate the meta to the new format - see "
+                        "specs/stable-row-index-design.md."
+                    )
+        return v
 
     @model_validator(mode="before")
     @classmethod
