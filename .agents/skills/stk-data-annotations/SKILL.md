@@ -29,7 +29,8 @@ If you think you need to edit the raw file, you're wrong — use translate/trans
 - [ ] Matches census in category names and granularity — ask for census file if not provided
 - [ ] `id_col` set to a stable respondent-id column if the data has one (see Identifying the id column)
 - [ ] All relevant columns annotated (demographics, opinions, scales, etc.)
-- [ ] Ordered categories correctly ordered (likerts always go negative → positive pole, e.g. disagree → agree); nonordered elements marked; `num_values` set for all ordered columns (centered on zero for likerts, 1–N otherwise, `null` for nonordered entries)
+- [ ] Ordered categories correctly ordered (likerts always go negative → positive pole, e.g. disagree → agree); `num_values` set for all ordered columns (centered on zero for likerts, 1–N otherwise, `null` for nonordered entries)
+- [ ] `nonresponse` marks the true non-response categories ("Don't know", "No answer", "Refused") on **every** categorical block — ordered or not — so those semantics stay available to data-quality and other tooling; `nonordered` lists only the extra off-scale-but-substantive categories ("Other", "none", "Would not participate")
 - [ ] All conventions followed (see below)
 - [ ] Loads cleanly via `read_annotated_data(meta_file)` with no warnings
 - [ ] Everything translated to English (exception: party acronyms)
@@ -158,15 +159,21 @@ Column-level `{ meta }` should only contain fields that **differ** from the bloc
 | `continuous` | `bool` | Numeric real-valued column |
 | `datetime` | `bool` | Datetime column |
 
-**Ordering** — only meaningful for categorical columns:
+**Ordering** — only meaningful for ordered categorical columns:
 
 | Field | Type | Purpose |
 |-------|------|---------|
 | `ordered` | `bool` | Whether categories are naturally ordered (age, income, likerts) |
-| `nonordered` | `list` | Categories outside the order ("Don't know", "No answer") |
 | `likert` | `bool` | Symmetric ordered scale (requires `ordered: true`) |
 | `neutral_middle` | `str` | Which category is the neutral middle for likert |
-| `num_values` | `list[float|null]` | Numeric mapping for ordered categories (same length as `categories`). Use `null` for nonordered entries like "Don't know". |
+| `num_values` | `list[float|null]` | Numeric mapping for ordered categories (same length as `categories`). Use `null` for out-of-order entries (`nonresponse` + `nonordered`) like "Don't know". |
+
+**Non-response & off-scale** — for **every** categorical column, ordered or not:
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `nonresponse` | `list` | Categories that are true non-responses ("Don't know", "No answer", "Refused", "Hard to say"). **Recommended field going forward** — annotate on all categorical blocks so the nonresponse semantics feed data-quality checks and other tooling, not just modeling. The model treats non-responses as out-of-order automatically, so do not repeat them in `nonordered`. |
+| `nonordered` | `list` | Categories that fall **outside the order but are still substantive** — *not* non-responses ("Other", "none", "Would not participate", "Did not vote"). List only these extras; the effective out-of-order set is `nonresponse` ∪ `nonordered`. For ordered scales the union is excluded from the order (gets `null` in `num_values`). |
 
 **Transformations** — applied in order: `translate` → `transform` → `translate_after`:
 
@@ -355,7 +362,7 @@ When using `setindex_column`, `topics` and `sets` must be defined (usually via c
    - `ownership` — which party is trusted most to handle each issue.
 4. **`categories: "infer"`**: Only use together with `translate`. Order is derived from `translate` dict key order.
 5. **`translate`**: Only include if actually performing translation or value mapping. Don't add identity translations unless needed for order disambiguation with `categories: "infer"`.
-6. **Ordered categories**: Naturally ordered data (age, income, education, likerts) must be `ordered: true` with `nonordered` marking outliers ("Don't know", "No answer", "Other"). Any **bipolar** ordered scale — one with opposing poles (agree/disagree, trust/distrust, positive/negative, better/worse) — must be marked `likert: true` with `num_values` centred on zero, regardless of whether a neutral middle exists. Set `neutral_middle` when a middle category does exist.
+6. **Ordered categories**: Naturally ordered data (age, income, education, likerts) must be `ordered: true`. Any **bipolar** ordered scale — one with opposing poles (agree/disagree, trust/distrust, positive/negative, better/worse) — must be marked `likert: true` with `num_values` centred on zero, regardless of whether a neutral middle exists. Set `neutral_middle` when a middle category does exist.
 
    **Dichotomous choices are likerts too.** Any 2-way choice — yes/no, for/against, approve/disapprove, support/oppose, stay/leave, EU/EAEU, etc. — must be marked `ordered: true, likert: true` with `num_values: [-1, 1]` (plus nulls for DK/NA), not left as unordered categorical. This applies to both opinion bipolars (agree vs disagree) and factual/choice binaries (yes vs no, A vs B).
 
@@ -365,11 +372,12 @@ When using `setindex_column`, `topics` and `sets` must be defined (usually via c
    3. For A vs B choices without explicit valence, pick the pole aligned with the survey's analytical reference direction (e.g. Western/EU orientation as positive in Eastern-European polling) and document with `comment`.
 
    **Always order likert categories from the negative pole to the positive pole** (disagree → agree, distrust → trust, no → yes, against → for, leave → stay, EAEU → EU); `num_values` increase monotonically from negative to positive. Flip with `translate` if the source data codes the other way.
-7. **Party consistency**: Party names must be identical across `party_preference`, `thermometer`, and `ownership` blocks.
-8. **Discrete scales**: Use categorical (not continuous) for scales with <20 values, even if numeric.
-9. **`col_prefix`**: Use to disambiguate columns that share names across blocks (e.g. `attitude_`, `issue_`, `therm_`).
-10. **Auto-inferred blocks from topk/maxdiff**: Delete any blocks that were auto-generated by `infer_meta` for columns that belong to topk/maxdiff `create` blocks — those get regenerated.
-11. **Document non-obvious decisions with `comment`**: Any choice that deviates from best practice or is non-obvious (unusual merges, ambiguous ordering calls, deliberate category mismatches, tricky transforms) must be noted in a `comment` field on the block, scale, or column where it applies. See the Comments subsection above.
+7. **Non-response categories** (`nonresponse`): Mark true non-responses ("Don't know", "No answer", "Refused", "Hard to say") in `nonresponse` on **every** categorical block — ordered **and** nominal (unordered) — not only on ordered scales. This is the recommended field going forward; the signal is relied on by data-quality checks and other tooling. The model treats non-responses as out-of-order automatically, so do **not** repeat them in `nonordered`. Reserve `nonordered` for categories that are off-scale but still *substantive* — **not** non-responses (e.g. "Other", "none", "Would not participate", "Did not vote"). On an ordered scale the union (`nonresponse` ∪ `nonordered`) is lifted out of the order and gets `null` in `num_values`; on a nominal categorical neither changes modeling but both record structure worth keeping.
+8. **Party consistency**: Party names must be identical across `party_preference`, `thermometer`, and `ownership` blocks.
+9. **Discrete scales**: Use categorical (not continuous) for scales with <20 values, even if numeric.
+10. **`col_prefix`**: Use to disambiguate columns that share names across blocks (e.g. `attitude_`, `issue_`, `therm_`).
+11. **Auto-inferred blocks from topk/maxdiff**: Delete any blocks that were auto-generated by `infer_meta` for columns that belong to topk/maxdiff `create` blocks — those get regenerated.
+12. **Document non-obvious decisions with `comment`**: Any choice that deviates from best practice or is non-obvious (unusual merges, ambiguous ordering calls, deliberate category mismatches, tricky transforms) must be noted in a `comment` field on the block, scale, or column where it applies. See the Comments subsection above.
 
 ## Common Pitfalls
 

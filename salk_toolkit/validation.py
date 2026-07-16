@@ -147,7 +147,14 @@ class ColumnMeta(PBase):
     # Model extras
     # List of columns that are meant to modify the responses on this col -> private_inputs
     modifiers: List[str] = DF(list)
-    # List of categories that are outside the order (Like "Don't know") -> nonordered in ordered_outputs
+    # Non-response / non-substantive answers ("Don't know", "No answer", "Refused"). Recommended field for marking
+    # these on any categorical column, ordered or not: carries nonresponse semantics used by data-quality and other
+    # tooling. Non-responses are always out-of-order; consumers that need the full out-of-order set take the union
+    # of `nonresponse` and `nonordered` (handled model-side, see obs_models).
+    nonresponse: List = DF(list)
+    # Categories that fall outside the order but are NOT non-responses ("Other", "none", "Would not participate",
+    # "Did not vote"). List only these extras here; `nonresponse` covers the rest. The union of the two is what ends
+    # up out-of-order -> nonordered in ordered_outputs.
     nonordered: List = DF(list)
 
     # Plot pipeline extras
