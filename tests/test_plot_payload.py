@@ -72,7 +72,7 @@ def ppd_two_factors(registered_two_factor_plot):
     return PlotDescriptor(
         plot=registered_two_factor_plot,
         res_col="score",
-        factor_cols=["group.a", "group.b"],
+        facet_dims=["group.a", "group.b"],
     )
 
 
@@ -99,7 +99,7 @@ def test_dry_run_escape_labels_true_escapes_outer_factors(small_pi_fixture, ppd_
 def ppd_columns():
     """A PlotDescriptor targeting the real `columns` plot."""
 
-    return PlotDescriptor(plot="columns", res_col="score", factor_cols=["group.a", "group.b"])
+    return PlotDescriptor(plot="columns", res_col="score", facet_dims=["group.a", "group.b"])
 
 
 def test_payload_shape_columns(small_pi_fixture, ppd_columns):
@@ -142,7 +142,7 @@ def test_payload_fallback_covers_non_payload_plot(small_pi_fixture):
 
     try:
         assert pp.get_plot_meta("__test_fallback_plot").payload is False
-        ppd = PlotDescriptor(plot="__test_fallback_plot", res_col="score", factor_cols=["group.a", "group.b"])
+        ppd = PlotDescriptor(plot="__test_fallback_plot", res_col="score", facet_dims=["group.a", "group.b"])
         pl = pp.create_plot_payload(small_pi_fixture, ppd)
         # every cell carries the frame pulled off the chart's `.data`
         for row in pl["cells"]:
@@ -207,7 +207,7 @@ def ppd_mutating_two_factors(registered_mutating_two_factor_plot):
     ppd = PlotDescriptor(
         plot=plot_name,
         res_col="score",
-        factor_cols=["group.a", "group.b"],
+        facet_dims=["group.a", "group.b"],
         internal_facet=1,
     )
     return ppd, seen_n_facets
@@ -269,7 +269,7 @@ def likert_cell_pi_and_ppd():
     )
     col_meta = {"agree": GroupOrColumnMeta(categories=cats, ordered=True, likert=True, neutral_middle="Neutral")}
     pi = PlotInput(data=data, col_meta=col_meta, value_col="share")
-    ppd = PlotDescriptor(plot="likert_bars", res_col="share", factor_cols=["agree"], internal_facet=True)
+    ppd = PlotDescriptor(plot="likert_bars", res_col="share", facet_dims=["agree"], internal_facet=True)
     return pi, ppd
 
 
@@ -322,7 +322,7 @@ def test_payload_likert_bars_faceted_no_crash():
         "gender": GroupOrColumnMeta(categories=["Male", "Female"]),
     }
     pi = PlotInput(data=data, col_meta=col_meta, value_col="share")
-    ppd = PlotDescriptor(plot="likert_bars", res_col="share", factor_cols=["agree", "gender"])
+    ppd = PlotDescriptor(plot="likert_bars", res_col="share", facet_dims=["agree", "gender"])
 
     pl = pp.create_plot_payload(pi, ppd)
 
@@ -350,7 +350,7 @@ def matrix_cell_pi_and_ppd():
         }
     )
     pi = PlotInput(data=data, col_meta={}, value_col="val")
-    ppd = PlotDescriptor(plot="matrix", res_col="val", factor_cols=["row", "col"], internal_facet=True)
+    ppd = PlotDescriptor(plot="matrix", res_col="val", facet_dims=["row", "col"], internal_facet=True)
     return pi, ppd
 
 
@@ -398,7 +398,7 @@ def boxplot_cell_pi_and_ppd():
         )
     }
     pi = PlotInput(data=data, col_meta=col_meta, value_col="score")
-    ppd = PlotDescriptor(plot="boxplots", res_col="score", factor_cols=["group"], internal_facet=True)
+    ppd = PlotDescriptor(plot="boxplots", res_col="score", facet_dims=["group"], internal_facet=True)
     return pi, ppd
 
 
@@ -448,7 +448,7 @@ def marimekko_cell_pi_and_ppd():
         }
     )
     pi = PlotInput(data=data, col_meta={}, value_col="val")
-    ppd = PlotDescriptor(plot="marimekko", res_col="val", factor_cols=["row", "col"], internal_facet=True)
+    ppd = PlotDescriptor(plot="marimekko", res_col="val", facet_dims=["row", "col"], internal_facet=True)
     return pi, ppd
 
 
@@ -490,7 +490,7 @@ def line_cell_pi_and_ppd():
     )
     col_meta = {"level": GroupOrColumnMeta(categories=cats, ordered=True)}
     pi = PlotInput(data=data, col_meta=col_meta, value_col="share")
-    ppd = PlotDescriptor(plot="line", res_col="share", factor_cols=["level"], internal_facet=True)
+    ppd = PlotDescriptor(plot="line", res_col="share", facet_dims=["level"], internal_facet=True)
     return pi, ppd
 
 
@@ -512,7 +512,7 @@ def lines_cell_pi_and_ppd():
         "stage": GroupOrColumnMeta(categories=stages, ordered=True),
     }
     pi = PlotInput(data=data, col_meta=col_meta, value_col="share")
-    ppd = PlotDescriptor(plot="lines", res_col="share", factor_cols=["group", "stage"], internal_facet=True)
+    ppd = PlotDescriptor(plot="lines", res_col="share", facet_dims=["group", "stage"], internal_facet=True)
     return pi, ppd
 
 
@@ -572,7 +572,7 @@ def density_cell_pi_and_ppd():
     )
     col_meta = {"group": GroupOrColumnMeta(categories=cats)}
     pi = PlotInput(data=data, col_meta=col_meta, value_col="score")
-    ppd = PlotDescriptor(plot="density-raw", res_col="score", factor_cols=["group"], internal_facet=True)
+    ppd = PlotDescriptor(plot="density-raw", res_col="score", facet_dims=["group"], internal_facet=True)
     return pi, ppd
 
 
@@ -660,7 +660,7 @@ def test_density_categorical_input_typed_error():
     cats = ["Low", "Mid", "High"]
     data = pd.DataFrame({"answer": pd.Categorical(cats * 4, categories=cats, ordered=True)})
     pi = PlotInput(data=data, col_meta={}, value_col="answer")
-    ppd = PlotDescriptor(plot="density-raw", res_col="answer", factor_cols=[])
+    ppd = PlotDescriptor(plot="density-raw", res_col="answer", facet_dims=[])
 
     with pytest.raises(ValueError, match="continuous"):
         pp.create_plot(pi, ppd, width=400)
@@ -687,7 +687,7 @@ def geoplot_cell_pi_and_ppd():
         )
     }
     pi = PlotInput(data=data, col_meta=col_meta, value_col="score")
-    ppd = PlotDescriptor(plot="geoplot", res_col="score", factor_cols=["region"], internal_facet=True)
+    ppd = PlotDescriptor(plot="geoplot", res_col="score", facet_dims=["region"], internal_facet=True)
     return pi, ppd
 
 
@@ -764,7 +764,7 @@ def geobest_cell_pi_and_ppd():
         ),
     }
     pi = PlotInput(data=data, col_meta=col_meta, value_col="score")
-    ppd = PlotDescriptor(plot="geobest", res_col="score", factor_cols=["candidate", "region"], internal_facet=True)
+    ppd = PlotDescriptor(plot="geobest", res_col="score", facet_dims=["candidate", "region"], internal_facet=True)
     return pi, ppd
 
 
@@ -859,7 +859,7 @@ def barbell_cell_pi_and_ppd():
         "group": GroupOrColumnMeta(categories=groups, colors={"Group A": "#c00000", "Group B": "#00c000"}),
     }
     pi = PlotInput(data=data, col_meta=col_meta, value_col="score")
-    ppd = PlotDescriptor(plot="barbell", res_col="score", factor_cols=["question", "group"], internal_facet=True)
+    ppd = PlotDescriptor(plot="barbell", res_col="score", facet_dims=["question", "group"], internal_facet=True)
     return pi, ppd
 
 
@@ -912,7 +912,7 @@ def maxdiff_cell_pi_and_ppd():
         }
     )
     pi = PlotInput(data=data, col_meta={}, value_col="score")
-    ppd = PlotDescriptor(plot="maxdiff", res_col="score", factor_cols=["topic"], internal_facet=True)
+    ppd = PlotDescriptor(plot="maxdiff", res_col="score", facet_dims=["topic"], internal_facet=True)
     return pi, ppd
 
 
@@ -979,14 +979,14 @@ def test_matching_plots_maxdiff_requires_continuous_res_col():
     )
 
     categorical_matches = matching_plots(
-        {"res_col": "party", "factor_cols": ["topic"], "plot": "maxdiff"}, df, data_meta, details=True
+        {"res_col": "party", "facet_dims": ["topic"], "plot": "maxdiff"}, df, data_meta, details=True
     )
     priority, reasons = categorical_matches["maxdiff"]
     assert priority < 0
     assert "continuous_only" in reasons
 
     continuous_matches = matching_plots(
-        {"res_col": "score", "factor_cols": ["topic"], "plot": "maxdiff"}, df, data_meta, details=True
+        {"res_col": "score", "facet_dims": ["topic"], "plot": "maxdiff"}, df, data_meta, details=True
     )
     priority2, reasons2 = continuous_matches["maxdiff"]
     assert priority2 >= 0
@@ -1023,7 +1023,7 @@ def election_pi_and_ppd():
         ),
     }
     pi = PlotInput(data=data, col_meta=col_meta, value_col="support")
-    ppd = PlotDescriptor(plot="mandate_plot", res_col="support", factor_cols=["party", "district"], internal_facet=True)
+    ppd = PlotDescriptor(plot="mandate_plot", res_col="support", facet_dims=["party", "district"], internal_facet=True)
     return pi, ppd
 
 
@@ -1124,7 +1124,7 @@ def test_payload_carries_per_cell_scale_for_faceted_geo(geoplot_cell_pi_and_ppd)
     )
     party_meta = GroupOrColumnMeta(categories=parties)
     pi = pi.model_copy(update={"data": data, "col_meta": {**pi.col_meta, "party": party_meta}})
-    ppd = ppd.model_copy(update={"factor_cols": ["region", "party"]})
+    ppd = ppd.model_copy(update={"facet_dims": ["region", "party"]})
 
     pl = pp.create_plot_payload(pi, ppd)
     cells = [c for row in pl["cells"] for c in row]
