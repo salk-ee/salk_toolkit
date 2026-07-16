@@ -1087,25 +1087,25 @@ def test_payload_coalition_applet_smoke(election_pi_and_ppd):
     assert all(v == 7 for v in per_draw.values())
 
 
-def test_payload_echoes_resolved_factor_split(small_pi_fixture, ppd_columns):
-    """factor_cols = the resolved facet list; n_inner splits it so that
-    outer_factors == factor_cols[n_inner:] (the invariant payload consumers rely on)."""
+def test_payload_echoes_resolved_facet_dims(small_pi_fixture, ppd_columns):
+    """facet_dims = the resolved facet dimensions (matching /dimensions vocabulary);
+    n_inner splits it so that outer_factors == facet_dims[n_inner:]."""
 
     pl = pp.create_plot_payload(small_pi_fixture, ppd_columns)
-    assert pl["factor_cols"] == ["group.a", "group.b"]
+    assert pl["facet_dims"] == ["group.a", "group.b"]
     assert isinstance(pl["n_inner"], int)
-    assert pl["factor_cols"][pl["n_inner"] :] == pl["outer_factors"]
+    assert pl["facet_dims"][pl["n_inner"] :] == pl["outer_factors"]
 
 
 def test_payload_factor_split_counts_inner_facets(likert_cell_pi_and_ppd):
-    """An inner (plot-consumed) facet is IN factor_cols but NOT in outer_factors."""
+    """An inner (plot-consumed) facet is IN facet_dims but NOT in outer_factors."""
 
     pi, ppd = likert_cell_pi_and_ppd
     pl = pp.create_plot_payload(pi, ppd)
-    assert "agree" in pl["factor_cols"]
+    assert "agree" in pl["facet_dims"]
     assert pl["outer_factors"] == []
-    assert pl["n_inner"] == len(pl["factor_cols"])
-    assert pl["factor_cols"][pl["n_inner"] :] == pl["outer_factors"]
+    assert pl["n_inner"] == len(pl["facet_dims"])
+    assert pl["facet_dims"][pl["n_inner"] :] == pl["outer_factors"]
 
 
 def test_payload_carries_per_cell_scale_for_faceted_geo(geoplot_cell_pi_and_ppd):
