@@ -133,7 +133,7 @@ class PlotInput:
     outer_factors: List[str] = field(default_factory=list)
     plot_args: Dict[str, Any] = field(default_factory=dict)
     n_facet_cols: Optional[int] = None  # stashed by create_plot for payload consumers
-    facet_dims: List[str] = field(default_factory=list)  # resolved facet dimensions; outer_factors == facet_dims[n_inner:]
+    facet_dims: List[str] = field(default_factory=list)  # resolved facets; outer_factors == facet_dims[n_inner:]
     n_inner: int = 0  # how many facet_dims the plot consumes as inner facets
     return_df: bool = False  # payload=True plots return the prepared PlotInput instead of a chart
 
