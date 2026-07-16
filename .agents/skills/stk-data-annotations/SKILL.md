@@ -27,6 +27,7 @@ If you think you need to edit the raw file, you're wrong — use translate/trans
 
 **Definition of done:**
 - [ ] Matches census in category names and granularity — ask for census file if not provided
+- [ ] `id_col` set to a stable respondent-id column if the data has one (see Identifying the id column)
 - [ ] All relevant columns annotated (demographics, opinions, scales, etc.)
 - [ ] Ordered categories correctly ordered (likerts always go negative → positive pole, e.g. disagree → agree); nonordered elements marked; `num_values` set for all ordered columns (centered on zero for likerts, 1–N otherwise, `null` for nonordered entries)
 - [ ] All conventions followed (see below)
@@ -115,6 +116,7 @@ df = read_and_process_data({
   "constants": { "party_colors": { "PartyA": "#ff0000" } },
   "files": [{ "file": "data.sav", "opts": {}, "code": "F0" }],
   "read_opts": {},
+  "id_col": "respondent_id",
   "preprocessing": "df = df[df['age'] >= 18]",
   "postprocessing": null,
   "weight_col": null,
@@ -392,6 +394,17 @@ df, meta = pyreadstat.read_sav("data.sav", apply_value_formats=True)
 ```
 
 For SAV files, `meta.column_labels` often contains the question text in the original language — feed these to a translation function for initial labels.
+
+## Identifying the id column
+
+Every row STK returns is stamped with a stable id and the returned DataFrame is indexed by it. By default that id is the within-file row position (`F0::0`, `F0::1`, …), which is only stable while the source file's bytes don't change. If the survey has a genuine respondent identifier, set **`id_col`** so ids become `{file_code}::{respondent_id}` — stable across re-exports and row reorders, and the correct anchor for `excluded`.
+
+- **Scan for a candidate** while inspecting the raw data: look for columns named like `id`, `respondent_id`, `resp_id`, `caseid`, `ResponseId`, `uuid`, `interview_id`, or a running record number. Verify it: `df['id'].is_unique and df['id'].notna().all()`.
+- **Set it** at the `DataMeta` level (`"id_col": "respondent_id"`), or per-file on a `FileDesc` (`{"file": "...", "code": "W1", "id_col": "resp_id"}`) when different waves name it differently. The per-file value overrides the meta-level default.
+- **Confirm with the user** before committing to a column — picking the wrong one silently misattributes exclusions. If no unique non-null column exists, leave `id_col` unset (positional ids are fine); note the absence in a `comment`.
+- STK hard-errors if the declared `id_col` is missing, has nulls, or is non-unique within a file — so a failing load tells you the candidate was wrong.
+
+`excluded` is keyed on these ids: each entry is `["{row_id}", "reason"]` (e.g. `["F0::102", "careless battery"]` with `id_col`, or `["F0::5", "..."]` positionally). The legacy positional-integer form (`[5, "..."]`) is rejected. Exclusions compose across nested metas — an outer meta references an inner row by its full prefixed id (`M::F0::102`) and is unaffected by what the inner meta itself filters.
 
 ## Validation Commands
 

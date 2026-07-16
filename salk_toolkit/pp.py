@@ -270,6 +270,7 @@ class PlotMeta(PBase):
 
 special_columns: List[str] = [
     "id",
+    "row_id",
     "weight",
     "draw",
     "original_inds",

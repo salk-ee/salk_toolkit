@@ -28,6 +28,54 @@ def _str_from_list(val: list[str] | object) -> str:
 ProcessedDataReturn: TypeAlias = tuple[pd.DataFrame, DataMeta | None]
 
 
+# --------------------------------------------------------
+#          STABLE ROW IDENTITY
+# --------------------------------------------------------
+#
+# Every row carries a stable string id in the reserved ``ROW_ID`` column, assigned at load
+# time (before any concat/filter can move rows) and joined across nesting levels as a
+# ``{file_code}::...::{leaf}`` path. It becomes the frame index at every io return boundary,
+# giving callers a unique, deterministic, provenance-bearing index. Ids are opaque: code only
+# prepends prefixes and does exact-string matching, never splits them.
+
+ROW_ID = "row_id"
+
+
+def mint_positional_row_id(df: pd.DataFrame, file_code: str = "F0") -> pd.DataFrame:
+    """Assign a fresh positional ``{file_code}::{i}`` row id in place (leaf files, inline data)."""
+    df[ROW_ID] = [f"{file_code}::{i}" for i in range(len(df))]
+    return df
+
+
+def assert_row_id_intact(df: pd.DataFrame, context: str) -> None:
+    """Fail loudly if user code dropped, nulled, or duplicated the stable row id.
+
+    Filtering/reordering rows is fine; rows added without an id (null) or id collisions are not.
+    """
+    if ROW_ID not in df.columns:
+        raise ValueError(f"{context} removed the '{ROW_ID}' column - stable row ids must be preserved")
+    col = df[ROW_ID]
+    if col.isna().any():
+        raise ValueError(f"{context} produced null row ids - were rows added programmatically without ids?")
+    if col.duplicated().any():
+        dups = list(col[col.duplicated()].unique()[:5])
+        raise ValueError(f"{context} produced duplicate row ids, e.g. {dups} - were rows added programmatically?")
+
+
+def finalize_row_index(df: pd.DataFrame) -> pd.DataFrame:
+    """Set ``ROW_ID`` as the frame index at an io return boundary, asserting uniqueness.
+
+    Idempotent (returns unchanged if already row_id-indexed). Frames with no id at all
+    (legacy parquet, inline data) get a fresh positional one.
+    """
+    if df.index.name == ROW_ID:
+        return df
+    if ROW_ID not in df.columns:
+        mint_positional_row_id(df)
+    assert_row_id_intact(df, "finalize")
+    return df.set_index(ROW_ID)
+
+
 def _convert_number_series_to_categorical(s: pd.Series) -> pd.Series:
     """Convert number series to categorical, avoiding long and unwieldy fractions like 24.666666666667.
 
