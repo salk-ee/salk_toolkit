@@ -1109,8 +1109,7 @@ def test_payload_factor_split_counts_inner_facets(likert_cell_pi_and_ppd):
 
 
 def test_payload_carries_per_cell_scale_for_faceted_geo(geoplot_cell_pi_and_ppd):
-    """Faceted geo: every cell carries its own colour scale (stops + domain) — the
-    per-cell info toGeoFacetOption used to scrape from each cell's spec."""
+    """Faceted geo: every cell carries its own colour scale (stops + domain)."""
 
     pi, ppd = geoplot_cell_pi_and_ppd
     regions = ["Harju", "Tartu", "Parnu"]

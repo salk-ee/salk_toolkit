@@ -276,8 +276,7 @@ def create_plot_payload(
         "value_range": value_range,
         "facets": facets_payload,
         "outer_factors": outer_factors,
-        # Resolved facet split: outer_factors == factor_cols[n_inner:]. factor_cols is
-        # what /plot's PlotResponse.factor_cols carried (the Sort control's source).
+        # Invariant: outer_factors == factor_cols[n_inner:]
         "factor_cols": list(dry_pi.factor_cols),
         "n_inner": dry_pi.n_inner,
         "grid": {
