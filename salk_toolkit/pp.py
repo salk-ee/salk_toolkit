@@ -123,7 +123,7 @@ class PlotInput:
     val_format: str = "%"
     val_range: Optional[Tuple[Optional[float], Optional[float]]] = None
     filtered_size: float = 0.0  # post-filter weight (the "displayed_n" the plot is based on)
-    total_n: float = 0.0  # pre-filter total weight, so consumers can show "filtered to X%"
+    total_size: float = 0.0  # pre-filter total weight, so consumers can show "filtered to X%"
     facets: List[FacetMeta] = field(default_factory=list)
     translate: Optional[Callable[[str], str]] = None
     tooltip: List[Any] = field(default_factory=list)
@@ -426,7 +426,7 @@ def get_plot_fn(plot_name: str) -> Callable[..., AltairChart]:
             val_format=cast(str, pparams.get("val_format") or "%"),
             val_range=cast(Optional[Tuple[Optional[float], Optional[float]]], pparams.get("val_range")),
             filtered_size=float(cast(object, pparams.get("filtered_size") or 0.0)),
-            total_n=float(cast(object, pparams.get("total_n") or 0.0)),
+            total_size=float(cast(object, pparams.get("total_size") or 0.0)),
             facets=facets_list,
             tooltip=cast(List[Any], pparams.get("tooltip") or []),
             value_range=cast(Optional[Tuple[float, float]], pparams.get("value_range")),
@@ -1298,7 +1298,7 @@ def _wrangle_data(
     weight_col: str,
     pp_desc: PlotDescriptor,
     n_questions: int,
-    total_n: float = 0.0,
+    total_size: float = 0.0,
 ) -> PlotInput:
     """Aggregate filtered data into a structured ``PlotInput`` model for create_plot."""
 
@@ -1460,7 +1460,7 @@ def _wrangle_data(
         value_col=value_col,
         cat_col=cat_col,
         filtered_size=filtered_size,
-        total_n=total_n,
+        total_size=total_size,
     )
 
 

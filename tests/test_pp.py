@@ -339,7 +339,7 @@ def test_plot_descriptor_accepts_legacy_factor_cols_key():
 
 
 def test_pp_transform_data_reports_total_and_filtered_weight() -> None:
-    """`total_n` is the pre-filter weight, `filtered_size` the post-filter weight -
+    """`total_size` is the pre-filter weight, `filtered_size` the post-filter weight -
     both weight-summed (not row counts), so consumers can show "filtered to X%"."""
     from salk_toolkit.pp import pp_transform_data
 
@@ -374,11 +374,11 @@ def test_pp_transform_data_reports_total_and_filtered_weight() -> None:
     pi = pp_transform_data(df, data_meta, ppd)
 
     # Weight-based, not row-count-based (which would be 5 and 3)
-    assert pi.total_n == 12.0
+    assert pi.total_size == 12.0
     assert pi.filtered_size == 6.0
 
     # A meta-supplied population total overrides the recomputed weight sum
     data_meta.total_size = 1000.0
     pi = pp_transform_data(df, data_meta, ppd)
-    assert pi.total_n == 1000.0
+    assert pi.total_size == 1000.0
     assert pi.filtered_size == 6.0  # post-filter weight is unaffected

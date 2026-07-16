@@ -514,8 +514,8 @@ else:
                 publish_mode=publish_mode,
             )
 
-            if pi.total_n:
-                st.write("Based on %.1f%% of data" % (100 * pi.filtered_size / pi.total_n))
+            if pi.total_size:
+                st.write("Based on %.1f%% of data" % (100 * pi.filtered_size / pi.total_size))
 
             if i == 0 and st.session_state.get("custom_spec"):
                 custom_spec = deepcopy(st.session_state["custom_spec"])

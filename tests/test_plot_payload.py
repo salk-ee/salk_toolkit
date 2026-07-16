@@ -116,14 +116,14 @@ def test_payload_shape_columns(small_pi_fixture, ppd_columns):
 
 
 def test_payload_echoes_filter_weights(small_pi_fixture, ppd_columns):
-    """The payload carries pre-filter (`total_n`) and post-filter (`filtered_size`) weight
+    """The payload carries pre-filter (`total_size`) and post-filter (`filtered_size`) weight
     so the frontend can render "filtered to X%"."""
 
     pi = small_pi_fixture
-    pi.total_n = 100.0
+    pi.total_size = 100.0
     pi.filtered_size = 40.0
     pl = pp.create_plot_payload(pi, ppd_columns)
-    assert pl["total_n"] == 100.0
+    assert pl["total_size"] == 100.0
     assert pl["filtered_size"] == 40.0
 
 
