@@ -352,20 +352,13 @@ def _data_with_inferred_meta(data_file: str, **kwargs: object) -> tuple[pd.DataF
 def _repair_merge_row_ids(mdf: pd.DataFrame, tag: str) -> None:
     """Restore ROW_ID uniqueness after a horizontal merge, in place (corner case).
 
-    A merge keeps the left row's id, but ``right``/``outer`` joins introduce right-only rows
-    with no left id, and one-to-many / ``cross`` joins duplicate an id across the fanned-out
-    rows. Right-only rows get a fresh ``{tag}::{position}`` id; duplicated ids get a ``::m{k}``
-    per-group suffix. Both are deterministic since merge output order is deterministic.
+    Left ids are kept where already unique (many-to-one enrich). Right-only rows (NaN id, from
+    ``right``/``outer`` joins) collapse to ``tag`` and any id duplicated by a one-to-many/``cross``
+    join gets a deterministic ``::m{k}`` suffix - merge output order is deterministic.
     """
-    rid = mdf[ROW_ID]
-    na_mask = rid.isna()
-    if na_mask.any():
-        mdf.loc[na_mask, ROW_ID] = f"{tag}::" + pd.RangeIndex(int(na_mask.sum())).astype(str)
-        rid = mdf[ROW_ID]
-    dup_mask = rid.duplicated(keep=False)
-    if dup_mask.any():
-        cc = mdf.loc[dup_mask].groupby(ROW_ID).cumcount()
-        mdf.loc[dup_mask, ROW_ID] = rid[dup_mask].astype(str) + "::m" + cc.astype(str)
+    rid = mdf[ROW_ID].fillna(tag)
+    dup = rid.duplicated(keep=False)
+    mdf[ROW_ID] = rid.mask(dup, rid + "::m" + rid.groupby(rid).cumcount().astype(str))
 
 
 def _perform_merges(

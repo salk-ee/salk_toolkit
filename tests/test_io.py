@@ -2125,6 +2125,22 @@ class TestReadAndProcessData:
         with pytest.raises(ValueError, match="suffix"):
             read_and_process_data(desc)
 
+    def test_merge_fanout_keeps_unique_row_id(self, temp_dir):
+        """A one-to-many merge keeps left ids where unique and suffixes the fanned-out duplicates."""
+        main_csv = temp_dir / "main.csv"
+        merge_csv = temp_dir / "merge.csv"
+        # main row 'A' matches two merge rows -> fan-out; 'B' matches one.
+        pd.DataFrame({"municipality": ["A", "B"], "val": [1, 2]}).to_csv_file(main_csv)
+        pd.DataFrame({"municipality": ["A", "A", "B"], "extra": ["p", "q", "r"]}).to_csv_file(merge_csv)
+
+        df = read_and_process_data({"file": str(main_csv), "merge": {"file": str(merge_csv), "on": "municipality"}})
+
+        assert len(df) == 3
+        assert df.index.name == "row_id"
+        assert df.index.is_unique
+        # The fanned-out left row (F0::0) is suffixed; the singleton (F0::1) keeps its id.
+        assert sorted(df.index) == ["F0::0::m0", "F0::0::m1", "F0::1"]
+
     def test_merge_applies_categorical_conversion_from_metadata(self, temp_dir):
         """Merged columns should be converted to categorical based on metadata definitions."""
         main_csv = temp_dir / "main.csv"

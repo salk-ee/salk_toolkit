@@ -57,10 +57,11 @@ destroy it; frames without one (raw parquet sources) get fresh positional ids li
 other raw file. At the outer return boundary the column is set back as the index as usual.
 
 **Merges.** `_perform_merges` runs after exclusions, so ids never need to be referenced
-post-merge — only the output invariant matters. Repair after each merge, cheapest
-deterministic form: right-only rows (NaN id from `right`/`outer` joins) get
-`{merge_file_code}::{position}`; duplicated ids (one-to-many, `cross`) get a
-`::m{cumcount}` suffix. Deterministic because merge output order is deterministic.
+post-merge — only the output invariant matters. `_repair_merge_row_ids` keeps left ids where
+already unique (many-to-one enrich); right-only rows (NaN id from `right`/`outer` joins)
+collapse to the merge `tag` and any id duplicated by a one-to-many/`cross` join gets a
+`::m{k}` per-group suffix — one `fillna` + `duplicated` + `groupby().cumcount()` pass,
+deterministic because merge output order is.
 
 **Row-count discipline.** After each user-code hook (`preprocessing`, `postprocessing`,
 `subgroup_transform` on the frame level), assert `row_id` still exists, non-null, unique.
