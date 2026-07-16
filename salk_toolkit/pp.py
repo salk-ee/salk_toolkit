@@ -133,8 +133,8 @@ class PlotInput:
     outer_factors: List[str] = field(default_factory=list)
     plot_args: Dict[str, Any] = field(default_factory=dict)
     n_facet_cols: Optional[int] = None  # stashed by create_plot for payload consumers
-    factor_cols: List[str] = field(default_factory=list)  # resolved facet list; outer_factors == factor_cols[n_inner:]
-    n_inner: int = 0  # how many factor_cols the plot consumes as inner facets
+    facet_dims: List[str] = field(default_factory=list)  # resolved facet dimensions; outer_factors == facet_dims[n_inner:]
+    n_inner: int = 0  # how many facet_dims the plot consumes as inner facets
     return_df: bool = False  # payload=True plots return the prepared PlotInput instead of a chart
 
     def model_copy(self, *, deep: bool = False, update: dict[str, Any] | None = None) -> "PlotInput":
@@ -1691,8 +1691,8 @@ def create_plot(
             order = data.groupby(q, observed=True)["ordering_value"].mean().sort_values(ascending=False).index
             data[q] = pd.Categorical(data[q], list(order))
 
-    # Stash the resolved facet split for payload consumers (wire: factor_cols/n_inner)
-    pi.factor_cols = list(factor_cols)
+    # Stash the resolved facet split for payload consumers (wire: facet_dims/n_inner)
+    pi.facet_dims = list(factor_cols)
     pi.n_inner = n_inner
 
     # Handle internal facets (and translate as needed)
