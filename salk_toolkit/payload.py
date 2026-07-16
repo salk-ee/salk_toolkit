@@ -270,7 +270,8 @@ def create_plot_payload(
         "value_col": dry_pi.value_col,
         "cat_col": dry_pi.cat_col,
         "val_format": dry_pi.val_format,
-        "filtered_size": dry_pi.filtered_size,
+        "filtered_size": dry_pi.filtered_size,  # post-filter weight (aka displayed_n)
+        "total_n": dry_pi.total_n,  # pre-filter total weight; filter% = filtered_size / total_n
         "value_range": value_range,
         "facets": facets_payload,
         "outer_factors": outer_factors,

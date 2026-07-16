@@ -336,3 +336,49 @@ def test_plot_descriptor_accepts_legacy_factor_cols_key():
     assert d.facet_dims == ["age"]
     assert "facet_dims" in d.model_dump()
     assert impute_factor_cols is impute_facet_dims
+
+
+def test_pp_transform_data_reports_total_and_filtered_weight() -> None:
+    """`total_n` is the pre-filter weight, `filtered_size` the post-filter weight -
+    both weight-summed (not row counts), so consumers can show "filtered to X%"."""
+    from salk_toolkit.pp import pp_transform_data
+
+    data_meta = make_data_meta(
+        {
+            "weight_col": "w",
+            "structure": [
+                {
+                    "name": "demographics",
+                    "scale": {"col_prefix": ""},
+                    "columns": [
+                        ["gender", {"categories": ["Female", "Male"]}],
+                        ["party", {"categories": ["X", "Y"]}],
+                    ],
+                }
+            ],
+        }
+    )
+    # 3 Female @ w=2 (=6) + 2 Male @ w=3 (=6) -> total weight 12, 5 rows
+    df = pd.DataFrame(
+        {
+            "gender": ["Female", "Female", "Female", "Male", "Male"],
+            "party": ["X", "Y", "X", "Y", "X"],
+            "w": [2.0, 2.0, 2.0, 3.0, 3.0],
+        }
+    )
+    ppd = soft_validate(
+        {"plot": "columns", "res_col": "party", "facet_dims": [], "filter": {"gender": ["Female"]}},
+        PlotDescriptor,
+    )
+
+    pi = pp_transform_data(df, data_meta, ppd)
+
+    # Weight-based, not row-count-based (which would be 5 and 3)
+    assert pi.total_n == 12.0
+    assert pi.filtered_size == 6.0
+
+    # A meta-supplied population total overrides the recomputed weight sum
+    data_meta.total_size = 1000.0
+    pi = pp_transform_data(df, data_meta, ppd)
+    assert pi.total_n == 1000.0
+    assert pi.filtered_size == 6.0  # post-filter weight is unaffected

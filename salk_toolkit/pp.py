@@ -122,7 +122,8 @@ class PlotInput:
     cat_col: Optional[str] = None
     val_format: str = "%"
     val_range: Optional[Tuple[Optional[float], Optional[float]]] = None
-    filtered_size: float = 0.0
+    filtered_size: float = 0.0  # post-filter weight (the "displayed_n" the plot is based on)
+    total_n: float = 0.0  # pre-filter total weight, so consumers can show "filtered to X%"
     facets: List[FacetMeta] = field(default_factory=list)
     translate: Optional[Callable[[str], str]] = None
     tooltip: List[Any] = field(default_factory=list)
@@ -423,6 +424,7 @@ def get_plot_fn(plot_name: str) -> Callable[..., AltairChart]:
             val_format=cast(str, pparams.get("val_format") or "%"),
             val_range=cast(Optional[Tuple[Optional[float], Optional[float]]], pparams.get("val_range")),
             filtered_size=float(cast(object, pparams.get("filtered_size") or 0.0)),
+            total_n=float(cast(object, pparams.get("total_n") or 0.0)),
             facets=facets_list,
             tooltip=cast(List[Any], pparams.get("tooltip") or []),
             value_range=cast(Optional[Tuple[float, float]], pparams.get("value_range")),
@@ -1093,7 +1095,10 @@ def pp_transform_data(
 
     # Add row id-s and find count - both need to happen before filtering
     full_df = full_df.with_row_index("id")
-    total_n = full_df.select(pl.len()).collect().item()
+    counts = full_df.select(pl.len().alias("n"), pl.col(weight_col).sum().alias("w")).collect()
+    total_n = counts["n"].item()
+    # Prefer the meta-supplied population total; fall back to the pre-filter weight sum
+    total_weight = data_meta.total_size if data_meta.total_size is not None else counts["w"].item()
 
     # For more customized filtering in dashboards
     # Has to be done before downselecting to only needed columns
@@ -1266,6 +1271,7 @@ def pp_transform_data(
     # Aggregate the data into right shape
     pi = _wrangle_data(filtered_df, c_meta, facet_dims, weight_col, pp_desc, n_questions)
 
+    pi.total_n = float(total_weight)
     pi.val_format = val_format
     pi.val_range = val_range  # Currently not used
 
@@ -1988,9 +1994,9 @@ def impute_facet_dims(
     return facet_dims
 
 
-
 # Legacy name kept for external callers
 impute_factor_cols = impute_facet_dims
+
 
 def e2e_plot(
     pp_desc: Dict[str, Any] | PlotDescriptor,

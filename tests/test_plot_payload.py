@@ -115,6 +115,18 @@ def test_payload_shape_columns(small_pi_fixture, ppd_columns):
         assert f["colors"] is None or all(isinstance(c, str) for c in f["colors"].values())
 
 
+def test_payload_echoes_filter_weights(small_pi_fixture, ppd_columns):
+    """The payload carries pre-filter (`total_n`) and post-filter (`filtered_size`) weight
+    so the frontend can render "filtered to X%"."""
+
+    pi = small_pi_fixture
+    pi.total_n = 100.0
+    pi.filtered_size = 40.0
+    pl = pp.create_plot_payload(pi, ppd_columns)
+    assert pl["total_n"] == 100.0
+    assert pl["filtered_size"] == 40.0
+
+
 def test_payload_uncolored_facet_colors_stay_none(barbell_cell_pi_and_ppd):
     """A facet with no metadata colors carries None (the renderer owns the default
     scheme); explicit colors stay."""
