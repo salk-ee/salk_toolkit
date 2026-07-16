@@ -191,7 +191,9 @@ def _facet_colors(facet: FacetMeta) -> Optional[Dict[str, str]]:
     return {str(c): palette[i % len(palette)] for i, c in enumerate(facet.order)}
 
 
-def _cell(frame: pd.DataFrame, title: str, keys: Dict[str, Any]) -> Dict[str, Any]:
+def _cell(
+    frame: pd.DataFrame, title: str, keys: Dict[str, Any], scale: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
     """Serialize one cell's DataFrame into a `cells[i][j]` entry."""
     columns = list(frame.columns)
     return {
@@ -199,6 +201,8 @@ def _cell(frame: pd.DataFrame, title: str, keys: Dict[str, Any]) -> Dict[str, An
         "keys": keys,
         "columns": columns,
         "data": {c: _serialize_column(frame[c]) for c in columns},
+        # Per-cell colour scale (geo facets: each cell keeps its own domain/ramp)
+        "scale": scale,
     }
 
 
@@ -246,16 +250,18 @@ def create_plot_payload(
             }
         )
         result = plot_fn(cell_pi, **plot_kwargs)
+        cell_scale = None
         if uses_return_df and isinstance(result, PlotInput):  # authoritative path (return_df)
             frame = result.data
         else:  # fallback: read frame / scale / geo back off the built chart
             frame = _chart_frame(result)
             if frame is None:
                 raise UnsupportedPayloadError(pp_desc.plot)
-            scale = scale or _chart_scale(result)
+            cell_scale = _chart_scale(result)
+            scale = scale or cell_scale
             geo = geo or _chart_geo(result)
         keys = {oc: _to_json_scalar(v) for oc, v in zip(outer_factors, comb)}
-        cell_list.append(_cell(frame, "-".join(map(str, comb)), keys))
+        cell_list.append(_cell(frame, "-".join(map(str, comb)), keys, scale=cell_scale))
 
     cells = [list(row) for row in utils.batch(cell_list, n_facet_cols)]
     value_range = [_to_json_scalar(v) for v in dry_pi.value_range] if dry_pi.value_range is not None else None
@@ -270,6 +276,10 @@ def create_plot_payload(
         "value_range": value_range,
         "facets": facets_payload,
         "outer_factors": outer_factors,
+        # Resolved facet split: outer_factors == factor_cols[n_inner:]. factor_cols is
+        # what /plot's PlotResponse.factor_cols carried (the Sort control's source).
+        "factor_cols": list(dry_pi.factor_cols),
+        "n_inner": dry_pi.n_inner,
         "grid": {
             "rows": len(cells),
             "cols": n_facet_cols if outer_factors else 1,

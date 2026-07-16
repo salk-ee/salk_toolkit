@@ -1085,3 +1085,53 @@ def test_payload_coalition_applet_smoke(election_pi_and_ppd):
     for d, m in zip(cell["data"]["draw"], cell["data"]["mandates"]):
         per_draw[d] = per_draw.get(d, 0) + m
     assert all(v == 7 for v in per_draw.values())
+
+
+def test_payload_echoes_resolved_factor_split(small_pi_fixture, ppd_columns):
+    """factor_cols = the resolved facet list; n_inner splits it so that
+    outer_factors == factor_cols[n_inner:] (the invariant payload consumers rely on)."""
+
+    pl = pp.create_plot_payload(small_pi_fixture, ppd_columns)
+    assert pl["factor_cols"] == ["group.a", "group.b"]
+    assert isinstance(pl["n_inner"], int)
+    assert pl["factor_cols"][pl["n_inner"] :] == pl["outer_factors"]
+
+
+def test_payload_factor_split_counts_inner_facets(likert_cell_pi_and_ppd):
+    """An inner (plot-consumed) facet is IN factor_cols but NOT in outer_factors."""
+
+    pi, ppd = likert_cell_pi_and_ppd
+    pl = pp.create_plot_payload(pi, ppd)
+    assert "agree" in pl["factor_cols"]
+    assert pl["outer_factors"] == []
+    assert pl["n_inner"] == len(pl["factor_cols"])
+    assert pl["factor_cols"][pl["n_inner"] :] == pl["outer_factors"]
+
+
+def test_payload_carries_per_cell_scale_for_faceted_geo(geoplot_cell_pi_and_ppd):
+    """Faceted geo: every cell carries its own colour scale (stops + domain) — the
+    per-cell info toGeoFacetOption used to scrape from each cell's spec."""
+
+    pi, ppd = geoplot_cell_pi_and_ppd
+    regions = ["Harju", "Tartu", "Parnu"]
+    parties = ["P1", "P2"]
+    rng = np.random.default_rng(7)
+    data = pd.DataFrame(
+        {
+            "region": pd.Categorical(regions * 2, categories=regions),
+            "party": pd.Categorical(np.repeat(parties, len(regions)), categories=parties),
+            "score": rng.uniform(-1, 1, len(regions) * 2),
+        }
+    )
+    party_meta = GroupOrColumnMeta(categories=parties)
+    pi = pi.model_copy(update={"data": data, "col_meta": {**pi.col_meta, "party": party_meta}})
+    ppd = ppd.model_copy(update={"factor_cols": ["region", "party"]})
+
+    pl = pp.create_plot_payload(pi, ppd)
+    cells = [c for row in pl["cells"] for c in row]
+    assert len(cells) == 2  # one per party
+    for c in cells:
+        assert isinstance(c.get("scale"), dict)
+        assert c["scale"]["stops"] and len(c["scale"]["domain"]) >= 2
+    # top-level scale stays for back-compat (first cell's)
+    assert pl["scale"] == cells[0]["scale"]
