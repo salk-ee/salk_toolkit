@@ -183,9 +183,9 @@ def _plain_colors(facet: FacetMeta) -> Optional[Dict[str, str]]:
 
 
 def _facet_colors(facet: FacetMeta) -> Optional[Dict[str, str]]:
-    """Facet colors as plain hex, or None when the meta declares none — the spec
-    path leaves such facets to the renderer's default scheme, so inventing colors
-    here made the two paths render differently (dms#40 parity finding)."""
+    """Facet colors as plain hex, or None when the meta declares none.
+
+    Uncolored facets are the renderer's to colour (its default categorical scheme)."""
     return _plain_colors(facet)
 
 
