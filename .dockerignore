@@ -1,0 +1,10 @@
+# Fed to buildx as the `salk_toolkit` named context; only what
+# `pip install .` needs is transferred (whitelist).
+*
+!pyproject.toml
+!MANIFEST.in
+!README.md
+!LICENSE
+!salk_toolkit
+**/__pycache__
+**/.ipynb_checkpoints
