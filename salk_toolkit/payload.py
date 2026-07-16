@@ -277,7 +277,7 @@ def create_plot_payload(
         "facets": facets_payload,
         "outer_factors": outer_factors,
         # Invariant: outer_factors == facet_dims[n_inner:]
-        "facet_dims": list(dry_pi.factor_cols),
+        "facet_dims": list(dry_pi.facet_dims),
         "n_inner": dry_pi.n_inner,
         "grid": {
             "rows": len(cells),
