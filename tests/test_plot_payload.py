@@ -116,8 +116,8 @@ def test_payload_shape_columns(small_pi_fixture, ppd_columns):
 
 
 def test_payload_uncolored_facet_colors_stay_none(barbell_cell_pi_and_ppd):
-    """A facet with no metadata colors carries None (renderer applies its own default,
-    matching the spec path — dms#40 parity finding); explicit colors stay."""
+    """A facet with no metadata colors carries None (the renderer owns the default
+    scheme); explicit colors stay."""
 
     pi, ppd = barbell_cell_pi_and_ppd
     pl = pp.create_plot_payload(pi, ppd)
@@ -825,8 +825,7 @@ def test_payload_geobest_smoke(geobest_cell_pi_and_ppd):
 
 
 def test_payload_geobest_null_colors_smoke(geobest_cell_pi_and_ppd):
-    """An uncolored winner facet stays None; renderers own the fallback (the dms
-    frontend covers this exact case — its plotDataGeobestNullColors fixture)."""
+    """An uncolored winner facet stays None; the renderer owns the fallback."""
 
     pi, ppd = geobest_cell_pi_and_ppd
     pi.col_meta["candidate"] = GroupOrColumnMeta(categories=["Alice", "Bob"])
