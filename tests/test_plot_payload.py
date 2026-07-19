@@ -1105,6 +1105,16 @@ def test_payload_echoes_resolved_facet_dims(small_pi_fixture, ppd_columns):
     assert pl["facet_dims"][pl["n_inner"] :] == pl["outer_factors"]
 
 
+def test_two_outer_facets_reverse_outer_factors(small_pi_fixture, ppd_two_factors):
+    """>=2 outer facets: outer_factors is the rendered (reversed) view, not facet_dims[n_inner:].
+    Consumers wanting descriptor order must read facet_dims/n_inner."""
+
+    pi = pp.create_plot(small_pi_fixture, ppd_two_factors, dry_run=True, escape_labels=False)
+    assert pi.facet_dims == ["group.a", "group.b"]
+    assert pi.n_inner == 0
+    assert pi.outer_factors == ["group.b", "group.a"]
+
+
 def test_payload_factor_split_counts_inner_facets(likert_cell_pi_and_ppd):
     """An inner (plot-consumed) facet is IN facet_dims but NOT in outer_factors."""
 
