@@ -96,6 +96,36 @@ def test_dry_run_escape_labels_true_escapes_outer_factors(small_pi_fixture, ppd_
 
 
 @pytest.fixture
+def degenerate_outer_pi_fixture():
+    """PlotInput where one outer dim has a single dtype category (a melted one-question block)."""
+
+    rng = np.random.default_rng(0)
+    data = pd.DataFrame(
+        {
+            "score": rng.uniform(0, 1, 9),
+            "question": pd.Categorical(["party_preference"] * 9, categories=["party_preference"]),
+            "party": pd.Categorical(np.tile(["P1", "P2", "P3"], 3), categories=["P1", "P2", "P3"]),
+        }
+    )
+    col_meta = {
+        "party": GroupOrColumnMeta(
+            categories=["P1", "P2", "P3"],
+            colors={"P1": "#111111", "P2": "#222222", "P3": "#333333"},
+        ),
+    }
+    return PlotInput(data=data, col_meta=col_meta, value_col="score")
+
+
+def test_single_category_outer_factor_dropped(degenerate_outer_pi_fixture, registered_two_factor_plot):
+    """A 1-category outer dim adds no split: drop it so colors and grid come from the real dim."""
+
+    ppd = PlotDescriptor(plot=registered_two_factor_plot, res_col="score", factor_cols=["question", "party"])
+    pi = pp.create_plot(degenerate_outer_pi_fixture, ppd, dry_run=True, escape_labels=False)
+    assert pi.outer_factors == ["party"]
+    assert set(pi.outer_colors) == {"P1", "P2", "P3"}
+
+
+@pytest.fixture
 def ppd_columns():
     """A PlotDescriptor targeting the real `columns` plot."""
 

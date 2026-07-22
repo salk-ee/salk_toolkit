@@ -1733,7 +1733,8 @@ def create_plot(
                         plot_args[k] = _meta_to_plain(facet_meta).get(k)
 
         facet_dims = facet_dims[n_inner:]  # Leave rest for external faceting
-    pi.outer_factors = facet_dims
+    # Single-category dims add no split; drop them so colors and grid shape come from real dims
+    pi.outer_factors = [c for c in facet_dims if len(utils.get_categories(data[c].dtype)) != 1]
 
     if plot_meta.no_faceting and len(pi.outer_factors) > 0:
         return_matrix_of_plots = True
