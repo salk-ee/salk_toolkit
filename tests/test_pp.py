@@ -17,6 +17,7 @@ from salk_toolkit.pp import (
     get_plot_fn,
     impute_factor_cols,
     matching_plots,
+    pp_transform_data,
     PlotMeta,
     registry,
     registry_meta,
@@ -302,6 +303,71 @@ def test_transform_cont_full_streaming_pipeline(tmp_path) -> None:
 
     result = lf.collect(engine="streaming")
     assert result.shape == (len(cols), 6)
+
+
+def test_convert_res_continuous_maps_unmapped_nonresponse_to_null() -> None:
+    """Categories beyond num_values (e.g. nonresponse) become null instead of crashing the cast."""
+    cats = [
+        "Do not agree at all",
+        "Tend to disagree",
+        "Tend to agree",
+        "Agree completely",
+        "Don't know",
+        "No answer",
+    ]
+    data_meta = make_data_meta(
+        {
+            "structure": [
+                {
+                    "name": "demographics",
+                    "scale": {},
+                    "columns": [["gender", {"categories": ["Female", "Male"]}]],
+                },
+                {
+                    "name": "values",
+                    "scale": {
+                        "categories": cats,
+                        "ordered": True,
+                        "likert": True,
+                        "num_values": [-2.0, -1.0, 1.0, 2.0],
+                        "nonresponse": ["Don't know", "No answer"],
+                    },
+                    "columns": [["value_diversity", {"label": "Cultural diversity"}]],
+                },
+            ]
+        }
+    )
+    answers = (
+        ["Do not agree at all"]
+        + ["Tend to disagree"] * 2
+        + ["Tend to agree"] * 3
+        + ["Agree completely"] * 4
+        + ["Don't know"] * 2
+        + ["No answer"]
+    )
+    df = pd.DataFrame(
+        {
+            "draw": [0] * 13,
+            "gender": ["Female", "Male"] * 6 + ["Female"],
+            "value_diversity": answers,
+        }
+    )
+    ppd = soft_validate(
+        {
+            "res_col": "value_diversity",
+            "factor_cols": ["gender"],
+            "convert_res": "continuous",
+            "plot": "boxplots",
+        },
+        PlotDescriptor,
+    )
+
+    pi = pp_transform_data(pl.LazyFrame(df), data_meta, ppd)
+
+    # Nonresponse rows drop out of the aggregate: mean over substantive answers only.
+    by_gender = dict(zip(pi.data["gender"], pd.to_numeric(pi.data[pi.value_col], errors="raise")))
+    assert by_gender["Female"] == pytest.approx((-2 - 1 + 1 + 2 + 2) / 5)
+    assert by_gender["Male"] == pytest.approx((-1 + 1 + 1 + 2 + 2) / 5)
 
 
 def test_get_plot_fn_legacy_wrapper_builds_chart() -> None:
