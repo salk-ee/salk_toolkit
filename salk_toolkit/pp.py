@@ -1151,8 +1151,9 @@ def pp_transform_data(
             categories = res_meta.categories or []
             nvals = nvals or []
             cmap = dict(zip(categories, nvals))
+            # Categories without a numeric value (e.g. nonresponse) become null, not a failed cast
             filtered_df = filtered_df.with_columns(
-                pl.col(rc).cast(pl.String).replace(cmap).cast(pl.Float32).fill_nan(None)
+                pl.col(rc).cast(pl.String).replace_strict(cmap, default=None, return_dtype=pl.Float32).fill_nan(None)
             )
             nvals = np.array(nvals, dtype="float")  # To handle null as nan
             val_range = (np.nanmin(nvals), np.nanmax(nvals)) if len(nvals) > 0 else (0.0, 1.0)
@@ -1354,6 +1355,8 @@ def _wrangle_data(
                 raise Exception(f"Unknown agg_fn: {agg_fn}")
 
         else:  # Continuous
+            # Null values (e.g. nonresponse converted to continuous) don't count toward any aggregate
+            raw_df = raw_df.filter(pl.col(res_col).is_not_null())
             if agg_fn in [
                 "mean",
                 "sum",
