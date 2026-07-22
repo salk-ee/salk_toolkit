@@ -15,7 +15,7 @@ from salk_toolkit.pp import (
     _calculate_priority as calculate_priority,
     _transform_cont,
     get_plot_fn,
-    impute_factor_cols,
+    impute_facet_dims,
     matching_plots,
     pp_transform_data,
     PlotMeta,
@@ -73,7 +73,7 @@ def test_update_data_meta_with_pp_desc_adds_res_meta_and_updates_columns() -> No
     pp_desc_dict = {
         "plot": "test_plot",
         "res_col": "likert_score",
-        "factor_cols": ["gender"],
+        "facet_dims": ["gender"],
         "res_meta": {
             "name": "likert_question",
             "scale": {"col_prefix": "likert_"},
@@ -185,7 +185,7 @@ def test_matching_plots_respects_hidden_flag(registry_guard: Any) -> None:
     data_meta = _make_basic_meta()
     pp_desc = {
         "res_col": "res",
-        "factor_cols": ["facet"],
+        "facet_dims": ["facet"],
         "plot": "visible_plot",
     }
 
@@ -202,8 +202,8 @@ def test_matching_plots_respects_hidden_flag(registry_guard: Any) -> None:
     stk_deregister("hidden_plot")
 
 
-def test_impute_factor_cols_handles_categorical_and_continuous_cases() -> None:
-    """`impute_factor_cols` should handle categorical and continuous conversions."""
+def test_impute_facet_dims_handles_categorical_and_continuous_cases() -> None:
+    """`impute_facet_dims` should handle categorical and continuous conversions."""
     col_meta = {
         "res_group": GroupOrColumnMeta.model_validate({"columns": ["res_variant"], "categories": ["Yes", "No"]}),
         "res_variant": GroupOrColumnMeta.model_validate({"categories": ["Yes", "No"]}),
@@ -214,18 +214,18 @@ def test_impute_factor_cols_handles_categorical_and_continuous_cases() -> None:
     categorical_desc = {
         "plot": "test_plot",
         "res_col": "res_group",
-        "factor_cols": ["region"],
+        "facet_dims": ["region"],
     }
-    categorical_factors = impute_factor_cols(categorical_desc, col_meta)
+    categorical_factors = impute_facet_dims(categorical_desc, col_meta)
     assert categorical_factors == ["res_group", "region", "question"]
 
     continuous_desc = {
         "plot": "test_plot",
         "res_col": "res_group",
-        "factor_cols": ["region"],
+        "facet_dims": ["region"],
         "convert_res": "continuous",
     }
-    continuous_factors = impute_factor_cols(continuous_desc, col_meta)
+    continuous_factors = impute_facet_dims(continuous_desc, col_meta)
     assert continuous_factors == ["question", "region"]
 
 
@@ -391,3 +391,60 @@ def test_get_plot_fn_legacy_wrapper_builds_chart() -> None:
     )
 
     assert hasattr(plot, "to_dict")
+
+
+def test_plot_descriptor_accepts_legacy_factor_cols_key():
+    """Stored descriptors (dashboards, URLs) use the legacy "factor_cols" key."""
+    from salk_toolkit.pp import impute_factor_cols, impute_facet_dims
+    from salk_toolkit.validation import PlotDescriptor
+
+    d = PlotDescriptor.model_validate({"plot": "columns", "res_col": "x", "factor_cols": ["age"]})
+    assert d.facet_dims == ["age"]
+    assert "facet_dims" in d.model_dump()
+    assert impute_factor_cols is impute_facet_dims
+
+
+def test_pp_transform_data_reports_total_and_filtered_weight() -> None:
+    """`total_size` is the pre-filter weight, `filtered_size` the post-filter weight -
+    both weight-summed (not row counts), so consumers can show "filtered to X%"."""
+    from salk_toolkit.pp import pp_transform_data
+
+    data_meta = make_data_meta(
+        {
+            "weight_col": "w",
+            "structure": [
+                {
+                    "name": "demographics",
+                    "scale": {"col_prefix": ""},
+                    "columns": [
+                        ["gender", {"categories": ["Female", "Male"]}],
+                        ["party", {"categories": ["X", "Y"]}],
+                    ],
+                }
+            ],
+        }
+    )
+    # 3 Female @ w=2 (=6) + 2 Male @ w=3 (=6) -> total weight 12, 5 rows
+    df = pd.DataFrame(
+        {
+            "gender": ["Female", "Female", "Female", "Male", "Male"],
+            "party": ["X", "Y", "X", "Y", "X"],
+            "w": [2.0, 2.0, 2.0, 3.0, 3.0],
+        }
+    )
+    ppd = soft_validate(
+        {"plot": "columns", "res_col": "party", "facet_dims": [], "filter": {"gender": ["Female"]}},
+        PlotDescriptor,
+    )
+
+    pi = pp_transform_data(df, data_meta, ppd)
+
+    # Weight-based, not row-count-based (which would be 5 and 3)
+    assert pi.total_size == 12.0
+    assert pi.filtered_size == 6.0
+
+    # A meta-supplied population total overrides the recomputed weight sum
+    data_meta.total_size = 1000.0
+    pi = pp_transform_data(df, data_meta, ppd)
+    assert pi.total_size == 1000.0
+    assert pi.filtered_size == 6.0  # post-filter weight is unaffected

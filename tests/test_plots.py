@@ -268,7 +268,7 @@ class TestPlots:
         """Test basic boxplots."""
         config = {
             "res_col": "party_preference",
-            "factor_cols": ["age_group"],
+            "facet_dims": ["age_group"],
             "filter": {},
             "plot": "boxplots",
             "internal_facet": True,
@@ -279,7 +279,7 @@ class TestPlots:
         """Test raw boxplots."""
         config = {
             "res_col": "EKRE",
-            "factor_cols": ["age_group"],
+            "facet_dims": ["age_group"],
             "filter": {},
             "plot": "boxplots-raw",
             "internal_facet": True,
@@ -290,7 +290,7 @@ class TestPlots:
         """Test basic column plots."""
         config = {
             "res_col": "e-valimised",
-            "factor_cols": ["nationality"],
+            "facet_dims": ["nationality"],
             "filter": {},
             "plot": "columns",
             "internal_facet": True,
@@ -301,7 +301,7 @@ class TestPlots:
         """Test column plots with thermometer data."""
         config = {
             "res_col": "thermometer",
-            "factor_cols": ["nationality"],
+            "facet_dims": ["nationality"],
             "filter": {},
             "plot": "columns",
             "internal_facet": True,
@@ -312,7 +312,7 @@ class TestPlots:
         """Test column plot with custom aggregation and sorting."""
         config = {
             "res_col": "EKRE",
-            "factor_cols": ["nationality"],
+            "facet_dims": ["nationality"],
             "filter": {},
             "plot": "columns",
             "internal_facet": True,
@@ -326,7 +326,7 @@ class TestPlots:
         """Test stacked column plots."""
         config = {
             "res_col": "party_preference",
-            "factor_cols": ["EKRE"],
+            "facet_dims": ["EKRE"],
             "internal_facet": True,
             "plot": "stacked_columns",
             "plot_args": {"normalized": False},
@@ -338,7 +338,7 @@ class TestPlots:
         """Test difference column plots."""
         config = {
             "res_col": "thermometer",
-            "factor_cols": ["age_group"],
+            "facet_dims": ["age_group"],
             "filter": {"age_group": [None, "25-34", "35-44"]},
             "plot": "diff_columns",
             "internal_facet": True,
@@ -350,7 +350,7 @@ class TestPlots:
         """Test mass plot."""
         config = {
             "res_col": "trust",
-            "factor_cols": ["party_preference"],
+            "facet_dims": ["party_preference"],
             "filter": {},
             "plot": "massplot",
             "internal_facet": True,
@@ -362,7 +362,7 @@ class TestPlots:
         """Test basic Likert bars."""
         config = {
             "res_col": "trust",
-            "factor_cols": ["party_preference"],
+            "facet_dims": ["party_preference"],
             "filter": {},
             "plot": "likert_bars",
             "internal_facet": True,
@@ -373,7 +373,7 @@ class TestPlots:
         """Test Likert bars with no factor columns."""
         config = {
             "res_col": "valitsus",
-            "factor_cols": [],
+            "facet_dims": [],
             "filter": {},
             "plot": "likert_bars",
             "internal_facet": True,
@@ -384,7 +384,7 @@ class TestPlots:
         """Test raw density plot with stacking."""
         config = {
             "res_col": "thermometer",
-            "factor_cols": ["party_preference"],
+            "facet_dims": ["party_preference"],
             "filter": {},
             "plot": "density-raw",
             "plot_args": {"stacked": True},
@@ -396,7 +396,7 @@ class TestPlots:
         """Test raw violin plot."""
         config = {
             "res_col": "thermometer",
-            "factor_cols": ["party_preference"],
+            "facet_dims": ["party_preference"],
             "filter": {},
             "plot": "violin-raw",
             "sort": {"question": False},
@@ -408,7 +408,7 @@ class TestPlots:
         """Test basic matrix plot."""
         config = {
             "res_col": "party_preference",
-            "factor_cols": ["age_group"],
+            "facet_dims": ["age_group"],
             "filter": {},
             "plot": "matrix",
             "internal_facet": True,
@@ -419,7 +419,7 @@ class TestPlots:
         """Test matrix plot with thermometer data."""
         config = {
             "res_col": "thermometer",
-            "factor_cols": ["party_preference"],
+            "facet_dims": ["party_preference"],
             "filter": {},
             "plot": "matrix",
             "internal_facet": True,
@@ -430,7 +430,7 @@ class TestPlots:
         """Test matrix plot with reordering."""
         config = {
             "res_col": "issues",
-            "factor_cols": ["party_preference"],
+            "facet_dims": ["party_preference"],
             "filter": {},
             "plot": "matrix",
             "plot_args": {"reorder": True},
@@ -444,7 +444,7 @@ class TestPlots:
         """Test correlation matrix plot."""
         config = {
             "res_col": "thermometer",
-            "factor_cols": [],
+            "facet_dims": [],
             "filter": {},
             "plot": "corr_matrix",
             "internal_facet": True,
@@ -455,7 +455,7 @@ class TestPlots:
         """Test line plot with smoothing."""
         config = {
             "res_col": "thermometer",
-            "factor_cols": ["education"],
+            "facet_dims": ["education"],
             "filter": {},
             "plot": "lines",
             "internal_facet": True,
@@ -468,7 +468,7 @@ class TestPlots:
         """Test line plot with smoothing."""
         config = {
             "res_col": "party_preference",
-            "factor_cols": ["td"],
+            "facet_dims": ["td"],
             "filter": {},
             "plot": "lines",
             "internal_facet": True,
@@ -479,7 +479,7 @@ class TestPlots:
         """Test HDI line plot."""
         config = {
             "res_col": "party_preference",
-            "factor_cols": ["age_group", "nationality"],
+            "facet_dims": ["age_group", "nationality"],
             "filter": {},
             "plot": "lines_hdi",
             "internal_facet": True,
@@ -490,7 +490,7 @@ class TestPlots:
         """Test smooth area plot."""
         config = {
             "res_col": "party_preference",
-            "factor_cols": ["education", "gender"],
+            "facet_dims": ["education", "gender"],
             "filter": {},
             "plot": "area_smooth",
             "internal_facet": True,
@@ -501,7 +501,7 @@ class TestPlots:
         """Test Likert radicalization/polarization plot."""
         config = {
             "res_col": "referendum",
-            "factor_cols": ["electoral_district"],
+            "facet_dims": ["electoral_district"],
             "internal_facet": True,
             "plot": "likert_rad_pol",
             "filter": {},
@@ -513,7 +513,7 @@ class TestPlots:
         """Test barbell plot."""
         config = {
             "res_col": "trust",
-            "factor_cols": ["party_preference"],
+            "facet_dims": ["party_preference"],
             "filter": {},
             "plot": "barbell",
             "internal_facet": True,
@@ -528,7 +528,7 @@ class TestPlots:
 
         config = {
             "res_col": "EKRE",
-            "factor_cols": ["electoral_district"],
+            "facet_dims": ["electoral_district"],
             "filter": {},
             "plot": "geoplot",
             "internal_facet": True,
@@ -547,7 +547,7 @@ class TestPlots:
             pytest.skip("Data metadata not available for geoplot test")
 
         config = {
-            "factor_cols": ["unit", "party_preference"],
+            "facet_dims": ["unit", "party_preference"],
             "internal_facet": True,
             "plot": "geoplot",
             "plot_args": {"separate_axes": True},
@@ -566,7 +566,7 @@ class TestPlots:
         """Test facet distribution plot."""
         config = {
             "res_col": "thermometer",
-            "factor_cols": ["party_preference"],
+            "facet_dims": ["party_preference"],
             "filter": {},
             "plot": "facet_dist",
             "internal_facet": True,
@@ -576,7 +576,7 @@ class TestPlots:
     def test_max_diff(self, recompute):
         """Test max_diff plot."""
         config = {
-            "factor_cols": ["question"],
+            "facet_dims": ["question"],
             "filter": {},
             "internal_facet": True,
             "plot": "maxdiff",
@@ -595,7 +595,7 @@ class TestPlots:
         ldf, full_meta = read_parquet_with_metadata(str(self.data_file), lazy=True)
         assert full_meta is not None and full_meta.data is not None
         config = {
-            "factor_cols": ["question"],
+            "facet_dims": ["question"],
             "filter": {},
             "internal_facet": True,
             "plot": "maxdiff",
@@ -613,7 +613,7 @@ class TestPlots:
         """Test ordered population plot."""
         config = {
             "res_col": "thermometer",
-            "factor_cols": ["party_preference"],
+            "facet_dims": ["party_preference"],
             "filter": {},
             "plot": "ordered_population",
             "internal_facet": True,
@@ -625,7 +625,7 @@ class TestPlots:
         """Sampled ordered population emits real filtered sample rows, not 200 slice summaries."""
         config = {
             "res_col": "thermometer",
-            "factor_cols": ["party_preference"],
+            "facet_dims": ["party_preference"],
             "filter": {"party_preference": ["EKRE", "SDE"]},
             "plot": "ordered_population_sampled",
             "internal_facet": True,
@@ -651,7 +651,7 @@ class TestPlots:
         """The sampled plot must cap filtered raw rows before group observations are melted."""
         config = {
             "res_col": "thermometer",
-            "factor_cols": ["party_preference"],
+            "facet_dims": ["party_preference"],
             "filter": {"party_preference": ["EKRE", "SDE"]},
             "plot": "ordered_population_sampled",
             "internal_facet": True,
@@ -665,7 +665,7 @@ class TestPlots:
         """The implicit sampled plot cap should stay small enough for interactive charts."""
         config = {
             "res_col": "thermometer",
-            "factor_cols": ["party_preference"],
+            "facet_dims": ["party_preference"],
             "filter": {},
             "plot": "ordered_population_sampled",
             "internal_facet": True,
@@ -678,7 +678,7 @@ class TestPlots:
         """Test Marimekko plot."""
         config = {
             "res_col": "trust",
-            "factor_cols": ["question", "party_preference"],
+            "facet_dims": ["question", "party_preference"],
             "filter": {},
             "plot": "marimekko",
             "internal_facet": True,
@@ -737,7 +737,7 @@ class TestPlots:
         """Test boxplots with result conversion."""
         config = {
             "res_col": "age_group",
-            "factor_cols": ["gender"],
+            "facet_dims": ["gender"],
             "filter": {},
             "plot": "boxplots",
             "internal_facet": True,
@@ -750,7 +750,7 @@ class TestPlots:
         """Test HDI lines with numerical values and custom formatting."""
         config = {
             "res_col": "valitsus",
-            "factor_cols": ["party_preference", "age_group"],
+            "facet_dims": ["party_preference", "age_group"],
             # Isamaa HDI has multiple close options so excluding it
             "filter": {"party_preference": ["Keskerakond", "Reformierakond", "SDE", "EKRE"]},
             "convert_res": "continuous",
@@ -766,7 +766,7 @@ class TestPlots:
         """Test Likert bars with metadata."""
         config = {
             "res_col": "trust",
-            "factor_cols": ["gender", "age_group"],
+            "facet_dims": ["gender", "age_group"],
             "filter": {},
             "plot": "likert_bars",
             "internal_facet": True,
@@ -781,7 +781,7 @@ class TestPlots:
         """Test that appropriate error is raised for missing data file."""
         config = {
             "res_col": "party_preference",
-            "factor_cols": ["age_group"],
+            "facet_dims": ["age_group"],
             "filter": {},
             "plot": "boxplots",
             "internal_facet": True,
@@ -799,7 +799,7 @@ class TestPlots:
         """Test behavior with invalid column names."""
         config = {
             "res_col": "nonexistent_column",
-            "factor_cols": ["age_group"],
+            "facet_dims": ["age_group"],
             "filter": {},
             "plot": "boxplots",
             "internal_facet": True,

@@ -73,7 +73,7 @@ with st.spinner("Loading libraries.."):
         cont_transform_options,
         create_plot,
         get_plot_meta,
-        impute_factor_cols,
+        impute_facet_dims,
         matching_plots,
         pp_transform_data,
     )
@@ -177,11 +177,8 @@ def load_file(input_file: str) -> dict[str, object]:
     data_meta = full_meta.data
     mmeta = full_meta.model
     columns = ldf.collect_schema().names()
-    n0 = ldf.select(pl.len()).collect().item()
-    n = data_meta.total_size or n0  # fallback to row count
     return {
         "data": ldf,
-        "total_size": n,
         "data_meta": data_meta,
         "model_meta": mmeta,
         "columns": columns,
@@ -287,14 +284,14 @@ with st.sidebar:  # .expander("Select dimensions"):
     modifiers = c_meta[obs_name].modifiers
     all_dims = list(modifiers) + all_dims
 
-    facet_dims = all_dims
+    facetable_dims = all_dims
     if len(input_files) > 1:
-        facet_dims = ["input_file"] + facet_dims
+        facetable_dims = ["input_file"] + facetable_dims
 
-    args["factor_cols"] = facet_ui(facet_dims, two=True)
+    args["facet_dims"] = facet_ui(facetable_dims, two=True)
 
     # Check if any facet dims match observation dim or each other
-    if len(set(args["factor_cols"] + [obs_name])) != len(args["factor_cols"]) + 1:
+    if len(set(args["facet_dims"] + [obs_name])) != len(args["facet_dims"]) + 1:
         st.markdown("""Please choose facets different from observation dimension""")
         st.stop()
 
@@ -302,7 +299,7 @@ with st.sidebar:  # .expander("Select dimensions"):
     sort = st.toggle("Sort facets", False, key="sort")
 
     # Make all dimensions explicit
-    args["factor_cols"] = impute_factor_cols(args, c_meta)
+    args["facet_dims"] = impute_facet_dims(args, c_meta)
 
     # Plot type
     matching = matching_plots(args, first_data, first_data_meta)
@@ -352,7 +349,7 @@ with st.sidebar:  # .expander("Select dimensions"):
             if agg_fn != "mean":
                 args["agg_fn"] = agg_fn
 
-        sortable = args["factor_cols"]
+        sortable = args["facet_dims"]
         if plot_meta_dict.get("sort_numeric_first_facet"):
             sortable = sortable[1:]
         if sort and len(sortable) > 0:
@@ -362,17 +359,17 @@ with st.sidebar:  # .expander("Select dimensions"):
             args["sort"] = {sort_facet: ascending}
 
         qpos = st.selectbox("Question position", ["Auto", 1, 2, 3], key="q_pos")
-        if "question" in args["factor_cols"] and qpos != "Auto":
-            args["factor_cols"] = [c for c in args["factor_cols"] if c != "question"]
-            args["factor_cols"].insert(int(qpos) - 1, "question")
+        if "question" in args["facet_dims"] and qpos != "Auto":
+            args["facet_dims"] = [c for c in args["facet_dims"] if c != "question"]
+            args["facet_dims"].insert(int(qpos) - 1, "question")
 
         # Drop a now-incoherent sort: if the sort target ended up as the first facet
         # and the plot uses sort_numeric_first_facet, the numeric-scale sort is meaningless.
         if (
             plot_meta_dict.get("sort_numeric_first_facet")
             and args.get("sort")
-            and args["factor_cols"]
-            and next(iter(args["sort"])) == args["factor_cols"][0]
+            and args["facet_dims"]
+            and next(iter(args["sort"])) == args["facet_dims"][0]
         ):
             args.pop("sort", None)
 
@@ -412,8 +409,8 @@ with st.sidebar:  # .expander("Select dimensions"):
     # print(f"localStorage.setItem('args','{json.dumps(args)}');")
     st_js(f"localStorage.setItem('session_state','{json.dumps(dict(st.session_state)).replace("'", "\\'")}');")
 
-    # Make all dimensions explicit now that plot is selected (as that can affect the factor columns)
-    args["factor_cols"] = impute_factor_cols(args, c_meta, plot_meta)
+    # Make all dimensions explicit now that plot is selected (as that can affect the facet dimensions)
+    args["facet_dims"] = impute_facet_dims(args, c_meta, plot_meta)
 
     import pprint
 
@@ -435,7 +432,7 @@ with st.sidebar:  # .expander("Select dimensions"):
 matrix_form = False  # (args['plot'] == 'geoplot')
 
 # Determine if one of the facets is input_file
-input_files_facet = "input_file" in args.get("factor_cols", [])
+input_files_facet = "input_file" in args.get("facet_dims", [])
 
 # Create columns, one per input file
 if not input_files_facet:
@@ -454,7 +451,7 @@ elif input_files_facet:
         df, fargs = loaded[ifile]["data"], args.copy()
         ifile_cols = list(loaded[ifile]["columns"])  # type: ignore[arg-type]
         fargs["filter"] = {k: v for k, v in fargs["filter"].items() if k in ifile_cols or k in q_groups}
-        fargs["factor_cols"] = [f for f in fargs["factor_cols"] if f != "input_file"]
+        fargs["facet_dims"] = [f for f in fargs["facet_dims"] if f != "input_file"]
         ppd = soft_validate(fargs, PlotDescriptor)
         pi = pp_transform_data(df, raw_first_data_meta, ppd)
         dfs.append(pi.data)
@@ -517,12 +514,8 @@ else:
                 publish_mode=publish_mode,
             )
 
-            # n_questions = pi['data']['question'].nunique() if 'question' in pi['data'] else 1
-            # st.write('Based on %.1f%% of data' %
-            #   (100*pi['n_datapoints']/(len(loaded[ifile]['data_n'])*n_questions)))
-            total_size = loaded[ifile]["total_size"]
-            denominator = float(total_size) if total_size is not None else 1.0
-            st.write("Based on %.1f%% of data" % (100 * pi.filtered_size / denominator))
+            if pi.total_size:
+                st.write("Based on %.1f%% of data" % (100 * pi.filtered_size / pi.total_size))
 
             if i == 0 and st.session_state.get("custom_spec"):
                 custom_spec = deepcopy(st.session_state["custom_spec"])
@@ -584,7 +577,7 @@ else:
                     if st.button("Import Spec", width="stretch"):
                         _import_modal()
 
-                    name = f"{args['res_col']}_{'_'.join(args['factor_cols']) if args['factor_cols'] else 'all'}"
+                    name = f"{args['res_col']}_{'_'.join(args['facet_dims']) if args['facet_dims'] else 'all'}"
                     chart_source = (
                         deepcopy(st.session_state["custom_spec"]) if st.session_state.get("custom_spec") else plot
                     )

@@ -7,7 +7,7 @@ It maps annotated survey data to Altair charts by:
 - discovering eligible plots via the registry metadata in `salk_toolkit.plots`
 - lazily transforming data with Polars, including filters, melts, draws, and
   aggregation helpers such as `pp_transform_data` / `_wrangle_data`
-- enriching metadata (`update_data_meta_with_pp_desc`, `impute_factor_cols`,
+- enriching metadata (`update_data_meta_with_pp_desc`, `impute_facet_dims`,
   `matching_plots`) so dashboards and CLI tools can reason about aliases,
   ordering, draws, and group scales
 - building final Altair specs with `create_plot`, colour utilities, tooltips,
@@ -122,7 +122,8 @@ class PlotInput:
     cat_col: Optional[str] = None
     val_format: str = "%"
     val_range: Optional[Tuple[Optional[float], Optional[float]]] = None
-    filtered_size: float = 0.0
+    filtered_size: float = 0.0  # post-filter weight (the "displayed_n" the plot is based on)
+    total_size: float = 0.0  # pre-filter total weight, so consumers can show "filtered to X%"
     facets: List[FacetMeta] = field(default_factory=list)
     translate: Optional[Callable[[str], str]] = None
     tooltip: List[Any] = field(default_factory=list)
@@ -133,6 +134,10 @@ class PlotInput:
     outer_factors: List[str] = field(default_factory=list)
     plot_args: Dict[str, Any] = field(default_factory=dict)
     n_facet_cols: Optional[int] = None  # stashed by create_plot for payload consumers
+    # Resolved facet split in descriptor vocabulary; outer_factors is the rendered view of
+    # facet_dims[n_inner:] (translated; for >=2 outer facets also reversed and possibly merged)
+    facet_dims: List[str] = field(default_factory=list)
+    n_inner: int = 0  # how many facet_dims the plot consumes as inner facets
     return_df: bool = False  # payload=True plots return the prepared PlotInput instead of a chart
 
     def model_copy(self, *, deep: bool = False, update: dict[str, Any] | None = None) -> "PlotInput":
@@ -421,6 +426,7 @@ def get_plot_fn(plot_name: str) -> Callable[..., AltairChart]:
             val_format=cast(str, pparams.get("val_format") or "%"),
             val_range=cast(Optional[Tuple[Optional[float], Optional[float]]], pparams.get("val_range")),
             filtered_size=float(cast(object, pparams.get("filtered_size") or 0.0)),
+            total_size=float(cast(object, pparams.get("total_size") or 0.0)),
             facets=facets_list,
             tooltip=cast(List[Any], pparams.get("tooltip") or []),
             value_range=cast(Optional[Tuple[float, float]], pparams.get("value_range")),
@@ -635,8 +641,8 @@ def matching_plots(
     pp_desc = soft_validate(pp_desc, PlotDescriptor)
 
     if impute:
-        factor_cols = impute_factor_cols(pp_desc, extract_column_meta(data_meta), get_plot_meta(pp_desc.plot))
-        pp_desc = pp_desc.model_copy(update={"factor_cols": factor_cols})
+        facet_dims = impute_facet_dims(pp_desc, extract_column_meta(data_meta), get_plot_meta(pp_desc.plot))
+        pp_desc = pp_desc.model_copy(update={"facet_dims": facet_dims})
 
     col_meta, _ = _update_data_meta_with_pp_desc(data_meta, pp_desc)
 
@@ -672,9 +678,9 @@ def matching_plots(
         if cat_vals:
             nonneg = min(cat_vals) >= 0
 
-    factor_cols = pp_desc.factor_cols
+    facet_dims = pp_desc.facet_dims
     facet_metas = []
-    for cn in factor_cols:
+    for cn in facet_dims:
         meta = col_meta.get(cn, GroupOrColumnMeta())
         facet_metas.append({"name": cn, **meta.model_dump(mode="python")})
     # Determine if data is categorical
@@ -1063,7 +1069,7 @@ def pp_transform_data(
 
     # Figure out which columns we actually need
     weight_col = data_meta.weight_col or "row_weights"
-    factor_cols = list(pp_desc.factor_cols).copy()
+    facet_dims = list(pp_desc.facet_dims)
 
     # Ensure weight column is present (fill with 1.0 if not)
     if weight_col not in all_col_names:
@@ -1074,11 +1080,11 @@ def pp_transform_data(
 
     # For transforming purposest, res_col is not a factor.
     # It will be made one for categorical plots for plotting part, but for pp_transform_data, remove it
-    if pp_desc.res_col in factor_cols:
-        factor_cols.remove(pp_desc.res_col)
+    if pp_desc.res_col in facet_dims:
+        facet_dims.remove(pp_desc.res_col)
     base_cols = list(columns) if columns is not None else []
     extra_cols = base_cols + ([weight_col] + (["draw"] if plot_meta.draws else []))
-    cols = [pp_desc.res_col] + factor_cols + list(pp_desc.filter.keys() if pp_desc.filter else [])
+    cols = [pp_desc.res_col] + facet_dims + list(pp_desc.filter.keys() if pp_desc.filter else [])
     cols += [c for c in extra_cols if c in all_col_names and c not in cols]
 
     # If any aliases are used, cconvert them to column names according to the data_meta
@@ -1091,7 +1097,13 @@ def pp_transform_data(
 
     # Add row id-s and find count - both need to happen before filtering
     full_df = full_df.with_row_index("id")
-    total_n = full_df.select(pl.len()).collect().item()
+    # Prefer the meta-supplied population total; only sum the weight column when actually needed
+    if data_meta.total_size is not None:
+        n_rows = full_df.select(pl.len()).collect().item()
+        total_weight = data_meta.total_size
+    else:
+        counts = full_df.select(pl.len().alias("n"), pl.col(weight_col).sum().alias("w")).collect()
+        n_rows, total_weight = counts["n"].item(), counts["w"].item()
 
     # For more customized filtering in dashboards
     # Has to be done before downselecting to only needed columns
@@ -1107,8 +1119,8 @@ def pp_transform_data(
     else:
         filtered_df = df
 
-    # Discretize factor columns that are numeric
-    for c in factor_cols:
+    # Discretize facet dimensions that are numeric
+    for c in facet_dims:
         if c in cols and schema[c].is_numeric():
             current_meta = c_meta.get(c)
             filtered_df, labels = _discretize_continuous(filtered_df, c, current_meta)
@@ -1199,15 +1211,15 @@ def pp_transform_data(
     # Compute draws if needed - Nb: also applies if the draws are shared for the group of questions
     if "draw" in cols and pp_desc.res_col in draws_data:
         uid, ndraws = draws_data[pp_desc.res_col]
-        draws = utils.stable_draws(total_n, ndraws, uid)
-        draw_df = pl.DataFrame({"draw": draws, "id": np.arange(0, total_n)})
+        draws = utils.stable_draws(n_rows, ndraws, uid)
+        draw_df = pl.DataFrame({"draw": draws, "id": np.arange(0, n_rows)})
         filtered_df = filtered_df.drop("draw").join(draw_df.lazy(), on=["id"], how="left")
 
     # If res_col is a group of questions, melt i.e. unpivot the questions and handle draws if needed
     if pp_desc.res_col in gc_dict:
         value_vars = [c for c in gc_dict[pp_desc.res_col] if c in cols]
         n_questions = len(value_vars)  # Only cols that exist in the data
-        id_vars = [c for c in cols if (c not in value_vars or c in factor_cols)]
+        id_vars = [c for c in cols if (c not in value_vars or c in facet_dims)]
         prefix = original_question_meta.col_prefix or ""
         categories = [v.removeprefix(prefix) for v in value_vars]
         question_meta = _question_meta_clone(original_question_meta, categories)
@@ -1221,9 +1233,9 @@ def pp_transform_data(
                 if c in draws_data:
                     uid, ndraws = draws_data[c]
                     if (uid, ndraws) not in ddf_cache:
-                        draws = utils.stable_draws(total_n, ndraws, uid)
+                        draws = utils.stable_draws(n_rows, ndraws, uid)
                         ddf_cache[(uid, ndraws)] = pl.DataFrame(
-                            {"draw": draws, "question": c, "id": np.arange(0, total_n)}
+                            {"draw": draws, "question": c, "id": np.arange(0, n_rows)}
                         )
                     ddf = ddf_cache[(uid, ndraws)]
                     draw_dfs.append(ddf)
@@ -1255,7 +1267,7 @@ def pp_transform_data(
         filtered_df = filtered_df.with_columns(pl.col("question").cast(pl.Enum(value_vars)))
     else:
         n_questions = 1
-        if "question" in factor_cols:
+        if "question" in facet_dims:
             filtered_df = filtered_df.with_columns(pl.lit(pp_desc.res_col).alias("question").cast(pl.Categorical))
             question_meta = _question_meta_clone(original_question_meta, categories=[pp_desc.res_col])
             if original_question_colors:
@@ -1263,7 +1275,7 @@ def pp_transform_data(
             c_meta["question"] = question_meta
 
     # Aggregate the data into right shape
-    pi = _wrangle_data(filtered_df, c_meta, factor_cols, weight_col, pp_desc, n_questions)
+    pi = _wrangle_data(filtered_df, c_meta, facet_dims, weight_col, pp_desc, n_questions, float(total_weight))
 
     pi.val_format = val_format
     pi.val_range = val_range  # Currently not used
@@ -1283,10 +1295,11 @@ def pp_transform_data(
 def _wrangle_data(
     raw_df: pl.LazyFrame,
     col_meta: MutableMapping[str, GroupOrColumnMeta],
-    factor_cols: List[str],
+    facet_dims: List[str],
     weight_col: str,
     pp_desc: PlotDescriptor,
     n_questions: int,
+    total_size: float = 0.0,
 ) -> PlotInput:
     """Aggregate filtered data into a structured ``PlotInput`` model for create_plot."""
 
@@ -1299,10 +1312,8 @@ def _wrangle_data(
     draws = plot_meta.draws
     data_format = plot_meta.data_format
 
-    # if pp_desc['res_col'] in factor_cols: factor_cols.remove(pp_desc['res_col']) # Res cannot also be a factor
-
     # Determine the groupby dimensions
-    gb_dims = factor_cols + (["draw"] if draws else []) + (["id"] if plot_meta.data_format == "raw" else [])
+    gb_dims = facet_dims + (["draw"] if draws else []) + (["id"] if plot_meta.data_format == "raw" else [])
 
     # If we have no groupby dimensions, add a dummy one so we don't have to handle the empty case
     if len(gb_dims) == 0:
@@ -1452,6 +1463,7 @@ def _wrangle_data(
         value_col=value_col,
         cat_col=cat_col,
         filtered_size=filtered_size,
+        total_size=total_size,
     )
 
 
@@ -1572,39 +1584,39 @@ def _create_tooltip(
     return tooltips, data
 
 
-def _remove_from_internal_fcols(cname: str, factor_cols: List[str], n_inner: int) -> int:
+def _remove_from_inner_facets(cname: str, facet_dims: List[str], n_inner: int) -> int:
     """Shift ``cname`` out of the inner facet slice while preserving order."""
 
-    if cname not in factor_cols[:n_inner]:
+    if cname not in facet_dims[:n_inner]:
         return n_inner
-    factor_cols.remove(cname)
-    if n_inner > len(factor_cols):
+    facet_dims.remove(cname)
+    if n_inner > len(facet_dims):
         n_inner -= 1
-    factor_cols.insert(n_inner, cname)
+    facet_dims.insert(n_inner, cname)
     return n_inner
 
 
-def _inner_outer_factors(
-    factor_cols: List[str],
+def _inner_outer_facets(
+    facet_dims: List[str],
     pp_desc: PlotDescriptor,
     plot_meta: PlotMeta,
 ) -> tuple[List[str], int]:
-    """Return `(factor_cols, n_inner)` after respecting descriptor overrides."""
+    """Return `(facet_dims, n_inner)` after respecting descriptor overrides."""
 
     # Determine how many factors to use as inner facets
     in_f = pp_desc.internal_facet if pp_desc.internal_facet is not None else False
     res_col = pp_desc.res_col
     n_min_f, n_rec_f = plot_meta.n_facets or (0, 0)
     n_inner: int = (n_rec_f if in_f else n_min_f) if isinstance(in_f, bool) else int(in_f)  # type: ignore[arg-type]
-    if n_inner > len(factor_cols):
-        n_inner = len(factor_cols)
+    if n_inner > len(facet_dims):
+        n_inner = len(facet_dims)
 
     # If question facet as inner facet for a no_question_facet plot, just move it out
     if plot_meta.no_question_facet:
-        n_inner = _remove_from_internal_fcols("question", factor_cols, n_inner)
-        n_inner = _remove_from_internal_fcols(res_col, factor_cols, n_inner)
+        n_inner = _remove_from_inner_facets("question", facet_dims, n_inner)
+        n_inner = _remove_from_inner_facets(res_col, facet_dims, n_inner)
 
-    return factor_cols, n_inner
+    return facet_dims, n_inner
 
 
 # --------------------------------------------------------
@@ -1651,9 +1663,8 @@ def create_plot(
     plot_args = {**dict(pi.plot_args), **dict(pp_desc.plot_args or {})}
     pi.plot_args = plot_args
 
-    # Get list of factor columns (adding question and category if needed)
-    factor_cols_input = list(pp_desc.factor_cols or [])
-    factor_cols, n_inner = _inner_outer_factors(factor_cols_input, pp_desc, plot_meta)
+    # Get list of facet dimensions (adding question and category if needed)
+    facet_dims, n_inner = _inner_outer_facets(list(pp_desc.facet_dims or []), pp_desc, plot_meta)
 
     # Reorder categories if required
     if pp_desc.sort:
@@ -1667,8 +1678,8 @@ def create_plot(
             # This converts the categorical into numeric values and then sorts by the mean of the value
             # If the sort column IS the first facet, the numeric-scale sort is incoherent -
             # fall through to the plain mean-of-value_col sort below.
-            if plot_meta.sort_numeric_first_facet and cn != factor_cols[0]:
-                f0 = factor_cols[0]
+            if plot_meta.sort_numeric_first_facet and cn != facet_dims[0]:
+                f0 = facet_dims[0]
                 nvals = _get_cat_num_vals(col_meta[f0], pp_desc)
                 cats = col_meta[f0].categories or []
                 cmap = dict(zip(cats, nvals))
@@ -1687,16 +1698,20 @@ def create_plot(
             order = ordervals.sort_values(ascending=ascending).index
             data[cn] = pd.Categorical(data[cn], list(order))
     elif "ordering_value" in data.columns and pp_desc.plot == "maxdiff":
-        if pp_desc.factor_cols:
-            q = pp_desc.factor_cols[0]
+        if pp_desc.facet_dims:
+            q = pp_desc.facet_dims[0]
             order = data.groupby(q, observed=True)["ordering_value"].mean().sort_values(ascending=False).index
             data[q] = pd.Categorical(data[q], list(order))
+
+    # Stash the resolved facet split for payload consumers (wire: facet_dims/n_inner)
+    pi.facet_dims = list(facet_dims)
+    pi.n_inner = n_inner
 
     # Handle internal facets (and translate as needed)
     pi.facets = []
 
     if n_inner > 0:
-        for cn in factor_cols[:n_inner]:
+        for cn in facet_dims[:n_inner]:
             base_meta = col_meta.get(cn, GroupOrColumnMeta())
             fd = FacetMeta(
                 col=cn,
@@ -1717,8 +1732,8 @@ def create_plot(
                     if facet_meta:
                         plot_args[k] = _meta_to_plain(facet_meta).get(k)
 
-        factor_cols = factor_cols[n_inner:]  # Leave rest for external faceting
-    pi.outer_factors = factor_cols
+        facet_dims = facet_dims[n_inner:]  # Leave rest for external faceting
+    pi.outer_factors = facet_dims
 
     if plot_meta.no_faceting and len(pi.outer_factors) > 0:
         return_matrix_of_plots = True
@@ -1938,15 +1953,12 @@ def _apply_publish_mode(plot: AltairChart) -> AltairChart:
     return type(plot).from_dict(spec)
 
 
-def impute_factor_cols(
+def impute_facet_dims(
     pp_desc: PlotDescriptor | Dict[str, Any],
     col_meta: Mapping[str, GroupOrColumnMeta],
     plot_meta: PlotMeta | None = None,
 ) -> List[str]:
-    """Compute the full factor_cols list, including question and res_col as needed.
-
-    Ensures descriptor has sensible defaults for `factor_cols`.
-    """
+    """Compute the full facet_dims list, including question and res_col as needed."""
 
     if isinstance(pp_desc, dict) and "plot" not in pp_desc:
         pp_desc["plot"] = "default"
@@ -1954,7 +1966,7 @@ def impute_factor_cols(
     # Ensure pp_desc is a PlotDescriptor object
     pp_desc = soft_validate(pp_desc, PlotDescriptor)
 
-    factor_cols = list(pp_desc.factor_cols or [])
+    facet_dims = list(pp_desc.facet_dims or [])
 
     # Determine if res is categorical
     res_col = pp_desc.res_col
@@ -1965,27 +1977,31 @@ def impute_factor_cols(
     cat_res = has_categories and convert_res != "continuous"
 
     # Add res_col if we are working with a categorical input (and not converting it to continuous)
-    if cat_res and res_col not in factor_cols:
-        factor_cols.insert(0, res_col)
-    if len(factor_cols) < 1 and not has_q:
+    if cat_res and res_col not in facet_dims:
+        facet_dims.insert(0, res_col)
+    if len(facet_dims) < 1 and not has_q:
         # Create 'question' as a dummy dimension so we have at least one factor
         # (generally required for plotting)
         has_q = True
 
     # If we need to, add question as a factor to list
-    if has_q and "question" not in factor_cols:
+    if has_q and "question" not in facet_dims:
         if cat_res:
-            factor_cols.append("question")  # Put it last for categorical values
+            facet_dims.append("question")  # Put it last for categorical values
         else:
-            factor_cols.insert(
+            facet_dims.insert(
                 0, "question"
             )  # And first for continuous values, as it then often represents the "category"
 
-    # Pass the factor_cols through the same changes done inside plot pipeline to make more explicit what happens
+    # Pass the facet_dims through the same changes done inside plot pipeline to make more explicit what happens
     if plot_meta:
-        factor_cols, _ = _inner_outer_factors(factor_cols, pp_desc, plot_meta)
+        facet_dims, _ = _inner_outer_facets(facet_dims, pp_desc, plot_meta)
 
-    return factor_cols
+    return facet_dims
+
+
+# Legacy name kept for external callers
+impute_factor_cols = impute_facet_dims
 
 
 def e2e_plot(
@@ -2026,8 +2042,8 @@ def e2e_plot(
         raise ValueError(f"Parquet file {data_file} has no data metadata")
 
     if impute:
-        factor_cols = impute_factor_cols(pp_desc, extract_column_meta(data_meta), get_plot_meta(pp_desc.plot))
-        pp_desc = pp_desc.model_copy(update={"factor_cols": factor_cols})
+        facet_dims = impute_facet_dims(pp_desc, extract_column_meta(data_meta), get_plot_meta(pp_desc.plot))
+        pp_desc = pp_desc.model_copy(update={"facet_dims": facet_dims})
 
     if check_match:
         matches = matching_plots(pp_desc, full_df, data_meta, details=True, list_hidden=True)

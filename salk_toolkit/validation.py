@@ -62,6 +62,7 @@ from typing import (
     TypeAlias,
 )
 from pydantic import (
+    AliasChoices,
     BaseModel,
     ConfigDict,
     Field,
@@ -755,7 +756,8 @@ class PlotDescriptor(PBase):
     # Main parameters
     plot: str  # Registered plot type (see `salk_toolkit.plots`)
     res_col: str  # Response column or question block name to visualise
-    factor_cols: List[str] = []  # Facet dimensions applied to the plot
+    # Facet dimensions applied to the plot ("factor_cols" accepted as a legacy key)
+    facet_dims: List[str] = Field(default=[], validation_alias=AliasChoices("facet_dims", "factor_cols"))
     filter: FilterSpec = {}  # Column filters applied before aggregation
 
     # Plotting choices
