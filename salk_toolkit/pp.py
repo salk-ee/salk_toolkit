@@ -1735,6 +1735,7 @@ def create_plot(
         facet_dims = facet_dims[n_inner:]  # Leave rest for external faceting
     # Single-category dims add no split; drop them so colors and grid shape come from real dims
     pi.outer_factors = [c for c in facet_dims if len(utils.get_categories(data[c].dtype)) != 1]
+    pi.facet_dims = pi.facet_dims[: pi.n_inner] + pi.outer_factors  # wire invariant: facet_dims == inner + outer
 
     if plot_meta.no_faceting and len(pi.outer_factors) > 0:
         return_matrix_of_plots = True
