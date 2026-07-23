@@ -65,6 +65,23 @@ def assert_row_id_intact(df: pd.DataFrame, context: str) -> None:
         raise ValueError(f"{context} produced duplicate row ids, e.g. {dups} - were rows added programmatically?")
 
 
+def restore_or_assert_row_id(df: pd.DataFrame, context: str, file_code: str = "PP") -> pd.DataFrame:
+    """Re-mint row ids when a hook legitimately rebuilt the frame; otherwise assert them intact.
+
+    Aggregating postprocessing (e.g. a census ``groupby(...).sum()``) cannot preserve source-row
+    identity - the output rows get fresh positional ``{file_code}::{i}`` ids with a warning.
+    """
+    if ROW_ID not in df.columns:
+        warnings.warn(
+            f"{context} rebuilt the frame without '{ROW_ID}' (e.g. via groupby); minting fresh positional row ids",
+            UserWarning,
+            stacklevel=2,
+        )
+        return mint_positional_row_id(df, file_code)
+    assert_row_id_intact(df, context)
+    return df
+
+
 def finalize_row_index(df: pd.DataFrame) -> pd.DataFrame:
     """Set ``ROW_ID`` as the frame index at an io return boundary, asserting uniqueness.
 

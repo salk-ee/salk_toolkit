@@ -30,6 +30,7 @@ from salk_toolkit.io.core import (
     _is_series_of_lists,
     _str_from_list,
     assert_row_id_intact,
+    restore_or_assert_row_id,
     finalize_row_index,
     mint_positional_row_id,
 )
@@ -501,8 +502,7 @@ def _process_annotated_data(
             **constants,
         }
         exec(_str_from_list(meta_obj.postprocessing), globs)
-        ndf_df = globs["df"]
-        assert_row_id_intact(ndf_df, "postprocessing")
+        ndf_df = restore_or_assert_row_id(globs["df"], "postprocessing")
 
     # Update meta with new structure (including any groups created during processing)
     meta_obj = meta_obj.model_copy(update={"structure": new_structure})

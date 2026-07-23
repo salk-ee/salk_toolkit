@@ -1750,6 +1750,24 @@ class TestAdvancedFeatures:
         assert "final" in df.columns
         assert df["final"].tolist() == [101, 102, 103, 104, 105]
 
+    def test_postprocessing_aggregation_mints_fresh_row_ids(self, csv_file, meta_file):
+        """An aggregating postprocessing (census-style groupby) gets fresh positional row ids + a warning."""
+        pd.DataFrame({"grp": ["a", "a", "b", "b", "b"], "N": [1, 2, 3, 4, 5]}).to_csv_file(csv_file)
+
+        meta = {
+            "file": "test.csv",
+            "structure": [{"name": "t", "columns": [["grp", {"categories": ["a", "b"]}], ["N", {"continuous": True}]]}],
+            "postprocessing": "df = df.groupby(['grp'], as_index=False, observed=True)['N'].sum()",
+        }
+        write_json(meta_file, meta)
+
+        with pytest.warns(UserWarning, match="minting fresh positional row ids"):
+            df = read_annotated_data(str(meta_file))
+
+        assert df.index.name == "row_id"
+        assert list(df.index) == ["PP::0", "PP::1"]
+        assert df["N"].tolist() == [3, 12]
+
     def test_exclusions_handling(self, csv_file, meta_file):
         """Exclusions are keyed by the stable row_id, here derived from a declared id_col."""
         pd.DataFrame({"value": [1, 2, 3, 4, 5], "id": [1, 2, 3, 4, 5]}).to_csv_file(csv_file)

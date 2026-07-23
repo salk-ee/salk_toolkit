@@ -32,6 +32,7 @@ from salk_toolkit.io.core import (
     ProcessedDataReturn,
     _str_from_list,
     assert_row_id_intact,
+    restore_or_assert_row_id,
     finalize_row_index,
     mint_positional_row_id,
 )
@@ -539,7 +540,7 @@ def read_and_process_data(
                 globs["df"].loc[:, newcols] = fix_df_with_meta(globs["df"][newcols], kwargs["data_meta"])
         if desc_obj.postprocessing and not skip_postprocessing:
             exec(_str_from_list(desc_obj.postprocessing), globs)
-            assert_row_id_intact(globs["df"], "DataDescription postprocessing")
+            globs["df"] = restore_or_assert_row_id(globs["df"], "DataDescription postprocessing")
         df = globs["df"]
 
     # Stable, unique, deterministic index at the return boundary.
