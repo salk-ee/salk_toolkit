@@ -1742,12 +1742,6 @@ def create_plot(
 
     pi.value_range = tuple(data[pi.value_col].agg(["min", "max"]))
 
-    pi.outer_colors = (
-        _normalize_color_dict(col_meta.get(pi.outer_factors[0], GroupOrColumnMeta()).colors or {})
-        if pi.outer_factors
-        else {}
-    )
-
     # Rename res_col if label provided (or remove prefix if present)
     value_meta = col_meta.get(pi.value_col)
     if value_meta and (value_meta.label or value_meta.col_prefix):
@@ -1786,6 +1780,12 @@ def create_plot(
 
     data = _translate_df(data, _tfunc)
     pi.value_col = _tfunc(pi.value_col)
+    # Per outer dim (translated name): its category color dict, so plots can pick a
+    # gradient base from whichever dim the cell is fixed on (not just the first)
+    pi.outer_colors = {
+        _tfunc(c): _normalize_color_dict(col_meta.get(c, GroupOrColumnMeta()).colors or {}) or {}
+        for c in pi.outer_factors
+    }
     pi.outer_factors = [_tfunc(c) for c in pi.outer_factors]
 
     # If we still have more than 1 factor left, merge the rest into one so we have a 2d facet
