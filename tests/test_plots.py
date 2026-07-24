@@ -562,6 +562,27 @@ class TestPlots:
             width=400,
         )
 
+    def test_geoplot_two_outer_dims_party_gradient(self):
+        """With a second outer dim, cells still use the colored dim's gradient (not the blue fallback)."""
+        from salk_toolkit import utils
+
+        if self.data_meta is None:
+            pytest.skip("Data metadata not available for geoplot test")
+
+        config = {
+            "res_col": "party_preference",
+            "facet_dims": ["unit", "party_preference", "gender"],
+            "internal_facet": True,
+            "plot": "geoplot",
+            "plot_args": {"separate_axes": True},
+        }
+        result = e2e_plot(config, str(self.data_file), width=400)
+        assert isinstance(result, list)
+        cells = {c.to_dict()["title"]: c.to_dict() for row in result for c in row}
+        ekre = next(v for t, v in cells.items() if "EKRE" in str(t))
+        expected = utils.gradient_from_color("#8B4513", range=[0, 1])
+        assert ekre["encoding"]["color"]["scale"]["range"] == expected
+
     def test_facet_dist(self, recompute):
         """Test facet distribution plot."""
         config = {

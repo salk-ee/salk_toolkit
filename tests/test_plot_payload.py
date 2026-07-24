@@ -122,7 +122,8 @@ def test_single_category_outer_factor_dropped(degenerate_outer_pi_fixture, regis
     ppd = PlotDescriptor(plot=registered_two_factor_plot, res_col="score", factor_cols=["question", "party"])
     pi = pp.create_plot(degenerate_outer_pi_fixture, ppd, dry_run=True, escape_labels=False)
     assert pi.outer_factors == ["party"]
-    assert set(pi.outer_colors) == {"P1", "P2", "P3"}
+    assert set(pi.outer_colors) == {"party"}
+    assert set(pi.outer_colors["party"]) == {"P1", "P2", "P3"}
     # Wire invariant: the stashed split equals inner + surviving outer, so payload
     # consumers reading facet_dims/n_inner agree with cells/outer_factors.
     assert pi.facet_dims == ["party"]
