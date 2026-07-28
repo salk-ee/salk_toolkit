@@ -74,11 +74,11 @@ def pp_transform_data(
     if not pp_desc.calculated_draws:
         draws_data = {}
 
-    # The sampled ordered-population experiment must cap rows before melting; resolve its
-    # sample size here already because the id-based sampling below needs the row index.
+    # Plots can declare a row cap (plot_meta.sample), applied before group questions are
+    # melted. Resolved here already because the id-based sampling below needs the row index.
     sample_n = pp_desc.sample
-    if sample_n is None and pp_desc.plot == "ordered_population_sampled":
-        sample_n = int((pp_desc.plot_args or {}).get("sample_size", 1000))
+    if sample_n is None and plot_meta.sample:
+        sample_n = int((pp_desc.plot_args or {}).get("sample_size", plot_meta.sample))
         if sample_n <= 0:
             raise ValueError("sample_size must be positive")
 
