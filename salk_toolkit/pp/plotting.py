@@ -80,8 +80,7 @@ def _meta_color_scale(
 def _translate_df(df: pd.DataFrame, translate: Callable[[str], str]) -> pd.DataFrame:
     """Translate column names and categorical levels for display."""
 
-    # `reverse_`-prefixed maxdiff companion columns are located by prefix and never displayed,
-    # so they must survive translation untouched, like `_label`
+    # `reverse_` maxdiff companions are found by prefix and never shown, so leave them untranslated
     def _keep(c: str) -> bool:
         return c in special_columns or c.endswith("_label") or c.startswith("reverse_")
 
@@ -186,8 +185,7 @@ def create_plot(
         if "question" not in col_meta:
             col_meta["question"] = GroupOrColumnMeta()
 
-    # `pp_desc.plot_args` are always forwarded to the concrete plot function.
-    # PlotInput itself should not be mutated by ad-hoc keys.
+    # plot_args are forwarded to the plot function; PlotInput must not be mutated by ad-hoc keys
     plot_args = {**dict(pi.plot_args), **dict(pp_desc.plot_args or {})}
     pi.plot_args = plot_args
 
@@ -202,10 +200,7 @@ def create_plot(
             if cn not in data.columns or cn == pi.value_col:
                 raise Exception(f"Sort column {cn} not found")
 
-            # Some plots (like likert_bars) need a more complex sort
-            # This converts the categorical into numeric values and then sorts by the mean of the value
-            # If the sort column IS the first facet, the numeric-scale sort is incoherent -
-            # fall through to the plain mean-of-value_col sort below.
+            # Numeric-scale sort (likert_bars et al); incoherent when cn IS facet 0, so fall through then
             if plot_meta.sort_numeric_first_facet and cn != facet_dims[0]:
                 f0 = facet_dims[0]
                 nvals = _get_cat_num_vals(col_meta[f0], pp_desc)
@@ -215,8 +210,7 @@ def create_plot(
                 sdf["sort_val"] = sdf[pi.value_col] * sdf[f0].astype("object").replace(cmap)
                 ordervals = sdf.groupby(cn, observed=True)["sort_val"].mean()
 
-            # Otherwise, do not sort ordered categories as categories.
-            # Only creates confusion if left on by accident
+            # Never sort ordered categories as categories - only confuses if left on by accident
             elif cn in col_meta and col_meta[cn].ordered:
                 continue
 
@@ -292,9 +286,7 @@ def create_plot(
     if translate is None:
         translate = lambda s: s
 
-    # Add escaping as Vega Lite goes crazy for symbols like ".[]"
-    # It would be enough to do it just for column names, but it's easier to do it for all
-    # `escape_labels=False` skips this (used by payload consumers that want raw labels).
+    # Vega Lite chokes on symbols like ".[]"; escape_labels=False skips this for raw-label consumers
     def _tfunc(s: str) -> str:
         return translate(s) if not escape_labels else utils.escape_vega_label(translate(s))
 
@@ -334,8 +326,7 @@ def create_plot(
     else:
         n_facet_cols = plot_meta.factor_columns or 1
 
-    # Allow value col name to be changed. This can be useful in distinguishing different
-    # aggregation options for a column
+    # Renaming the value col helps distinguish different aggregations of the same column
     if pp_desc.val_name:
         data = data.rename(columns={pi.value_col: pp_desc.val_name})
         pi.value_col = pp_desc.val_name
@@ -489,8 +480,7 @@ def e2e_plot(
         if key not in plot_cache:
             plot_cache[key] = pp_transform_data(full_df, data_meta, pp_desc)
         cached = plot_cache[key]
-        # Shallow copies protect the cache: create_plot copies pi.data before mutating and
-        # col_meta values are replaced (never mutated in place), so no deepcopy is needed
+        # Shallow copies suffice: create_plot copies pi.data before mutating and replaces col_meta values
         pi = cached.model_copy(update={"data": cached.data.copy(), "col_meta": dict(cached.col_meta)})
     else:  # No caching
         pi = pp_transform_data(full_df, data_meta, pp_desc)

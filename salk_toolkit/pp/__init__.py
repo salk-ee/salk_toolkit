@@ -27,8 +27,7 @@ __all__ = [
     "create_plot",
     "get_plot_fn",
 ]
-# `create_plot_payload` / `UnsupportedPayloadError` are also importable from here
-# (lazily, via module `__getattr__`) for backwards compatibility.
+# `create_plot_payload` / `UnsupportedPayloadError` are also importable here, lazily via `__getattr__`
 
 from .common import (
     AltairChart as AltairChart,
@@ -84,8 +83,7 @@ from .plotting import (
     test_new_plot as test_new_plot,
 )
 
-# `create_plot_payload` / `UnsupportedPayloadError` live in `salk_toolkit.payload`;
-# re-exported here lazily for backwards compatibility (e.g. dms-plots-api imports from pp).
+# Lazy re-export from `salk_toolkit.payload` for back-compat (e.g. dms-plots-api imports these from pp)
 if TYPE_CHECKING:
     from salk_toolkit.payload import (
         UnsupportedPayloadError as UnsupportedPayloadError,
