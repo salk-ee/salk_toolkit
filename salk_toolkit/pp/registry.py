@@ -192,7 +192,7 @@ def get_plot_fn(plot_name: str) -> Callable[..., AltairChart]:
             tooltip=cast(List[Any], pparams.get("tooltip") or []),
             value_range=cast(Optional[Tuple[float, float]], pparams.get("value_range")),
             outer_colors=cast(Dict[str, Any], pparams.get("outer_colors") or {}),
-            width=int(cast(object, pparams.get("width") or 800)),
+            width=int(cast(Any, pparams.get("width") or 800)),
             alt_properties=cast(Dict[str, Any], pparams.get("alt_properties") or {}),
             outer_factors=cast(List[str], pparams.get("outer_factors") or []),
             plot_args=cast(Dict[str, Any], pparams.get("plot_args") or {}),
