@@ -77,8 +77,7 @@ def _pp_filter_data_lz(
                 inds = (pl.col(k) >= v[1]) & inds
             if v[2] is not None:
                 inds = (pl.col(k) <= v[2]) & inds
-            # NB! this approach does not work for ordered categoricals with polars LazyDataFrame,
-            # hence handling that separately below
+            # NB! does not work for ordered categoricals on a LazyFrame - handled separately below
             continue
 
         # Handle categoricals
@@ -110,8 +109,7 @@ def _pp_filter_data_lz(
                 continue
         if not values:
             continue
-        # is_in never matches nulls, works directly on Categorical (string cache is enabled
-        # by pp_transform_data), and pushes down to the scan unlike an OR-chain of casts
+        # is_in skips nulls, works on Categorical directly (string cache is on), and pushes down to the scan
         inds &= pl.col(k).is_in(values)
 
     filtered_df = df.filter(inds)
@@ -137,9 +135,7 @@ def _pl_quantiles(ldf: pl.LazyFrame, cname: str, qs: Sequence[float] | np.ndarra
     return ldf.select([pl.col(cname).quantile(q).alias(str(q)) for q in qs]).collect().to_numpy()[0]
 
 
-# While polars-ized, it is still slow because of the collects.
-# This can likely be improved by batching all of the required collects into a single select (over all columns)
-# In practice, this is probably not worth it because this is not used very often
+# Still slow because of the collects; batching them into one select would help, but this is rarely used
 
 
 def _discretize_continuous(

@@ -6,8 +6,7 @@ from typing import Dict, List
 
 from pydantic import BaseModel
 
-from salk_toolkit.io import extract_column_meta
-from salk_toolkit.io import group_columns_dict
+from salk_toolkit.io import extract_column_meta, group_columns_dict
 from salk_toolkit.validation import (
     BlockScaleMeta,
     ColumnBlockMeta,
@@ -18,9 +17,7 @@ from salk_toolkit.validation import (
 )
 
 
-# extract_column_meta runs a pydantic validation per column, which is a real per-plot cost
-# on datasets with hundreds of columns - and it gets called several times per plot render.
-# Cache per meta instance; keys hold a strong reference so id() stays valid while cached.
+# extract_column_meta pydantic-validates every column, several times per render - cache it (id-keyed, strong refs)
 _col_meta_cache: Dict[int, tuple[DataMeta, Dict[str, GroupOrColumnMeta]]] = {}
 
 

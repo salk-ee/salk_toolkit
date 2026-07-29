@@ -72,8 +72,7 @@ class PlotInput:
     outer_factors: List[str] = field(default_factory=list)
     plot_args: Dict[str, Any] = field(default_factory=dict)
     n_facet_cols: Optional[int] = None  # stashed by create_plot for payload consumers
-    # Resolved facet split in descriptor vocabulary; outer_factors is the rendered view of
-    # facet_dims[n_inner:] (translated; for >=2 outer facets also reversed and possibly merged)
+    # Descriptor vocabulary; outer_factors is the rendered view of facet_dims[n_inner:]
     facet_dims: List[str] = field(default_factory=list)
     n_inner: int = 0  # how many facet_dims the plot consumes as inner facets
     return_df: bool = False  # payload=True plots return the prepared PlotInput instead of a chart

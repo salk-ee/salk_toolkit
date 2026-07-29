@@ -8,8 +8,7 @@ import numpy as np
 import polars as pl
 
 
-# Mechanics to allow row-wise numpy transformations here
-# They are noticeably slower, so only use them if polars expression is infeasible
+# Row-wise numpy transforms: noticeably slower, so only use where a polars expression is infeasible
 custom_row_transforms: Dict[str, tuple[Callable[[np.ndarray], np.ndarray], str]] = {}
 
 
@@ -69,13 +68,7 @@ def _transform_cont(
         )
     elif transform in custom_row_transforms:
         _tfunc, fmt = custom_row_transforms[transform]
-        # Probe the transform with a 1-row dummy to derive an explicit map_batches schema,
-        # so the streaming engine can initialise array builders for downstream group_by/agg
-        # without hitting the OPAQUE_PYTHON boundary. The probe must use the same numpy
-        # dtype `df[cols].to_numpy()` will yield at runtime: dtype-preserving transforms
-        # (softmax-avgrank) would otherwise declare Float64 over a Float32 batch and panic
-        # in the reducer (`values.dtype() == &self.in_dtype`). validate_output_schema stays
-        # False because dtype-changing transforms (e.g. Float32 → Int64 for topbot1) are OK.
+        # Probe a 1-row dummy at the runtime numpy dtype to declare a map_batches schema (else it panics)
         input_schema = data.collect_schema()
         set_cols = set(cols)
         in_np_dtype = np.result_type(*(pl.Series([], dtype=input_schema[c]).to_numpy().dtype for c in cols))
@@ -123,8 +116,7 @@ def _avg_rank(ovs: np.ndarray) -> np.ndarray:
     """Return 1-indexed average ranks for each row (average rank order)."""
 
     return 1 + np.argsort(np.argsort(ovs, axis=1), axis=1)
-    # Rankdata is insanely slow for some reason
-    # return sps.rankdata(ovs, axis=1, method='average')
+    # sps.rankdata(ovs, axis=1, method='average') is insanely slow for some reason
 
 
 def _highest_ranked(ovs: np.ndarray) -> np.ndarray:

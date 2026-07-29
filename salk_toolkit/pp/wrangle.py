@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from functools import cache
 from typing import Any, Dict, List, MutableMapping, Sequence
 
 import numpy as np
@@ -57,8 +56,7 @@ def pp_transform_data(
     else:
         full_df = full_df.with_columns(pl.col(weight_col).fill_null(1.0))
 
-    # For transforming purposes, res_col is not a factor.
-    # It will be made one for categorical plots for plotting part, but for pp_transform_data, remove it
+    # res_col is not a facet here; create_plot re-adds it for categorical plots
     if pp_desc.res_col in facet_dims:
         facet_dims.remove(pp_desc.res_col)
     base_cols = list(columns) if columns is not None else []
@@ -74,40 +72,34 @@ def pp_transform_data(
     if not pp_desc.calculated_draws:
         draws_data = {}
 
-    # Plots can declare a row cap (plot_meta.sample), applied before group questions are
-    # melted. Resolved here already because the id-based sampling below needs the row index.
+    # Resolve the plot-declared pre-melt row cap early - the id-based sampling below needs the row index
     sample_n = pp_desc.sample
     if sample_n is None and plot_meta.sample:
         sample_n = int((pp_desc.plot_args or {}).get("sample_size", plot_meta.sample))
         if sample_n <= 0:
             raise ValueError("sample_size must be positive")
 
-    # Row id-s are only consumed by the draw joins, sampling, and raw-format grouping.
-    # Adding the index blocks predicate pushdown into the scan (numbering must reflect
-    # pre-filter rows), so skip it entirely when nothing downstream needs it.
+    # The row index blocks predicate pushdown (numbering is pre-filter), so add it only when actually consumed
     need_id = plot_meta.data_format == "raw" or ("draw" in cols and bool(draws_data)) or bool(sample_n)
     if need_id:
-        # Add row id-s before filtering so draw indices line up with the original rows.
         full_df = full_df.with_row_index("id")
         cols += ["id"]
 
-    # Both the row count and the population total have to be read off the pre-filter frame.
-    # Prefer the meta-supplied population total; when the weight column has to be summed
-    # instead, that scan yields the row count for free.
-    counting_df = full_df
-    counted_n: int | None = None
+    # Count and population total both read off the pre-filter frame; the weight-sum scan counts for free
+    counting_df, counted_n = full_df, None
     total_weight = data_meta.total_size
     if total_weight is None:
         counts = counting_df.select(pl.len().alias("n"), pl.col(weight_col).sum().alias("w")).collect()
         counted_n, total_weight = int(counts["n"].item()), counts["w"].item()
 
-    # Otherwise the count is only needed to build draws, so compute it lazily (and once).
-    get_total_n = cache(
-        lambda: counted_n if counted_n is not None else int(counting_df.select(pl.len()).collect().item())
-    )
+    def get_total_n() -> int:
+        """Pre-filter row count, needed only to build draws - so scan for it lazily and only once."""
+        nonlocal counted_n
+        if counted_n is None:
+            counted_n = int(counting_df.select(pl.len()).collect().item())
+        return counted_n
 
-    # For more customized filtering in dashboards
-    # Has to be done before downselecting to only needed columns
+    # Custom dashboard filtering - must run before downselecting to the needed columns
     if pp_desc.pl_filter:
         full_df = full_df.filter(eval(pp_desc.pl_filter, {"pl": pl}))
 
@@ -119,8 +111,7 @@ def pp_transform_data(
     if pp_desc.filter:
         filtered_df, cols = _pp_filter_data_lz(df, pp_desc.filter, c_meta, gc_dict)
 
-        # Project away columns that were only needed to compute the filter, so they don't
-        # ride through the unpivot (which multiplies every carried column by n_questions)
+        # Drop filter-only columns so the unpivot doesn't multiply them by n_questions
         needed = set(res_cols) | set(facet_dims) | set(base_cols) | {weight_col, "draw", "id"}
         keep = [c for c in cols if c in needed]
         if keep != cols:
@@ -241,16 +232,12 @@ def pp_transform_data(
                     ddf = ddf_cache[(uid, ndraws)]
                     draw_dfs.append(ddf)
 
-            # Check if they all have the same draws. If yes (very common), perform a single merge
-            # This is a lot more memory efficient than merging one by one post-unpivot
+            # If all draws are identical (very common), one pre-melt merge beats merging per question
             if len(ddf_cache) == 1 and len(draw_dfs) == len(value_vars):
                 filtered_df = filtered_df.drop("draw").join(draw_dfs[0].drop("question").lazy(), on=["id"], how="left")
                 draw_dfs = []  # To avoid adding draws again below
 
-        # Longform groups can be aggregated in wide form (per question column) and only the
-        # small aggregates melted, so the n_rows x n_questions longform frame is never
-        # materialized. Requires all questions to share draws (or have none) and, for
-        # categorical questions, a percent-style aggregation.
+        # Wide-aggregate the group when draws are shared or absent (mean/sum only for categorical) - skips the big melt
         fschema = filtered_df.collect_schema()
         agg_fn_resolved = plot_meta.agg_fn or pp_desc.agg_fn or "mean"
         cat_flags = [isinstance(fschema[c], (pl.Categorical, pl.Enum, pl.String)) for c in value_vars]
@@ -367,9 +354,7 @@ def _wrangle_data(
                 cat_col = res_col
                 value_col = "percent"
 
-                # One small aggregation per question, all sharing the same filtered scan
-                # (comm_subplan_elim), concatenated afterwards. Emits exactly the observed
-                # (group, category) combos, like the melt-then-aggregate path would.
+                # Per-question group_bys share the filtered scan (comm_subplan_elim), like the melt path would
                 parts = [
                     raw_df.group_by(gb + [pl.col(q).cast(pl.Categorical).alias(res_col)])
                     .agg(pl.col(weight_col).sum().alias("percent"))
@@ -401,8 +386,7 @@ def _wrangle_data(
             cat_col = res_col
             value_col = "percent"
 
-            # Aggregate the data, then get group totals as a window sum over the (small)
-            # aggregated frame - avoids a second full-data group_by plus a join
+            # Group totals as a window sum over the small aggregate - avoids a second full group_by + join
             data = raw_df.group_by(gb_dims + [res_col]).agg(pl.col(weight_col).sum().alias("percent"))
             data = data.with_columns(pl.col("percent").sum().over(gb_dims).alias(weight_col))
 
@@ -464,11 +448,7 @@ def _wrangle_data(
     if gb_dims == ["dummy_col"]:
         data = data.drop("dummy_col")
 
-    # Collect the aggregation and the filtered weight total in a single pass.
-    # Both branches share the `raw_df` subplan, so comm_subplan_elim (on by default
-    # in collect_all) lets the streaming engine scan the filtered data once instead
-    # of twice. `filtered_size` is the number of datapoints the plot is based on -
-    # useful metainfo to display sometimes.
+    # Both branches share the raw_df subplan, so collect_all (comm_subplan_elim) scans the data only once
     data, fsize = pl.collect_all(
         [data, raw_df.select(pl.col(weight_col).sum())],
         engine="streaming",
@@ -482,8 +462,7 @@ def _wrangle_data(
         if key and key not in col_meta:
             col_meta[key] = GroupOrColumnMeta()
 
-    # Fix categorical types that polars does not read properly from parquet
-    # Also filter out unused categories so plots are cleaner
+    # Fix categoricals polars misreads from parquet, and drop unused categories for cleaner plots
     for c in data.columns:
         meta = col_meta.get(c)
         col_dtype = data[c].dtype
@@ -503,10 +482,7 @@ def _wrangle_data(
 
             data[c] = pd.Categorical(data[c], u_cats, ordered=meta.ordered)
 
-    # polars group_by returns groups in a nondeterministic hash order; impose a stable order on the
-    # grouping keys so rendered specs and plot payloads are reproducible run-to-run. Sorted after the
-    # categorical fix above so it follows the deterministic meta category order (not polars' hash
-    # codes). Row order is presentation-irrelevant -- plots re-sort by facet order for display.
+    # group_by returns hash order; sort (after the categorical fix, so meta order wins) for reproducibility
     sort_cols = [c for c in gb_dims + [res_col] if c in data.columns]
     if sort_cols:
         data = data.sort_values(sort_cols, kind="stable").reset_index(drop=True)

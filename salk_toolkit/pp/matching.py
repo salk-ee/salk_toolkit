@@ -14,8 +14,7 @@ from .meta import _extract_column_meta_cached, _update_data_meta_with_pp_desc
 from .registry import PlotMeta, _ensure_plot_registry_loaded, get_plot_meta, registry, registry_meta
 
 
-# First is weight if not matching, second if match
-# This is very much a placeholder right now
+# [weight if not matching, weight if match] - very much a placeholder right now
 n_a = -1000000
 priority_weights = {
     "draws": [n_a, 0],
@@ -148,9 +147,7 @@ def matching_plots(
     if rcm.categories is not None:
         nonneg = True
     else:
-        # Answered from metadata only: scanning the data would cost a full pass over all
-        # res columns on every plot render. Unknown counts as not non-negative, which only
-        # lowers the ranking of nonnegative-preferring plots on unannotated data.
+        # Metadata-only: a data scan would cost a full pass per render; unknown counts as not non-negative
         val_range = rcm.val_range
         nonneg = val_range is not None and val_range[0] is not None and val_range[0] >= 0
 
@@ -166,9 +163,7 @@ def matching_plots(
     for cn in facet_dims:
         meta = col_meta.get(cn, GroupOrColumnMeta())
         facet_metas.append({"name": cn, **meta.model_dump(mode="python")})
-    # Determine if data is categorical
-    # Data is categorical if it has categories AND is not being converted to continuous
-    # AND is not explicitly marked as continuous
+    # Categorical = has categories, not marked continuous, not being converted to continuous
     is_categorical = (rcm.categories is not None) and not rcm.continuous and convert_res != "continuous"
     match = {
         "draws": ("draw" in df_cols),
@@ -179,8 +174,7 @@ def matching_plots(
         "facet_metas": facet_metas,
     }
 
-    # _calculate_priority only reads the meta, so pass the registry entry directly
-    # rather than a deep copy per plot (get_plot_meta deep-copies defensively).
+    # _calculate_priority only reads the meta, so skip get_plot_meta's defensive deep copy per plot
     _ensure_plot_registry_loaded()
     res = [(pn, *_calculate_priority(registry_meta[pn], match)) for pn in registry.keys()]
     if details:
@@ -253,8 +247,7 @@ def impute_facet_dims(
     if cat_res and res_col not in facet_dims:
         facet_dims.insert(0, res_col)
     if len(facet_dims) < 1 and not has_q:
-        # Create 'question' as a dummy dimension so we have at least one factor
-        # (generally required for plotting)
+        # Create 'question' as a dummy dimension so we have at least one factor (usually required)
         has_q = True
 
     # If we need to, add question as a factor to list
