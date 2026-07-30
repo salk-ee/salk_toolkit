@@ -134,6 +134,36 @@ Several transforms are *relative to the columns present* — `ordered-top1` argm
 
 Omitting it silently changes the answer (a block carrying `Other` / `Dont know`, or dashboard-disabled columns, shifts every share).
 
+The same filter is how you express a share **among** a subset. `columns` renormalizes `percent` within each cell *after* filtering, so restricting a categorical `res_col` to the named parties turns "share of all respondents" into "share of named-party voters":
+
+```python
+{"plot": "columns", "res_col": "party_preference", "factor_cols": ["district"],
+ "filter": {"party_preference": NAMED_PARTIES}}   # → support among named voters
+```
+
+### "my numbers are close but systematically off"
+
+pp scans the **whole annotated dataset**. If the file is multi-wave, or carries any other partition the caller normally filters out, every descriptor must say so:
+
+```python
+{"plot": "columns", "res_col": "party_preference", "filter": {"t": latest_wave}}
+```
+
+A missing wave filter does not error — it silently averages the waves together. In rk2027 that moved party shares by up to 1.3 pp, with a *consistent sign per party*, which is exactly what a plausible-but-wrong number looks like. Any per-cell diff that is small, systematic and not noise-shaped is this bug until proven otherwise.
+
+### "my `filter` matches nothing"
+
+pp reads values as the **annotation** declares them. A loader that normalizes to internal keys (`Reformierakond` → `reform`, trimmed strings, merged categories) is invisible to pp, so a filter or a lookup written in the dashboard's vocabulary silently returns an empty frame or an empty dict — not an error.
+
+Translate at the pp boundary, in one place, both ways: descriptor filters take canonical values; results get mapped back to internal keys before they meet the rest of the code.
+
+### What is genuinely not expressible
+
+Two gaps are real, and worth knowing before you go looking:
+
+- **Proportion above a threshold** on a continuous column or battery ("share rating this party ≥ 1"). The registry has rank transforms and scale transforms; a threshold is neither. Register a `custom_row_transform` if the threshold is a stable part of your methodology — otherwise keep it in polars.
+- **Binning a continuous column** into categories. `convert_res` only goes categorical → continuous.
+
 ## Minimal descriptor
 
 ```python
