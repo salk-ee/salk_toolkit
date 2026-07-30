@@ -25,6 +25,8 @@ class PlotMeta(PBase):
     agg_fn: Optional[str] = None
     # Cap on filtered rows, applied pre-melt; pp_desc.sample / plot_args["sample_size"] override it
     sample: Optional[int] = None
+    # Raw-format cap on rows handed to the plot, applied post-melt while still in polars
+    max_rows: Optional[int] = None
     group_sizes: bool = False
     sort_numeric_first_facet: bool = False
     no_faceting: bool = False
