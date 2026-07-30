@@ -87,6 +87,19 @@ Building a `(draw, district, party)` tensor by hand to feed `simulate_election` 
 
 Needs `num_values` in the annotation for the conversion to be meaningful. If a transform appears to be a no-op, check `convert_res` before suspecting the transform.
 
+### A missing `weight_col` is silently 1.0
+
+pp weights by the column `data_meta.weight_col` names. If that column is **absent from the frame**, pp fills the weight with `1.0` and carries on — so a weighted `sum` quietly becomes an unweighted one, with no warning and a plausible-looking result.
+
+This bites when a dataset vintage renames its weight column (`N_voters` → `N`) and the annotation and the parquet drift apart. Hand-rolled code that detected either name kept working; a descriptor trusts the annotation alone.
+
+**If a weighted aggregation matters, assert the declared column is present** before building the descriptor, and fail loudly:
+
+```python
+if af.meta.weight_col not in af.df.collect_schema().names():
+    raise ...  # otherwise you get unweighted numbers that look fine
+```
+
 ### "my model is bespoke — pp has no transform for it"
 
 Then register one. `custom_row_transforms` is a public, mutable registry:
