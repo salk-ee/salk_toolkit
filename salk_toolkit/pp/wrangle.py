@@ -189,7 +189,8 @@ def pp_transform_data(
     if c_meta[rcl[0]].continuous:
         val_format = c_meta[rcl[0]].val_format or ".1f"
         val_range = c_meta[rcl[0]].val_range
-        transform_fn = plot_meta.transform_fn
+        # The plot's registered transform_fn is only a default; the descriptor wins when set
+        transform_fn = pp_desc.cont_transform or plot_meta.transform_fn
         if transform_fn:
             pp_desc = pp_desc.model_copy(update={"cont_transform": transform_fn})
         if pp_desc.cont_transform:
@@ -252,7 +253,7 @@ def pp_transform_data(
 
         # Wide-aggregate the group when draws are shared or absent (mean/sum only for categorical) - skips the big melt
         fschema = filtered_df.collect_schema()
-        agg_fn_resolved = plot_meta.agg_fn or pp_desc.agg_fn or "mean"
+        agg_fn_resolved = pp_desc.agg_fn or plot_meta.agg_fn or "mean"
         cat_flags = [isinstance(fschema[c], (pl.Categorical, pl.Enum, pl.String)) for c in value_vars]
         if (
             plot_meta.data_format == "longform"
@@ -354,8 +355,8 @@ def _wrangle_data(
         data = raw_df.select(gb_dims + [res_col])
 
     elif data_format == "longform":
-        agg_fn = pp_desc.agg_fn or "mean"
-        agg_fn = plot_meta.agg_fn or agg_fn
+        # Descriptor-level agg_fn overrides the plot's registered default
+        agg_fn = pp_desc.agg_fn or plot_meta.agg_fn or "mean"
 
         if wide_value_vars is not None:  # Question group, still in wide form
             gb = [d for d in gb_dims if d != "question"]
