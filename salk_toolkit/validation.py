@@ -726,23 +726,25 @@ FilterSpec = Dict[str, FilterValue]
 
 SortSpec = Union[List[str], Dict[str, bool]]
 ConvertResOption = Literal["continuous"]
-ContTransformOption = Literal[
-    "center",
-    "zscore",
-    "01range",
-    "proportion",
-    "softmax",
-    "softmax-ratio",
-    "softmax-avgrank",
-    "ordered-avgrank",
-    "ordered-warf",
-    "ordered-top1",
-    "ordered-bot1",
-    "ordered-topbot1",
-    "ordered-top2",
-    "ordered-top3",
-]
+
+# Scale-level transforms, handled inline by `_transform_cont`. The row-wise
+# families live in registries (`ordered_expr_transforms`, `custom_row_transforms`)
+# that callers may extend at runtime, so `cont_transform` is validated against
+# the live registries rather than a frozen Literal — see `_valid_cont_transform`.
+SCALE_TRANSFORMS = ("center", "zscore", "01range", "proportion", "softmax", "softmax-ratio")
+ContTransformOption = str
 AggFnOption = Literal["mean", "sum", "posneg_mean", "median", "min", "max"]
+
+
+def _valid_cont_transform(value: str) -> str:
+    """Accept any transform the pipeline can actually dispatch, including ones
+    a dashboard registered after import."""
+    from salk_toolkit.pp.transforms import custom_row_transforms, ordered_expr_transforms
+
+    if value in SCALE_TRANSFORMS or value in ordered_expr_transforms or value in custom_row_transforms:
+        return value
+    known = sorted({*SCALE_TRANSFORMS, *ordered_expr_transforms, *custom_row_transforms})
+    raise ValueError(f"unknown cont_transform {value!r}; registered: {', '.join(known)}")
 
 
 # --------------------------------------------------------
@@ -763,6 +765,12 @@ class PlotDescriptor(PBase):
     # Plotting choices
     convert_res: Optional[ConvertResOption] = None  # Convert categorical responses (currently only 'continuous')
     cont_transform: Optional[ContTransformOption] = None  # Continuous transform to apply before aggregation
+
+    @field_validator("cont_transform")
+    @classmethod
+    def _check_cont_transform(cls, value: Optional[str]) -> Optional[str]:
+        return None if value is None else _valid_cont_transform(value)
+
     agg_fn: Optional[AggFnOption] = None  # Aggregation override for summary statistics
     sort: Optional[SortSpec] = None  # Sorting instructions for categorical dimensions
     n_facet_cols: Optional[int] = None  # Number of facet columns to display
