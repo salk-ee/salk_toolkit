@@ -80,12 +80,7 @@ def _create_topk_metas_and_dfs_regex(
 
     regex_from = re.compile(from_columns)
     from_cols = list(filter(lambda s: regex_from.match(s), df.columns))
-    # agg_ind is index of the regex group that we want to aggregate over.
-    # All other indeces are unique identifiers for each subgroup
-    # e.g. ['A'] and ['B'] (that are also added to meta names)
-    # Recall that regex group 0 is the whole match.
-    # Note that re.Match.groups() does not include the whole match.
-    # This means that we need to subtract 1 from agg_ind.
+    # agg_ind indexes the regex group to aggregate over; -1 since groups() omits the whole match
     agg_ind = create.agg_index
     agg_ind = agg_ind - 1 if agg_ind > 0 else agg_ind
     first_match = regex_from.match(from_cols[0])
@@ -114,9 +109,7 @@ def _create_topk_metas_and_dfs_regex(
         subgroups = [from_cols]
     topk_dfs, subgroup_metas = [], []
 
-    # select group at agg_ind in col name to allow translate if spec-d in scale
-    # e.g. {A_11: selected} |-> {11: selected}, later by using mask |-> {11: 11}
-    # this fun is def-d in current fun, so agg_ind acts as global var
+    # Select group agg_ind from the col name so scale.translate applies: {A_11: sel} -> {11: sel}
     def _get_regex_group_at_agg_ind(s: str) -> str:
         """Get regex group at aggregation index."""
         match = regex_from.match(s)
@@ -136,8 +129,7 @@ def _create_topk_metas_and_dfs_regex(
             return match.expand(regex_to)  # type: ignore[call-overload]
 
         newcols = [
-            # from_cols names map to res_cols names
-            # note regex groups stay the same: e.g A_11 |-> A_R11
+            # from_cols names map to res_cols names; regex groups stay the same, e.g. A_11 -> A_R11
             _expand_col(col)
             for col in sdf.columns
         ]
@@ -368,9 +360,7 @@ def _create_maxdiff_metas_and_dfs(
                     converted_values.append(None)
             df[col] = converted_values  # type: ignore[assignment]
 
-    # Apply translate to best/worst scalar topic values, then cast to categorical with full translated topic list.
-    # This ensures the column dtype carries only the translated categories, preventing pollution from partial
-    # observed values being appended to Lithuanian originals by _fix_meta_categories later.
+    # Translate best/worst values then cast with the full topic list, so partial values cannot pollute the dtype
     for col in best_cols + worst_cols:
         s = df[col]
         if translate:
@@ -383,8 +373,7 @@ def _create_maxdiff_metas_and_dfs(
     df = df.sort_index(axis=1)  # sort columns
 
     base_columns = sorted(best_cols + worst_cols + cast(list[str], set_cols))
-    # Carry the full translated topic list as categories in the column meta so _fix_meta_categories
-    # does not need to infer them from the (potentially partial) dtype.
+    # Carry the full translated topic list in the column meta so _fix_meta_categories need not infer it
     best_worst_col_meta = ColumnMeta(categories=effective_topics) if effective_topics is not None else ColumnMeta()
     columns_spec: dict[str, ColumnMeta] = {col: best_worst_col_meta for col in base_columns}
     if setindex_col_name is not None:
@@ -468,7 +457,6 @@ def _create_topk_metas_and_dfs_list(
 
 
 CreateBlockModel = TopKBlock | MaxDiffBlock
-
 
 create_block_type_to_create_fn: dict[str, Callable] = {
     "topk": _create_topk_metas_and_dfs,  # type: ignore[assignment]
