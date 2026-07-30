@@ -74,6 +74,26 @@ Affine pre-steps (a temperature divisor, an additive log-prior) fold into the de
 
 Building a `(draw, district, party)` tensor by hand to feed `simulate_election` is re-implementing the pp path.
 
+### "my model is bespoke — pp has no transform for it"
+
+Then register one. `custom_row_transforms` is a public, mutable registry:
+
+```python
+from salk_toolkit.pp import custom_row_transforms
+
+def _therm_destination(p: np.ndarray) -> np.ndarray:
+    """(n_rows, n_cols) -> (n_rows, n_cols); rows are respondents, cols the battery."""
+    ...
+
+custom_row_transforms["therm-destination"] = (_therm_destination, ".1%")
+```
+
+The callable takes the battery as a `(n_rows, n_cols)` numpy array *while the data is still wide* and returns the same shape; the second tuple element is the display format. `cont_transform` is validated against the live registries, so a name registered at import time in a dashboard is accepted — you do not need to patch stk. (`ordered_expr_transforms` is the sibling registry for transforms expressible as polars expressions.)
+
+**Prefer a polars expression to a numpy callback.** `custom_row_transforms` entries run through `map_batches`, which forces `projection_pushdown=False`, needs a probe row to declare its output schema, and **deadlocks under `POLARS_FORCE_NEW_STREAMING=1`**. The `ordered-*` family was migrated off numpy for exactly these reasons. If your transform is expressible with `max_horizontal` / `min_horizontal` / `sum_horizontal` / `concat_list(...).list.eval(...)`, put it in `ordered_expr_transforms` instead and it stays in the query plan.
+
+**Keep aggregation out of the transform.** A row transform maps respondents → respondents. Anything that sums *across* respondents (turnout-weighted expected votes, for example) belongs in `agg_fn` + the annotation's `weight_col`, not inside the callback. Affine pre-steps — a temperature divisor, an additive log-prior — fold into the transform or the descriptor; genuinely conditional model logic (fallback branches, masking on per-respondent state) is the one thing that legitimately stays in code around the pipeline.
+
 ### Restricting the candidate set: filter the block
 
 Several transforms are *relative to the columns present* — `ordered-top1` argmaxes over whatever the block contains, top-k cutoffs are computed across the battery. So the block filter is **load-bearing, not cosmetic**: it decides both which columns compete and, through them, which respondents count.
