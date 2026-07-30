@@ -84,13 +84,8 @@ def pp_transform_data(
     # Raw-format row cap, honouring the plot's own full_data opt-out (as `sample` honours sample_size)
     max_rows = None if (pp_desc.plot_args or {}).get("full_data") else plot_meta.max_rows
 
-    # The row index blocks predicate pushdown (numbering is pre-filter), so add it only when actually consumed
-    need_id = plot_meta.data_format == "raw" or ("draw" in cols and bool(draws_data)) or bool(sample_n)
-    if need_id:
-        full_df = full_df.with_row_index("id")
-        cols += ["id"]
-
-    # Count and population total both read off the pre-filter frame; the weight-sum scan counts for free
+    # Count and population total both read off the pre-filter frame; the weight-sum scan counts for
+    # free. Captured before the row index below, which would cost a full scan instead of metadata
     counting_df, counted_n = full_df, None
     total_weight = data_meta.total_size
     if total_weight is None:
@@ -103,6 +98,12 @@ def pp_transform_data(
         if counted_n is None:
             counted_n = int(counting_df.select(pl.len()).collect().item())
         return counted_n
+
+    # The row index blocks predicate pushdown (numbering is pre-filter), so add it only when actually consumed
+    need_id = plot_meta.data_format == "raw" or ("draw" in cols and bool(draws_data)) or bool(sample_n)
+    if need_id:
+        full_df = full_df.with_row_index("id")
+        cols += ["id"]
 
     # Custom dashboard filtering - must run before downselecting to the needed columns
     if pp_desc.pl_filter:
@@ -468,9 +469,11 @@ def _wrangle_data(
         engine="streaming",
     )
     # Raw plots reduce to a fixed number of points anyway, so drop the excess here rather than
-    # convert, re-categorize and sort rows the plot is only going to throw away
+    # convert, re-categorize and sort rows the plot is only going to throw away. Only safe on
+    # unmelted rows: a melted group was already cut by whole respondents, which plots that
+    # re-pivot on id (corr_matrix) depend on
     row_cap = None if (pp_desc.plot_args or {}).get("full_data") else plot_meta.max_rows
-    if row_cap and len(data) > row_cap:
+    if row_cap and n_questions == 1 and len(data) > row_cap:
         data = data.sample(row_cap, seed=42)
     data = data.to_pandas()
     # In wide form each row covers all questions at once, so no division is needed
