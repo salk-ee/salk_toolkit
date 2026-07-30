@@ -74,6 +74,19 @@ Affine pre-steps (a temperature divisor, an additive log-prior) fold into the de
 
 Building a `(draw, district, party)` tensor by hand to feed `simulate_election` is re-implementing the pp path.
 
+### "my `cont_transform` silently does nothing"
+
+`_transform_cont` only runs when the response is **continuous** (`if c_meta[res_col].continuous`). Point a `cont_transform` at a categorical block — thermometers stored as `-5…5` categories, a Likert battery — and it is skipped without an error, and you get category shares back instead. The result looks plausible (a value column, a `question` column, shares summing to 1), which is exactly what makes it dangerous.
+
+```python
+# WRONG: transform ignored, returns the distribution of thermometer *values*
+{"plot": "columns", "res_col": "thermometer", "cont_transform": "softmax"}
+# RIGHT: convert first, then the transform applies
+{"plot": "columns", "res_col": "thermometer", "convert_res": "continuous", "cont_transform": "softmax"}
+```
+
+Needs `num_values` in the annotation for the conversion to be meaningful. If a transform appears to be a no-op, check `convert_res` before suspecting the transform.
+
 ### "my model is bespoke — pp has no transform for it"
 
 Then register one. `custom_row_transforms` is a public, mutable registry:
@@ -92,7 +105,9 @@ The callable takes the battery as a `(n_rows, n_cols)` numpy array *while the da
 
 **Prefer a polars expression to a numpy callback.** `custom_row_transforms` entries run through `map_batches`, which forces `projection_pushdown=False`, needs a probe row to declare its output schema, and **deadlocks under `POLARS_FORCE_NEW_STREAMING=1`**. The `ordered-*` family was migrated off numpy for exactly these reasons. If your transform is expressible with `max_horizontal` / `min_horizontal` / `sum_horizontal` / `concat_list(...).list.eval(...)`, put it in `ordered_expr_transforms` instead and it stays in the query plan.
 
-**Keep aggregation out of the transform.** A row transform maps respondents → respondents. Anything that sums *across* respondents (turnout-weighted expected votes, for example) belongs in `agg_fn` + the annotation's `weight_col`, not inside the callback. Affine pre-steps — a temperature divisor, an additive log-prior — fold into the transform or the descriptor; genuinely conditional model logic (fallback branches, masking on per-respondent state) is the one thing that legitimately stays in code around the pipeline.
+**Two things a custom transform cannot reach — check these before planning a conversion.** The callback receives *only* the `res_col` battery as an `(n_rows, n_cols)` array, so it cannot see any other column (a per-respondent turnout probability, a filter flag). And `weight_col` lives on `DataMeta`, not `PlotDescriptor`, so a descriptor cannot ask for a different weighting than the dataset declares — and pp returns the aggregate, so per-respondent values cannot be recovered downstream to weight them yourself. A model needing a *second* per-respondent weighting is the genuine exception that stays in code.
+
+**Keep aggregation out of the transform.** A row transform maps respondents → respondents. Anything that sums *across* respondents belongs in `agg_fn` + the annotation's `weight_col`, not inside the callback. Affine pre-steps — a temperature divisor, an additive log-prior — fold into the transform or the descriptor; genuinely conditional model logic (fallback branches, masking on per-respondent state) is the one thing that legitimately stays in code around the pipeline.
 
 ### Restricting the candidate set: filter the block
 
