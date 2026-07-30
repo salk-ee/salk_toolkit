@@ -10,6 +10,7 @@ import json
 import tempfile
 import pyarrow as pa
 import pyarrow.parquet as pq
+from typing import cast
 from pathlib import Path
 from pandas.testing import assert_frame_equal
 from pydantic import ValidationError
@@ -57,14 +58,11 @@ def write_json(file_path, data):
         json.dump(data, f)
 
 
-# Extend DataFrame with convenient CSV writing
-def df_to_csv(self, file_path):
+# Convenient CSV writing helper (no index)
+def df_to_csv(df, file_path):
     """Write DataFrame to CSV file (no index)"""
-    self.to_csv(file_path, index=False)
+    df.to_csv(file_path, index=False)
     return file_path
-
-
-pd.DataFrame.to_csv_file = df_to_csv
 
 
 def make_data_meta(meta_dict: dict[str, object]) -> DataMeta:
@@ -104,7 +102,7 @@ class TestReadAnnotatedData:
 
     def test_transform_can_return_categorical(self, csv_file, meta_file, sample_csv_data):
         """Transform expressions may return pandas.Categorical (e.g. stk.cut_nice); ensure we handle it."""
-        sample_csv_data.to_csv_file(csv_file)
+        df_to_csv(sample_csv_data, csv_file)
 
         meta = {
             "file": "test.csv",
@@ -133,7 +131,7 @@ class TestReadAnnotatedData:
 
     def test_json_file_loading_basic(self, csv_file, meta_file, sample_csv_data):
         """Test basic JSON metafile loading"""
-        sample_csv_data.to_csv_file(csv_file)
+        df_to_csv(sample_csv_data, csv_file)
 
         meta = {
             "file": "test.csv",
@@ -166,7 +164,7 @@ class TestReadAnnotatedData:
 
     def test_return_raw_parameter(self, csv_file, meta_file, sample_csv_data):
         """Test return_raw parameter"""
-        sample_csv_data.to_csv_file(csv_file)
+        df_to_csv(sample_csv_data, csv_file)
 
         meta = {
             "file": "test.csv",
@@ -201,7 +199,7 @@ class TestReadAnnotatedData:
     def test_drop_missing_declared_columns(self, temp_dir):
         """Declared-but-missing columns are always dropped from both df and returned meta."""
         csv = temp_dir / "src.csv"
-        pd.DataFrame({"id": [1, 2]}).to_csv_file(csv)
+        df_to_csv(pd.DataFrame({"id": [1, 2]}), csv)
 
         meta_file = temp_dir / "m_drop_missing.json"
         write_json(
@@ -239,7 +237,7 @@ class TestReadAnnotatedData:
 
     def test_meta_inference(self, csv_file, sample_csv_data):
         """Test automatic meta inference when no meta exists"""
-        sample_csv_data.to_csv_file(csv_file)
+        df_to_csv(sample_csv_data, csv_file)
 
         df, meta = read_annotated_data(str(csv_file), return_meta=True, infer=True)
 
@@ -251,7 +249,7 @@ class TestReadAnnotatedData:
 
     def test_read_annotated_data_with_extra_fields(self, csv_file, meta_file, sample_csv_data, capsys):
         """Test that read_annotated_data warns on extra fields at all nesting levels but still succeeds."""
-        sample_csv_data.to_csv_file(csv_file)
+        df_to_csv(sample_csv_data, csv_file)
 
         meta = {
             "file": "test.csv",
@@ -328,7 +326,7 @@ class TestReadAnnotatedData:
                 "id": ["a", "b", "c"],
             }
         )
-        df.to_csv_file(csv_file)
+        df_to_csv(df, csv_file)
         data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
 
         newcols = data_df.columns.difference(df.columns).difference(["file_code", "file_name"])
@@ -391,7 +389,7 @@ class TestReadAnnotatedData:
             ],
         }
         write_json(meta_file, meta)
-        pd.DataFrame({"a1": ["yes", "no"], "a2": ["no", "yes"], "id": [1, 2]}).to_csv_file(csv_file)
+        df_to_csv(pd.DataFrame({"a1": ["yes", "no"], "a2": ["no", "yes"], "id": [1, 2]}), csv_file)
         with pytest.raises(ValueError, match="No na_vals found"):
             read_and_process_data(str(meta_file), return_meta=True)
 
@@ -680,7 +678,7 @@ class TestReadAnnotatedData:
 
         for mode in ["topic_string", "topic_json", "index_string", "index_json"]:
             df = build_dataframe(mode)
-            df.to_csv_file(csv_file)
+            df_to_csv(df, csv_file)
 
             data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
             expected_df = df.copy()
@@ -712,7 +710,7 @@ class TestColumnTransformations:
 
     def test_translate_transformation(self, csv_file, meta_file):
         """Test translate transformation"""
-        pd.DataFrame({"status": ["A", "B", "C", "A", "B"], "id": [1, 2, 3, 4, 5]}).to_csv_file(csv_file)
+        df_to_csv(pd.DataFrame({"status": ["A", "B", "C", "A", "B"], "id": [1, 2, 3, 4, 5]}), csv_file)
 
         meta = {
             "file": "test.csv",
@@ -749,7 +747,7 @@ class TestColumnTransformations:
 
     def test_transform_code_execution(self, csv_file, meta_file):
         """Test transform code execution"""
-        pd.DataFrame({"value": [10, 20, 30, 40, 50], "id": [1, 2, 3, 4, 5]}).to_csv_file(csv_file)
+        df_to_csv(pd.DataFrame({"value": [10, 20, 30, 40, 50], "id": [1, 2, 3, 4, 5]}), csv_file)
 
         meta = {
             "file": "test.csv",
@@ -774,7 +772,7 @@ class TestColumnTransformations:
 
     def test_translate_after_transformation(self, csv_file, meta_file):
         """Test translate_after transformation"""
-        pd.DataFrame({"value": [1, 2, 3, 4, 5], "id": [1, 2, 3, 4, 5]}).to_csv_file(csv_file)
+        df_to_csv(pd.DataFrame({"value": [1, 2, 3, 4, 5], "id": [1, 2, 3, 4, 5]}), csv_file)
 
         meta = {
             "file": "test.csv",
@@ -818,7 +816,7 @@ class TestColumnTransformations:
 
     def test_datetime_transformation(self, csv_file, meta_file):
         """Test datetime transformation"""
-        pd.DataFrame({"date_str": ["2023-01-01", "2023-01-02", "2023-01-03"], "id": [1, 2, 3]}).to_csv_file(csv_file)
+        df_to_csv(pd.DataFrame({"date_str": ["2023-01-01", "2023-01-02", "2023-01-03"], "id": [1, 2, 3]}), csv_file)
 
         meta = {
             "file": "test.csv",
@@ -836,7 +834,7 @@ class TestColumnTransformations:
 
     def test_continuous_transformation(self, csv_file, meta_file):
         """Test continuous transformation"""
-        pd.DataFrame({"value_str": ["10.5", "20.3", "30.7"], "id": [1, 2, 3]}).to_csv_file(csv_file)
+        df_to_csv(pd.DataFrame({"value_str": ["10.5", "20.3", "30.7"], "id": [1, 2, 3]}), csv_file)
 
         meta = {
             "file": "test.csv",
@@ -860,12 +858,15 @@ class TestCategoricalFeatures:
 
     def test_category_inference(self, csv_file, meta_file):
         """Test category inference"""
-        pd.DataFrame(
-            {
-                "status": ["Active", "Inactive", "Pending", "Active", "Inactive"],
-                "id": [1, 2, 3, 4, 5],
-            }
-        ).to_csv_file(csv_file)
+        df_to_csv(
+            pd.DataFrame(
+                {
+                    "status": ["Active", "Inactive", "Pending", "Active", "Inactive"],
+                    "id": [1, 2, 3, 4, 5],
+                }
+            ),
+            csv_file,
+        )
 
         meta = {
             "file": "test.csv",
@@ -878,6 +879,7 @@ class TestCategoricalFeatures:
         assert df["status"].dtype.name == "category"
         # Check that categories were inferred and stored in meta
         status_meta = None
+        assert result_meta is not None
         serialized_meta = result_meta.model_dump(mode="json")
         for group in serialized_meta["structure"]:
             for col in group["columns"]:
@@ -894,12 +896,15 @@ class TestCategoricalFeatures:
 
     def test_ordered_categories(self, csv_file, meta_file):
         """Test ordered categories"""
-        pd.DataFrame(
-            {
-                "rating": ["Poor", "Good", "Excellent", "Good", "Poor"],
-                "id": [1, 2, 3, 4, 5],
-            }
-        ).to_csv_file(csv_file)
+        df_to_csv(
+            pd.DataFrame(
+                {
+                    "rating": ["Poor", "Good", "Excellent", "Good", "Poor"],
+                    "id": [1, 2, 3, 4, 5],
+                }
+            ),
+            csv_file,
+        )
 
         meta = {
             "file": "test.csv",
@@ -929,12 +934,15 @@ class TestCategoricalFeatures:
 
     def test_explicit_categories_ordered_false(self, csv_file, meta_file):
         """Test that explicitly specified categories preserve order even when ordered=False"""
-        pd.DataFrame(
-            {
-                "status": ["Zebra", "Alpha", "Beta", "Zebra", "Alpha"],
-                "id": [1, 2, 3, 4, 5],
-            }
-        ).to_csv_file(csv_file)
+        df_to_csv(
+            pd.DataFrame(
+                {
+                    "status": ["Zebra", "Alpha", "Beta", "Zebra", "Alpha"],
+                    "id": [1, 2, 3, 4, 5],
+                }
+            ),
+            csv_file,
+        )
 
         meta = {
             "file": "test.csv",
@@ -967,7 +975,7 @@ class TestCategoricalFeatures:
 
     def test_numeric_categories_mapping(self, csv_file, meta_file):
         """Test numeric categories mapping to nearest values"""
-        pd.DataFrame({"score": [1.1, 2.9, 4.8, 1.2, 3.1], "id": [1, 2, 3, 4, 5]}).to_csv_file(csv_file)
+        df_to_csv(pd.DataFrame({"score": [1.1, 2.9, 4.8, 1.2, 3.1], "id": [1, 2, 3, 4, 5]}), csv_file)
 
         meta = {
             "file": "test.csv",
@@ -1006,7 +1014,7 @@ class TestCategoricalFeatures:
                 "id": [1, 2, 3, 4, 5],
             }
         )
-        df_data.to_csv_file(csv_file)
+        df_to_csv(df_data, csv_file)
 
         meta = {
             "file": "test.csv",
@@ -1025,6 +1033,7 @@ class TestCategoricalFeatures:
 
         # Check that categories were stored in metadata
         status_meta = None
+        assert result_meta is not None
         serialized_meta = result_meta.model_dump(mode="json")
         for group in serialized_meta["structure"]:
             for col in group["columns"]:
@@ -1038,12 +1047,15 @@ class TestCategoricalFeatures:
 
     def test_category_inference_from_translation_dict(self, csv_file, meta_file):
         """Test category inference from translation dict when no transform"""
-        pd.DataFrame(
-            {
-                "code": ["a", "b", "c", "a", "b"],
-                "id": [1, 2, 3, 4, 5],
-            }
-        ).to_csv_file(csv_file)
+        df_to_csv(
+            pd.DataFrame(
+                {
+                    "code": ["a", "b", "c", "a", "b"],
+                    "id": [1, 2, 3, 4, 5],
+                }
+            ),
+            csv_file,
+        )
 
         meta = {
             "file": "test.csv",
@@ -1075,12 +1087,15 @@ class TestCategoricalFeatures:
 
     def test_category_inference_ordered_warning(self, csv_file, meta_file):
         """Test that ordered category with infer shows warning"""
-        pd.DataFrame(
-            {
-                "rating": ["Low", "Medium", "High", "Low", "Medium"],
-                "id": [1, 2, 3, 4, 5],
-            }
-        ).to_csv_file(csv_file)
+        df_to_csv(
+            pd.DataFrame(
+                {
+                    "rating": ["Low", "Medium", "High", "Low", "Medium"],
+                    "id": [1, 2, 3, 4, 5],
+                }
+            ),
+            csv_file,
+        )
 
         meta = {
             "file": "test.csv",
@@ -1114,12 +1129,15 @@ class TestCategoricalFeatures:
     def test_category_inference_numeric_with_convert_number_series(self, csv_file, meta_file):
         """Test category inference for numeric series using _convert_number_series_to_categorical"""
         # Use numeric values that will be converted
-        pd.DataFrame(
-            {
-                "value": [1.5, 2.333, 3.666, 4.0, 5.25],
-                "id": [1, 2, 3, 4, 5],
-            }
-        ).to_csv_file(csv_file)
+        df_to_csv(
+            pd.DataFrame(
+                {
+                    "value": [1.5, 2.333, 3.666, 4.0, 5.25],
+                    "id": [1, 2, 3, 4, 5],
+                }
+            ),
+            csv_file,
+        )
 
         meta = {
             "file": "test.csv",
@@ -1140,6 +1158,7 @@ class TestCategoricalFeatures:
 
         # Check that categories were stored in metadata
         value_meta = None
+        assert result_meta is not None
         serialized_meta = result_meta.model_dump(mode="json")
         for group in serialized_meta["structure"]:
             for col in group["columns"]:
@@ -1154,12 +1173,15 @@ class TestCategoricalFeatures:
 
     def test_category_inference_numeric_strings_preserve_strings(self, csv_file, meta_file):
         """Numeric-like strings should sort numerically but keep original string values (no rounding)."""
-        pd.DataFrame(
-            {
-                "value": ["1.5", "2.333", "10", "4.0", "5.25"],
-                "id": [1, 2, 3, 4, 5],
-            }
-        ).to_csv_file(csv_file)
+        df_to_csv(
+            pd.DataFrame(
+                {
+                    "value": ["1.5", "2.333", "10", "4.0", "5.25"],
+                    "id": [1, 2, 3, 4, 5],
+                }
+            ),
+            csv_file,
+        )
 
         meta = {
             "file": "test.csv",
@@ -1180,12 +1202,15 @@ class TestCategoricalFeatures:
         # This mirrors a common real-world case:
         # - translation maps some string labels to ints
         # - other values remain as numeric strings (e.g. numeric codes that were already present)
-        pd.DataFrame(
-            {
-                "mixed": ["A", "B", 2],
-                "id": [1, 2, 3],
-            }
-        ).to_csv_file(csv_file)
+        df_to_csv(
+            pd.DataFrame(
+                {
+                    "mixed": ["A", "B", 2],
+                    "id": [1, 2, 3],
+                }
+            ),
+            csv_file,
+        )
 
         meta = {
             "file": "test.csv",
@@ -1215,12 +1240,15 @@ class TestCategoricalFeatures:
 
     def test_category_inference_datetime_strings(self, csv_file, meta_file):
         """Datetime-like strings should sort chronologically but keep original string values."""
-        pd.DataFrame(
-            {
-                "dt": ["2024-12-31", "2024-01-02", "2024-01-01"],
-                "id": [1, 2, 3],
-            }
-        ).to_csv_file(csv_file)
+        df_to_csv(
+            pd.DataFrame(
+                {
+                    "dt": ["2024-12-31", "2024-01-02", "2024-01-01"],
+                    "id": [1, 2, 3],
+                }
+            ),
+            csv_file,
+        )
 
         meta = {
             "file": "test.csv",
@@ -1237,12 +1265,15 @@ class TestCategoricalFeatures:
 
     def test_category_inference_datetime_dtype_formats_human(self, csv_file, meta_file):
         """True datetime dtype should be converted to '01 Dec 25' and sorted chronologically."""
-        pd.DataFrame(
-            {
-                "dt_raw": ["2025-12-01", "2025-12-02", "2025-01-01"],
-                "id": [1, 2, 3],
-            }
-        ).to_csv_file(csv_file)
+        df_to_csv(
+            pd.DataFrame(
+                {
+                    "dt_raw": ["2025-12-01", "2025-12-02", "2025-01-01"],
+                    "id": [1, 2, 3],
+                }
+            ),
+            csv_file,
+        )
 
         meta = {
             "file": "test.csv",
@@ -1266,12 +1297,15 @@ class TestCategoricalFeatures:
 
     def test_numeric_to_categorical_nearest_mapping(self, csv_file, meta_file):
         """Test numeric series mapping to nearest categorical values"""
-        pd.DataFrame(
-            {
-                "score": [1.1, 2.9, 4.8, 1.2, 3.1],
-                "id": [1, 2, 3, 4, 5],
-            }
-        ).to_csv_file(csv_file)
+        df_to_csv(
+            pd.DataFrame(
+                {
+                    "score": [1.1, 2.9, 4.8, 1.2, 3.1],
+                    "id": [1, 2, 3, 4, 5],
+                }
+            ),
+            csv_file,
+        )
 
         meta = {
             "file": "test.csv",
@@ -1302,12 +1336,15 @@ class TestCategoricalFeatures:
 
     def test_numeric_to_categorical_non_numeric_categories_error(self, csv_file, meta_file):
         """Test error when numeric series has non-numeric categories"""
-        pd.DataFrame(
-            {
-                "score": [1.1, 2.9, 4.8],
-                "id": [1, 2, 3],
-            }
-        ).to_csv_file(csv_file)
+        df_to_csv(
+            pd.DataFrame(
+                {
+                    "score": [1.1, 2.9, 4.8],
+                    "id": [1, 2, 3],
+                }
+            ),
+            csv_file,
+        )
 
         meta = {
             "file": "test.csv",
@@ -1332,7 +1369,7 @@ class TestAdvancedFeatures:
 
     def test_constants_replacement(self, csv_file, meta_file):
         """Test constants replacement"""
-        pd.DataFrame({"code": ["A", "B", "C"], "id": [1, 2, 3]}).to_csv_file(csv_file)
+        df_to_csv(pd.DataFrame({"code": ["A", "B", "C"], "id": [1, 2, 3]}), csv_file)
 
         meta = {
             "file": "test.csv",
@@ -1365,7 +1402,7 @@ class TestAdvancedFeatures:
 
     def test_constants_replacement_multiple_fields(self, csv_file, meta_file):
         """Test constants replacement for translate, colors, and labels fields"""
-        pd.DataFrame({"status": ["X", "Y", "Z"], "id": [1, 2, 3]}).to_csv_file(csv_file)
+        df_to_csv(pd.DataFrame({"status": ["X", "Y", "Z"], "id": [1, 2, 3]}), csv_file)
 
         meta = {
             "file": "test.csv",
@@ -1417,17 +1454,20 @@ class TestAdvancedFeatures:
     def test_translate_constant_reference_infer_categories(self, csv_file, meta_file):
         """Test that translate constant reference works with infer categories"""
         # Create test data matching the pattern from rk_valijad_meta.json
-        pd.DataFrame(
-            {
-                "Piirkonna_NIMI": [
-                    "Haabersti linnaosa",
-                    "Kesklinna linnaosa",
-                    "Kristiine linnaosa",
-                    "Lasnamäe linnaosa",
-                ],
-                "id": [1, 2, 3, 4],
-            }
-        ).to_csv_file(csv_file)
+        df_to_csv(
+            pd.DataFrame(
+                {
+                    "Piirkonna_NIMI": [
+                        "Haabersti linnaosa",
+                        "Kesklinna linnaosa",
+                        "Kristiine linnaosa",
+                        "Lasnamäe linnaosa",
+                    ],
+                    "id": [1, 2, 3, 4],
+                }
+            ),
+            csv_file,
+        )
 
         meta = {
             "file": "test.csv",
@@ -1476,7 +1516,7 @@ class TestAdvancedFeatures:
 
     def test_list_preprocessing(self, csv_file, meta_file):
         """Test preprocessing as list of strings"""
-        pd.DataFrame({"value": [1, 2, 3], "text": ["a", "b", "c"]}).to_csv_file(csv_file)
+        df_to_csv(pd.DataFrame({"value": [1, 2, 3], "text": ["a", "b", "c"]}), csv_file)
 
         meta = {
             "file": "test.csv",
@@ -1496,7 +1536,7 @@ class TestAdvancedFeatures:
 
     def test_scale_num_values(self, csv_file, meta_file):
         """Test num_values metadata preservation at scale level"""
-        pd.DataFrame({"rating": ["Poor", "Good", "Excellent"]}).to_csv_file(csv_file)
+        df_to_csv(pd.DataFrame({"rating": ["Poor", "Good", "Excellent"]}), csv_file)
 
         meta = {
             "file": "test.csv",
@@ -1520,13 +1560,14 @@ class TestAdvancedFeatures:
         assert df["rating_num"].dtype.name == "category"
         assert df["rating_num"].dtype.ordered is True
         # But num_values should be preserved in metadata for later use
+        assert result_meta is not None
         serialized_meta = result_meta.model_dump(mode="json")
         test_group = next(group for group in serialized_meta["structure"] if group["name"] == "test")
         assert test_group["scale"]["num_values"] == [-1, 0, 1]
 
     def test_colors_parameter(self, csv_file, meta_file):
         """Test colors parameter referencing constants"""
-        pd.DataFrame({"party": ["A", "B", "C"]}).to_csv_file(csv_file)
+        df_to_csv(pd.DataFrame({"party": ["A", "B", "C"]}), csv_file)
 
         meta = {
             "file": "test.csv",
@@ -1560,7 +1601,7 @@ class TestAdvancedFeatures:
 
     def test_groups_definition(self, csv_file, meta_file):
         """Test groups parameter"""
-        pd.DataFrame({"category": ["A", "B", "C", "Other"]}).to_csv_file(csv_file)
+        df_to_csv(pd.DataFrame({"category": ["A", "B", "C", "Other"]}), csv_file)
 
         meta = {
             "file": "test.csv",
@@ -1594,7 +1635,7 @@ class TestAdvancedFeatures:
 
     def test_hidden_columns(self, csv_file, meta_file):
         """Test hidden column metadata"""
-        pd.DataFrame({"visible": [1, 2, 3], "hidden": [4, 5, 6]}).to_csv_file(csv_file)
+        df_to_csv(pd.DataFrame({"visible": [1, 2, 3], "hidden": [4, 5, 6]}), csv_file)
 
         meta = {
             "file": "test.csv",
@@ -1609,13 +1650,14 @@ class TestAdvancedFeatures:
         # Data should still be loaded
         assert "hidden" in df.columns
         # But metadata should preserve hidden flag
+        assert result_meta is not None
         serialized_meta = result_meta.model_dump(mode="json")
         hidden_group = next(group for group in serialized_meta["structure"] if group["name"] == "hidden_group")
         assert hidden_group.get("hidden") is True
 
     def test_label_metadata(self, csv_file, meta_file):
         """Test label metadata preservation"""
-        pd.DataFrame({"question": ["Yes", "No", "Maybe"]}).to_csv_file(csv_file)
+        df_to_csv(pd.DataFrame({"question": ["Yes", "No", "Maybe"]}), csv_file)
 
         meta = {
             "file": "test.csv",
@@ -1640,6 +1682,7 @@ class TestAdvancedFeatures:
         # Categories should preserve the explicit order from meta: ["Yes", "No", "Maybe"]
         assert list(df["question"].dtype.categories) == ["Yes", "No", "Maybe"]
         # Verify label is preserved
+        assert result_meta is not None
         question_col = next(
             col
             for group in result_meta.model_dump(mode="json")["structure"]
@@ -1650,17 +1693,20 @@ class TestAdvancedFeatures:
 
     def test_complex_likert_scales(self, csv_file, meta_file):
         """Test complex likert scale with all features"""
-        pd.DataFrame(
-            {
-                "response": [
-                    "Strongly disagree",
-                    "Disagree",
-                    "Neutral",
-                    "Agree",
-                    "Strongly agree",
-                ]
-            }
-        ).to_csv_file(csv_file)
+        df_to_csv(
+            pd.DataFrame(
+                {
+                    "response": [
+                        "Strongly disagree",
+                        "Disagree",
+                        "Neutral",
+                        "Agree",
+                        "Strongly agree",
+                    ]
+                }
+            ),
+            csv_file,
+        )
 
         meta = {
             "file": "test.csv",
@@ -1701,6 +1747,7 @@ class TestAdvancedFeatures:
             "Strongly agree",
         ]
         # Verify all metadata is preserved
+        assert result_meta is not None
         resp_col = next(
             col
             for group in result_meta.model_dump(mode="json")["structure"]
@@ -1714,7 +1761,7 @@ class TestAdvancedFeatures:
 
     def test_preprocessing_execution(self, csv_file, meta_file):
         """Test preprocessing execution"""
-        pd.DataFrame({"value": [1, 2, 3, 4, 5], "multiplier": [2, 2, 2, 2, 2]}).to_csv_file(csv_file)
+        df_to_csv(pd.DataFrame({"value": [1, 2, 3, 4, 5], "multiplier": [2, 2, 2, 2, 2]}), csv_file)
 
         meta = {
             "file": "test.csv",
@@ -1736,7 +1783,7 @@ class TestAdvancedFeatures:
 
     def test_postprocessing_execution(self, csv_file, meta_file):
         """Test postprocessing execution"""
-        pd.DataFrame({"value": [1, 2, 3, 4, 5]}).to_csv_file(csv_file)
+        df_to_csv(pd.DataFrame({"value": [1, 2, 3, 4, 5]}), csv_file)
 
         meta = {
             "file": "test.csv",
@@ -1752,7 +1799,7 @@ class TestAdvancedFeatures:
 
     def test_exclusions_handling(self, csv_file, meta_file):
         """Exclusions are keyed by the stable row_id, here derived from a declared id_col."""
-        pd.DataFrame({"value": [1, 2, 3, 4, 5], "id": [1, 2, 3, 4, 5]}).to_csv_file(csv_file)
+        df_to_csv(pd.DataFrame({"value": [1, 2, 3, 4, 5], "id": [1, 2, 3, 4, 5]}), csv_file)
 
         meta = {
             "file": "test.csv",
@@ -1777,8 +1824,7 @@ class TestAdvancedFeatures:
 
     def test_exclusions_unmatched_id_warns(self, csv_file, meta_file):
         """An exclusion id that matches no row warns (typo guard) but does not fail the load."""
-        pd.DataFrame({"value": [1, 2, 3]}).to_csv_file(csv_file)
-
+        df_to_csv(pd.DataFrame({"value": [1, 2, 3]}), csv_file)
         meta = {
             "file": "test.csv",
             "structure": [{"name": "test", "columns": ["value"]}],
@@ -1792,8 +1838,7 @@ class TestAdvancedFeatures:
 
     def test_exclusions_reject_positional_int(self, csv_file, meta_file):
         """Legacy positional-int exclusions are rejected with a migration message."""
-        pd.DataFrame({"value": [1, 2, 3, 4, 5]}).to_csv_file(csv_file)
-
+        df_to_csv(pd.DataFrame({"value": [1, 2, 3, 4, 5]}), csv_file)
         meta = {
             "file": "test.csv",
             "structure": [{"name": "test", "columns": ["value"]}],
@@ -1806,7 +1851,7 @@ class TestAdvancedFeatures:
 
     def test_ignore_exclusions_parameter(self, csv_file, meta_file):
         """Test ignore_exclusions parameter"""
-        pd.DataFrame({"value": [1, 2, 3, 4, 5]}).to_csv_file(csv_file)
+        df_to_csv(pd.DataFrame({"value": [1, 2, 3, 4, 5]}), csv_file)
 
         meta = {
             "file": "test.csv",
@@ -1822,7 +1867,7 @@ class TestAdvancedFeatures:
 
     def test_row_id_index_positional(self, csv_file, meta_file):
         """Without id_col, the index is a deterministic within-file positional row_id."""
-        pd.DataFrame({"value": [10, 20, 30]}).to_csv_file(csv_file)
+        df_to_csv(pd.DataFrame({"value": [10, 20, 30]}), csv_file)
         write_json(meta_file, {"file": "test.csv", "structure": [{"name": "t", "columns": ["value"]}]})
 
         df = read_annotated_data(str(meta_file))
@@ -1832,7 +1877,7 @@ class TestAdvancedFeatures:
 
     def test_row_id_index_natural_key(self, csv_file, meta_file):
         """A declared id_col produces {file_code}::{id} row ids that survive row reordering."""
-        pd.DataFrame({"resp": [101, 102, 103], "value": [10, 20, 30]}).to_csv_file(csv_file)
+        df_to_csv(pd.DataFrame({"resp": [101, 102, 103], "value": [10, 20, 30]}), csv_file)
         write_json(
             meta_file,
             {"file": "test.csv", "id_col": "resp", "structure": [{"name": "t", "columns": ["resp", "value"]}]},
@@ -1843,7 +1888,7 @@ class TestAdvancedFeatures:
 
     def test_row_id_natural_key_must_be_unique(self, csv_file, meta_file):
         """A non-unique id_col is a hard error."""
-        pd.DataFrame({"resp": [1, 1, 2], "value": [10, 20, 30]}).to_csv_file(csv_file)
+        df_to_csv(pd.DataFrame({"resp": [1, 1, 2], "value": [10, 20, 30]}), csv_file)
         write_json(
             meta_file,
             {"file": "test.csv", "id_col": "resp", "structure": [{"name": "t", "columns": ["resp", "value"]}]},
@@ -1853,7 +1898,7 @@ class TestAdvancedFeatures:
 
     def test_raw_row_id_column_is_not_adopted_as_identity(self, csv_file, meta_file):
         """A raw file's own 'row_id' column is a reserved-name collision, overwritten not inherited."""
-        pd.DataFrame({"row_id": ["x", "y", "z"], "resp": [7, 8, 9], "value": [1, 2, 3]}).to_csv_file(csv_file)
+        df_to_csv(pd.DataFrame({"row_id": ["x", "y", "z"], "resp": [7, 8, 9], "value": [1, 2, 3]}), csv_file)
         write_json(
             meta_file,
             {"file": "test.csv", "id_col": "resp", "structure": [{"name": "t", "columns": ["resp", "value"]}]},
@@ -1904,7 +1949,7 @@ class TestAdvancedFeatures:
 
     def test_row_id_survives_parquet_roundtrip(self, csv_file, meta_file, temp_dir):
         """Writing a processed frame to parquet and reading it back preserves the row_id index."""
-        pd.DataFrame({"resp": [101, 102, 103], "value": [10, 20, 30]}).to_csv_file(csv_file)
+        df_to_csv(pd.DataFrame({"resp": [101, 102, 103], "value": [10, 20, 30]}), csv_file)
         write_json(
             meta_file,
             {"file": "test.csv", "id_col": "resp", "structure": [{"name": "t", "columns": ["resp", "value"]}]},
@@ -1919,7 +1964,7 @@ class TestAdvancedFeatures:
 
     def test_column_prefixing(self, csv_file, meta_file):
         """Test column prefixing"""
-        pd.DataFrame({"q1": ["A", "B", "C"], "q2": ["X", "Y", "Z"], "id": [1, 2, 3]}).to_csv_file(csv_file)
+        df_to_csv(pd.DataFrame({"q1": ["A", "B", "C"], "q2": ["X", "Y", "Z"], "id": [1, 2, 3]}), csv_file)
 
         meta = {
             "file": "test.csv",
@@ -1951,7 +1996,7 @@ class TestAdvancedFeatures:
 
     def test_subgroup_transform(self, csv_file, meta_file):
         """Test subgroup transform"""
-        pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6], "c": [7, 8, 9]}).to_csv_file(csv_file)
+        df_to_csv(pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6], "c": [7, 8, 9]}), csv_file)
 
         meta = {
             "file": "test.csv",
@@ -1981,9 +2026,9 @@ class TestMultipleFiles:
         csv_file1 = temp_dir / "test1.csv"
         csv_file2 = temp_dir / "test2.csv"
 
-        pd.DataFrame({"id": [1, 2], "value": ["A", "B"], "source": ["file1", "file1"]}).to_csv_file(csv_file1)
+        df_to_csv(pd.DataFrame({"id": [1, 2], "value": ["A", "B"], "source": ["file1", "file1"]}), csv_file1)
 
-        pd.DataFrame({"id": [3, 4], "value": ["C", "D"], "source": ["file2", "file2"]}).to_csv_file(csv_file2)
+        df_to_csv(pd.DataFrame({"id": [3, 4], "value": ["C", "D"], "source": ["file2", "file2"]}), csv_file2)
 
         meta = {
             "files": [{"file": "test1.csv"}, {"file": "test2.csv"}],
@@ -2002,8 +2047,8 @@ class TestMultipleFiles:
         csv_file1 = temp_dir / "test1.csv"
         csv_file2 = temp_dir / "test2.csv"
 
-        pd.DataFrame({"id": [1, 2], "value": ["A", "B"]}).to_csv_file(csv_file1)
-        pd.DataFrame({"id": [3, 4], "value": ["C", "D"]}).to_csv_file(csv_file2)
+        df_to_csv(pd.DataFrame({"id": [1, 2], "value": ["A", "B"]}), csv_file1)
+        df_to_csv(pd.DataFrame({"id": [3, 4], "value": ["C", "D"]}), csv_file2)
 
         meta = {
             "files": [
@@ -2028,7 +2073,7 @@ class TestReadAndProcessData:
 
     def test_string_shorthand(self, csv_file, sample_csv_data):
         """Test string shorthand for simple file loading"""
-        sample_csv_data.to_csv_file(csv_file)
+        df_to_csv(sample_csv_data, csv_file)
 
         df = read_and_process_data(str(csv_file))
 
@@ -2038,7 +2083,7 @@ class TestReadAndProcessData:
 
     def test_data_description_validation(self, csv_file, sample_csv_data):
         """Test DataDescription validation"""
-        sample_csv_data.to_csv_file(csv_file)
+        df_to_csv(sample_csv_data, csv_file)
 
         desc = {
             "file": str(csv_file),
@@ -2072,7 +2117,7 @@ class TestReadAndProcessData:
 
     def test_postprocessing_execution(self, csv_file, sample_csv_data):
         """Test postprocessing execution"""
-        sample_csv_data.to_csv_file(csv_file)
+        df_to_csv(sample_csv_data, csv_file)
 
         desc = {
             "file": str(csv_file),
@@ -2086,7 +2131,7 @@ class TestReadAndProcessData:
 
     def test_skip_postprocessing_parameter(self, csv_file, sample_csv_data):
         """Test skip_postprocessing parameter"""
-        sample_csv_data.to_csv_file(csv_file)
+        df_to_csv(sample_csv_data, csv_file)
 
         desc = {"file": str(csv_file), "postprocessing": "df['should_not_exist'] = 1"}
 
@@ -2096,7 +2141,7 @@ class TestReadAndProcessData:
 
     def test_constants_parameter(self, csv_file, sample_csv_data):
         """Test constants parameter"""
-        sample_csv_data.to_csv_file(csv_file)
+        df_to_csv(sample_csv_data, csv_file)
 
         desc = {
             "file": str(csv_file),
@@ -2114,8 +2159,8 @@ class TestReadAndProcessData:
         """Merges error when overlapping columns would be suffixed."""
         main_csv = temp_dir / "main.csv"
         merge_csv = temp_dir / "merge.csv"
-        pd.DataFrame({"municipality": ["A", "B"], "persona": ["x", "y"]}).to_csv_file(main_csv)
-        pd.DataFrame({"municipality": ["A", "B"], "persona": ["xx", "yy"]}).to_csv_file(merge_csv)
+        df_to_csv(pd.DataFrame({"municipality": ["A", "B"], "persona": ["x", "y"]}), main_csv)
+        df_to_csv(pd.DataFrame({"municipality": ["A", "B"], "persona": ["xx", "yy"]}), merge_csv)
 
         desc = {
             "file": str(main_csv),
@@ -2130,9 +2175,8 @@ class TestReadAndProcessData:
         main_csv = temp_dir / "main.csv"
         merge_csv = temp_dir / "merge.csv"
         # main row 'A' matches two merge rows -> fan-out; 'B' matches one.
-        pd.DataFrame({"municipality": ["A", "B"], "val": [1, 2]}).to_csv_file(main_csv)
-        pd.DataFrame({"municipality": ["A", "A", "B"], "extra": ["p", "q", "r"]}).to_csv_file(merge_csv)
-
+        df_to_csv(pd.DataFrame({"municipality": ["A", "B"], "val": [1, 2]}), main_csv)
+        df_to_csv(pd.DataFrame({"municipality": ["A", "A", "B"], "extra": ["p", "q", "r"]}), merge_csv)
         df = read_and_process_data({"file": str(main_csv), "merge": {"file": str(merge_csv), "on": "municipality"}})
 
         assert len(df) == 3
@@ -2148,22 +2192,28 @@ class TestReadAndProcessData:
         meta_file = temp_dir / "main_meta.json"
 
         # Main data with municipality
-        pd.DataFrame(
-            {
-                "id": [1, 2, 3, 4],
-                "municipality": ["A", "B", "C", "D"],
-                "value": [10, 20, 30, 40],
-            }
-        ).to_csv_file(main_csv)
+        df_to_csv(
+            pd.DataFrame(
+                {
+                    "id": [1, 2, 3, 4],
+                    "municipality": ["A", "B", "C", "D"],
+                    "value": [10, 20, 30, 40],
+                }
+            ),
+            main_csv,
+        )
 
         # Merge file with numeric winddev column (0/1 integers)
-        pd.DataFrame(
-            {
-                "municipality": ["A", "B", "C", "D"],
-                "winddev": [1, 0, 1, 0],
-                "other_num": [100, 200, 300, 400],
-            }
-        ).to_csv_file(merge_csv)
+        df_to_csv(
+            pd.DataFrame(
+                {
+                    "municipality": ["A", "B", "C", "D"],
+                    "winddev": [1, 0, 1, 0],
+                    "other_num": [100, 200, 300, 400],
+                }
+            ),
+            merge_csv,
+        )
 
         # Metadata file defines structure including merged columns
         write_json(
@@ -2208,19 +2258,25 @@ class TestReadAndProcessData:
         merge_csv = temp_dir / "merge.csv"
         meta_file = temp_dir / "main_meta.json"
 
-        pd.DataFrame(
-            {
-                "id": [1, 2],
-                "key": ["X", "Y"],
-            }
-        ).to_csv_file(main_csv)
+        df_to_csv(
+            pd.DataFrame(
+                {
+                    "id": [1, 2],
+                    "key": ["X", "Y"],
+                }
+            ),
+            main_csv,
+        )
 
-        pd.DataFrame(
-            {
-                "key": ["X", "Y"],
-                "status": [1, 2],
-            }
-        ).to_csv_file(merge_csv)
+        df_to_csv(
+            pd.DataFrame(
+                {
+                    "key": ["X", "Y"],
+                    "status": [1, 2],
+                }
+            ),
+            merge_csv,
+        )
 
         # Metadata file defines structure including merged columns
         write_json(
@@ -2259,8 +2315,8 @@ class TestReadAndProcessData:
         # Create tiny source CSVs (no `t` column); meta declares `t` but it will be empty at this stage.
         csv1 = temp_dir / "d1.csv"
         csv2 = temp_dir / "d2.csv"
-        pd.DataFrame({"id": [1, 2], "value": ["A", "B"]}).to_csv_file(csv1)
-        pd.DataFrame({"id": [3, 4], "value": ["C", "D"]}).to_csv_file(csv2)
+        df_to_csv(pd.DataFrame({"id": [1, 2], "value": ["A", "B"]}), csv1)
+        df_to_csv(pd.DataFrame({"id": [3, 4], "value": ["C", "D"]}), csv2)
 
         meta1 = temp_dir / "m1.json"
         meta2 = temp_dir / "m2.json"
@@ -2318,8 +2374,8 @@ class TestReadAndProcessData:
         csv1 = temp_dir / "f1.csv"
         csv2 = temp_dir / "f2.csv"
         # Each file has a disjoint set of region values — the union must be the final categories.
-        pd.DataFrame({"id": [1, 2], "region": ["North", "South"]}).to_csv_file(csv1)
-        pd.DataFrame({"id": [3, 4], "region": ["East", "West"]}).to_csv_file(csv2)
+        df_to_csv(pd.DataFrame({"id": [1, 2], "region": ["North", "South"]}), csv1)
+        df_to_csv(pd.DataFrame({"id": [3, 4], "region": ["East", "West"]}), csv2)
 
         meta1 = temp_dir / "m1.json"
         meta2 = temp_dir / "m2.json"
@@ -2355,7 +2411,7 @@ class TestFileTracking:
         """Test that loaded files are tracked"""
         reset_file_tracking()
 
-        sample_csv_data.to_csv_file(csv_file)
+        df_to_csv(sample_csv_data, csv_file)
 
         meta = {
             "file": "test.csv",
@@ -3108,7 +3164,7 @@ class TestErrorHandling:
 
     def test_invalid_transform_code(self, csv_file, meta_file):
         """Test error handling for invalid transform code"""
-        pd.DataFrame({"value": [1, 2, 3]}).to_csv_file(csv_file)
+        df_to_csv(pd.DataFrame({"value": [1, 2, 3]}), csv_file)
 
         meta = {
             "file": "test.csv",
@@ -3136,9 +3192,9 @@ class TestMultiSourceColumns:
         file3 = temp_dir / "file3.csv"
         meta_file = temp_dir / "meta.json"
 
-        pd.DataFrame({"id": [1, 2], "name_col": ["Alice", "Bob"]}).to_csv_file(file1)
-        pd.DataFrame({"id": [3, 4], "person_name": ["Charlie", "Diana"]}).to_csv_file(file2)
-        pd.DataFrame({"id": [5, 6], "fullname": ["Eve", "Frank"]}).to_csv_file(file3)
+        df_to_csv(pd.DataFrame({"id": [1, 2], "name_col": ["Alice", "Bob"]}), file1)
+        df_to_csv(pd.DataFrame({"id": [3, 4], "person_name": ["Charlie", "Diana"]}), file2)
+        df_to_csv(pd.DataFrame({"id": [5, 6], "fullname": ["Eve", "Frank"]}), file3)
 
         meta = {
             "files": [
@@ -3176,8 +3232,8 @@ class TestMultiSourceColumns:
         file2 = temp_dir / "file2.csv"
         meta_file = temp_dir / "meta.json"
 
-        pd.DataFrame({"id": [1, 2], "name": ["Alice", "Bob"]}).to_csv_file(file1)
-        pd.DataFrame({"id": [3, 4], "name": ["Charlie", "Diana"]}).to_csv_file(file2)
+        df_to_csv(pd.DataFrame({"id": [1, 2], "name": ["Alice", "Bob"]}), file1)
+        df_to_csv(pd.DataFrame({"id": [3, 4], "name": ["Charlie", "Diana"]}), file2)
 
         meta = {
             "files": [
@@ -3223,8 +3279,8 @@ class TestMultiSourceColumns:
         file2 = temp_dir / "file2.csv"
         meta_file = temp_dir / "meta.json"
 
-        pd.DataFrame({"id": [1, 2], "value": [10, 20]}).to_csv_file(file1)
-        pd.DataFrame({"id": [3, 4]}).to_csv_file(file2)  # Missing 'value' column
+        df_to_csv(pd.DataFrame({"id": [1, 2], "value": [10, 20]}), file1)
+        df_to_csv(pd.DataFrame({"id": [3, 4]}), file2)  # Missing 'value' column
 
         meta = {
             "files": [
@@ -3290,8 +3346,8 @@ class TestMultiSourceColumns:
         file2 = temp_dir / "file2.csv"
         meta_file = temp_dir / "meta.json"
 
-        pd.DataFrame({"id": [1, 2], "value": [10, 20]}).to_csv_file(file1)
-        pd.DataFrame({"id": [3, 4], "value": [30, 40]}).to_csv_file(file2)
+        df_to_csv(pd.DataFrame({"id": [1, 2], "value": [10, 20]}), file1)
+        df_to_csv(pd.DataFrame({"id": [3, 4], "value": [30, 40]}), file2)
 
         meta = {
             "files": [
@@ -3328,8 +3384,8 @@ class TestMultiSourceColumns:
         file2 = temp_dir / "file2.csv"
         meta_file = temp_dir / "meta.json"
 
-        pd.DataFrame({"id": [1, 2], "status": ["A", "B"]}).to_csv_file(file1)
-        pd.DataFrame({"id": [3, 4], "status": ["B", "C"]}).to_csv_file(file2)
+        df_to_csv(pd.DataFrame({"id": [1, 2], "status": ["A", "B"]}), file1)
+        df_to_csv(pd.DataFrame({"id": [3, 4], "status": ["B", "C"]}), file2)
 
         meta = {
             "files": [
@@ -3358,7 +3414,7 @@ class TestMultiSourceColumns:
         file1 = temp_dir / "file1.csv"
         meta_file = temp_dir / "meta.json"
 
-        pd.DataFrame({"id": [1, 2], "name": ["Alice", "Bob"]}).to_csv_file(file1)
+        df_to_csv(pd.DataFrame({"id": [1, 2], "name": ["Alice", "Bob"]}), file1)
 
         meta = {
             "file": "file1.csv",  # Single file (not files list)
@@ -3379,6 +3435,7 @@ class TestMultiSourceColumns:
         assert len(df) == 2
         # Should work as before
         assert set(df["name"].unique()) == {"Alice", "Bob"}
+        assert meta_out is not None
         dumped = meta_out.model_dump(mode="json")
         sys_blocks = [b for b in dumped["structure"] if b.get("name") == "files"]
         assert len(sys_blocks) == 1
@@ -3393,11 +3450,14 @@ class TestMultiSourceColumns:
         file3 = temp_dir / "file3.csv"
         meta_file = temp_dir / "meta.json"
 
-        pd.DataFrame({"id": [1, 2], "topk_col1": ["Yes", "No"], "topk_col2": ["No", "Yes"]}).to_csv_file(file1)
-        pd.DataFrame(
-            {"id": [3, 4], "column1": ["Mentioned", "Mentioned"], "column2": ["Mentioned", "Not mentioned"]}
-        ).to_csv_file(file2)
-        pd.DataFrame({"id": [5, 6], "USA": ["True", "False"], "Canada": ["False", "True"]}).to_csv_file(file3)
+        df_to_csv(pd.DataFrame({"id": [1, 2], "topk_col1": ["Yes", "No"], "topk_col2": ["No", "Yes"]}), file1)
+        df_to_csv(
+            pd.DataFrame(
+                {"id": [3, 4], "column1": ["Mentioned", "Mentioned"], "column2": ["Mentioned", "Not mentioned"]}
+            ),
+            file2,
+        )
+        df_to_csv(pd.DataFrame({"id": [5, 6], "USA": ["True", "False"], "Canada": ["False", "True"]}), file3)
 
         meta = {
             "files": [
@@ -3523,7 +3583,7 @@ class TestInferMetaDeepL:
         assert call_kwargs.kwargs.get("source_lang") == "LT"
         assert call_kwargs.kwargs.get("target_lang") == "EN-US"
         # Check that translate dicts are present in the output
-        main_block = meta["structure"][0]
+        main_block = cast(list, meta["structure"])[0]
         col_entry = main_block["columns"][0]
         col_meta = col_entry[2] if len(col_entry) > 2 else col_entry[1]
         assert "translate" in col_meta
