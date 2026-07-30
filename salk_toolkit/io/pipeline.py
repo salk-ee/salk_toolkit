@@ -50,176 +50,14 @@ def _file_meta_map(dfs: dict[str, pd.DataFrame]) -> dict[str, str]:
     return dict(zip(fm["file_code"], fm["file_name"]))
 
 
-@overload
-def _process_annotated_data(
-    meta_fname: str | None = ...,
-    meta: DataMeta | dict[str, object] | None = ...,
-    data_file: str | None = ...,
-    raw_data: pd.DataFrame | None = ...,
-    *,
-    return_meta: Literal[True],
-    ignore_exclusions: bool = ...,
-    only_fix_categories: bool = ...,
-    return_raw: bool = ...,
-    add_original_inds: bool = ...,
-) -> ProcessedDataReturn: ...
-
-
-@overload
-def _process_annotated_data(
-    meta_fname: str | None = ...,
-    meta: DataMeta | dict[str, object] | None = ...,
-    data_file: str | None = ...,
-    raw_data: pd.DataFrame | None = ...,
-    return_meta: Literal[False] = False,
-    ignore_exclusions: bool = ...,
-    only_fix_categories: bool = ...,
-    return_raw: bool = ...,
-    add_original_inds: bool = ...,
-) -> pd.DataFrame: ...
-
-
-def _process_annotated_data(
-    meta_fname: str | None = None,
-    meta: DataMeta | dict[str, object] | None = None,
-    data_file: str | None = None,
-    raw_data: pd.DataFrame | dict[str, pd.DataFrame] | None = None,
-    return_meta: bool = False,
-    ignore_exclusions: bool = False,
-    only_fix_categories: bool = False,
-    return_raw: bool = False,
-    add_original_inds: bool = False,
-) -> pd.DataFrame | ProcessedDataReturn:
-    """Process annotated data according to metadata specifications."""
-    # Read metafile
-    metafile = cast(dict[str, str], readers.stk_file_map).get(meta_fname, meta_fname)  # type: ignore[call-overload]
-    meta_input: DataMeta | dict[str, object] | None = meta
-    if meta_fname is not None:
-        ext = os.path.splitext(metafile)[1]
-        if ext == ".yaml":
-            meta_raw = read_yaml(metafile)
-        elif ext == ".json":
-            meta_raw = read_json(metafile)
-        else:
-            raise Exception(f"Unknown meta file format {ext} for file: {meta_fname}")
-        assert isinstance(meta_raw, dict), "Meta file must contain a dict"
-        meta_input = dict(meta_raw)  # Cast to ensure object values
-
-    # Soft-validate and work with Pydantic DataMeta object throughout
-    if meta_input is None:
-        raise ValueError("Metadata cannot be None")
-    meta_obj = soft_validate(meta_input, DataMeta, warnings=True)
-    constants: dict[str, object] = dict(meta_obj.constants)
-    # Now meta is guaranteed to be a DataMeta object, not None
-
-    # Read datafile(s) - now returns dict[str, pd.DataFrame] for per-file processing
-    # Handle data_file override or ensure files list is populated
-    raw_data_dict: dict[str, pd.DataFrame] | None = None
-    if raw_data is None:
-        if data_file is not None:
-            # data_file override: use it directly
-            files_list = [FileDesc(file=data_file, opts=meta_obj.read_opts)]
-        elif meta_obj.files is not None:
-            files_list = meta_obj.files
-        else:
-            raise ValueError("No files provided in metadata")
-
-        raw_data_dict, inp_meta, einfo = _load_data_files(
-            files_list,
-            path=meta_fname if meta_fname is not None else (data_file if data_file is not None else None),
-            read_opts=meta_obj.read_opts,
-            ignore_exclusions=ignore_exclusions,
-            only_fix_categories=only_fix_categories,
-            add_original_inds=add_original_inds,
-            id_col=meta_obj.id_col,
-        )
-        if inp_meta is not None:
-            warn("Processing main meta file")  # Print this to separate warnings for input jsons from main
-    elif isinstance(raw_data, dict):
-        # Directly-injected frames may lack ids: mint a positional one per file_code.
-        # copy(deep=False) so we add the column without mutating the caller's frame.
-        raw_data_dict = {
-            fc: (df if ROW_ID in df.columns else mint_positional_row_id(df.copy(deep=False), fc))
-            for fc, df in raw_data.items()
-        }
-        einfo = {}
-    else:
-        # Backward compatibility: single DataFrame -> treat as single-file dict
-        single = raw_data if ROW_ID in raw_data.columns else mint_positional_row_id(raw_data.copy(deep=False), "F0")
-        raw_data_dict = {"F0": single}
-        einfo = {}
-
-    if return_raw:
-        # Return concatenated for backward compatibility
-        raw_data_concat = pd.concat(raw_data_dict.values()) if raw_data_dict else pd.DataFrame()
-        if return_meta:
-            return (raw_data_concat, meta_obj)
-        return raw_data_concat
-
-    assert raw_data_dict is not None, "Expected raw_data_dict to be initialized before processing"
-
-    file_meta_map = _file_meta_map(raw_data_dict)
-    file_codes_in_order = list(raw_data_dict.keys())
-    raw_data_dict = {fc: raw_data_dict[fc] for fc in file_codes_in_order}
-
-    # Run preprocessing per file
-    if meta_obj.preprocessing is not None and not only_fix_categories:
-        for file_code, df in raw_data_dict.items():
-            file_name = file_meta_map[file_code]
-            globs = {
-                "pd": pd,
-                "np": np,
-                "sp": sp,
-                "stk": stk,
-                "df": df,
-                "file_code": file_code,
-                "file_name": file_name,
-                **einfo,
-                **constants,
-            }
-            exec(_str_from_list(meta_obj.preprocessing), globs)
-            raw_data_dict[file_code] = globs["df"]
-            assert_row_id_intact(raw_data_dict[file_code], f"preprocessing of {file_code}")
-
-    # Ensure file metadata columns always survive end-to-end (also if preprocessing dropped/mutated them).
-    file_names_in_order: list[str] = []
-    for file_code in file_codes_in_order:
-        df = raw_data_dict[file_code]
-        file_name_val = file_meta_map[file_code]
-        # Overwrite to guarantee correctness even if preprocessing mutated/dropped these columns.
-        df["file_code"] = str(file_code)
-        df["file_name"] = file_name_val
-        raw_data_dict[file_code] = df
-        file_names_in_order.append(file_name_val)
-
-    # Inject implicit metadata for system file columns so they can be used downstream (e.g. plotting/pipeline).
-    # Provide explicit ordered category order (no "infer") for determinism.
-    sys_block_name = "files"
-    sys_block_hidden = len(raw_data_dict) <= 1
-    sys_block_dict: dict[str, object] = {
-        "name": sys_block_name,
-        "generated": True,
-        "hidden": sys_block_hidden,
-        "columns": {
-            "file_code": {"categories": [str(fc) for fc in file_codes_in_order], "ordered": True},
-            "file_name": {"categories": file_names_in_order, "ordered": True},
-        },
-    }
-    sys_block = soft_validate(sys_block_dict, ColumnBlockMeta)
-    structure2 = dict(meta_obj.structure)
-    if sys_block_name in structure2:
-        existing = structure2[sys_block_name]
-        merged_cols = dict(existing.columns)
-        for k, v in sys_block.columns.items():
-            merged_cols.setdefault(k, v)
-        structure2[sys_block_name] = existing.model_copy(
-            update={"columns": merged_cols, "hidden": sys_block_hidden, "generated": True}
-        )
-    else:
-        structure2[sys_block_name] = sys_block
-    meta_obj = meta_obj.model_copy(update={"structure": structure2})
-
-    raw_data_concat = pd.concat(raw_data_dict.values()).reset_index(drop=True) if raw_data_dict else pd.DataFrame()
+def _build_columns(
+    raw_data_dict: dict[str, pd.DataFrame],
+    raw_data_concat: pd.DataFrame,
+    meta_obj: DataMeta,
+    constants: dict[str, object],
+    only_fix_categories: bool,
+) -> tuple[pd.DataFrame, dict[str, ColumnBlockMeta]]:
+    """Build the processed frame column-by-column from the per-file sources."""
     # Initialize concatenated DataFrame - start empty, will be built column by column
     ndf_df = pd.DataFrame()
 
@@ -489,6 +327,208 @@ def _process_annotated_data(
         if len(ndf_df) != len(raw_data_concat):
             raise ValueError("row count changed during column processing - cannot align stable row ids")
         ndf_df[ROW_ID] = raw_data_concat[ROW_ID].to_numpy()
+    return ndf_df, new_structure
+
+
+def _apply_exclusions(
+    ndf_df: pd.DataFrame,
+    meta_obj: DataMeta,
+    ignore_exclusions: bool,
+    add_original_inds: bool,
+) -> pd.DataFrame:
+    """Filter out rows listed in meta `excluded` and optionally keep the original_inds column."""
+    # Positional counter over the processed frame - kept only on request; no longer drives exclusions.
+    ndf_df["original_inds"] = np.arange(len(ndf_df))
+
+    # Apply meta exclusions by stable row id (composes across nesting - an id already filtered
+    # by an inner meta simply matches nothing here).
+    if meta_obj.excluded and not ignore_exclusions:
+        excl_ids = [rid for rid, _ in meta_obj.excluded]
+        mask = ndf_df[ROW_ID].isin(excl_ids)
+        matched = set(ndf_df[ROW_ID][mask])
+        missing = [rid for rid in excl_ids if rid not in matched]
+        if missing:
+            warn(f"{len(missing)} excluded row_id(s) not present in data (already filtered upstream?): {missing[:5]}")
+        ndf_df = ndf_df[~mask]
+
+    if not add_original_inds:
+        ndf_df.drop(columns=["original_inds"], inplace=True)
+    return ndf_df
+
+
+@overload
+def _process_annotated_data(
+    meta_fname: str | None = ...,
+    meta: DataMeta | dict[str, object] | None = ...,
+    data_file: str | None = ...,
+    raw_data: pd.DataFrame | None = ...,
+    *,
+    return_meta: Literal[True],
+    ignore_exclusions: bool = ...,
+    only_fix_categories: bool = ...,
+    return_raw: bool = ...,
+    add_original_inds: bool = ...,
+) -> ProcessedDataReturn: ...
+
+
+@overload
+def _process_annotated_data(
+    meta_fname: str | None = ...,
+    meta: DataMeta | dict[str, object] | None = ...,
+    data_file: str | None = ...,
+    raw_data: pd.DataFrame | None = ...,
+    return_meta: Literal[False] = False,
+    ignore_exclusions: bool = ...,
+    only_fix_categories: bool = ...,
+    return_raw: bool = ...,
+    add_original_inds: bool = ...,
+) -> pd.DataFrame: ...
+
+
+def _process_annotated_data(
+    meta_fname: str | None = None,
+    meta: DataMeta | dict[str, object] | None = None,
+    data_file: str | None = None,
+    raw_data: pd.DataFrame | dict[str, pd.DataFrame] | None = None,
+    return_meta: bool = False,
+    ignore_exclusions: bool = False,
+    only_fix_categories: bool = False,
+    return_raw: bool = False,
+    add_original_inds: bool = False,
+) -> pd.DataFrame | ProcessedDataReturn:
+    """Process annotated data according to metadata specifications."""
+    # Read metafile
+    metafile = cast(dict[str, str], readers.stk_file_map).get(meta_fname, meta_fname)  # type: ignore[call-overload]
+    meta_input: DataMeta | dict[str, object] | None = meta
+    if meta_fname is not None:
+        ext = os.path.splitext(metafile)[1]
+        if ext == ".yaml":
+            meta_raw = read_yaml(metafile)
+        elif ext == ".json":
+            meta_raw = read_json(metafile)
+        else:
+            raise Exception(f"Unknown meta file format {ext} for file: {meta_fname}")
+        assert isinstance(meta_raw, dict), "Meta file must contain a dict"
+        meta_input = dict(meta_raw)  # Cast to ensure object values
+
+    # Soft-validate and work with Pydantic DataMeta object throughout
+    if meta_input is None:
+        raise ValueError("Metadata cannot be None")
+    meta_obj = soft_validate(meta_input, DataMeta, warnings=True)
+    constants: dict[str, object] = dict(meta_obj.constants)
+    # Now meta is guaranteed to be a DataMeta object, not None
+
+    # Read datafile(s) - now returns dict[str, pd.DataFrame] for per-file processing
+    # Handle data_file override or ensure files list is populated
+    raw_data_dict: dict[str, pd.DataFrame] | None = None
+    if raw_data is None:
+        if data_file is not None:
+            # data_file override: use it directly
+            files_list = [FileDesc(file=data_file, opts=meta_obj.read_opts)]
+        elif meta_obj.files is not None:
+            files_list = meta_obj.files
+        else:
+            raise ValueError("No files provided in metadata")
+
+        raw_data_dict, inp_meta, einfo = _load_data_files(
+            files_list,
+            path=meta_fname if meta_fname is not None else (data_file if data_file is not None else None),
+            read_opts=meta_obj.read_opts,
+            ignore_exclusions=ignore_exclusions,
+            only_fix_categories=only_fix_categories,
+            add_original_inds=add_original_inds,
+            id_col=meta_obj.id_col,
+        )
+        if inp_meta is not None:
+            warn("Processing main meta file")  # Print this to separate warnings for input jsons from main
+    elif isinstance(raw_data, dict):
+        # Directly-injected frames may lack ids: mint a positional one per file_code.
+        # copy(deep=False) so we add the column without mutating the caller's frame.
+        raw_data_dict = {
+            fc: (df if ROW_ID in df.columns else mint_positional_row_id(df.copy(deep=False), fc))
+            for fc, df in raw_data.items()
+        }
+        einfo = {}
+    else:
+        # Backward compatibility: single DataFrame -> treat as single-file dict
+        single = raw_data if ROW_ID in raw_data.columns else mint_positional_row_id(raw_data.copy(deep=False), "F0")
+        raw_data_dict = {"F0": single}
+        einfo = {}
+
+    if return_raw:
+        # Return concatenated for backward compatibility
+        raw_data_concat = pd.concat(raw_data_dict.values()) if raw_data_dict else pd.DataFrame()
+        if return_meta:
+            return (raw_data_concat, meta_obj)
+        return raw_data_concat
+
+    assert raw_data_dict is not None, "Expected raw_data_dict to be initialized before processing"
+
+    file_meta_map = _file_meta_map(raw_data_dict)
+    file_codes_in_order = list(raw_data_dict.keys())
+    raw_data_dict = {fc: raw_data_dict[fc] for fc in file_codes_in_order}
+
+    # Run preprocessing per file
+    if meta_obj.preprocessing is not None and not only_fix_categories:
+        for file_code, df in raw_data_dict.items():
+            file_name = file_meta_map[file_code]
+            globs = {
+                "pd": pd,
+                "np": np,
+                "sp": sp,
+                "stk": stk,
+                "df": df,
+                "file_code": file_code,
+                "file_name": file_name,
+                **einfo,
+                **constants,
+            }
+            exec(_str_from_list(meta_obj.preprocessing), globs)
+            raw_data_dict[file_code] = globs["df"]
+            assert_row_id_intact(raw_data_dict[file_code], f"preprocessing of {file_code}")
+
+    # Ensure file metadata columns always survive end-to-end (also if preprocessing dropped/mutated them).
+    file_names_in_order: list[str] = []
+    for file_code in file_codes_in_order:
+        df = raw_data_dict[file_code]
+        file_name_val = file_meta_map[file_code]
+        # Overwrite to guarantee correctness even if preprocessing mutated/dropped these columns.
+        df["file_code"] = str(file_code)
+        df["file_name"] = file_name_val
+        raw_data_dict[file_code] = df
+        file_names_in_order.append(file_name_val)
+
+    # Inject implicit metadata for system file columns so they can be used downstream (e.g. plotting/pipeline).
+    # Provide explicit ordered category order (no "infer") for determinism.
+    sys_block_name = "files"
+    sys_block_hidden = len(raw_data_dict) <= 1
+    sys_block_dict: dict[str, object] = {
+        "name": sys_block_name,
+        "generated": True,
+        "hidden": sys_block_hidden,
+        "columns": {
+            "file_code": {"categories": [str(fc) for fc in file_codes_in_order], "ordered": True},
+            "file_name": {"categories": file_names_in_order, "ordered": True},
+        },
+    }
+    sys_block = soft_validate(sys_block_dict, ColumnBlockMeta)
+    structure2 = dict(meta_obj.structure)
+    if sys_block_name in structure2:
+        existing = structure2[sys_block_name]
+        merged_cols = dict(existing.columns)
+        for k, v in sys_block.columns.items():
+            merged_cols.setdefault(k, v)
+        structure2[sys_block_name] = existing.model_copy(
+            update={"columns": merged_cols, "hidden": sys_block_hidden, "generated": True}
+        )
+    else:
+        structure2[sys_block_name] = sys_block
+    meta_obj = meta_obj.model_copy(update={"structure": structure2})
+
+    raw_data_concat = pd.concat(raw_data_dict.values()).reset_index(drop=True) if raw_data_dict else pd.DataFrame()
+    ndf_df, new_structure = _build_columns(
+        raw_data_dict, raw_data_concat, meta_obj, constants, only_fix_categories
+    )
 
     if meta_obj.postprocessing is not None and not only_fix_categories:
         globs = {
@@ -514,22 +554,7 @@ def _process_annotated_data(
     if not isinstance(meta_obj, DataMeta):
         meta_obj = soft_validate(meta_obj, DataMeta)
 
-    # Positional counter over the processed frame - kept only on request; no longer drives exclusions.
-    ndf_df["original_inds"] = np.arange(len(ndf_df))
-
-    # Apply meta exclusions by stable row id (composes across nesting - an id already filtered
-    # by an inner meta simply matches nothing here).
-    if meta_obj.excluded and not ignore_exclusions:
-        excl_ids = [rid for rid, _ in meta_obj.excluded]
-        mask = ndf_df[ROW_ID].isin(excl_ids)
-        matched = set(ndf_df[ROW_ID][mask])
-        missing = [rid for rid in excl_ids if rid not in matched]
-        if missing:
-            warn(f"{len(missing)} excluded row_id(s) not present in data (already filtered upstream?): {missing[:5]}")
-        ndf_df = ndf_df[~mask]
-
-    if not add_original_inds:
-        ndf_df.drop(columns=["original_inds"], inplace=True)
+    ndf_df = _apply_exclusions(ndf_df, meta_obj, ignore_exclusions, add_original_inds)
 
     # Stable, unique, deterministic index at the return boundary.
     ndf_df = finalize_row_index(ndf_df)
