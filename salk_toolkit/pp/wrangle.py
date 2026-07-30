@@ -385,9 +385,20 @@ def _wrangle_data(
                     aggs = [(pl.col(q) * pl.col(weight_col)).sum().alias(q) for q in wide_value_vars]
                 else:  # median, min, max, etc. - ignore weight_col
                     aggs = [getattr(pl.col(q), agg_fn)().alias(q) for q in wide_value_vars]
-                data = raw_df.group_by(gb).agg(aggs + [pl.col(weight_col).sum()])
-                data = data.unpivot(
-                    variable_name="question", value_name=res_col, index=gb + [weight_col], on=wide_value_vars
+                # Weight has to be summed per question over that question's non-null rows only, the
+                # way the melt path's null filter does - a shared group total biases means by missingness
+                wcols = [f"_w_{q}" for q in wide_value_vars]
+                wsums = [
+                    pl.when(pl.col(q).is_not_null()).then(pl.col(weight_col)).sum().alias(w)
+                    for q, w in zip(wide_value_vars, wcols)
+                ]
+                agg_df = raw_df.group_by(gb).agg(aggs + wsums)
+                data = agg_df.unpivot(variable_name="question", value_name=res_col, index=gb, on=wide_value_vars).join(
+                    agg_df.unpivot(variable_name="question", value_name=weight_col, index=gb, on=wcols).with_columns(
+                        pl.col("question").str.strip_prefix("_w_")
+                    ),
+                    on=gb + ["question"],
+                    how="left",
                 )
 
             # Wide-path guard restricts categorical groups to mean/sum, so this covers both branches
