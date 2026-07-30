@@ -8,6 +8,7 @@ from copy import copy as shallow_copy
 from typing import Any, Callable, Dict, List, Mapping, MutableMapping, Tuple, cast
 
 import altair as alt
+import numpy as np
 import pandas as pd
 import polars as pl
 
@@ -93,6 +94,17 @@ def _translate_df(df: pd.DataFrame, translate: Callable[[str], str]) -> pd.DataF
     return df
 
 
+def _relabel(col: pd.Series, labels: Mapping[str, Any]) -> np.ndarray | pd.Series:
+    """Map values to their detailed labels, leaving unmapped ones alone."""
+
+    if not isinstance(col.dtype, pd.CategoricalDtype):
+        return col.astype("object").replace(dict(labels))
+
+    # Relabel the categories rather than a million rows; -1 codes are nulls
+    mapped = np.array([labels.get(c, c) for c in col.cat.categories] + [None], dtype=object)
+    return mapped[col.cat.codes.to_numpy()]
+
+
 def _create_tooltip(
     pi: PlotInput,
     data: pd.DataFrame,
@@ -137,7 +149,7 @@ def _create_tooltip(
     for cn in tcols:
         if label_dict.get(cn):
             label_col = f"{cn}_label"
-            data[label_col] = data[cn].astype("object").replace({k: v for k, v in label_dict[cn].items()})
+            data[label_col] = _relabel(data[cn], label_dict[cn])
             t = alt.Tooltip(field=label_col, type="nominal", title=tfn(cn))
         else:
             t = alt.Tooltip(field=tfn(cn), type="nominal")
