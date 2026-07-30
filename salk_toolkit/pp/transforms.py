@@ -71,6 +71,27 @@ ordered_expr_transforms: Dict[str, tuple[Callable[[pl.LazyFrame, Sequence[str]],
 # Polars is annoyingly verbose for these but it is fast enough to be worth it
 
 
+THRESHOLD_OPS = ("ge", "le")
+
+
+def _threshold_cutoff(transform: str | None) -> tuple[str, float] | None:
+    """Parse ``ge:<x>`` / ``le:<x>`` — "at least x" / "at most x".
+
+    Parameterized by name rather than by a descriptor field, the same way
+    ``ordered-top2`` is: a threshold belongs to the transform, not to the
+    column, so it travels with the descriptor as one string.
+    """
+    if not transform or ":" not in transform:
+        return None
+    op, _, value = transform.partition(":")
+    if op not in THRESHOLD_OPS:
+        return None
+    try:
+        return op, float(value)
+    except ValueError:
+        raise ValueError(f"{transform!r}: {value!r} is not a number") from None
+
+
 def _transform_cont(
     data: pl.LazyFrame,
     cols: Sequence[str],
@@ -96,6 +117,13 @@ def _transform_cont(
             ".2f",
             None,
         )
+    elif (cutoff := _threshold_cutoff(transform)) is not None:
+        op, value = cutoff
+        # An indicator column: `mean` makes it the share past the threshold,
+        # `sum` the weighted count. Both are what a battery of "rated this at
+        # least X" questions means.
+        expr = pl.col(cols) >= value if op == "ge" else pl.col(cols) <= value
+        return data.with_columns(expr.cast(pl.Float32)), ".1%", (0.0, 1.0)
     elif transform == "proportion":
         return (
             data.with_columns(pl.col(cols) / pl.sum_horizontal(pl.col(cols).abs())),

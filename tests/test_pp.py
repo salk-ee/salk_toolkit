@@ -27,6 +27,8 @@ from salk_toolkit.pp import (
     stk_plot,
     _update_data_meta_with_pp_desc,
 )
+from pydantic import ValidationError
+
 from salk_toolkit.validation import DataMeta, GroupOrColumnMeta, PlotDescriptor, soft_validate
 
 
@@ -370,6 +372,101 @@ def test_convert_res_continuous_maps_unmapped_nonresponse_to_null() -> None:
     by_gender = dict(zip(pi.data["gender"], pd.to_numeric(pi.data[pi.value_col], errors="raise")))
     assert by_gender["Female"] == pytest.approx((-2 - 1 + 1 + 2 + 2) / 5)
     assert by_gender["Male"] == pytest.approx((-1 + 1 + 1 + 2 + 2) / 5)
+
+
+def _threshold_meta() -> DataMeta:
+    return make_data_meta(
+        {
+            "structure": [
+                {
+                    "name": "demographics",
+                    "scale": {},
+                    "columns": [["gender", {"categories": ["Female", "Male"]}]],
+                },
+                {
+                    "name": "ratings",
+                    "scale": {"continuous": True},
+                    "columns": [["party_a"], ["party_b"]],
+                },
+            ]
+        }
+    )
+
+
+def test_cont_transform_threshold_is_the_share_past_the_cutoff() -> None:
+    """``ge:<x>`` turns a continuous rating into "share who rated it at least x"."""
+    df = pd.DataFrame(
+        {
+            "draw": [0] * 6,
+            "gender": ["Female"] * 3 + ["Male"] * 3,
+            "party_a": [0.0, 1.0, 2.0, -1.0, 0.0, 5.0],
+            "party_b": [3.0, 3.0, 3.0, 0.0, 0.0, 0.0],
+        }
+    )
+    ppd = soft_validate(
+        {"res_col": "party_a", "factor_cols": ["gender"], "cont_transform": "ge:1", "plot": "columns"},
+        PlotDescriptor,
+    )
+    pi = pp_transform_data(pl.LazyFrame(df), _threshold_meta(), ppd)
+    shares = dict(zip(pi.data["gender"], pi.data[pi.value_col]))
+    assert shares["Female"] == pytest.approx(2 / 3)  # 1.0 and 2.0 clear the cutoff
+    assert shares["Male"] == pytest.approx(1 / 3)  # only 5.0
+
+
+def test_cont_transform_threshold_le_is_the_other_side() -> None:
+    """``le:<x>`` is the share at or below the cutoff."""
+    df = pd.DataFrame(
+        {"draw": [0] * 4, "gender": ["Female"] * 4, "party_a": [0.0, 1.0, 2.0, 3.0], "party_b": [0.0] * 4}
+    )
+    ppd = soft_validate(
+        {"res_col": "party_a", "factor_cols": ["gender"], "cont_transform": "le:1", "plot": "columns"},
+        PlotDescriptor,
+    )
+    pi = pp_transform_data(pl.LazyFrame(df), _threshold_meta(), ppd)
+    assert pi.data[pi.value_col].iloc[0] == pytest.approx(0.5)
+
+
+@pytest.mark.parametrize("bad", ["ge:", "ge:high", "gt:1"])
+def test_cont_transform_rejects_malformed_threshold(bad: str) -> None:
+    """Only `ge`/`le` with a numeric cutoff; anything else fails validation, not silently."""
+    with pytest.raises((ValueError, ValidationError)):
+        soft_validate({"res_col": "party_a", "cont_transform": bad, "plot": "columns"}, PlotDescriptor)
+
+
+def test_convert_res_categorical_bins_a_continuous_response() -> None:
+    """``convert_res="categorical"`` is the inverse direction: bin, then take shares."""
+    df = pd.DataFrame(
+        {
+            "draw": [0] * 8,
+            "gender": ["Female"] * 8,
+            "party_a": [0.0, 0.0, 1.0, 1.0, 2.0, 2.0, 2.0, 2.0],
+            "party_b": [0.0] * 8,
+        }
+    )
+    ppd = soft_validate(
+        {
+            "res_col": "party_a",
+            "convert_res": "categorical",
+            "col_meta": {"party_a": {"bin_breaks": [0.5, 1.5], "bin_labels": ["low", "mid", "high"]}},
+            "plot": "columns",
+        },
+        PlotDescriptor,
+    )
+    pi = pp_transform_data(pl.LazyFrame(df), _threshold_meta(), ppd)
+    shares = dict(zip(pi.data["party_a"].astype(str), pi.data[pi.value_col]))
+    assert shares == {
+        "low": pytest.approx(0.25),
+        "mid": pytest.approx(0.25),
+        "high": pytest.approx(0.5),
+    }
+
+
+def test_convert_res_categorical_rejects_a_non_numeric_column() -> None:
+    """There is nothing to bin in a categorical column, so say so instead of guessing."""
+    df = pd.DataFrame({"draw": [0, 0], "gender": ["Female", "Male"], "party_a": [1.0, 2.0], "party_b": [0.0, 0.0]})
+    ppd = soft_validate({"res_col": "gender", "convert_res": "categorical", "plot": "columns"}, PlotDescriptor)
+    with pytest.raises(Exception, match="not numeric"):
+        pp_transform_data(pl.LazyFrame(df), _threshold_meta(), ppd)
 
 
 def test_get_plot_fn_builds_chart_from_plot_input() -> None:

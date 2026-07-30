@@ -150,7 +150,29 @@ def pp_transform_data(
     rcl = [c for c in res_cols if c in cols]
     for rc in rcl:
         res_meta = c_meta[rc]
-        if pp_desc.convert_res == "continuous":
+        if pp_desc.convert_res == "categorical":
+            # The inverse direction: bin a continuous response into buckets, the
+            # same discretization numeric facet dimensions already get. Bucket
+            # edges come from `bin_breaks`/`bin_labels` in the column meta (an
+            # int means that many quantiles), so `col_meta` in the descriptor
+            # picks them per plot. Gate on the dtype rather than the meta's
+            # `continuous` flag, which an override may not carry.
+            if not schema[rc].is_numeric():
+                raise Exception(f"Cannot convert {rc} to categorical because it is not numeric")
+            filtered_df, labels = _discretize_continuous(filtered_df, rc, res_meta)
+            update_payload: Dict[str, Any] = {
+                "continuous": False,
+                "categories": list(labels),
+                "ordered": True,
+                "num_values": None,
+                "val_range": None,
+            }
+            update_model = soft_validate(update_payload, GroupOrColumnMeta)
+            c_meta[rc] = merge_pydantic_models(c_meta.get(rc, GroupOrColumnMeta()), update_model)
+            c_meta[pp_desc.res_col] = merge_pydantic_models(
+                c_meta.get(pp_desc.res_col, GroupOrColumnMeta()), update_model
+            )
+        elif pp_desc.convert_res == "continuous":
             res_meta = _ensure_ldf_categories(c_meta, rc, filtered_df)
             nvals = _get_cat_num_vals(res_meta, pp_desc)
 

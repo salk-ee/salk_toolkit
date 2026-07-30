@@ -725,7 +725,7 @@ FilterValue = Union[FilterScalar, FilterCategories, FilterRange]
 FilterSpec = Dict[str, FilterValue]
 
 SortSpec = Union[List[str], Dict[str, bool]]
-ConvertResOption = Literal["continuous"]
+ConvertResOption = Literal["continuous", "categorical"]
 
 # Scale-level transforms, handled inline by `_transform_cont`. The row-wise
 # families live in registries (`ordered_expr_transforms`, `custom_row_transforms`)
@@ -739,12 +739,20 @@ AggFnOption = Literal["mean", "sum", "posneg_mean", "median", "min", "max"]
 def _valid_cont_transform(value: str) -> str:
     """Accept any transform the pipeline can actually dispatch, including ones
     a dashboard registered after import."""
-    from salk_toolkit.pp.transforms import custom_row_transforms, ordered_expr_transforms
+    from salk_toolkit.pp.transforms import (
+        THRESHOLD_OPS,
+        _threshold_cutoff,
+        custom_row_transforms,
+        ordered_expr_transforms,
+    )
 
     if value in SCALE_TRANSFORMS or value in ordered_expr_transforms or value in custom_row_transforms:
         return value
+    if _threshold_cutoff(value) is not None:  # raises on a malformed cutoff
+        return value
     known = sorted({*SCALE_TRANSFORMS, *ordered_expr_transforms, *custom_row_transforms})
-    raise ValueError(f"unknown cont_transform {value!r}; registered: {', '.join(known)}")
+    families = ", ".join(f"{op}:<number>" for op in THRESHOLD_OPS)
+    raise ValueError(f"unknown cont_transform {value!r}; registered: {', '.join(known)}; families: {families}")
 
 
 # --------------------------------------------------------

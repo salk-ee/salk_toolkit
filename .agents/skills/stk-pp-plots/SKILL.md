@@ -157,12 +157,34 @@ pp reads values as the **annotation** declares them. A loader that normalizes to
 
 Translate at the pp boundary, in one place, both ways: descriptor filters take canonical values; results get mapped back to internal keys before they meet the rest of the code.
 
-### What is genuinely not expressible
+### "share of people above a cutoff" — `ge:<x>` / `le:<x>`
 
-Two gaps are real, and worth knowing before you go looking:
+`cont_transform` accepts a threshold family, parameterized by name the way `ordered-top2` is. It replaces the column with a 0/1 indicator, so `agg_fn="mean"` gives the share past the cutoff and `agg_fn="sum"` the weighted count:
 
-- **Proportion above a threshold** on a continuous column or battery ("share rating this party ≥ 1"). The registry has rank transforms and scale transforms; a threshold is neither. Register a `custom_row_transform` if the threshold is a stable part of your methodology — otherwise keep it in polars.
-- **Binning a continuous column** into categories. `convert_res` only goes categorical → continuous.
+```python
+# share who rate each party at least 1 on a -5..5 thermometer, all parties in one scan
+{"plot": "columns", "res_col": "thermometer", "agg_fn": "mean",
+ "convert_res": "continuous", "cont_transform": "ge:1"}
+```
+
+The cutoff is compared against the values *after* `convert_res`, so on an ordered categorical it is a `num_values` number, not a category index. `le:<x>` is the other side. Anything else (`gt:`, a non-numeric cutoff) is rejected at validation.
+
+### Binning a continuous response — `convert_res="categorical"`
+
+The inverse of `convert_res="continuous"`: it buckets a numeric response and then takes shares, using the same discretization numeric *facet* dimensions already get. Bucket edges come from `bin_breaks` / `bin_labels`, which `col_meta` sets per plot; an integer means that many quantiles.
+
+```python
+# exact 0-10 histogram of an integer column
+{"plot": "columns", "res_col": "vote_prob", "convert_res": "categorical",
+ "col_meta": {"vote_prob": {"bin_breaks": [b + 0.5 for b in range(10)],
+                            "bin_labels": [str(b) for b in range(11)]}}}
+```
+
+Bin settings go in `col_meta`, not `res_meta` — `res_meta` declares a *block* (it wants `name` and `columns`), while `col_meta` overrides a single column's metadata.
+
+### What is still not expressible
+
+- **Several statistics over the same rows in one pass.** One descriptor is one statistic. When a payload needs five different numbers from the same scan, a fused polars `select` is genuinely cheaper — see the anti-pattern below.
 
 ## Minimal descriptor
 
@@ -239,7 +261,7 @@ Group aliases declared on the column's `groups` meta are resolved too:
 
 For expressions polars can evaluate but `filter` can't encode, use `pl_filter` (a polars expression string evaluated on the LazyFrame). Keep descriptors declarative whenever possible — `pl_filter` is an escape hatch.
 
-### `convert_res="continuous"` + `num_values`
+### `convert_res`: `"continuous"` + `num_values`, or `"categorical"` + bins
 
 Turn an ordered categorical response into a numeric one for plots that expect a continuous `res_col` (`boxplots`, `density`, `lines`, `violin`, ...). By default `num_values` comes from the column's annotation; override per-descriptor via `num_values` when the analytic scale needs to differ.
 
@@ -252,6 +274,18 @@ Turn an ordered categorical response into a numeric one for plots that expect a 
 }
 ```
 
+`"categorical"` goes the other way: bin a numeric response into buckets and take shares. Edges come from `bin_breaks` / `bin_labels` on the column (an int means that many quantiles), set per plot through `col_meta`.
+
+```python
+{
+  "plot": "columns",
+  "res_col": "vote_prob",             # integer 0-10
+  "convert_res": "categorical",
+  "col_meta": {"vote_prob": {"bin_breaks": [b + 0.5 for b in range(10)],
+                             "bin_labels": [str(b) for b in range(11)]}},
+}
+```
+
 ### `cont_transform`
 
 Applied **after** `convert_res` when a rescaling / summary is desired. Literal values from `ContTransformOption`:
@@ -259,6 +293,7 @@ Applied **after** `convert_res` when a rescaling / summary is desired. Literal v
 - Scale-level: `center`, `zscore`, `01range`, `proportion`
 - Softmax family: `softmax`, `softmax-ratio`, `softmax-avgrank`
 - Ordered helpers: `ordered-avgrank`, `ordered-warf`, `ordered-top1`, `ordered-bot1`, `ordered-topbot1`, `ordered-top2`, `ordered-top3`
+- Threshold family: `ge:<x>` / `le:<x>` — a 0/1 indicator, so `mean` gives the share past the cutoff and `sum` the weighted count
 
 Most plots that need one declare a sensible default via `transform_fn` on the registration; override only when that isn't what you want.
 
