@@ -19,6 +19,8 @@ from .meta import _update_data_meta_with_pp_desc
 from .registry import get_plot_meta
 from .transforms import _transform_cont
 
+PRECISION = 10**6  # Hash-sampling granularity for the raw-format row cap
+
 
 def pp_transform_data(
     full_df: pl.LazyFrame | pd.DataFrame,
@@ -78,6 +80,9 @@ def pp_transform_data(
         sample_n = int((pp_desc.plot_args or {}).get("sample_size", plot_meta.sample))
         if sample_n <= 0:
             raise ValueError("sample_size must be positive")
+
+    # Raw-format row cap, honouring the plot's own full_data opt-out (as `sample` honours sample_size)
+    max_rows = None if (pp_desc.plot_args or {}).get("full_data") else plot_meta.max_rows
 
     # The row index blocks predicate pushdown (numbering is pre-filter), so add it only when actually consumed
     need_id = plot_meta.data_format == "raw" or ("draw" in cols and bool(draws_data)) or bool(sample_n)
@@ -199,6 +204,14 @@ def pp_transform_data(
         val_format, val_range = ".1%", None  # Categoricals report %
     val_format = pp_desc.val_format or val_format  # Plot can override the default
     val_range = pp_desc.val_range or val_range
+
+    # A raw plot's row cap can be met before the unpivot: drop whole respondents by hash (no extra
+    # scan, pushes into the plan) so the melt lands near the cap instead of n_rows x n_questions
+    if max_rows and len(rcl) > 1 and "id" in cols:
+        est = filtered_df.select(pl.len()).collect().item() * len(rcl)
+        if est > max_rows:
+            share = int(max_rows / est * PRECISION)
+            filtered_df = filtered_df.filter(pl.col("id").hash(seed=42) % PRECISION < share)
 
     # Compute draws if needed - Nb: also applies if the draws are shared for the group of questions
     if "draw" in cols and pp_desc.res_col in draws_data:
@@ -453,6 +466,11 @@ def _wrangle_data(
         [data, raw_df.select(pl.col(weight_col).sum())],
         engine="streaming",
     )
+    # Raw plots reduce to a fixed number of points anyway, so drop the excess here rather than
+    # convert, re-categorize and sort rows the plot is only going to throw away
+    row_cap = None if (pp_desc.plot_args or {}).get("full_data") else plot_meta.max_rows
+    if row_cap and len(data) > row_cap:
+        data = data.sample(row_cap, seed=42)
     data = data.to_pandas()
     # In wide form each row covers all questions at once, so no division is needed
     filtered_size = fsize.item() / (1 if wide_value_vars is not None else n_questions)
