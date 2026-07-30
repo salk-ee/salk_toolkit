@@ -19,6 +19,73 @@ Pipeline summary (authoritative flow: `salk_toolkit/pp.py`):
 
 Descriptor schema: `salk_toolkit.validation.PlotDescriptor`. Read it when anything below is ambiguous — it is the source of truth.
 
+## If you are preparing data for a plot, 99% of the time it can be prepared via pp
+
+The 1% is genuine row-level modelling whose output is not an aggregate — a clustering, a per-respondent imputation. Everything else is a descriptor, including things that do not look like it.
+
+When pp appears unable to do what you want, the cause is almost always that **you named the wrong thing** — a plot that carries its own defaults, a column where a block was wanted, a draws-resolved plot for a plain proportion. The symptom then looks like a library limitation, and it is very tempting to write a workaround and a plausible explanation for it. Every mode below has been hit for real, diagnosed wrongly, and "fixed" in the dashboard or in stk before someone checked the registration.
+
+**The check is cheap. Before concluding pp cannot do something, read the `@stk_plot(...)` registration** — `data_format`, `draws`, `agg_fn`, `transform_fn`, `requires` — and `grep -rn "@stk_plot" --include=*.py` across the whole package, not just `plots.py`. If your explanation of pp's behaviour is not something you read in the code, it is a guess.
+
+### "pp ignores my `cont_transform`"
+
+You named a plot that registers its own `transform_fn`, and the registration is applied. `maxdiff` is the only plot in the registry that does this (`ordered-topbot1` + `posneg_mean`) — and those two are a *matched pair* its tornado renderer needs, not defaults to be swapped.
+
+Wrong reading: "pp has a precedence bug, descriptors should win." Right reading: **ask for the plot whose statistic you actually want.** `boxplots` and `columns` register no transform, so the descriptor picks it:
+
+```python
+# top-3 share of an ordered battery — NOT the maxdiff tornado statistic
+{"plot": "boxplots", "res_col": "maxdiff_score", "cont_transform": "ordered-top3", "agg_fn": "mean"}
+```
+
+### "pp can't consume this wide / distributional block"
+
+You passed a *column* name where the *block* name was wanted. Wide per-category share columns (`party_preference_<Party>` × a weight) are a block: `res_col=<block name>` unpivots them into `question`. `res_col="party_preference"` fails; `res_col="party_preference_dist"` is the block and works.
+
+**Check `af.meta.structure` for the block name before concluding the shape is unsupported.** A battery you are about to loop over column-by-column is nearly always a declared block — that is also how you get the whole battery in one pass instead of N.
+
+### "pp is slower / heavier than my hand-rolled version"
+
+Check `draws` on the plot you named. A `draws=True` plot resolves per-(question, draw) cells, which is correct for a posterior quantity that needs `group_size` weights — and pure waste for a plain proportion you are about to pool straight back down.
+
+Measured on one 7-column ownership block, same numbers to the bit:
+
+| descriptor | time | rows returned |
+|---|---|---|
+| `boxplots` (`draws=True`) + manual pooling | 0.47s | 1750 |
+| `columns` (`draws=False`) | 0.23s | 7 |
+
+**Rule of thumb: `draws=True` when the statistic is a posterior quantity; `draws=False` when it is a share.** Getting this wrong looks exactly like "pp is inherently slow".
+
+### "this is a row-level computation, not a plot"
+
+Check the transform registry first (`salk_toolkit/pp/transforms.py`): `custom_row_transforms` and `ordered_expr_transforms`. Several things that read as bespoke numpy are registered transforms:
+
+- **argmax across columns** = `ordered-top1` (`pl.col(x) == pl.max_horizontal(cols)` per column). "Which option does this respondent rate highest", aggregated with `agg_fn="mean"`, is a share — no numpy needed.
+- **argmin** = `ordered-bot1`; both poles at once = `ordered-topbot1`.
+- **softmax over a battery** = `softmax` / `softmax-ratio`; expected Plackett-Luce rank = `softmax-avgrank`.
+- **rank-based scores** = `ordered-avgrank`, `ordered-warf`, `ordered-topN`.
+
+Affine pre-steps (a temperature divisor, an additive log-prior) fold into the descriptor. Only the genuinely non-affine model logic around a transform — turnout weighting, fallback branches — stays in code.
+
+### "this is a domain simulation, pp can't do elections"
+
+`mandate_plot`, `party_mandates` and `coalition_applet` are registered plots — they live in **`salk_toolkit/election_models.py`**, not `plots.py`, so a grep of `plots.py` alone finds nothing and looks like proof of absence. `simulate_election_pp` takes the longform `(draw, factor, category, value)` that pp already produces; `mandates` and `electoral_system` come through `plot_args` (and belong in the annotation, e.g. `cmeta["electoral_district"]`).
+
+Building a `(draw, district, party)` tensor by hand to feed `simulate_election` is re-implementing the pp path.
+
+### Restricting the candidate set: filter the block
+
+Several transforms are *relative to the columns present* — `ordered-top1` argmaxes over whatever the block contains, top-k cutoffs are computed across the battery. So the block filter is **load-bearing, not cosmetic**: it decides both which columns compete and, through them, which respondents count.
+
+```python
+# argmax over the 7 tracked parties only — not over every column in the block
+{"plot": "columns", "res_col": "maksud", "cont_transform": "ordered-top1",
+ "agg_fn": "mean", "filter": {"maksud": TRACKED_PARTIES}}
+```
+
+Omitting it silently changes the answer (a block carrying `Other` / `Dont know`, or dashboard-disabled columns, shifts every share).
+
 ## Minimal descriptor
 
 ```python
@@ -234,6 +301,8 @@ Unit-test sub-helpers in `tests/test_pp.py`.
 ## Anti-patterns
 
 - **Hand-writing polars aggregation** when a `pp_desc` can express it — you're re-implementing `pp_transform_data` and you will drift from tooltip / color / label conventions.
+- **Concluding pp cannot do something without reading the registration.** See "99% of the time it can be prepared via pp" above — the recurring failure is naming the wrong plot/column and then explaining the surprising result as a library limitation.
+- **Patching stk to make a descriptor win over a registration.** If a registered `transform_fn`/`agg_fn` is fighting you, name a plot that registers neither. Making registrations overridable lets callers silently break pairs the renderer depends on.
 - **Hand-writing a Vega-Lite dict** for something `e2e_plot(pp_desc).to_dict()` would produce. Use `return_data=True` + a small custom template only when the rendering genuinely differs.
 - **Reading labels / colors / orders from the descriptor instead of the annotation.** Fix the annotation instead — it is the single source of truth for all dashboards and tools.
 - **Setting `factor_cols` when the default is fine** — noise.
