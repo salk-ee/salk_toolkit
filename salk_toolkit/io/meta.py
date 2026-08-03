@@ -1,4 +1,4 @@
-"""Metadata introspection, category reconciliation and dtype-fixing for DataMeta structures."""
+"""Metadata introspection and reconciliation helpers for DataMeta structures."""
 
 from collections.abc import Sequence
 from typing import TypeVar
@@ -50,6 +50,9 @@ def fix_df_with_meta(df: pd.DataFrame, dmeta: DataMeta) -> pd.DataFrame:
     return df
 
 
+# Helper functions designed to be used with the annotations
+
+
 def extract_column_meta(data_meta: DataMeta) -> dict[str, GroupOrColumnMeta]:
     """Convert data_meta into a dict where each group and column maps to their metadata dict."""
 
@@ -73,11 +76,9 @@ def extract_column_meta(data_meta: DataMeta) -> dict[str, GroupOrColumnMeta]:
             res[block.name] = GroupOrColumnMeta(columns=group_columns)
 
         for cn, col_meta in block.columns.items():
-            # Note: scale metadata is already merged with column metadata by
-            # ColumnBlockMeta.merge_scale_with_columns validator
+            # Scale meta is pre-merged by ColumnBlockMeta.merge_scale_with_columns
             col_name = f"{col_prefix}{cn}"
-            # Convert ColumnMeta to GroupOrColumnMeta
-            # If scale exists and col_meta.label is None, ensure label is None
+            # Convert ColumnMeta to GroupOrColumnMeta; keep label None when a scale supplies it
             update_dict: dict[str, object] = {}
             if scale_meta is not None and col_meta.label is None:
                 update_dict["label"] = None
@@ -85,6 +86,9 @@ def extract_column_meta(data_meta: DataMeta) -> dict[str, GroupOrColumnMeta]:
             col_dict.update(update_dict)
             res[col_name] = soft_validate(col_dict, GroupOrColumnMeta)
     return res
+
+
+# group_name -> [column names]. TODO: deprecate, info available in extract_column_meta
 
 
 def group_columns_dict(data_meta: DataMeta) -> dict[str, list[str]]:
@@ -101,6 +105,8 @@ def group_columns_dict(data_meta: DataMeta) -> dict[str, list[str]]:
         prefix = scale_meta.col_prefix if scale_meta is not None and scale_meta.col_prefix is not None else ""
         res[block.name] = [f"{prefix}{cn}" for cn in block.columns.keys()]
     return res
+
+    # return { g['name'] : [(t[0] if type(t)!=str else t) for t in g['columns']] for g in data_meta['structure'] }
 
 
 T_list_alias = TypeVar("T_list_alias")
@@ -305,9 +311,7 @@ def _fix_meta_categories(
                 dtype = df[full_col_name].dtype
                 cats = utils.get_categories(dtype)
                 if col_meta.categories == "infer":
-                    # Categories were already inferred in lexicographic/numeric order during processing
-                    # Use the order from the DataFrame's categorical dtype (which should be deterministic)
-                    # This preserves the lexicographic/numeric order that was set during inference
+                    # Use the dtype's category order, which preserves the deterministic order set during inference
                     updated_col_meta = col_meta.model_copy(update={"categories": cats})
                 elif (
                     (not infers_only)

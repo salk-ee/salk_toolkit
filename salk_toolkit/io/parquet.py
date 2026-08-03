@@ -44,8 +44,7 @@ def replace_data_meta_in_parquet(parquet_name: str, metafile_name: str, advanced
     nmeta = soft_validate(nmeta_dict, DataMeta)
     nmeta = update_meta_with_model_fields(nmeta, ometa)
 
-    # Perform the column name changes and category translations
-    # Do this before inferring meta as categories might change in this step
+    # Rename/translate before inferring meta, as categories can change in that step
     if advanced:
         df = _change_df_to_meta(df, ometa, nmeta)
 
@@ -71,6 +70,21 @@ def _fix_parquet_categories(parquet_name: str) -> None:
     meta.data = _fix_meta_categories(meta.data, df, infers_only=False)
     write_parquet_with_metadata(df, meta, parquet_name)
 
+
+def _find_type_in_dict(d: object, dtype: type, path: str = "") -> None:
+    """Find values of a specific type in a nested dictionary to debug non-serializable JSONs."""
+    print(d, path)
+    if isinstance(d, dict):
+        for k, v in d.items():
+            _find_type_in_dict(v, dtype, path + f"{k}:")
+    if isinstance(d, list):
+        for i, v in enumerate(d):
+            _find_type_in_dict(v, dtype, path + f"[{i}]")
+    elif isinstance(d, dtype):
+        raise Exception(f"Value {d} of type {dtype} found at {path}")
+
+
+# These two very helpful functions are borrowed from https://towardsdatascience.com/saving-metadata-with-dataframes-71f51f558d8e
 
 custom_meta_key = "salk-toolkit-meta"
 
