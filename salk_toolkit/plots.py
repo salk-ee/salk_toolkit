@@ -1748,6 +1748,9 @@ def geoplot(
         raise ValueError("geoplot requires at least one facet dimension")
 
     outer_colors = dict(p.outer_colors or {})
+    # Legacy flat shape ({value: color}): treat as the first outer dim's color dict
+    if outer_colors and not all(isinstance(v, dict) for v in outer_colors.values()):
+        outer_colors = {p.outer_factors[0]: outer_colors} if p.outer_factors else {}
     fmt = p.val_format or ".2f"
     f0 = p.facets[0]
     vr = p.value_range
@@ -1766,15 +1769,26 @@ def geoplot(
     lmi, lma = data[p.value_col].min(), data[p.value_col].max()
     mi, ma = vr if vr and not separate_axes else (lmi, lma)
 
-    # Only show maximum on legend if min and max too close together
-    [lmi, lma] if (lma - lmi) / (ma - mi) > 0.5 else [lma]
-    rel_range = [(lmi - mi) / (ma - mi), (lma - mi) / (ma - mi)]
+    # Empty cells (unpopulated outer-dim combos) and constant cells have no usable span
+    if pd.isna(ma - mi) or ma == mi:
+        if pd.isna(lmi):
+            lmi, lma, mi, ma = 0.0, 1.0, 0.0, 1.0
+        rel_range = [0.0, 1.0]
+    else:
+        rel_range = [(lmi - mi) / (ma - mi), (lma - mi) / (ma - mi)]
 
-    outer0 = p.outer_factors[0] if p.outer_factors else None
-    ofv = data[outer0].iloc[0] if outer0 else None
-    # If colors provided, create a gradient based on that
-    if p.outer_factors and outer_colors and data[p.outer_factors[0]].nunique() == 1 and ofv in outer_colors:
-        grad = utils.gradient_from_color(outer_colors[ofv], range=rel_range)
+    # An outer dim fixed to a single colored value tints this cell; outer_colors is in
+    # precedence order (observation-derived dims first), so party outranks e.g. gender
+    cell_color = next(
+        (
+            cmap[data[c].iloc[0]]
+            for c, cmap in outer_colors.items()
+            if cmap and c in data.columns and data[c].nunique() == 1 and data[c].iloc[0] in cmap
+        ),
+        None,
+    )
+    if cell_color is not None:
+        grad = utils.gradient_from_color(cell_color, range=rel_range)
         scale = {"domain": [lmi, lma], "range": grad}
     else:  # Blues for pos, reds for neg, redblue for both
         # If axis spans both directions
