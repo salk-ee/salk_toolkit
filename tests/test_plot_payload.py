@@ -4,6 +4,8 @@ from types import SimpleNamespace
 
 import altair as alt
 import numpy as np
+from typing import cast
+
 import pandas as pd
 import pytest
 
@@ -13,6 +15,13 @@ from salk_toolkit import pp
 from salk_toolkit import plots as stk_plots
 from salk_toolkit.pp import FacetMeta, matching_plots, PlotInput
 from salk_toolkit.validation import DataMeta, ElectoralSystem, GroupOrColumnMeta, PlotDescriptor, soft_validate
+
+
+def plot_meta(name: str) -> pp.PlotMeta:
+    """`get_plot_meta` is Optional; every use here is of a plot known to be registered."""
+    meta = pp.get_plot_meta(name)
+    assert meta is not None, f"plot {name!r} not registered"
+    return meta
 
 
 def prepared(plot_fn, cell_pi, **kwargs):
@@ -29,10 +38,10 @@ def test_payload_flag_in_plot_meta():
     are covered by the chart-extraction fallback, so the flag is not a coverage gate."""
 
     # coalition_applet is a streamlit widget (no chart) -> must use return_df
-    assert pp.get_plot_meta("coalition_applet").payload is True
+    assert plot_meta("coalition_applet").payload is True
     # chart plots go through the fallback, so they carry no flag
-    assert pp.get_plot_meta("columns").payload is False
-    assert pp.get_plot_meta("violin").payload is False
+    assert plot_meta("columns").payload is False
+    assert plot_meta("violin").payload is False
 
 
 @pytest.fixture
@@ -119,7 +128,7 @@ def degenerate_outer_pi_fixture():
 def test_single_category_outer_factor_dropped(degenerate_outer_pi_fixture, registered_two_factor_plot):
     """A 1-category outer dim adds no split: drop it so colors and grid come from the real dim."""
 
-    ppd = PlotDescriptor(plot=registered_two_factor_plot, res_col="score", factor_cols=["question", "party"])
+    ppd = PlotDescriptor(plot=registered_two_factor_plot, res_col="score", facet_dims=["question", "party"])
     pi = pp.create_plot(degenerate_outer_pi_fixture, ppd, dry_run=True, escape_labels=False)
     assert pi.outer_factors == ["party"]
     assert set(pi.outer_colors) == {"P1", "P2", "P3"}
@@ -185,7 +194,7 @@ def test_payload_fallback_covers_non_payload_plot(small_pi_fixture):
         return alt.Chart(marker).mark_point().encode(x="x:Q", y="y:Q")
 
     try:
-        assert pp.get_plot_meta("__test_fallback_plot").payload is False
+        assert plot_meta("__test_fallback_plot").payload is False
         ppd = PlotDescriptor(plot="__test_fallback_plot", res_col="score", facet_dims=["group.a", "group.b"])
         pl = pp.create_plot_payload(small_pi_fixture, ppd)
         # every cell carries the frame pulled off the chart's `.data`
@@ -221,7 +230,7 @@ def test_payload_matches_altair_frame(small_pi_fixture, ppd_columns):
     pi = pp.create_plot(small_pi_fixture, ppd_columns, dry_run=True, escape_labels=False)
     pl = pp.create_plot_payload(small_pi_fixture, ppd_columns)
     flat = [v for row in pl["cells"] for c in row for v in c["data"][pl["value_col"]]]
-    assert sorted(flat) == sorted(pi.data[pi.value_col].tolist())
+    assert sorted(flat) == sorted(cast(pd.DataFrame, pi.data)[pi.value_col].tolist())
 
 
 @pytest.fixture
@@ -694,7 +703,7 @@ def test_altair_matrix_density_faceted_per_cell(density_faceted_pi_and_ppd):
     assert len(flat) == 2
     for chart in flat:
         title = chart.to_dict()["title"]
-        groups = set(chart.data["group"].astype(str))
+        groups = set(cast(pd.DataFrame, chart.data)["group"].astype(str))
         assert groups == {title}, f"cell {title!r} leaked other groups: {groups}"
 
 
