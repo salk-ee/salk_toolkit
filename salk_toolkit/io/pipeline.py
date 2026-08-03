@@ -22,8 +22,8 @@ from salk_toolkit.io.core import (
     SourceBundle,
     _deterministic_categories_and_values,
     _is_series_of_lists,
-    assert_row_id_intact,
     finalize_row_index,
+    restore_or_assert_row_id,
 )
 from salk_toolkit.io.create_blocks import _create_new_columns_and_metas
 from salk_toolkit.io.meta import _fix_meta_categories
@@ -319,20 +319,23 @@ def process(bundle: SourceBundle, meta_obj: DataMeta, opts: ProcessOpts) -> Data
             bundle.frames[fc] = hooks.exec_df(
                 meta_obj.preprocessing, bundle.frames[fc], file_code=fc, file_name=file_names[fc]
             )
-            assert_row_id_intact(bundle.frames[fc], f"preprocessing of {fc}")
+            bundle.frames[fc] = restore_or_assert_row_id(bundle.frames[fc], f"preprocessing of {fc}", file_code=fc)
 
     # File provenance columns must survive end-to-end (also if preprocessing dropped/mutated them)
     meta_obj = _inject_files_block(bundle, meta_obj, file_names)
 
     ndf_df, meta_obj = _build_columns(bundle, meta_obj, hooks)
 
+    # Exclusions run before the postprocessing hook: excluded rows must not feed its
+    # aggregates, and ids the hook re-mints have no id-keyed consumers left downstream
+    ndf_df = _apply_exclusions(ndf_df, meta_obj, opts)
+
     if meta_obj.postprocessing is not None:
         ndf_df = hooks.exec_df(meta_obj.postprocessing, ndf_df)
-        assert_row_id_intact(ndf_df, "postprocessing")
+        ndf_df = restore_or_assert_row_id(ndf_df, "postprocessing")
 
     # Fix categories after postprocessing; also replaces "infer" with the actual categories
     meta_obj = _fix_meta_categories(meta_obj, ndf_df, warnings=True)
 
-    ndf_df = _apply_exclusions(ndf_df, meta_obj, opts)
     # Stable, unique, deterministic index at the return boundary
     return Dataset(finalize_row_index(ndf_df), meta_obj)

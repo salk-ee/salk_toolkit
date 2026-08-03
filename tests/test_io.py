@@ -1797,6 +1797,60 @@ class TestAdvancedFeatures:
         assert "final" in df.columns
         assert df["final"].tolist() == [101, 102, 103, 104, 105]
 
+    def test_postprocessing_aggregation_mints_fresh_row_ids(self, csv_file, meta_file):
+        """An aggregating postprocessing (census-style groupby) gets fresh positional row ids + a warning."""
+        df_to_csv(pd.DataFrame({"grp": ["a", "a", "b", "b", "b"], "N": [1, 2, 3, 4, 5]}), csv_file)
+
+        meta = {
+            "file": "test.csv",
+            "structure": [{"name": "t", "columns": [["grp", {"categories": ["a", "b"]}], ["N", {"continuous": True}]]}],
+            "postprocessing": "df = df.groupby(['grp'], as_index=False, observed=True)['N'].sum()",
+        }
+        write_json(meta_file, meta)
+
+        with pytest.warns(UserWarning, match="minting fresh positional row ids"):
+            df = read_annotated_data(str(meta_file))
+
+        assert df.index.name == "row_id"
+        assert list(df.index) == ["PP::0", "PP::1"]
+        assert df["N"].tolist() == [3, 12]
+
+    def test_preprocessing_aggregation_mints_fresh_row_ids(self, csv_file, meta_file):
+        """An aggregating per-file preprocessing gets fresh positional ids under that file's own code."""
+        df_to_csv(pd.DataFrame({"grp": ["a", "a", "b", "b", "b"], "N": [1, 2, 3, 4, 5]}), csv_file)
+
+        meta = {
+            "file": "test.csv",
+            "structure": [{"name": "t", "columns": [["grp", {"categories": ["a", "b"]}], ["N", {"continuous": True}]]}],
+            "preprocessing": "df = df.groupby(['grp'], as_index=False, observed=True)['N'].sum()",
+        }
+        write_json(meta_file, meta)
+
+        with pytest.warns(UserWarning, match="minting fresh positional row ids"):
+            df = read_annotated_data(str(meta_file))
+
+        assert df.index.name == "row_id"
+        assert list(df.index) == ["F0::0", "F0::1"]
+        assert df["N"].tolist() == [3, 12]
+
+    def test_exclusions_apply_before_postprocessing_aggregation(self, csv_file, meta_file):
+        """Excluded rows are filtered before the postprocessing hook, so they never feed its aggregates."""
+        df_to_csv(pd.DataFrame({"grp": ["a", "a", "b"], "id": [1, 2, 3], "N": [1, 2, 4]}), csv_file)
+
+        meta = {
+            "file": "test.csv",
+            "id_col": "id",
+            "structure": [{"name": "t", "columns": [["grp", {"categories": ["a", "b"]}], ["N", {"continuous": True}]]}],
+            "excluded": [["F0::2", "bad row"]],
+            "postprocessing": "df = df.groupby(['grp'], as_index=False, observed=True)['N'].sum()",
+        }
+        write_json(meta_file, meta)
+
+        with pytest.warns(UserWarning, match="minting fresh positional row ids"):
+            df = read_annotated_data(str(meta_file))
+
+        assert df["N"].tolist() == [1, 4]  # excluded F0::2 (N=2) not baked into the 'a' aggregate
+
     def test_exclusions_handling(self, csv_file, meta_file):
         """Exclusions are keyed by the stable row_id, here derived from a declared id_col."""
         df_to_csv(pd.DataFrame({"value": [1, 2, 3, 4, 5], "id": [1, 2, 3, 4, 5]}), csv_file)
