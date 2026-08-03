@@ -32,9 +32,9 @@ from salk_toolkit.io.core import (
     Dataset,
     ProcessOpts,
     _str_from_list,
-    assert_row_id_intact,
     finalize_row_index,
     mint_positional_row_id,
+    restore_or_assert_row_id,
 )
 from salk_toolkit.io.meta import _is_categorical, fix_df_with_meta
 from salk_toolkit.io.sources import _load_data_files, _load_dataset, _process_annotated_data
@@ -474,7 +474,7 @@ def read_and_process_data(
         globs = {"pd": pd, "np": np, "sp": sp, "stk": stk, "df": df, **einfo, **constants}
         if desc_obj.preprocessing:
             exec(_str_from_list(desc_obj.preprocessing), globs)
-            assert_row_id_intact(globs["df"], "DataDescription preprocessing")
+            globs["df"] = restore_or_assert_row_id(globs["df"], "DataDescription preprocessing")
 
         if desc_obj.filter:
             globs["df"] = globs["df"][eval(desc_obj.filter, globs)]
@@ -483,7 +483,7 @@ def read_and_process_data(
             globs["df"] = _perform_merges(globs["df"], desc_obj.merge, constants, meta_obj)
         if desc_obj.postprocessing and not skip_postprocessing:
             exec(_str_from_list(desc_obj.postprocessing), globs)
-            assert_row_id_intact(globs["df"], "DataDescription postprocessing")
+            globs["df"] = restore_or_assert_row_id(globs["df"], "DataDescription postprocessing")
         df = globs["df"]
 
     # Stable, unique, deterministic index at the return boundary.
