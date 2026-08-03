@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import itertools as it
 import json
-from copy import copy as shallow_copy, deepcopy
-from typing import Any, Callable, Dict, List, Mapping, MutableMapping, cast
+from copy import copy as shallow_copy
+from typing import Any, Callable, Dict, List, Mapping, MutableMapping, Tuple, cast
 
 import altair as alt
+import numpy as np
 import pandas as pd
 import polars as pl
 
 import salk_toolkit.utils as utils
-from salk_toolkit.io import extract_column_meta, read_parquet_with_metadata
+from salk_toolkit.io import read_parquet_with_metadata
 from salk_toolkit.utils import batch, clean_kwargs
 from salk_toolkit.validation import ColumnMeta, DataMeta, GroupOrColumnMeta, PlotDescriptor, soft_validate
 
@@ -21,12 +22,12 @@ from .common import (
     FacetMeta,
     PlotInput,
     _get_cat_num_vals,
-    _meta_to_plain,
     _normalize_color_dict,
     special_columns,
 )
 from .matching import _inner_outer_facets, impute_facet_dims, matching_plots
-from .registry import PlotMeta, _get_plot_fn, _stk_deregister, get_plot_meta, stk_plot
+from .meta import _extract_column_meta_cached
+from .registry import PlotMeta, _stk_deregister, get_plot_fn, get_plot_meta, stk_plot
 from .wrangle import pp_transform_data
 
 
@@ -51,7 +52,7 @@ def _meta_color_scale(
     cats = utils.get_categories(column.dtype) if column is not None and column.dtype.name == "category" else None
     if scale is None and column is not None and column.dtype.name == "category" and utils.get_ordered(column.dtype):
         # Split the values into negative, neutral, positive
-        neg, neut, pos = utils.split_to_neg_neutral_pos(cats, neutrals)
+        neg, neut, pos = utils.split_to_neg_neutral_pos(cats or [], neutrals)
 
         # Create a color scale for each category and combine them
         bidir_mid = len(utils.default_bidirectional_gradient) // 2
@@ -80,8 +81,7 @@ def _meta_color_scale(
 def _translate_df(df: pd.DataFrame, translate: Callable[[str], str]) -> pd.DataFrame:
     """Translate column names and categorical levels for display."""
 
-    # `reverse_`-prefixed maxdiff companion columns are located by prefix and never displayed,
-    # so they must survive translation untouched, like `_label`
+    # `reverse_` maxdiff companions are found by prefix and never shown, so leave them untranslated
     def _keep(c: str) -> bool:
         return c in special_columns or c.endswith("_label") or c.startswith("reverse_")
 
@@ -92,6 +92,17 @@ def _translate_df(df: pd.DataFrame, translate: Callable[[str], str]) -> pd.DataF
             remap = dict(zip(cats, [translate(c) for c in cats]))
             df[c] = df[c].cat.rename_categories(remap)
     return df
+
+
+def _relabel(col: pd.Series, labels: Mapping[str, Any]) -> np.ndarray | pd.Series:
+    """Map values to their detailed labels, leaving unmapped ones alone."""
+
+    if not isinstance(col.dtype, pd.CategoricalDtype):
+        return col.astype("object").replace(dict(labels))
+
+    # Relabel the categories rather than a million rows; -1 codes are nulls
+    mapped = np.array([labels.get(c, c) for c in col.cat.categories] + [None], dtype=object)
+    return mapped[col.cat.codes.to_numpy()]
 
 
 def _create_tooltip(
@@ -138,7 +149,7 @@ def _create_tooltip(
     for cn in tcols:
         if label_dict.get(cn):
             label_col = f"{cn}_label"
-            data[label_col] = data[cn].astype("object").replace({k: v for k, v in label_dict[cn].items()})
+            data[label_col] = _relabel(data[cn], label_dict[cn])
             t = alt.Tooltip(field=label_col, type="nominal", title=tfn(cn))
         else:
             t = alt.Tooltip(field=tfn(cn), type="nominal")
@@ -186,8 +197,7 @@ def create_plot(
         if "question" not in col_meta:
             col_meta["question"] = GroupOrColumnMeta()
 
-    # `pp_desc.plot_args` are always forwarded to the concrete plot function.
-    # PlotInput itself should not be mutated by ad-hoc keys.
+    # plot_args are forwarded to the plot function; PlotInput must not be mutated by ad-hoc keys
     plot_args = {**dict(pi.plot_args), **dict(pp_desc.plot_args or {})}
     pi.plot_args = plot_args
 
@@ -202,10 +212,7 @@ def create_plot(
             if cn not in data.columns or cn == pi.value_col:
                 raise Exception(f"Sort column {cn} not found")
 
-            # Some plots (like likert_bars) need a more complex sort
-            # This converts the categorical into numeric values and then sorts by the mean of the value
-            # If the sort column IS the first facet, the numeric-scale sort is incoherent -
-            # fall through to the plain mean-of-value_col sort below.
+            # Numeric-scale sort (likert_bars et al); incoherent when cn IS facet 0, so fall through then
             if plot_meta.sort_numeric_first_facet and cn != facet_dims[0]:
                 f0 = facet_dims[0]
                 nvals = _get_cat_num_vals(col_meta[f0], pp_desc)
@@ -215,8 +222,7 @@ def create_plot(
                 sdf["sort_val"] = sdf[pi.value_col] * sdf[f0].astype("object").replace(cmap)
                 ordervals = sdf.groupby(cn, observed=True)["sort_val"].mean()
 
-            # Otherwise, do not sort ordered categories as categories.
-            # Only creates confusion if left on by accident
+            # Never sort ordered categories as categories - only confuses if left on by accident
             elif cn in col_meta and col_meta[cn].ordered:
                 continue
 
@@ -258,7 +264,7 @@ def create_plot(
                 if v == "pass":
                     facet_meta = col_meta.get(pi.facets[i].ocol)
                     if facet_meta:
-                        plot_args[k] = _meta_to_plain(facet_meta).get(k)
+                        plot_args[k] = facet_meta.model_dump(mode="python").get(k)
 
         facet_dims = facet_dims[n_inner:]  # Leave rest for external faceting
     # Single-category dims add no split; drop them so colors and grid shape come from real dims
@@ -271,7 +277,7 @@ def create_plot(
     pi.value_range = tuple(data[pi.value_col].agg(["min", "max"]))
 
     pi.outer_colors = (
-        _normalize_color_dict(col_meta.get(pi.outer_factors[0], GroupOrColumnMeta()).colors or {})
+        _normalize_color_dict(col_meta.get(pi.outer_factors[0], GroupOrColumnMeta()).colors or {}) or {}
         if pi.outer_factors
         else {}
     )
@@ -292,9 +298,7 @@ def create_plot(
     if translate is None:
         translate = lambda s: s
 
-    # Add escaping as Vega Lite goes crazy for symbols like ".[]"
-    # It would be enough to do it just for column names, but it's easier to do it for all
-    # `escape_labels=False` skips this (used by payload consumers that want raw labels).
+    # Vega Lite chokes on symbols like ".[]"; escape_labels=False skips this for raw-label consumers
     def _tfunc(s: str) -> str:
         return translate(s) if not escape_labels else utils.escape_vega_label(translate(s))
 
@@ -334,8 +338,7 @@ def create_plot(
     else:
         n_facet_cols = plot_meta.factor_columns or 1
 
-    # Allow value col name to be changed. This can be useful in distinguishing different
-    # aggregation options for a column
+    # Renaming the value col helps distinguish different aggregations of the same column
     if pp_desc.val_name:
         data = data.rename(columns={pi.value_col: pp_desc.val_name})
         pi.value_col = pp_desc.val_name
@@ -362,7 +365,7 @@ def create_plot(
         pi.n_facet_cols = n_facet_cols
         return pi
 
-    plot_fn = _get_plot_fn(pp_desc.plot)
+    plot_fn = get_plot_fn(pp_desc.plot)
     if alt_wrapper is None:
         alt_wrapper = lambda p: p
 
@@ -374,10 +377,8 @@ def create_plot(
 
     def _call_plot_fn(
         data_override: pd.DataFrame | None = None,
-    ) -> AltairChart | List[List[AltairChart]] | PlotInput:
-        payload = pi if data_override is None else deepcopy(pi)
-        if data_override is not None:
-            payload.data = data_override
+    ) -> AltairChart:
+        payload = pi if data_override is None else pi.model_copy(update={"data": data_override})
         return plot_fn(payload, **plot_arg_payload)
 
     if plot_meta.as_is:  # if as_is set, just return the plot as-is
@@ -400,51 +401,19 @@ def create_plot(
                 )
             ]
         else:  # Use faceting
+
+            def _fdef(field: str) -> Dict[str, Any]:
+                return {"field": field, "type": "ordinal", "sort": utils.get_categories(data[field].dtype)}
+
+            row = alt.Row(**_fdef(pi.outer_factors[0]), header=alt.Header(labelOrient="top"))
+            base = _call_plot_fn().properties(**dims, **alt_properties)
             if n_facet_cols == 1:
-                plot = alt_wrapper(
-                    _call_plot_fn()
-                    .properties(**dims, **alt_properties)
-                    .facet(
-                        row=alt.Row(
-                            field=pi.outer_factors[0],
-                            type="ordinal",
-                            sort=utils.get_categories(data[pi.outer_factors[0]].dtype),
-                            header=alt.Header(labelOrient="top"),
-                        )
-                    )
-                )
+                plot = base.facet(row=row)
             elif len(pi.outer_factors) > 1:
-                plot = alt_wrapper(
-                    _call_plot_fn()
-                    .properties(**dims, **alt_properties)
-                    .facet(
-                        column=alt.Column(
-                            field=pi.outer_factors[1],
-                            type="ordinal",
-                            sort=utils.get_categories(data[pi.outer_factors[1]].dtype),
-                        ),
-                        row=alt.Row(
-                            field=pi.outer_factors[0],
-                            type="ordinal",
-                            sort=utils.get_categories(data[pi.outer_factors[0]].dtype),
-                            header=alt.Header(labelOrient="top"),
-                        ),
-                    )
-                )
+                plot = base.facet(column=alt.Column(**_fdef(pi.outer_factors[1])), row=row)
             else:  # n_facet_cols!=1 but just one facet
-                plot = alt_wrapper(
-                    _call_plot_fn()
-                    .properties(**dims, **alt_properties)
-                    .facet(
-                        alt.Facet(
-                            field=pi.outer_factors[0],
-                            type="ordinal",
-                            sort=utils.get_categories(data[pi.outer_factors[0]].dtype),
-                        ),
-                        columns=n_facet_cols,
-                    )
-                )
-            plot = plot.configure_view(discreteHeight={"step": 20})
+                plot = base.facet(alt.Facet(**_fdef(pi.outer_factors[0])), columns=n_facet_cols)
+            plot = alt_wrapper(plot).configure_view(discreteHeight={"step": 20})
     else:
         plot = alt_wrapper(
             _call_plot_fn().properties(**dims, **alt_properties).configure_view(discreteHeight={"step": 20})
@@ -462,7 +431,7 @@ publish_spec = {"config": {"legend": {"labelLimit": 0}, "axis": {"labelLimit": 0
 
 def _apply_publish_mode(plot: AltairChart) -> AltairChart:
     """Apply publish mode to the plot."""
-    spec = utils.recursive_dict_merge(plot.to_dict(), publish_spec)
+    spec = cast(Dict[str, Any], utils.recursive_dict_merge(plot.to_dict(), publish_spec))
     return type(plot).from_dict(spec)
 
 
@@ -504,11 +473,12 @@ def e2e_plot(
         raise ValueError(f"Parquet file {data_file} has no data metadata")
 
     if impute:
-        facet_dims = impute_facet_dims(pp_desc, extract_column_meta(data_meta), get_plot_meta(pp_desc.plot))
+        facet_dims = impute_facet_dims(pp_desc, _extract_column_meta_cached(data_meta), get_plot_meta(pp_desc.plot))
         pp_desc = pp_desc.model_copy(update={"facet_dims": facet_dims})
 
     if check_match:
-        matches = matching_plots(pp_desc, full_df, data_meta, details=True, list_hidden=True)
+        # If we imputed above, the descriptor already has final facet_dims - skip re-imputing
+        matches = matching_plots(pp_desc, full_df, data_meta, details=True, list_hidden=True, impute=not impute)
         if isinstance(matches, list) or pp_desc.plot not in matches:
             raise Exception(f"Plot not registered: {pp_desc.plot}")
 
@@ -519,11 +489,11 @@ def e2e_plot(
 
     if plot_cache is not None:
         key = json.dumps(pp_desc.model_dump(mode="python"), sort_keys=True)
-        if key in plot_cache:
-            pi = deepcopy(plot_cache[key])
-        else:
-            pi = pp_transform_data(full_df, data_meta, pp_desc)
-            plot_cache[key] = deepcopy(pi)
+        if key not in plot_cache:
+            plot_cache[key] = pp_transform_data(full_df, data_meta, pp_desc)
+        cached = plot_cache[key]
+        # Shallow copies suffice: create_plot copies pi.data before mutating and replaces col_meta values
+        pi = cached.model_copy(update={"data": cached.data.copy(), "col_meta": dict(cached.col_meta)})
     else:  # No caching
         pi = pp_transform_data(full_df, data_meta, pp_desc)
 
@@ -563,6 +533,6 @@ def test_new_plot(
     stk_plot(**{**meta_payload, "plot_name": "test"})(fn)  # Register the plot under name 'test'
     try:
         pp_desc = pp_desc.model_copy(update={"plot": "test"})
-        return e2e_plot(pp_desc, *args, **kwargs)
+        return e2e_plot(pp_desc, *cast(Tuple[Any, ...], args), **cast(Dict[str, Any], kwargs))
     finally:
         _stk_deregister("test")  # And de-register it again

@@ -27,8 +27,7 @@ __all__ = [
     "create_plot",
     "get_plot_fn",
 ]
-# `create_plot_payload` / `UnsupportedPayloadError` are also importable from here
-# (lazily, via module `__getattr__`) for backwards compatibility.
+# `create_plot_payload` / `UnsupportedPayloadError` are also importable here, lazily via `__getattr__`
 
 from .common import (
     AltairChart as AltairChart,
@@ -43,15 +42,13 @@ from .registry import (
     registry as registry,
     registry_meta as registry_meta,
     stk_plot as stk_plot,
-    stk_plot_defaults as stk_plot_defaults,
     get_plot_fn as get_plot_fn,
     get_plot_meta as get_plot_meta,
     _ensure_plot_registry_loaded as _ensure_plot_registry_loaded,
-    _get_all_plots as _get_all_plots,
-    _get_plot_fn as _get_plot_fn,
     _stk_deregister as _stk_deregister,
 )
 from .meta import (
+    _extract_column_meta_cached as _extract_column_meta_cached,
     _update_data_meta_with_pp_desc as _update_data_meta_with_pp_desc,
 )
 from .matching import (
@@ -86,8 +83,7 @@ from .plotting import (
     test_new_plot as test_new_plot,
 )
 
-# `create_plot_payload` / `UnsupportedPayloadError` live in `salk_toolkit.payload`;
-# re-exported here lazily for backwards compatibility (e.g. dms-plots-api imports from pp).
+# Lazy re-export from `salk_toolkit.payload` for back-compat (e.g. dms-plots-api imports these from pp)
 if TYPE_CHECKING:
     from salk_toolkit.payload import (
         UnsupportedPayloadError as UnsupportedPayloadError,

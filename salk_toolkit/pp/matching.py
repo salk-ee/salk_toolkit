@@ -2,21 +2,19 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Literal, Mapping, cast, overload
+from typing import Any, Dict, List, Literal, Mapping, overload
 
 import pandas as pd
 import polars as pl
 
-from salk_toolkit.io import extract_column_meta
 from salk_toolkit.validation import DataMeta, GroupOrColumnMeta, PlotDescriptor, soft_validate
 
 from .common import _get_cat_num_vals
-from .meta import _update_data_meta_with_pp_desc
-from .registry import PlotMeta, get_plot_meta, registry
+from .meta import _extract_column_meta_cached, _update_data_meta_with_pp_desc
+from .registry import PlotMeta, _ensure_plot_registry_loaded, get_plot_meta, registry, registry_meta
 
 
-# First is weight if not matching, second if match
-# This is very much a placeholder right now
+# [weight if not matching, weight if match] - very much a placeholder right now
 n_a = -1000000
 priority_weights = {
     "draws": [n_a, 0],
@@ -26,19 +24,6 @@ priority_weights = {
     "likert": [n_a, 200],
     "required_meta": [n_a, 500],
 }
-
-# More agressive old version:
-# priority_weights = {
-#     'draws': [n_a, 50],
-#     'nonnegative': [n_a, 50],
-#     'hidden': [n_a, 0],
-
-#     'ordered': [n_a, 100],
-#     'likert': [n_a, 200],
-#     'required_meta': [n_a, 500],
-# }
-
-# Method for choosing a sensible default plot based on the data and plot metadata
 
 
 def _calculate_priority(plot_meta: PlotMeta, match: Mapping[str, Any]) -> tuple[int, List[str]]:
@@ -140,7 +125,7 @@ def matching_plots(
     pp_desc = soft_validate(pp_desc, PlotDescriptor)
 
     if impute:
-        facet_dims = impute_facet_dims(pp_desc, extract_column_meta(data_meta), get_plot_meta(pp_desc.plot))
+        facet_dims = impute_facet_dims(pp_desc, _extract_column_meta_cached(data_meta), get_plot_meta(pp_desc.plot))
         pp_desc = pp_desc.model_copy(update={"facet_dims": facet_dims})
 
     col_meta, _ = _update_data_meta_with_pp_desc(data_meta, pp_desc)
@@ -148,8 +133,7 @@ def matching_plots(
     rc = pp_desc.res_col
     rcm = col_meta[rc]
 
-    lazy = isinstance(df, pl.LazyFrame)
-    if lazy:
+    if isinstance(df, pl.LazyFrame):
         df_cols = df.collect_schema().names()
     else:
         df_cols = df.columns
@@ -163,12 +147,9 @@ def matching_plots(
     if rcm.categories is not None:
         nonneg = True
     else:
-        if not lazy:
-            min_val = df[cols].min(axis=None)
-        else:
-            # Casting with strict=False makes this robust even if some columns are non-numeric.
-            min_val = df.select(pl.min_horizontal(pl.col(cols).cast(pl.Float64, strict=False).min())).collect().item()
-        nonneg = cast(float, min_val) >= 0
+        # Metadata-only: a data scan would cost a full pass per render; unknown counts as not non-negative
+        val_range = rcm.val_range
+        nonneg = val_range is not None and val_range[0] is not None and val_range[0] >= 0
 
     convert_res = pp_desc.convert_res
     if convert_res == "continuous" and (rcm.categories is not None):
@@ -182,9 +163,7 @@ def matching_plots(
     for cn in facet_dims:
         meta = col_meta.get(cn, GroupOrColumnMeta())
         facet_metas.append({"name": cn, **meta.model_dump(mode="python")})
-    # Determine if data is categorical
-    # Data is categorical if it has categories AND is not being converted to continuous
-    # AND is not explicitly marked as continuous
+    # Categorical = has categories, not marked continuous, not being converted to continuous
     is_categorical = (rcm.categories is not None) and not rcm.continuous and convert_res != "continuous"
     match = {
         "draws": ("draw" in df_cols),
@@ -195,7 +174,9 @@ def matching_plots(
         "facet_metas": facet_metas,
     }
 
-    res = [(pn, *_calculate_priority(get_plot_meta(pn), match)) for pn in registry.keys()]
+    # _calculate_priority only reads the meta, so skip get_plot_meta's defensive deep copy per plot
+    _ensure_plot_registry_loaded()
+    res = [(pn, *_calculate_priority(registry_meta[pn], match)) for pn in registry.keys()]
     if details:
         return {n: (p, i) for (n, p, i) in res}  # Return dict with priorities and failure reasons
     else:
@@ -266,8 +247,7 @@ def impute_facet_dims(
     if cat_res and res_col not in facet_dims:
         facet_dims.insert(0, res_col)
     if len(facet_dims) < 1 and not has_q:
-        # Create 'question' as a dummy dimension so we have at least one factor
-        # (generally required for plotting)
+        # Create 'question' as a dummy dimension so we have at least one factor (usually required)
         has_q = True
 
     # If we need to, add question as a factor to list

@@ -8,8 +8,7 @@ import numpy as np
 import polars as pl
 
 
-# Mechanics to allow row-wise numpy transformations here
-# They are noticeably slower, so only use them if polars expression is infeasible
+# Row-wise numpy transforms: noticeably slower, so only use where a polars expression is infeasible
 custom_row_transforms: Dict[str, tuple[Callable[[np.ndarray], np.ndarray], str]] = {}
 
 
@@ -22,6 +21,51 @@ def _apply_npf_on_pl_df(
 
     df[cols] = npf(df[cols].to_numpy())
     return df
+
+
+# Row-wise ordinal rank across cols, 1..n, matching numpy's argsort-of-argsort on distinct values
+def _ordinal_ranks(cols: Sequence[str]) -> pl.Expr:
+    return pl.concat_list(cols).list.eval(pl.element().rank(method="ordinal"))
+
+
+def _rank_transform(data: pl.LazyFrame, cols: Sequence[str], fn: Callable[[pl.Expr], pl.Expr]) -> pl.LazyFrame:
+    """Rewrite each column as ``fn`` of its row-wise rank, without leaving polars."""
+
+    ranks = "__ranks__"
+    return (
+        data.with_columns(_ordinal_ranks(cols).alias(ranks))
+        .with_columns([fn(pl.col(ranks).list.get(i)).alias(c) for i, c in enumerate(cols)])
+        .drop(ranks)
+    )
+
+
+# Row-wise transforms expressible natively; the rest fall through to custom_row_transforms
+ordered_expr_transforms: Dict[str, tuple[Callable[[pl.LazyFrame, Sequence[str]], pl.LazyFrame], str]] = {
+    "ordered-avgrank": (lambda d, c: _rank_transform(d, c, lambda r: r), ".1f"),
+    "ordered-warf": (lambda d, c: _rank_transform(d, c, lambda r: ((r - 1) / len(c)) ** 12), ".1%"),
+    "ordered-top1": (
+        lambda d, c: d.with_columns([(pl.col(x) == pl.max_horizontal(c)).cast(pl.Int64).alias(x) for x in c]),
+        ".1%",
+    ),
+    "ordered-bot1": (
+        lambda d, c: d.with_columns([(pl.col(x) == pl.min_horizontal(c)).cast(pl.Int64).alias(x) for x in c]),
+        ".1%",
+    ),
+    "ordered-topbot1": (
+        lambda d, c: d.with_columns(
+            [
+                (
+                    (pl.col(x) == pl.max_horizontal(c)).cast(pl.Int64)
+                    - (pl.col(x) == pl.min_horizontal(c)).cast(pl.Int64)
+                ).alias(x)
+                for x in c
+            ]
+        ),
+        ".1%",
+    ),
+    "ordered-top2": (lambda d, c: _rank_transform(d, c, lambda r: r >= len(c) - 1), ".1%"),
+    "ordered-top3": (lambda d, c: _rank_transform(d, c, lambda r: r >= len(c) - 2), ".1%"),
+}
 
 
 # Polars is annoyingly verbose for these but it is fast enough to be worth it
@@ -67,15 +111,13 @@ def _transform_cont(
             val_format,
             (0.0, 1.0 * mult),
         )
+    elif transform in ordered_expr_transforms:
+        build, fmt = ordered_expr_transforms[transform]
+        return build(data, cols), fmt, None
+
     elif transform in custom_row_transforms:
         _tfunc, fmt = custom_row_transforms[transform]
-        # Probe the transform with a 1-row dummy to derive an explicit map_batches schema,
-        # so the streaming engine can initialise array builders for downstream group_by/agg
-        # without hitting the OPAQUE_PYTHON boundary. The probe must use the same numpy
-        # dtype `df[cols].to_numpy()` will yield at runtime: dtype-preserving transforms
-        # (softmax-avgrank) would otherwise declare Float64 over a Float32 batch and panic
-        # in the reducer (`values.dtype() == &self.in_dtype`). validate_output_schema stays
-        # False because dtype-changing transforms (e.g. Float32 → Int64 for topbot1) are OK.
+        # Probe a 1-row dummy at the runtime numpy dtype to declare a map_batches schema (else it panics)
         input_schema = data.collect_schema()
         set_cols = set(cols)
         in_np_dtype = np.result_type(*(pl.Series([], dtype=input_schema[c]).to_numpy().dtype for c in cols))
@@ -119,58 +161,15 @@ def _softmax_expected_ranks(p: np.ndarray) -> np.ndarray:
 custom_row_transforms["softmax-avgrank"] = _softmax_expected_ranks, ".1f"
 
 
-def _avg_rank(ovs: np.ndarray) -> np.ndarray:
-    """Return 1-indexed average ranks for each row (average rank order)."""
-
-    return 1 + np.argsort(np.argsort(ovs, axis=1), axis=1)
-    # Rankdata is insanely slow for some reason
-    # return sps.rankdata(ovs, axis=1, method='average')
-
-
-def _highest_ranked(ovs: np.ndarray) -> np.ndarray:
-    """Indicator matrix for the maximum value per row."""
-
-    return (ovs == np.max(ovs, axis=1)[:, None]).astype("int")
-
-
-def _lowest_ranked(ovs: np.ndarray) -> np.ndarray:
-    """Indicator matrix for the minimum value per row."""
-
-    return (ovs == np.min(ovs, axis=1)[:, None]).astype("int")
-
-
-def _highest_lowest_ranked(ovs: np.ndarray) -> np.ndarray:
-    """Encode top choice as +1 and bottom choice as -1."""
-
-    return _highest_ranked(ovs) - _lowest_ranked(ovs)
-
-
-def _topk_ranked(ovs: np.ndarray, k: int = 3) -> np.ndarray:
-    """Return a mask marking the top-k ranked options per row."""
-
-    return np.argsort(np.argsort(ovs, axis=1), axis=1) >= ovs.shape[1] - k
-
-
-def _win_against_random_field(ovs: np.ndarray, opponents: int = 12) -> np.ndarray:
-    """Estimate win probability vs. a random opponent pool."""
-
-    p = np.argsort(np.argsort(ovs, axis=1), axis=1) / ovs.shape[1]
-    return np.power(p, opponents)
-
-
-custom_row_transforms["ordered-avgrank"] = _avg_rank, ".1f"
-custom_row_transforms["ordered-warf"] = _win_against_random_field, ".1%"
-custom_row_transforms["ordered-top1"] = _highest_ranked, ".1%"
-custom_row_transforms["ordered-bot1"] = _lowest_ranked, ".1%"
-custom_row_transforms["ordered-topbot1"] = _highest_lowest_ranked, ".1%"
-custom_row_transforms["ordered-top2"] = lambda ovs: _topk_ranked(ovs, 2), ".1%"
-custom_row_transforms["ordered-top3"] = lambda ovs: _topk_ranked(ovs, 3), ".1%"
-
-cont_transform_options = [
-    "center",
-    "zscore",
-    "01range",
-    "proportion",
-    "softmax",
-    "softmax-ratio",
-] + list(custom_row_transforms.keys())
+cont_transform_options = (
+    [
+        "center",
+        "zscore",
+        "01range",
+        "proportion",
+        "softmax",
+        "softmax-ratio",
+    ]
+    + list(ordered_expr_transforms.keys())
+    + list(custom_row_transforms.keys())
+)

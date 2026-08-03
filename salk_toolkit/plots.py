@@ -2070,6 +2070,7 @@ def _linevals(
 @stk_plot(
     "ordered_population",
     data_format="raw",
+    max_rows=1000000,
     factor_columns=3,
     aspect_ratio=(1.0 / 1.0),
     args={"group_categories": "bool", "full_data": "bool"},
@@ -2217,6 +2218,7 @@ def _sample_ordered_population_group(
 @stk_plot(
     "ordered_population_sampled",
     data_format="raw",
+    sample=1000,
     factor_columns=3,
     aspect_ratio=(1.0 / 1.0),
     args={"sample_size": "int", "seed": "int"},

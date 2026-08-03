@@ -77,8 +77,7 @@ def _pp_filter_data_lz(
                 inds = (pl.col(k) >= v[1]) & inds
             if v[2] is not None:
                 inds = (pl.col(k) <= v[2]) & inds
-            # NB! this approach does not work for ordered categoricals with polars LazyDataFrame,
-            # hence handling that separately below
+            # NB! does not work for ordered categoricals on a LazyFrame - handled separately below
             continue
 
         # Handle categoricals
@@ -99,18 +98,19 @@ def _pp_filter_data_lz(
             else:
                 flst = [v]  # Just filter on single value
 
-        col_expr = pl.col(k)
+        values = list(flst) if isinstance(flst, (list, tuple)) else [flst]
         dtype = schema.get(k) if k in schema else None
-        if dtype == pl.Categorical or dtype == pl.Enum:
-            col_expr = col_expr.cast(pl.Utf8)
-        values = flst if isinstance(flst, (list, tuple)) else [flst]
-        value_expr = None
-        for val in values:
-            cond = col_expr == val
-            value_expr = cond if value_expr is None else (value_expr | cond)
-        if value_expr is None:
+        if isinstance(dtype, pl.Enum):
+            # is_in raises on values outside the enum vocabulary; those can never match anyway
+            vocab = set(dtype.categories.to_list())
+            values = [v for v in values if v in vocab]
+            if not values:
+                inds &= pl.lit(False)
+                continue
+        if not values:
             continue
-        inds &= value_expr & ~col_expr.is_null()
+        # is_in skips nulls, works on Categorical directly (string cache is on), and pushes down to the scan
+        inds &= pl.col(k).is_in(values)
 
     filtered_df = df.filter(inds)
 
@@ -129,15 +129,13 @@ def _pp_filter_data(
     return ldf.collect().to_pandas()
 
 
-def _pl_quantiles(ldf: pl.LazyFrame, cname: str, qs: Sequence[float]) -> np.ndarray:
+def _pl_quantiles(ldf: pl.LazyFrame, cname: str, qs: Sequence[float] | np.ndarray) -> np.ndarray:
     """Efficient way to calculate multiple quantiles at once with polars in one pass."""
 
     return ldf.select([pl.col(cname).quantile(q).alias(str(q)) for q in qs]).collect().to_numpy()[0]
 
 
-# While polars-ized, it is still slow because of the collects.
-# This can likely be improved by batching all of the required collects into a single select (over all columns)
-# In practice, this is probably not worth it because this is not used very often
+# Still slow because of the collects; batching them into one select would help, but this is rarely used
 
 
 def _discretize_continuous(
