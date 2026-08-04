@@ -150,16 +150,21 @@ return `Dataset`.
   `@overload` pair on `return_meta` — the only overloads remaining, without the duplicated
   `if return_meta:` double-call.
 - `read_and_process_data(desc, return_meta=False, constants=None,
-  skip_postprocessing=False, *, ignore_exclusions=False, add_original_inds=False)`
-  — desc normalization (str / dict / `DataDescription`), inline `data` dicts,
+  skip_postprocessing=False, *, ignore_exclusions=False, add_original_inds=False,
+  data_meta=None)` — desc normalization (str / dict / `DataDescription`), inline `data` dicts,
   then loading via the same `_load_data_files` as everything else (its private
   load-concat path and its duplicate `_fix_meta_categories` pass are deleted —
   category reconciliation happens once, inside `_load_data_files`) followed by the consumption stages through `HookEnv`:
   preprocessing, `filter`, `_perform_merges` (semantics unchanged: provenance columns
   dropped on the merge side, overlap error, row-loss warning, `fix_df_with_meta` on the
   merged frame), postprocessing gated by `skip_postprocessing`. The `**kwargs` swallow is gone
-  entirely: unknown arguments are now a TypeError. (Its only caller was the ineffective
-  `file_map=` in SIP's `proxy_builder.py`, removed by salk_internal_package#95.)
+  entirely: unknown arguments are now a TypeError. The one argument that swallow carried for a
+  live caller is now explicit: `data_meta` types the columns `merge` adds, using a vocabulary the
+  desc's own meta does not have. It is not redundant with the `_perform_merges` pass — that one
+  applies `meta_obj`, this desc's *own* meta, whereas `data_meta` comes from the caller. SIP's
+  `generate_population` passes the survey meta so a population frame and the survey frame agree on
+  the categories of a column a model-level `merge` adds to both. (The `file_map=` kwarg from SIP's
+  `proxy_builder.py` was genuinely ineffective and was removed by salk_internal_package#95.)
 - `io/__init__.py` re-exports the current `__all__` plus the names other modules import
   from `salk_toolkit.io` today: `fix_df_with_meta` (dashboard), `read_json` (explorer,
   tests) and `_fix_meta_categories` (SIP `sampling/meta.py`). In-repo test imports of
@@ -175,8 +180,6 @@ Dead code, deleted rather than ported:
   any caller in STK, SIP, or tools.
 - `_process_annotated_data(raw_data=...)` and its `DataFrame | dict` / `{"F0": df}`
   compatibility branch — no callers.
-- The `kwargs["data_meta"]` post-merge fixup in `read_and_process_data` — no callers, and
-  `_perform_merges` already applies `fix_df_with_meta`.
 - The `"result_meta" in locals()` introspection in `_load_data_files`.
 - The duplicated overload towers on `_process_annotated_data` and the byte-identical
   `if return_meta:` call duplication in `read_annotated_data`.
