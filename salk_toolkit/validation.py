@@ -273,6 +273,9 @@ class ColumnBlockMeta(PBase):
     from_columns: Optional[Union[str, List[str]]] = None
     subgroup_labels: Optional[Dict[str, Dict[str, str]]] = None
 
+    # Per-block override of the meta-level not-asked labels (None = inherit, [] = opt out)
+    na_labels: Optional[List[str]] = None
+
     # Observation-model description for modeling: the dict a SIP `res_cols` entry would hold
     # (any OM, e.g. {"structure": [...]} for ordinal_ranking). Typed blocks stamp a default onto
     # their output blocks; authors can set it on any block to route the block name to that OM.
@@ -841,6 +844,12 @@ class DataMeta(PBase):
     # Different global processing steps
     preprocessing: Optional[Union[str, List[str]]] = None  # Performed on raw data
     postprocessing: Optional[Union[str, List[str]]] = None  # Performed after columns and blocks have been processed
+
+    # Raw cell values meaning the question was NOT ASKED / not collected (mode/filter skips,
+    # 'Nicht erhoben', ...) - mapped to NA in every block before translation. NOT for substantive
+    # non-responses like "Don't know" - keep those as categories flagged via nonresponse.
+    # Blocks can override with their own na_labels ([] opts a block out).
+    na_labels: Optional[List[str]] = None
 
     weight_col: Optional[str] = None  # Column to use for weighting - overriden by model to population weight column
     id_col: Optional[str] = None  # Raw column uniquely identifying rows within each file (e.g. respondent id)

@@ -4407,6 +4407,7 @@ class TestStructureMerge:
             merged = _merge_data_metas([meta(r"w1_(\d+)", "First"), meta(r"w2_(\d+)", "Second")])
         block = merged.structure["issues"]
         assert block.from_columns == r"w1_(\d+)"  # first file, silently
+        assert block.scale is not None
         assert block.scale.label == "Second"  # last file, warned
 
     def test_block_only_in_first_file_survives(self, temp_dir):
@@ -5105,6 +5106,54 @@ class TestPipelineSchema:
 
 class TestCreateAdjustments:
     """cell_values topk, design-keyed maxdiff sets, and translate/na_vals key expansion."""
+
+    def test_global_na_labels(self, meta_file, csv_file):
+        """Meta-level na_labels null not-asked codes in every block before translation;
+        the labels never surface as categories."""
+        pd.DataFrame(
+            {
+                "opinion": ["Agree", "Nicht erhoben: Filter", "Disagree"],
+                "i_1": ["Mentioned", "Nicht erhoben: Filter", "Not mentioned"],
+                "i_2": ["Not mentioned", "Nicht erhoben: Filter", "Mentioned"],
+            }
+        ).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "na_labels": ["Nicht erhoben: Filter"],
+            "structure": [
+                {"name": "main", "columns": {"opinion": {"categories": "infer"}}},
+                {
+                    "type": "topk",
+                    "name": "issues",
+                    "from_columns": r"i_(\d+)",
+                    "res_columns": r"R\1",
+                    "na_vals": ["Not mentioned"],
+                    "scale": {"translate_after": {"1": "Econ", "2": "Health"}},
+                },
+            ],
+        }
+        write_json(meta_file, meta)
+        ndf, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        assert meta_obj is not None
+        assert list(ndf["opinion"].astype(object).fillna("NA")) == ["Agree", "NA", "Disagree"]
+        assert set(meta_obj.structure["main"].columns["opinion"].categories or []) == {"Agree", "Disagree"}
+        assert list(ndf["R1"].astype(object).fillna("NA")) == ["Econ", "NA", "Health"]
+
+    def test_block_na_labels_override(self, meta_file, csv_file):
+        """A block's own na_labels replaces the global list; [] opts the block out."""
+        pd.DataFrame({"a": ["x", "GLOBAL_NA", "BLOCK_NA"], "b": ["x", "GLOBAL_NA", "y"]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "na_labels": ["GLOBAL_NA"],
+            "structure": [
+                {"name": "own", "na_labels": ["BLOCK_NA"], "columns": {"a": {}}},
+                {"name": "optout", "na_labels": [], "columns": {"b": {}}},
+            ],
+        }
+        write_json(meta_file, meta)
+        ndf, _ = read_annotated_data(str(meta_file), return_meta=True)
+        assert list(ndf["a"].astype(object).fillna("NA")) == ["x", "GLOBAL_NA", "NA"]
+        assert list(ndf["b"]) == ["x", "GLOBAL_NA", "y"]
 
     def test_topk_cell_values_leftpacks_cells(self, meta_file, csv_file):
         """cell_values: cells carry the item; leftpack them, slots named <prefix>1..k."""

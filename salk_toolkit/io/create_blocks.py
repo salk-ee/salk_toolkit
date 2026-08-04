@@ -150,10 +150,11 @@ def _apply_post_transform_translate(
 
 
 def _process_block(
-    block: TopKBlock | MaxDiffBlock | OneHotBlock, df: pd.DataFrame
+    block: TopKBlock | MaxDiffBlock | OneHotBlock, df: pd.DataFrame, na_labels: list[str] | None = None
 ) -> Iterator[tuple[pd.DataFrame, ColumnBlockMeta]]:
     """Driver for specialized blocks: explode into siblings, then run the
-    pre-translate -> transform -> post-translate stages on each."""
+    not-asked-labels -> pre-translate -> transform -> post-translate stages on each.
+    `na_labels` is the meta-level not-asked list; a block-level na_labels overrides it."""
     siblings: list[ColumnBlockMeta]
     if isinstance(block, MaxDiffBlock) and block.from_columns is None:
         siblings = [_apply_role_resolution(block, block, df)]
@@ -170,7 +171,12 @@ def _process_block(
 
     for sib in siblings:
         cols = sib.input_df_columns(df)
-        df_t = _apply_pre_transform_translate(sib, df, cols)
+        df_t = df
+        labels = sib.na_labels if sib.na_labels is not None else na_labels
+        if labels and cols:  # not-asked codes -> NA on the value-carrying input columns
+            df_t = df.copy()
+            df_t[cols] = df_t[cols].astype("object").replace(expand_na_vals(list(labels)), None)
+        df_t = _apply_pre_transform_translate(sib, df_t, cols)
         sdf, meta = _apply_transform(sib, df_t, source_block=block)
         sdf, meta = _apply_post_transform_translate(sib, sdf, meta)
         # Stamp the observation-model description onto the output block: an authored

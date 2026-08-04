@@ -25,6 +25,7 @@ from salk_toolkit.io.core import (
     SourceBundle,
     _deterministic_categories_and_values,
     _is_series_of_lists,
+    expand_na_vals,
     expand_value_keys,
     finalize_row_index,
     restore_or_assert_row_id,
@@ -121,13 +122,21 @@ def _gather_source(
 
 
 def _apply_transforms(
-    s: pd.Series, mcm: ColumnMeta, bundle: SourceBundle, ndf_df: pd.DataFrame, cn: str, hooks: HookEnv
+    s: pd.Series,
+    mcm: ColumnMeta,
+    bundle: SourceBundle,
+    ndf_df: pd.DataFrame,
+    cn: str,
+    hooks: HookEnv,
+    na_labels: list[str] | None = None,
 ) -> pd.Series:
-    """Apply translate -> transform -> translate_after -> dtype coercion to a gathered series."""
+    """Apply na_labels -> translate -> transform -> translate_after -> dtype coercion to a gathered series."""
     if _is_series_of_lists(s):
         return s
     if s.dtype.name == "category":
         s = s.astype("object")  # This makes it easier to use common ops like replace and fillna
+    if na_labels:
+        s = s.astype("object").replace(expand_na_vals(list(na_labels)), None)
     if mcm.translate:
         # Key expansion matches the "1.0" str-form that integer codes take after CSV round-trips
         s = s.astype("str").replace(expand_value_keys(mcm.translate)).replace("nan", None).replace("None", None)
@@ -248,6 +257,9 @@ def _build_columns(bundle: SourceBundle, meta_obj: DataMeta, hooks: HookEnv) -> 
         # Col prefix is used to avoid name clashes when different groups naturally share same column names
         col_prefix = group.scale.col_prefix if group.scale is not None else None
 
+        # Not-asked labels: block override (incl. [] = opt out) or the meta-level global
+        group_na_labels = group.na_labels if group.na_labels is not None else meta_obj.na_labels
+
         # Scale meta is pre-merged by merge_scale_with_columns; df-missing columns are skipped, not dropped
         g_cols = []
         for orig_cn, mcm in group.columns.items():
@@ -262,7 +274,7 @@ def _build_columns(bundle: SourceBundle, meta_obj: DataMeta, hooks: HookEnv) -> 
             s = _gather_source(bundle, source_spec, orig_cn, cn, group.generated)
             if s is None:
                 continue
-            s = _apply_transforms(s, mcm, bundle, ndf_df, cn, hooks)
+            s = _apply_transforms(s, mcm, bundle, ndf_df, cn, hooks, na_labels=group_na_labels)
             s.name = cn  # Ensure name is set
             s, mcm = _resolve_categories(s, mcm, cn)
 
@@ -281,7 +293,7 @@ def _build_columns(bundle: SourceBundle, meta_obj: DataMeta, hooks: HookEnv) -> 
                 order = [c for c in raw_data_concat.columns if c in source_df.columns]
                 source_df = source_df[order + [c for c in source_df.columns if c not in set(order)]]
             sib_metas: list[ColumnBlockMeta] = []
-            for sdf, smeta in _process_block(group, source_df):
+            for sdf, smeta in _process_block(group, source_df, na_labels=meta_obj.na_labels):
                 for c in sdf.columns:
                     ndf_df[c] = sdf[c]
                 sib_metas.append(smeta)

@@ -60,6 +60,18 @@ model desc, a `res_cols` entry of `{"name": "<block>", "model_spec": {…}}`
 shallow-merges its dict over the block's spec — override parameters (`mode`,
 `model`, …) without restating the structure.
 
+### `na_labels` — global not-asked codes
+
+A meta-level `na_labels` lists raw cell values meaning the question was **not
+asked / not collected** (mode/filter skips: `"Nicht erhoben: Filter"`, …). They
+are mapped to NA in every block before translation, so they never surface as
+categories. A block-level `na_labels` overrides the global list (`[]` opts the
+block out). This is **not** for substantive non-responses — "Don't know" /
+"Refused" that were actually offered and picked stay as categories, flagged via
+`nonresponse`. Distinct from the typed blocks' `na_vals`, which marks
+*not-selected* cells within a multi-select. Replaces global
+`df.replace(na_labels, nan)` preprocessing.
+
 ### `scale.translate` vs `scale.translate_after`
 
 - **`translate`** runs *before* the transform. Use it when raw cells hold index
