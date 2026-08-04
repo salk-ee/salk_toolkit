@@ -524,7 +524,16 @@ df = read_and_process_data({
 
 Any category mismatch or duplicate column name will surface as a warning or error. Fix these iteratively until the load is clean.
 
-7. **The last file is the basis for the combined meta.** `read_and_process_data` uses the last file's annotation as the combined schema. If blocks exist in file A but not in file B (the last file), they won't appear in the output — even though the data is present. To fix this, add the missing blocks to the last file with `"generated": true` on each such block. This suppresses "no matching columns in data" warnings for that file while letting the block's schema carry through to the combined result.
+7. **Block structure is unioned across all files, not taken from the last one.** `_merge_data_metas` merges every file's `structure` in file order, so a block — or a single column inside a block — present only in an earlier wave still reaches the combined meta. You no longer hand-extend the last wave's block to the cross-wave column union, and `generated: true` is no longer needed merely to carry an earlier file's block through (it still suppresses "no matching columns in data" warnings). Merge rules:
+
+   - **Columns**: first-seen union — file 1's order, later files' new columns appended.
+   - **Categories**: unioned; `"infer"` on either side stays `"infer"`.
+   - **Column and scale meta** (`ordered`, `likert`, `num_values`, `label`, `colors`, `nonordered`, `continuous`, `datetime`, `neutral_middle`): **last file wins, with a warning** on disagreement.
+   - **Every other field on a block** (`from_columns`, `res_columns`, `k`, `na_vals`, `input_format`, …): the **first** file's value wins, **silently**. So if a typed block's source regex changed between waves, give the waves distinct block names — a merged block keeps only the first wave's pattern and will not match the later wave's columns.
+   - **Top-level fields** (`source`, `preprocessing`, …) come from the last file.
+   - **Hard conflicts raise**: block `type` mismatch, scale-kind mismatch (categorical vs continuous), or a `num_values` length disagreeing with the merged categories.
+
+   The usual hard conflict is one block `name` carrying a different `type` across waves (e.g. `importance` is `topk` in one wave, plain in another). Those produce different output columns — name them apart (`importance_apr` vs `importance`) rather than forcing a merge.
 
 ## Worked Example
 

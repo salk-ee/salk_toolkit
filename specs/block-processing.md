@@ -157,13 +157,20 @@ fields are detected explicitly so stale files fail loudly instead of mis-process
 
 ## Multi-file structure merge
 
-When a DataMeta loads several files, `_merge_data_metas` (`salk_toolkit/io/meta.py`)
-unions the block
-*structure* across all file metas in file order (not just the last file):
+When a DataMeta loads several files, `_merge_data_metas` unions the block *structure*
+across all file metas in file order (not just the last file). It runs on the raw metas
+in `_load_data_files`, before any block processing, so the merged block is
+what the create/typed-block stages actually see.
 
 - **Columns**: first-seen union — file 1's order is preserved, later files' new
   columns are appended.
 - **Categories**: unioned (preserving order); `"infer"` on either side stays `"infer"`.
-- **Scalars**: last-file-wins, with a warning on disagreement (`source` is exempt).
+- **Column/scale meta fields** (`_MERGE_SCALAR_FIELDS`): last-file-wins, with a warning
+  on disagreement.
+- **All other block fields** (`from_columns`, `res_columns`, `k`, `na_vals`, …):
+  first-file-wins, silently — `_merge_blocks` copies the accumulated block and only
+  overrides `columns`/`scale`. A typed block whose source pattern changed between waves
+  therefore keeps the earlier wave's pattern; such blocks need distinct names.
+- **Top-level fields**: taken from the last file (only `structure` is merged).
 - **Hard conflicts that raise**: block-`type` mismatch, scale-kind mismatch, or a
   `num_values` length that disagrees with the merged categories.

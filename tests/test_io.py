@@ -4382,6 +4382,33 @@ class TestStructureMerge:
         assert set(merged.structure["trust"].columns.keys()) == {"trust_a", "trust_b", "trust_c"}
         assert list(merged.structure["trust"].columns.keys()) == ["trust_a", "trust_b", "trust_c"]
 
+    def test_unmerged_block_fields_keep_the_first_file(self):
+        """Block fields outside columns/scale are first-file-wins and silent, while
+        column meta is last-file-wins with a warning. Pins the asymmetry the skill documents."""
+        from salk_toolkit.io.meta import _merge_data_metas
+
+        def meta(pattern, label):
+            return make_data_meta(
+                {
+                    "structure": [
+                        {
+                            "name": "issues",
+                            "type": "topk",
+                            "from_columns": pattern,
+                            "res_columns": r"issue_\1",
+                            "scale": {"categories": ["a", "b"], "label": label},
+                            "columns": [],
+                        }
+                    ]
+                }
+            )
+
+        with pytest.warns(UserWarning, match="'label' differs across files"):
+            merged = _merge_data_metas([meta(r"w1_(\d+)", "First"), meta(r"w2_(\d+)", "Second")])
+        block = merged.structure["issues"]
+        assert block.from_columns == r"w1_(\d+)"  # first file, silently
+        assert block.scale.label == "Second"  # last file, warned
+
     def test_block_only_in_first_file_survives(self, temp_dir):
         """A block present only in file1 must survive the merge (today metas[-1] drops it)."""
         csv1 = temp_dir / "bs1.csv"
