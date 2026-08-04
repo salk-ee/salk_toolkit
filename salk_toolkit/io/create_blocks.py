@@ -811,7 +811,7 @@ def _onehot_transform_leftpacked(
     if choices is not None:
         unknown = set(observed) - set(choices)
         if unknown:
-            raise ValueError(f"OneHot block {block.name!r}: values {sorted(unknown)} not in choices")
+            raise ValueError(f"OneHot block {block.name!r}: values {sorted(map(str, unknown))} not in choices")
         final_choices = list(choices)
     else:
         final_choices = sorted(observed)

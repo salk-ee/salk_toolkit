@@ -27,6 +27,7 @@ from salk_toolkit.io.core import (
     _is_series_of_lists,
     expand_na_vals,
     expand_value_keys,
+    stringify_notna,
     finalize_row_index,
     restore_or_assert_row_id,
 )
@@ -139,7 +140,7 @@ def _apply_transforms(
         s = s.astype("object").replace(expand_na_vals(list(na_labels)), None)
     if mcm.translate:
         # Key expansion matches the "1.0" str-form that integer codes take after CSV round-trips
-        s = s.astype("str").replace(expand_value_keys(mcm.translate)).replace("nan", None).replace("None", None)
+        s = stringify_notna(s).replace(expand_value_keys(mcm.translate)).replace("nan", None).replace("None", None)
     if mcm.transform is not None and isinstance(mcm.transform, str):
         # Per-file so transforms can reference that file's raw data (df) and columns so far (ndf)
         transformed_parts: list[pd.Series] = []
@@ -150,7 +151,7 @@ def _apply_transforms(
             transformed_parts.append(pd.Series(transformed, index=s_local.index, name=cn))
         s = pd.concat(transformed_parts, ignore_index=True)
     if mcm.translate_after:
-        s = pd.Series(s).astype("str").replace(expand_value_keys(mcm.translate_after))
+        s = stringify_notna(pd.Series(s)).replace(expand_value_keys(mcm.translate_after))
         s = s.replace("nan", None).replace("None", None)
 
     if mcm.datetime:

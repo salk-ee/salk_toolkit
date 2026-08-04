@@ -252,3 +252,9 @@ def expand_na_vals(na_vals: list) -> list:
     """Same int/float/'x.0' form-matching as expand_value_keys, for na_vals lists."""
     extra = [kk for x in na_vals if isinstance(x, str) and _INT_RE.fullmatch(x) for kk in (int(x), float(x), f"{x}.0")]
     return list(na_vals) + [x for x in extra if x not in na_vals]
+
+
+def stringify_notna(s: pd.Series) -> pd.Series:
+    """str-coerce non-NA cells for translation, collapsing integral floats so untranslated
+    int codes surface as '18', never '18.0'; NA stays NA."""
+    return s.map(lambda v: None if pd.isna(v) else (str(int(v)) if isinstance(v, float) and v.is_integer() else str(v)))
