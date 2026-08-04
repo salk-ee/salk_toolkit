@@ -396,6 +396,7 @@ def read_and_process_data(
     *,
     ignore_exclusions: bool = ...,
     add_original_inds: bool = ...,
+    data_meta: DataMeta | None = ...,
 ) -> pd.DataFrame: ...
 
 
@@ -408,6 +409,7 @@ def read_and_process_data(
     *,
     ignore_exclusions: bool = ...,
     add_original_inds: bool = ...,
+    data_meta: DataMeta | None = ...,
 ) -> tuple[pd.DataFrame, DataMeta]: ...
 
 
@@ -418,6 +420,7 @@ def read_and_process_data(
     skip_postprocessing: bool = False,
     ignore_exclusions: bool = False,
     add_original_inds: bool = False,
+    data_meta: DataMeta | None = None,
 ) -> pd.DataFrame | tuple[pd.DataFrame, DataMeta]:
     """Read and process data according to a description object.
 
@@ -428,6 +431,8 @@ def read_and_process_data(
         skip_postprocessing: Whether to skip postprocessing step.
         ignore_exclusions: Whether to keep rows listed in meta `excluded`.
         add_original_inds: Whether to keep the `original_inds` column in the result.
+        data_meta: External meta typing the columns `merge` brings in, for when this desc's own
+            meta does not describe them (a population frame merging against the survey's meta).
 
     Returns:
         DataFrame, or tuple of (DataFrame, metadata) if return_meta=True.
@@ -480,7 +485,13 @@ def read_and_process_data(
             globs["df"] = globs["df"][eval(desc_obj.filter, globs)]
         if desc_obj.merge:
             # Note: expects merge files to have corresponding meta in global DataMeta file
+            oldcols = globs["df"].columns
             globs["df"] = _perform_merges(globs["df"], desc_obj.merge, constants, meta_obj)
+            newcols = [col for col in globs["df"].columns if col not in oldcols]
+            if data_meta is not None and newcols:
+                # meta_obj describes this desc's own source; data_meta is the caller's vocabulary.
+                # Plain __setitem__, not .loc: .loc sets in place and keeps the old dtype (pandas >= 2).
+                globs["df"][newcols] = fix_df_with_meta(globs["df"][newcols].copy(), data_meta)
         if desc_obj.postprocessing and not skip_postprocessing:
             exec(_str_from_list(desc_obj.postprocessing), globs)
             globs["df"] = restore_or_assert_row_id(globs["df"], "DataDescription postprocessing")

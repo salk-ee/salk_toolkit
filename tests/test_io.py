@@ -2364,6 +2364,40 @@ class TestReadAndProcessData:
         assert list(df["status"].cat.categories) == ["1", "2", "3"]
         assert df["status"].cat.ordered is True
 
+    def test_merge_applies_caller_supplied_data_meta(self, temp_dir):
+        """`data_meta` types merged columns this desc's own meta says nothing about.
+
+        The SIP case: a population frame merges the same file the survey does, but only the
+        survey's meta declares the merged column's categories.
+        """
+        main_csv = temp_dir / "main.csv"
+        merge_csv = temp_dir / "merge.csv"
+
+        df_to_csv(pd.DataFrame({"key": ["X", "Y"], "n": [10, 20]}), main_csv)
+        # 'B' is declared but unobserved, and the declared order is not the sorted one
+        df_to_csv(pd.DataFrame({"key": ["X", "Y"], "region_type": ["C", "A"]}), merge_csv)
+
+        desc = {"file": str(main_csv), "merge": {"file": str(merge_csv), "on": "key"}}
+        survey_meta = make_data_meta(
+            {
+                "structure": [
+                    {"name": "s", "columns": [["region_type", {"categories": ["C", "B", "A"], "ordered": True}]]}
+                ]
+            }
+        )
+
+        # Without it the column stays untyped -> a consumer inferring categories gets sorted+unordered
+        plain = read_and_process_data(desc)
+        assert plain["region_type"].dtype.name != "category"
+
+        df = read_and_process_data(desc, data_meta=survey_meta)
+        assert df["region_type"].dtype.name == "category"
+        assert list(df["region_type"].cat.categories) == ["C", "B", "A"]
+        assert df["region_type"].cat.ordered is True
+        # Values still line up with their keys, and the join key is not touched
+        assert df.set_index("key")["region_type"].to_dict() == {"X": "C", "Y": "A"}
+        assert df["key"].dtype.name != "category"
+
     def test_return_meta_extra_field_categories(self, temp_dir):
         """Extra FileDesc fields (e.g. t) should be reflected in returned meta categories."""
         # Create tiny source CSVs (no `t` column); meta declares `t` but it will be empty at this stage.
