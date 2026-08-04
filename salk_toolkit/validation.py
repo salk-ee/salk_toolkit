@@ -385,6 +385,11 @@ class TopKBlock(ColumnBlockMeta):
             "already holding chosen item names; 'ranked_*' variants additionally treat slot order as a ranking."
         ),
     )
+    cell_values: bool = Field(
+        default=False,
+        description="onehot cells hold the item value itself (not a mention marker): leftpack the cell "
+        "values instead of mapping cells to column identity. res_columns then acts as a slot-name prefix.",
+    )
 
     def segments(self) -> List[Tuple[List[str], Optional[List[str]], bool]]:
         """Return ordinal-ranking segments for this resolved TopKBlock."""
@@ -450,7 +455,15 @@ class MaxDiffBlock(ColumnBlockMeta):
         ),
     )
 
-    choice_sets: Optional[Union[List[List[List[int]]], Dict[str, List[List[List[int]]]]]] = None
+    # Flat: per-version per-question item lists (int indices). Dict: keyed by sibling label
+    # (multi-sibling blocks), or - when setindex_column cells are strings - by design name,
+    # with per-question item lists of indices or topic names.
+    choice_sets: Optional[
+        Union[
+            List[List[List[int]]],
+            Dict[str, Union[List[List[List[int]]], List[List[Union[int, str]]]]],
+        ]
+    ] = None
 
     @model_validator(mode="after")
     def _reject_translate_after(self, info: ValidationInfo) -> Self:
@@ -608,10 +621,8 @@ class MaxDiffBlock(ColumnBlockMeta):
 
 
 class OneHotBlock(ColumnBlockMeta):
-    """Block that widens leftpacked rank-position columns into one boolean
-    column per choice. If `choices` is None, the choice list is derived as
-    the sorted union of non-null cell values across matched columns
-    (excluding `na_vals`)."""
+    """Block producing one column per choice from a multi-select question.
+    Output cells are coded via `coding` (default No/Yes categorical, negative pole first)."""
 
     type: Literal["onehot"] = "onehot"  # type: ignore[assignment]
 
@@ -623,17 +634,43 @@ class OneHotBlock(ColumnBlockMeta):
         default="leftpacked",
         description=(
             "'leftpacked' = M_1..M_n columns hold chosen choice names packed left; "
-            "'wide' = one column per choice already."
+            "'wide' = one column per choice already (0/1 dummies or mention markers). In wide mode "
+            "scale.translate names the choices (capture group / column name -> choice), not cell values."
         ),
     )
 
     choices: Optional[List[str]] = Field(
         default=None,
-        description="Explicit choice list; if None, derived as the sorted union of non-null cell values "
-        "(excluding na_vals).",
+        description="Explicit choice list (also fixes category order); if None, derived from "
+        "scale.translate values (wide) or observed cell values (leftpacked).",
     )
     res_prefix: Optional[str] = None
     na_vals: Optional[List[str]] = None
+    coding: Optional[List[str]] = Field(
+        default=["No", "Yes"],
+        min_length=2,
+        max_length=2,
+        description="[false_label, true_label] for output cells, stamped as ordered categories; "
+        "null keeps raw booleans.",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _default_scale_categories_to_coding(cls, data: object) -> object:
+        """A coded onehot's category set IS the coding - default it so scale fields like
+        likert/num_values validate without the author restating ["No","Yes"]."""
+        if isinstance(data, dict):
+            scale, coding = data.get("scale"), data.get("coding", ["No", "Yes"])
+            if isinstance(scale, dict) and coding is not None and not scale.get("categories"):
+                scale["categories"] = list(coding)
+        return data
+
+    def input_df_columns(self, df: "pd.DataFrame") -> List[str]:
+        """Wide-mode scale.translate names choices, not cell values - exclude those
+        columns from the pre-translate stage (mirrors the MaxDiff choice_sets exclusion)."""
+        if self.input_format == "wide":
+            return []
+        return super().input_df_columns(df)
 
 
 def _cb_lst_to_dict(lst: Sequence[object] | dict[str, object]) -> dict[str, object]:

@@ -90,6 +90,17 @@ shallow-merges its dict over the block's spec — override parameters (`mode`,
 - `input_format`: `onehot` (one 0/1 column per item, the default), `leftpacked`
   (`R1..Rk` already hold chosen names — transform is skipped), or the `ranked_*`
   variants which additionally treat slot order as a ranking (`segments()`).
+- `cell_values: true` (onehot): the cells hold the item value itself (e.g.
+  LimeSurvey multi-choice: `"Social inequalities"` / `"Not mentioned"`), so the
+  values are leftpacked as-is instead of mapped to column identity. `res_columns`
+  then acts as a slot-name prefix template — `"q4a_"` yields `q4a_1..q4a_k`, and
+  backrefs resolve per sibling (`"Q9_\\1b"` → `Q9_1b1`, `Q9_1b2`, …). This replaces
+  `stk.aggregate_multiselect(colnames_as_values=False)` preprocessing.
+- Translate/na_vals matching is round-trip tolerant: integer-string keys/values
+  (`"1"`, `"0"`) also match the `1` / `1.0` / `"1.0"` cell forms CSV round-trips
+  produce, so no `astype` coercion preprocessing is needed.
+- Column matching follows **raw survey order** even when some matched columns are
+  also declared as plain columns elsewhere in the meta.
 
 ## MaxDiff
 
@@ -108,11 +119,16 @@ shallow-merges its dict over the block's spec — override parameters (`mode`,
 }
 ```
 
-- `scale.translate` maps 1-based index strings to topic display names and is the
-  topic universe for `setindex_column` lookups.
-- `input_format`: `choice_sets` (best/worst cells hold indices, `choice_sets` /
-  set columns define each question's options) or `resolved` (best/worst/set
-  columns already aligned per question).
+- The topic universe is an index-keyed `scale.translate` (1-based index → name),
+  **or** `scale.categories` when the data already holds display names (a name-keyed
+  `translate` is then a plain recode).
+- `input_format`: `choice_sets` (best/worst cells hold indices or names,
+  `choice_sets` / set columns define each question's options) or `resolved`
+  (best/worst/set columns already aligned per question).
+- `setindex_column` cells may be **design-name strings** instead of version
+  numbers: `choice_sets` is then a dict keyed by design name, each value one item
+  list per question (indices or names): `{"block 1": [["Economy", "Health"], …]}`.
+  The setindex column stays categorical over the design names.
 
 > **Note — two maxdiff routes.** This `MaxDiffBlock` transform (int-index cells,
 > required `set_columns`) is distinct from how maxdiff is usually modelled in
@@ -136,9 +152,20 @@ shallow-merges its dict over the block's spec — override parameters (`mode`,
 ```
 
 - `input_format`: `leftpacked` (`M_1..M_n` hold chosen choice names packed left) or
-  `wide` (one column per choice already).
-- `choices` is optional; if omitted it's the sorted union of non-null cell values
-  (excluding `na_vals`).
+  `wide` (one column per choice already: 0/1 dummies or mention markers).
+- Output cells are coded via `coding` — default `["No", "Yes"]`, stamped as ordered
+  categories (the negative-pole-first house convention); `"coding": null` keeps raw
+  booleans. The block scale can add `likert` / `num_values` on top.
+- In `wide` mode the choice identity is the first regex capture group of
+  `from_columns` (or the bare column name), named through `scale.translate`
+  (`{"1": "Facebook", …}`); cells are *not* translated. Choices the universe
+  expects but the data lacks become all-unselected columns with a warning
+  (cross-wave dummy-column drift). A wide cell is selected iff non-NA and, when
+  numeric, nonzero (after `na_vals` replacement).
+- `choices` is optional; if omitted it's derived from `scale.translate` values
+  (wide) or the sorted union of non-null cell values (leftpacked).
+- Replaces `stk.deaggregate_multiselect` (leftpacked) and hand-rolled
+  `(df[dummy] == 1).map({True: "Yes", False: "No"})` preprocessing (wide).
 
 ## Migrating pre-refactor annotations
 

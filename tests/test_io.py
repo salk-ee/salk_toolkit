@@ -4968,7 +4968,7 @@ class TestPipelineSchema:
             read_annotated_data(str(meta_file), return_meta=True)
 
     def test_onehot_leftpacked_explicit_choices(self, meta_file, csv_file):
-        """Leftpacked onehot with explicit choices emits one boolean column per choice."""
+        """Leftpacked onehot emits one column per choice, No/Yes coded by default."""
         pd.DataFrame({"M_1": ["FB", "TT"], "M_2": ["TT", None], "M_3": [None, "FB"]}).to_csv(csv_file, index=False)
         meta = {
             "file": "test.csv",
@@ -4980,16 +4980,37 @@ class TestPipelineSchema:
                     "input_format": "leftpacked",
                     "choices": ["FB", "TT"],
                     "res_prefix": "sm_",
-                    "scale": {"categories": [False, True]},
                 }
             ],
         }
         write_json(meta_file, meta)
         ndf, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
         assert meta_obj is not None
-        assert sorted(meta_obj.structure["sm"].columns.keys()) == ["sm_FB", "sm_TT"]
-        assert list(ndf["sm_FB"]) == [True, True]
-        assert list(ndf["sm_TT"]) == [True, True]
+        out = meta_obj.structure["sm"]
+        assert sorted(out.columns.keys()) == ["sm_FB", "sm_TT"]
+        assert list(ndf["sm_FB"]) == ["Yes", "Yes"]
+        assert list(ndf["sm_TT"]) == ["Yes", "Yes"]
+        assert list(ndf["sm_FB"].cat.categories) == ["No", "Yes"]
+        assert out.scale is not None and out.scale.categories == ["No", "Yes"]
+
+    def test_onehot_coding_null_keeps_booleans(self, meta_file, csv_file):
+        """coding=null opts out of value coding: raw boolean columns."""
+        pd.DataFrame({"M_1": ["FB", None]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "onehot",
+                    "name": "sm",
+                    "from_columns": ["M_1"],
+                    "input_format": "leftpacked",
+                    "coding": None,
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        ndf, _ = read_annotated_data(str(meta_file), return_meta=True)
+        assert list(ndf["sm_FB"]) == [True, False]
 
     def test_onehot_leftpacked_inferred_choices(self, meta_file, csv_file):
         """choices=None derives the sorted union from observed cells."""
@@ -5029,19 +5050,18 @@ class TestPipelineSchema:
         with pytest.raises(ValueError, match="not in choices"):
             read_annotated_data(str(meta_file), return_meta=True)
 
-    def test_onehot_wide_passthrough(self, meta_file, csv_file):
-        """input_format=wide: columns pass through as-is; choices inferred from res_prefix when None."""
-        pd.DataFrame({"sm_FB": [True, False], "sm_TT": [False, True]}).to_csv(csv_file, index=False)
+    def test_onehot_wide_regex_choices(self, meta_file, csv_file):
+        """input_format=wide: capture group is the choice key; 0/1 dummies code to No/Yes."""
+        pd.DataFrame({"src_FB": [1, 0], "src_TT": [0, 1]}).to_csv(csv_file, index=False)
         meta = {
             "file": "test.csv",
             "structure": [
                 {
                     "type": "onehot",
                     "name": "sm",
-                    "from_columns": ["sm_FB", "sm_TT"],
+                    "from_columns": r"src_(\w+)",
                     "input_format": "wide",
                     "res_prefix": "sm_",
-                    "scale": {"categories": [False, True]},
                 }
             ],
         }
@@ -5052,6 +5072,217 @@ class TestPipelineSchema:
         assert out.input_format == "wide"
         assert sorted(out.columns.keys()) == ["sm_FB", "sm_TT"]
         assert out.choices == ["FB", "TT"]
+        assert list(ndf["sm_FB"]) == ["Yes", "No"]
+
+    def test_onehot_wide_translate_names_and_missing_column(self, meta_file, csv_file):
+        """scale.translate names choices (int-code keys match int64 cells' columns); choices
+        the data lacks become all-No with a warning."""
+        pd.DataFrame({"vQ_M_1": [1, 0], "vQ_M_2": [0, 1]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "onehot",
+                    "name": "social",
+                    "from_columns": r"vQ_M_(\d+)",
+                    "input_format": "wide",
+                    "res_prefix": "sm_",
+                    "scale": {"translate": {"1": "Facebook", "2": "TikTok", "88": "no_account"}},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        with pytest.warns(UserWarning, match="no source column for choice"):
+            ndf, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        assert meta_obj is not None
+        out = meta_obj.structure["social"]
+        assert list(out.columns.keys()) == ["sm_Facebook", "sm_TikTok", "sm_no_account"]
+        assert list(ndf["sm_Facebook"]) == ["Yes", "No"]
+        assert list(ndf["sm_no_account"]) == ["No", "No"]
+        # coding categories replace the choice-naming translate on the output scale
+        assert out.scale is not None and out.scale.categories == ["No", "Yes"] and not out.scale.translate
+
+
+class TestCreateAdjustments:
+    """cell_values topk, design-keyed maxdiff sets, and translate/na_vals key expansion."""
+
+    def test_topk_cell_values_leftpacks_cells(self, meta_file, csv_file):
+        """cell_values: cells carry the item; leftpack them, slots named <prefix>1..k."""
+        pd.DataFrame(
+            {
+                "q4_1": ["Economy", "Not mentioned", "Health"],
+                "q4_2": ["Not mentioned", "Health", "Pensions"],
+                "q4_3": ["Climate", "Not mentioned", "Not mentioned"],
+            }
+        ).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "topk",
+                    "name": "challenges",
+                    "from_columns": r"q4_(\d+)",
+                    "res_columns": "q4a_",
+                    "cell_values": True,
+                    "na_vals": ["Not mentioned"],
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        ndf, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        assert meta_obj is not None
+        assert list(meta_obj.structure["challenges"].columns.keys()) == ["q4a_1", "q4a_2"]
+        assert list(ndf["q4a_1"]) == ["Economy", "Health", "Health"]
+        assert list(ndf["q4a_2"]) == ["Climate", None, "Pensions"]
+
+    def test_topk_cell_values_subgroup_template(self, meta_file, csv_file):
+        """cell_values + subgroup explode: res template backrefs resolve per sibling (salk26 shape)."""
+        pd.DataFrame(
+            {
+                "Q9_1best#1": ["A", "Not selected"],
+                "Q9_1best#2": ["B", "C"],
+                "Q9_2best#1": ["Not selected", "A"],
+                "Q9_2best#2": ["C", "Not selected"],
+            }
+        ).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "topk",
+                    "name": "md_best",
+                    "from_columns": r"Q9_(\d+)best#(\d+)",
+                    "res_columns": r"Q9_\1b",
+                    "agg_index": 2,
+                    "cell_values": True,
+                    "na_vals": ["Not selected"],
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        ndf, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        assert meta_obj is not None
+        assert list(meta_obj.structure["md_best_1"].columns.keys()) == ["Q9_1b1", "Q9_1b2"]
+        assert list(meta_obj.structure["md_best_2"].columns.keys()) == ["Q9_2b1"]
+        assert list(ndf["Q9_1b1"]) == ["A", "C"]
+        assert list(ndf["Q9_1b2"]) == ["B", None]
+        assert list(ndf["Q9_2b1"]) == ["C", "A"]
+
+    def test_maxdiff_design_keyed_choice_sets(self, meta_file, csv_file):
+        """String setindex cells look up a design-name-keyed choice_sets dict of topic names."""
+        parquet_file = csv_file.with_suffix(".parquet")
+        pd.DataFrame(
+            {
+                "design": ["block 1", "block 2"],
+                "MD_1_b": ["Economy", "Health"],
+                "MD_1_w": ["Health", "Climate"],
+                "MD_2_b": ["Pensions", "Economy"],
+                "MD_2_w": ["Economy", "Pensions"],
+            }
+        ).to_parquet(parquet_file)
+        meta = {
+            "file": str(parquet_file),
+            "structure": [
+                {
+                    "type": "maxdiff",
+                    "name": "md",
+                    "best_columns": [["MD_1_b", "MD_2_b"]][0],
+                    "worst_columns": ["MD_1_w", "MD_2_w"],
+                    "set_columns": ["MD_1_set", "MD_2_set"],
+                    "setindex_column": "design",
+                    "scale": {"categories": ["Economy", "Health", "Pensions", "Climate"]},
+                    "choice_sets": {
+                        "block 1": [["Economy", "Health"], ["Pensions", "Economy"]],
+                        "block 2": [["Health", "Climate"], ["Economy", "Pensions"]],
+                    },
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        ndf, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        assert meta_obj is not None
+        assert list(ndf["MD_1_set"].iloc[0]) == ["Economy", "Health"]
+        assert list(ndf["MD_2_set"].iloc[1]) == ["Economy", "Pensions"]
+        assert list(ndf["MD_1_b"]) == ["Economy", "Health"]
+        # setindex column stays categorical over the design names, not forced continuous
+        block = meta_obj.structure["md"]
+        assert block.columns["design"].categories == ["block 1", "block 2"]
+        assert not block.columns["design"].continuous
+
+    def test_maxdiff_design_keyed_unknown_design_fails(self, meta_file, csv_file):
+        """A setindex value with no matching design key hard-fails."""
+        parquet_file = csv_file.with_suffix(".parquet")
+        pd.DataFrame({"design": ["block 9"], "MD_1_b": ["A"], "MD_1_w": ["B"]}).to_parquet(parquet_file)
+        meta = {
+            "file": str(parquet_file),
+            "structure": [
+                {
+                    "type": "maxdiff",
+                    "name": "md",
+                    "best_columns": ["MD_1_b"],
+                    "worst_columns": ["MD_1_w"],
+                    "set_columns": ["MD_1_set"],
+                    "setindex_column": "design",
+                    "scale": {"categories": ["A", "B"]},
+                    "choice_sets": {"block 1": [["A", "B"]]},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        with pytest.raises(ValueError, match="not in choice_sets designs"):
+            read_annotated_data(str(meta_file), return_meta=True)
+
+    def test_translate_matches_int_code_cells(self, meta_file, csv_file):
+        """Integer-typed code cells (CSV round-trip) match string translate keys in both the
+        plain-column path and the typed-block pre-translate."""
+        parquet_file = csv_file.with_suffix(".parquet")
+        pd.DataFrame(
+            {
+                "code": [1, 2, None],
+                "Q_1best": [3, 1, 2],
+                "Q_1worst": [1, 3, 3],
+                "Q_1set": [[1, 2, 3]] * 3,
+            }
+        ).to_parquet(parquet_file)
+        meta = {
+            "file": str(parquet_file),
+            "structure": [
+                {"name": "plain", "columns": {"code": {"translate": {"1": "One", "2": "Two"}}}},
+                {
+                    "type": "maxdiff",
+                    "name": "md",
+                    "best_columns": ["Q_1best"],
+                    "worst_columns": ["Q_1worst"],
+                    "set_columns": ["Q_1set"],
+                    "input_format": "choice_sets",
+                    "scale": {"translate": {"1": "A", "2": "B", "3": "C"}},
+                },
+            ],
+        }
+        write_json(meta_file, meta)
+        ndf, _ = read_annotated_data(str(meta_file), return_meta=True)
+        assert list(ndf["code"].fillna("NA")) == ["One", "Two", "NA"]
+        assert list(ndf["Q_1best"]) == ["C", "A", "B"]
+
+    def test_topk_na_vals_match_int_cells(self, meta_file, csv_file):
+        """Integer 0/1 dummies with string na_vals: expansion makes '0' match int 0."""
+        pd.DataFrame({"i_1": [1, 0], "i_2": [0, 1]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "topk",
+                    "name": "issues",
+                    "from_columns": r"i_(\d+)",
+                    "res_columns": r"R\1",
+                    "na_vals": ["0"],
+                    "scale": {"translate_after": {"1": "Econ", "2": "Health"}},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        ndf, _ = read_annotated_data(str(meta_file), return_meta=True)
+        assert list(ndf["R1"]) == ["Econ", "Health"]
 
 
 class TestInternalPipelineHelpers:
