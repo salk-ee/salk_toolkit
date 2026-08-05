@@ -151,9 +151,6 @@ def pp_transform_data(
     for rc in rcl:
         res_meta = c_meta[rc]
         if pp_desc.convert_res == "continuous":
-            if res_meta.datetime:
-                raise Exception(f"Cannot convert datetime column {rc} to continuous")
-
             nvals: Sequence[float | int] = []
             if res_meta.is_categorical:
                 res_meta = _ensure_ldf_categories(c_meta, rc, filtered_df)
@@ -168,6 +165,8 @@ def pp_transform_data(
                 cmap = dict(zip(res_meta.categories or [], nvals))
                 # Categories without a numeric value (e.g. nonresponse) become null, not a failed cast
                 converted = pl.col(rc).cast(pl.String).replace_strict(cmap, default=None, return_dtype=pl.Float32)
+            elif res_meta.datetime:
+                raise Exception(f"Cannot convert datetime column {rc} to continuous")
             else:
                 # Nothing to map: the values are already the numbers, so just parse them (unparseable -> null).
                 # Via String because polars refuses to cast a categorical column straight to a number

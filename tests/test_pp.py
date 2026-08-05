@@ -386,18 +386,13 @@ def _continuous_res_meta(col_meta: dict[str, Any], col: str = "vote_prob") -> Da
 
 
 @pytest.mark.parametrize(
-    "col_meta,values",
-    [
-        ({"continuous": True}, [2.0, 4.0, 6.0, 8.0]),  # No categories at all
-        ({"continuous": True, "categories": "infer"}, [2.0, 4.0, 6.0, 8.0]),  # Categories inferred off the numbers
-        ({"continuous": True, "categories": [2.0, 4.0, 6.0, 8.0], "ordered": True}, [2.0, 4.0, 6.0, 8.0]),
-        # 'infer' on a continuous column also makes io store the values as a string categorical
-        ({"continuous": True, "categories": "infer"}, pd.Categorical(["2", "4", "6", "8"])),
-    ],
-    ids=["no-categories", "infer", "explicit-categories", "infer-stored-as-categorical"],
+    "values",
+    [[2.0, 4.0, 6.0, 8.0], pd.Categorical(["2", "4", "6", "8"])],
+    ids=["float-column", "stored-as-categorical"],
 )
-def test_convert_res_continuous_ignores_categories_on_continuous_col(col_meta: dict[str, Any], values: Any) -> None:
-    """Categories mean nothing on a continuous column: convert_res must cast, never map (and never null the data)."""
+def test_convert_res_continuous_on_continuous_col_keeps_values(values: Any) -> None:
+    """A continuous column has no categories to map, so convert_res must cast - never null the whole frame."""
+    col_meta = {"continuous": True}
     df = pd.DataFrame(
         {
             "draw": [0] * 4,
@@ -444,11 +439,10 @@ def test_convert_res_continuous_rejects_datetime() -> None:
         pp_transform_data(pl.LazyFrame(df), _continuous_res_meta({"datetime": True}, col="when"), ppd)
 
 
-@pytest.mark.parametrize("col_meta", [{"continuous": True, "categories": "infer"}, {"datetime": True}])
-def test_non_categorical_res_col_is_not_faceted_by_itself(col_meta: dict[str, Any]) -> None:
-    """Continuous/datetime response columns are not categories, so they never become a facet dimension."""
+def test_continuous_res_col_is_not_faceted_by_itself() -> None:
+    """A continuous response column is not a set of categories, so it never becomes a facet dimension."""
     ppd = soft_validate({"res_col": "score", "facet_dims": ["gender"], "plot": "boxplots"}, PlotDescriptor)
-    col_meta_map, _ = _update_data_meta_with_pp_desc(_continuous_res_meta(col_meta, col="score"), ppd)
+    col_meta_map, _ = _update_data_meta_with_pp_desc(_continuous_res_meta({"continuous": True}, col="score"), ppd)
 
     facet_dims = impute_facet_dims(ppd, col_meta_map)
 

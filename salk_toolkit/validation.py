@@ -184,8 +184,8 @@ class ColumnMeta(PBase):
 
     @property
     def is_categorical(self) -> bool:
-        """Categories only describe categorical columns - they mean nothing on continuous/datetime ones."""
-        return self.categories is not None and not self.continuous and not self.datetime
+        """Categories describe categorical columns only - a continuous column never has them (see check_categorical)."""
+        return self.categories is not None and not self.continuous
 
     @model_serializer(mode="wrap")
     def _serialize_model(
@@ -198,6 +198,13 @@ class ColumnMeta(PBase):
 
     @model_validator(mode="after")
     def check_categorical(self, info: ValidationInfo) -> Self:
+        # Type flags are exclusive, and this is never soft: a continuous column that also carries
+        # categories is pure confusion, so fail the load rather than pick a winner
+        if self.continuous and self.datetime:
+            raise ValueError("Column cannot be both continuous and datetime")
+        if self.continuous and self.categories is not None:
+            raise ValueError("Column is continuous, so it cannot have categories")
+
         if info.context and info.context.get("validation_mode") == "soft":
             return self
         if self.categories is None:

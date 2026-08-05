@@ -159,6 +159,10 @@ Column-level `{ meta }` should only contain fields that **differ** from the bloc
 | `continuous` | `bool` | Numeric real-valued column |
 | `datetime` | `bool` | Datetime column |
 
+`continuous` is exclusive with both `datetime` and `categories` — a column claiming to be
+both fails to load. (`datetime` + `categories: "infer"` is the one legal combination: it parses
+dates first, then buckets them into chronologically ordered `"01 Dec 25"` categories.)
+
 **Ordering** — only meaningful for ordered categorical columns:
 
 | Field | Type | Purpose |
