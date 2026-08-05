@@ -27,7 +27,9 @@ from salk_toolkit.pp import (
     stk_plot,
     _update_data_meta_with_pp_desc,
 )
+from salk_toolkit.pp.common import _question_meta_clone
 from salk_toolkit.validation import DataMeta, GroupOrColumnMeta, PlotDescriptor, soft_validate
+from pydantic import ValidationError
 
 
 def make_data_meta(meta_dict: dict[str, object]) -> DataMeta:
@@ -413,22 +415,40 @@ def test_convert_res_continuous_on_continuous_col_keeps_values(values: Any) -> N
     assert by_gender["Male"] == pytest.approx(6.0)
 
 
-def test_convert_res_continuous_keeps_declared_val_range() -> None:
-    """A continuous column's declared val_range survives convert_res - it must not collapse to (0, 1)."""
+def test_convert_res_continuous_keeps_full_precision() -> None:
+    """Values are the data itself here, not category codes, so they must not be rounded to Float32."""
+    df = pd.DataFrame({"draw": [0] * 2, "gender": ["Female", "Male"], "vote_prob": [16777217.0, 1234567891.0]})
+    ppd = soft_validate(
+        {"res_col": "vote_prob", "factor_cols": ["gender"], "convert_res": "continuous", "plot": "boxplots"},
+        PlotDescriptor,
+    )
+
+    pi = pp_transform_data(pl.LazyFrame(df), _continuous_res_meta({"continuous": True}), ppd)
+
+    by_gender = dict(zip(pi.data["gender"], pd.to_numeric(pi.data[pi.value_col], errors="raise")))
+    assert by_gender["Female"] == 16777217.0
+
+
+@pytest.mark.parametrize(
+    "col_meta,expected",
+    [({"continuous": True, "val_range": [0.0, 10.0]}, (0.0, 10.0)), ({"continuous": True}, None)],
+    ids=["declared", "undeclared"],
+)
+def test_convert_res_continuous_reports_declared_val_range(col_meta: dict[str, Any], expected: Any) -> None:
+    """A declared val_range survives convert_res; an undeclared one stays unknown rather than becoming (0, 1)."""
     df = pd.DataFrame({"draw": [0] * 4, "gender": ["Female", "Male"] * 2, "vote_prob": [2.0, 4.0, 6.0, 8.0]})
     ppd = soft_validate(
         {"res_col": "vote_prob", "factor_cols": ["gender"], "convert_res": "continuous", "plot": "boxplots"},
         PlotDescriptor,
     )
 
-    data_meta = _continuous_res_meta({"continuous": True, "val_range": [0.0, 10.0]})
-    pi = pp_transform_data(pl.LazyFrame(df), data_meta, ppd)
+    pi = pp_transform_data(pl.LazyFrame(df), _continuous_res_meta(col_meta), ppd)
 
-    assert pi.val_range == (0.0, 10.0)
+    assert pi.val_range == expected
 
 
 def test_convert_res_continuous_rejects_datetime() -> None:
-    """convert_res on a datetime column is not a thing - fail loudly instead of casting timestamps to floats."""
+    """convert_res on a plain datetime column is not a thing - fail loudly instead of casting timestamps to floats."""
     df = pd.DataFrame({"draw": [0] * 2, "gender": ["Female", "Male"], "when": pd.to_datetime(["2026-01-01"] * 2)})
     ppd = soft_validate(
         {"res_col": "when", "factor_cols": ["gender"], "convert_res": "continuous", "plot": "boxplots"},
@@ -439,14 +459,57 @@ def test_convert_res_continuous_rejects_datetime() -> None:
         pp_transform_data(pl.LazyFrame(df), _continuous_res_meta({"datetime": True}, col="when"), ppd)
 
 
-def test_continuous_res_col_is_not_faceted_by_itself() -> None:
-    """A continuous response column is not a set of categories, so it never becomes a facet dimension."""
-    ppd = soft_validate({"res_col": "score", "facet_dims": ["gender"], "plot": "boxplots"}, PlotDescriptor)
-    col_meta_map, _ = _update_data_meta_with_pp_desc(_continuous_res_meta({"continuous": True}, col="score"), ppd)
+def test_convert_res_continuous_on_bucketed_datetime_maps_categories() -> None:
+    """datetime is orthogonal to categorical: a parse-then-bucket column still converts through its categories."""
+    df = pd.DataFrame(
+        {
+            "draw": [0] * 4,
+            "gender": ["Female", "Male"] * 2,
+            "when": pd.Categorical(["01 Jan 25", "02 Jan 25"] * 2, categories=["01 Jan 25", "02 Jan 25"], ordered=True),
+        }
+    )
+    col_meta = {"datetime": True, "categories": ["01 Jan 25", "02 Jan 25"], "ordered": True, "num_values": [1.0, 2.0]}
+    ppd = soft_validate(
+        {"res_col": "when", "factor_cols": ["gender"], "convert_res": "continuous", "plot": "boxplots"},
+        PlotDescriptor,
+    )
 
-    facet_dims = impute_facet_dims(ppd, col_meta_map)
+    pi = pp_transform_data(pl.LazyFrame(df), _continuous_res_meta(col_meta, col="when"), ppd)
 
-    assert "score" not in facet_dims
+    by_gender = dict(zip(pi.data["gender"], pd.to_numeric(pi.data[pi.value_col], errors="raise")))
+    assert by_gender["Female"] == pytest.approx(1.0)
+    assert by_gender["Male"] == pytest.approx(2.0)
+
+
+def test_convert_res_continuous_rejects_uninterpretable_column() -> None:
+    """Neither categories to map nor numbers to parse: error instead of casting the whole column to null."""
+    df = pd.DataFrame({"draw": [0] * 2, "gender": ["Female", "Male"], "note": ["yes", "no"]})
+    ppd = soft_validate(
+        {"res_col": "note", "factor_cols": ["gender"], "convert_res": "continuous", "plot": "boxplots"},
+        PlotDescriptor,
+    )
+
+    with pytest.raises(Exception, match="neither categorical nor continuous"):
+        pp_transform_data(pl.LazyFrame(df), _continuous_res_meta({}, col="note"), ppd)
+
+
+def test_col_meta_override_contradicting_the_annotation_raises() -> None:
+    """Descriptor overrides bypass model validation, so the merged result is revalidated - loudly."""
+    data_meta = _continuous_res_meta({"categories": ["low", "high"], "ordered": True}, col="q")
+    ppd = soft_validate({"res_col": "q", "plot": "boxplots", "col_meta": {"q": {"continuous": True}}}, PlotDescriptor)
+
+    with pytest.raises(ValidationError, match="continuous, so it cannot have categories"):
+        _update_data_meta_with_pp_desc(data_meta, ppd)
+
+
+def test_question_meta_clone_is_nominal() -> None:
+    """The synthetic `question` column holds column names, so it inherits no type flag from its group."""
+    base = soft_validate({"datetime": True, "categories": ["01 Jan 25"], "val_range": None}, GroupOrColumnMeta)
+
+    clone = _question_meta_clone(base, ["q1", "q2"])
+
+    assert (clone.datetime, clone.continuous, clone.ordered) == (False, False, False)
+    assert clone.categories == ["q1", "q2"]
 
 
 def test_get_plot_fn_builds_chart_from_plot_input() -> None:

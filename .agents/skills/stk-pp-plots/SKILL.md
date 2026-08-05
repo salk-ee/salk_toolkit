@@ -98,6 +98,8 @@ For expressions polars can evaluate but `filter` can't encode, use `pl_filter` (
 
 Turn an ordered categorical response into a numeric one for plots that expect a continuous `res_col` (`boxplots`, `density`, `lines`, `violin`, ...). By default `num_values` comes from the column's annotation; override per-descriptor via `num_values` when the analytic scale needs to differ.
 
+On an already-continuous `res_col` it is a no-op cast, so it is safe to leave on. It errors on a column that is neither — a plain `datetime`, or one with no numbers to parse. The column's annotated `val_range` is preserved; an unannotated one stays unset rather than defaulting to `(0, 1)`.
+
 ```python
 {
   "plot": "boxplots",
@@ -167,6 +169,8 @@ Grid layout controls when a plot wraps multiple facets. Rarely needed — the de
 ```
 
 If you find yourself setting the same override from multiple call sites, the annotation is wrong — fix it there.
+
+The merged result is revalidated, so an override that contradicts the annotation raises. To read a categorical column as numbers use `convert_res="continuous"`, not `col_meta: {"continuous": true}`.
 
 ## When to use `return_data=True`
 

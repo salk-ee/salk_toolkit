@@ -377,11 +377,9 @@ def _create_maxdiff_metas_and_dfs(
     best_worst_col_meta = ColumnMeta(categories=effective_topics) if effective_topics is not None else ColumnMeta()
     columns_spec: dict[str, ColumnMeta] = {col: best_worst_col_meta for col in base_columns}
     if setindex_col_name is not None:
-        # The set index is the version number the respondent saw, so it is continuous - and therefore
-        # has no categories; the topic vocabulary lives on the best/worst columns that actually hold topics
-        setindex_col_meta = (setindex_col_meta or ColumnMeta()).model_copy(
-            update={"continuous": True, "categories": None}
-        )
+        # The set index is the version number the respondent saw, so it is continuous - which also keeps
+        # the block scale's topic categories off it; those belong on the best/worst columns
+        setindex_col_meta = (setindex_col_meta or ColumnMeta()).model_copy(update={"continuous": True})
         columns_spec = {setindex_col_name: setindex_col_meta} | columns_spec
 
     return [df], [

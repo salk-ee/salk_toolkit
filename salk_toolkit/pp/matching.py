@@ -163,7 +163,6 @@ def matching_plots(
     for cn in facet_dims:
         meta = col_meta.get(cn, GroupOrColumnMeta())
         facet_metas.append({"name": cn, **meta.model_dump(mode="python")})
-    # Categorical = has categories (so neither continuous nor datetime), not being converted to continuous
     is_categorical = rcm.is_categorical and convert_res != "continuous"
     match = {
         "draws": ("draw" in df_cols),

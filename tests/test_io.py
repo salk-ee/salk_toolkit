@@ -1293,18 +1293,42 @@ class TestCategoricalFeatures:
         assert df["dt"].dtype.name == "category"
         assert list(df["dt"].dtype.categories) == ["01 Jan 25", "01 Dec 25", "02 Dec 25"]
 
-    @pytest.mark.parametrize(
-        "col_meta", [{"continuous": True, "categories": "infer"}, {"continuous": True, "categories": [1, 2, 3]}]
-    )
-    def test_continuous_column_with_categories_fails_to_load(self, csv_file, meta_file, col_meta):
+    @pytest.mark.parametrize("categories", ["infer", [1, 2, 3]], ids=["infer", "explicit"])
+    def test_continuous_column_with_categories_fails_to_load(self, csv_file, meta_file, categories):
         """Continuous and categorical are exclusive: a column claiming both is rejected, not silently resolved."""
         df_to_csv(pd.DataFrame({"score": [1, 2, 3], "id": [1, 2, 3]}), csv_file)
+        col_meta = {"continuous": True, "categories": categories}
         write_json(
             meta_file, {"file": "test.csv", "structure": [{"name": "test", "columns": ["id", ["score", col_meta]]}]}
         )
 
         with pytest.raises(ValidationError, match="continuous, so it cannot have categories"):
             read_annotated_data(str(meta_file))
+
+    def test_column_type_overrides_block_scale_type(self, csv_file, meta_file):
+        """A column declaring `continuous` opts out of the block's categories instead of inheriting a contradiction."""
+        df_to_csv(pd.DataFrame({"score": [1, 2, 3], "rating": ["a", "b", "a"], "id": [1, 2, 3]}), csv_file)
+        write_json(
+            meta_file,
+            {
+                "file": "test.csv",
+                "structure": [
+                    {"name": "sys", "columns": ["id"]},
+                    {
+                        "name": "block",
+                        "scale": {"categories": ["a", "b"]},
+                        "columns": [["rating", {}], ["score", {"continuous": True}]],
+                    },
+                ],
+            },
+        )
+
+        df, dmeta = read_and_process_data(str(meta_file), return_meta=True)
+
+        cmeta = extract_column_meta(dmeta)
+        assert (cmeta["score"].continuous, cmeta["score"].categories) == (True, None)
+        assert cmeta["rating"].categories == ["a", "b"]
+        assert df["score"].tolist() == [1, 2, 3]
 
     def test_numeric_to_categorical_nearest_mapping(self, csv_file, meta_file):
         """Test numeric series mapping to nearest categorical values"""

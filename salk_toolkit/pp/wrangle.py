@@ -154,7 +154,7 @@ def pp_transform_data(
             nvals: Sequence[float | int] = []
             if res_meta.is_categorical:
                 res_meta = _ensure_ldf_categories(c_meta, rc, filtered_df)
-                nvals = _get_cat_num_vals(res_meta, pp_desc) or []
+                nvals = _get_cat_num_vals(res_meta, pp_desc)
 
                 # Conversion only makes sense for ordered (or binary) data
                 if len(nvals) > 2 and not res_meta.ordered:
@@ -167,16 +167,21 @@ def pp_transform_data(
                 converted = pl.col(rc).cast(pl.String).replace_strict(cmap, default=None, return_dtype=pl.Float32)
             elif res_meta.datetime:
                 raise Exception(f"Cannot convert datetime column {rc} to continuous")
+            elif res_meta.continuous or schema[rc].is_numeric():
+                # Already numbers: just parse them (unparseable -> null). Only non-numeric dtypes need the
+                # String hop - polars refuses to cast a categorical straight to a number, and on a numeric
+                # column the detour stringifies every value for nothing
+                col = pl.col(rc) if schema[rc].is_numeric() else pl.col(rc).cast(pl.String)
+                converted = col.cast(pl.Float64, strict=False)
             else:
-                # Nothing to map: the values are already the numbers, so just parse them (unparseable -> null).
-                # Via String because polars refuses to cast a categorical column straight to a number
-                converted = pl.col(rc).cast(pl.String).cast(pl.Float32, strict=False)
+                raise Exception(f"Cannot convert {rc} to continuous: it is neither categorical nor continuous")
             filtered_df = filtered_df.with_columns(converted.fill_nan(None))
             anvals = np.array(nvals, dtype="float")  # To handle null as nan
-            val_range = (np.nanmin(anvals), np.nanmax(anvals)) if len(nvals) > 0 else (res_meta.val_range or (0.0, 1.0))
+            val_range = (np.nanmin(anvals), np.nanmax(anvals)) if len(nvals) > 0 else res_meta.val_range
             update_payload: Dict[str, Any] = {
                 "continuous": True,
                 "categories": None,
+                "datetime": False,  # The converted column holds numbers, whatever it was parsed from
                 "ordered": False,
                 "groups": {},
                 "colors": {},

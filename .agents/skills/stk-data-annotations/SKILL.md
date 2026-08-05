@@ -159,9 +159,12 @@ Column-level `{ meta }` should only contain fields that **differ** from the bloc
 | `continuous` | `bool` | Numeric real-valued column |
 | `datetime` | `bool` | Datetime column |
 
-`continuous` is exclusive with both `datetime` and `categories` — a column claiming to be
-both fails to load. (`datetime` + `categories: "infer"` is the one legal combination: it parses
-dates first, then buckets them into chronologically ordered `"01 Dec 25"` categories.)
+`continuous` and `categories` are exclusive — a column declaring both fails to load. A column
+that declares its own type overrides the block `scale`'s, so `scale: {"categories": [...]}` plus
+a column `{"continuous": true}` is fine: the column simply doesn't inherit the categories.
+
+`datetime` is orthogonal to both: it describes parsing, so `datetime` + `categories: "infer"`
+parses dates first and then buckets them into chronologically ordered `"01 Dec 25"` categories.
 
 **Ordering** — only meaningful for ordered categorical columns:
 
@@ -333,7 +336,7 @@ For best-worst scaling / maxdiff experiments:
 
 - `best_columns` / `worst_columns`: regex or list matching best/worst choice columns
 - `set_columns`: regex template or list for the set-membership columns
-- `setindex_column`: column containing set version index (with optional meta). Mutually exclusive with explicit set_columns data in the file.
+- `setindex_column`: column containing set version index (with optional meta; forced `continuous: true`, so it never inherits the scale's topic categories). Mutually exclusive with explicit set_columns data in the file.
 - `topics`: list of all topic strings (typically in `constants`)
 - `sets`: list of lists of 1-indexed topic indices per version (typically in `constants`)
 - Scale `translate` maps local-language topics to English

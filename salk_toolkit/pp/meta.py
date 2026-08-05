@@ -86,6 +86,9 @@ def _update_data_meta_with_pp_desc(
                     update = update.model_dump(mode="python", exclude_unset=True)
                 elif not isinstance(update, dict):
                     update = dict(update)
-                col_meta[key] = col_meta[key].model_copy(update=update)
+                # Revalidate: model_copy skips validators, so an override contradicting the
+                # annotation (continuous on a categorical column) would silently pass through
+                merged = col_meta[key].model_copy(update=update).model_dump(mode="python")
+                col_meta[key] = soft_validate(merged, GroupOrColumnMeta)
 
     return col_meta, gc_dict
