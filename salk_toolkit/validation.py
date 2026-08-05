@@ -358,11 +358,8 @@ class ColumnBlockMeta(PBase):
 
 
 class TopKBlock(ColumnBlockMeta):
-    """Block for top-K aggregation of multi-select columns. The stored output
-    block is an instance of this class; its `from_columns` / `res_columns`
-    fields are resolved to `List[str]` by :mod:`salk_toolkit.io` (no regex on
-    output). Input-only directives (`subgroup_labels` from the base class)
-    are cleared on output."""
+    """Block turning a multi-select question into its picked slots; `from_columns` /
+    `res_columns` are resolved to concrete lists on output."""
 
     type: Literal["topk"] = "topk"  # type: ignore[assignment]
 
@@ -399,19 +396,6 @@ class TopKBlock(ColumnBlockMeta):
         "values instead of mapping cells to column identity. res_columns then acts as a slot-name prefix.",
     )
 
-    def segments(self) -> List[Tuple[List[str], Optional[List[str]], bool]]:
-        """Return ordinal-ranking segments for this resolved TopKBlock."""
-        cols = list(self.columns.keys())
-        if self.input_format in ("onehot", "leftpacked"):
-            return [(cols, None, False)]
-        if len(cols) < 2:
-            return [(cols, None, False)] if cols else []
-        chain: List[Tuple[List[str], Optional[List[str]], bool]] = []
-        for i in range(len(cols) - 1):
-            chain.append(([cols[i]], cols[i + 1 :], True))
-        chain.append((cols, None, False))
-        return chain
-
     def default_model_spec(self) -> Optional[Dict[str, Any]]:
         """ordinal_ranking: picked items rank above the rest of the item pool
         (`[cols, None]`); the ranked input formats additionally treat slot order
@@ -426,18 +410,8 @@ class TopKBlock(ColumnBlockMeta):
 
 
 class MaxDiffBlock(ColumnBlockMeta):
-    """Block for MaxDiff best-worst scaling experiments. The stored output
-    block is an instance of this class; `best_columns` / `worst_columns` /
-    `set_columns` are resolved to `List[str]` by :mod:`salk_toolkit.io`,
-    index-aligned by question. Input-only directives are cleared on output.
-
-    Translation: `scale.translate` is a `Dict[str, str]` mapping 1-based-index
-    strings (``"1"``, ``"2"``, ...) to target-language display names. It is
-    used as the topic universe for ``setindex_column`` lookups AND as an
-    element-wise translator (via ``_apply_pre_transform_translate``) for raw
-    best/worst/set cells when those cells hold index strings. ``scale.translate_after``
-    is not supported on MaxDiff blocks and raises ``ValueError`` at read time.
-    """
+    """Block for MaxDiff best-worst experiments; roles are resolved to per-question aligned
+    lists on output. The topic universe is an index-keyed scale.translate or scale.categories."""
 
     type: Literal["maxdiff"] = "maxdiff"  # type: ignore[assignment]
 
@@ -481,21 +455,6 @@ class MaxDiffBlock(ColumnBlockMeta):
                 f"maxdiff; use scale.translate (pre-transform) instead."
             )
         return self
-
-    def segments(self) -> List[Tuple[List[str], List[str], bool]]:
-        """Return ordinal-ranking segments for this resolved MaxDiff block."""
-        best = self.best_columns
-        worst = self.worst_columns
-        sets = self.set_columns
-        if not (isinstance(best, list) and isinstance(worst, list) and isinstance(sets, list)):
-            raise TypeError(
-                f"MaxDiffBlock.segments() requires resolved lists; got best={best!r}, worst={worst!r}, sets={sets!r}"
-            )
-        if not best:
-            return []
-        return [([best[k]], [sets[k]], True) for k in range(len(best))] + [
-            ([sets[k]], [worst[k]], True) for k in range(len(best))
-        ]
 
     def default_model_spec(self) -> Optional[Dict[str, Any]]:
         """ordinal_ranking: one weak-order chain per question — best > shown set > worst."""
@@ -602,8 +561,7 @@ class MaxDiffBlock(ColumnBlockMeta):
 
 
 class OneHotBlock(ColumnBlockMeta):
-    """Block producing one column per choice from a multi-select question.
-    Output cells are coded via `coding` (default No/Yes categorical, negative pole first)."""
+    """Block producing one column per choice from a multi-select question, coded via `coding`."""
 
     type: Literal["onehot"] = "onehot"  # type: ignore[assignment]
 

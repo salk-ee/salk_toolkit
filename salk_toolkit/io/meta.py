@@ -31,11 +31,7 @@ def _merge_categories(a: list | str | None, b: list | str | None) -> list | str 
         return b
     if b is None:
         return a
-    out = list(a)
-    for c in b:
-        if c not in out:
-            out.append(c)
-    return out
+    return list(dict.fromkeys([*a, *b]))
 
 
 _MERGE_SCALAR_FIELDS = (
@@ -60,7 +56,7 @@ def _merge_column_meta(a: ColumnMeta, b: ColumnMeta, ctx: str) -> ColumnMeta:
     if cats is not None:
         update["categories"] = cats
     for f in _MERGE_SCALAR_FIELDS:
-        av, bv = getattr(a, f, None), getattr(b, f, None)
+        av, bv = getattr(a, f), getattr(b, f)
         if av is not None and bv is not None and av != bv:
             warn(f"{ctx}: field {f!r} differs across files ({av!r} vs {bv!r}); using last-file value")
         if bv is not None:
@@ -97,8 +93,6 @@ def _merge_data_metas(metas: list[DataMeta]) -> DataMeta:
     """Build the combined DataMeta for a multi-file load by unioning block structure
     across all file metas (in file order). Top-level fields come from the last file;
     only `structure` is merged. Single meta -> returned unchanged (no-op)."""
-    if not metas:
-        raise ValueError("_merge_data_metas called with no metas")
     if len(metas) == 1:
         return metas[0]
     merged = {}

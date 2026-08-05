@@ -1,14 +1,5 @@
-"""Specialized block processing (topk/maxdiff/onehot): expand grouped raw columns
-into derived blocks via the block stages:
-
-1. Match: identify candidate columns from the dataframe.
-2. Explode: fan out regex-matched columns into subgroup siblings.
-3. Pre-translate: map raw cell values using scale.translate.
-4. Transform: dispatch to the type-specific transform + output block builder.
-5. Post-translate: map output cells and categories using scale.translate_after.
-
-Plain blocks are processed column-by-column by :mod:`salk_toolkit.io.pipeline`;
-only the specialized block types come through here.
+"""Specialized block processing (topk/maxdiff/onehot): expand grouped raw columns into
+derived blocks. Stages and JSON in specs/block-processing.md; plain blocks live in pipeline.py.
 """
 
 import ast
@@ -206,23 +197,8 @@ def _is_design_keyed_sets(value: object) -> bool:
 
 
 def _get_subgroup_config(value: object, sibling_name: str, source_name: str) -> object:
-    """Extract a sibling-specific configuration from a parent field.
-
-    A parent field (like `choice_sets`) can be either:
-    1. A 'flat' structure (list or dict) that is shared by all siblings.
-    2. A 'keyed' dictionary where keys correspond to subgroup labels (e.g.,
-       'economics', 'politics') and values are the sibling-specific configs.
-
-    This helper extracts the correct config based on the sibling's name suffix.
-
-    Args:
-        value: The configuration value from the parent block.
-        sibling_name: The name of the narrowed sibling block.
-        source_name: The name of the original parent block.
-
-    Returns:
-        The configuration (flat or picked from the keyed dict) for this sibling.
-    """
+    """Pick this sibling's share of a parent field (`choice_sets`): a flat value when the block
+    has one sibling, else a dict keyed by sibling label."""
     if value is None:
         return None
 
@@ -813,50 +789,16 @@ def _onehot_transform_wide(
 
 
 def _demote_to_plain(block: ColumnBlockMeta) -> ColumnBlockMeta:
-    """Demote a specialized block (TopKBlock / MaxDiffBlock / OneHotBlock) to a plain
-    ColumnBlockMeta, preserving every field declared on ``ColumnBlockMeta`` and dropping
-    subclass-specific ones. Using ``model_fields`` instead of a hand-enumerated list means
-    new fields added to ``ColumnBlockMeta`` are carried over automatically. Input-only
-    directives (from_columns, subgroup_labels) are cleared."""
+    """Keep a typed block's declared raw columns as a plain block, dropping the directives that
+    belong to the derived output (model_spec included)."""
     kwargs = {k: getattr(block, k) for k in ColumnBlockMeta.model_fields if k != "type"}
-    # Clear input-only directives that are not part of the demoted plain block
-    # (model_spec belongs to the derived output block, not the raw-columns parent)
-    kwargs["from_columns"] = None
-    kwargs["subgroup_labels"] = None
-    kwargs["model_spec"] = None
-    return ColumnBlockMeta(**kwargs)
+    return ColumnBlockMeta(**{**kwargs, "from_columns": None, "subgroup_labels": None, "model_spec": None})
 
 
 def _combine_first_preserving_order(*frames: pd.DataFrame) -> pd.DataFrame:
-    """Like ``DataFrame.combine_first(other1).combine_first(other2)...`` but
-    keeps the natural source-data column order instead of lex-sorting.
-
-    ``DataFrame.combine_first`` lex-sorts the union of column names in its
-    result. That ordering is wrong for our TopK/MaxDiff/OneHot block pipeline
-    when ``from_columns`` is a regex with a single numeric capture group
-    (e.g. ``vA10_M_(\\d+)`` matching ``vA10_M_1, ..., vA10_M_14, vA10_M_99``):
-    after the onehot pivot + leftpack, the rename step assumes the columns are
-    still in source order, so a lex-sorted ``vA10_M_1, vA10_M_10, vA10_M_11,
-    ..., vA10_M_2, ...`` produces ``issue_top_1, issue_top_10, issue_top_11``
-    instead of ``issue_top_1, issue_top_2, issue_top_3``.
-
-    Restore the natural order: first frame's columns first (in their order),
-    then any new columns from each subsequent frame (in their order), deduped.
-    The underlying ``combine_first`` semantics (left-priority value coalescing
-    plus index union) are preserved — only the column ordering changes.
-    """
-    if not frames:
-        return pd.DataFrame()
+    """combine_first that keeps source column order instead of lex-sorting it: slot renaming
+    assumes source order, so a sorted `M_1, M_10, M_2` would misname the packed slots."""
     result = frames[0]
     for other in frames[1:]:
         result = result.combine_first(other)
-    desired: list[str] = []
-    seen: set[str] = set()
-    for frame in frames:
-        for c in frame.columns:
-            if c not in seen:
-                desired.append(c)
-                seen.add(c)
-    # Tolerate any columns combine_first invented that we didn't account for
-    desired += [c for c in result.columns if c not in seen]
-    return result[desired]
+    return result[list(dict.fromkeys(c for f in frames for c in f.columns))]

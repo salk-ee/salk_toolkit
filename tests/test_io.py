@@ -376,7 +376,7 @@ class TestReadAnnotatedData:
         # Resolved column lists replace regex patterns on output
         assert isinstance(topk_block.from_columns, list)
         assert isinstance(topk_block.res_columns, list)
-        assert topk_block.segments() == [(list(topk_block.columns.keys()), None, False)]
+        assert topk_block.model_spec == {"structure": [[list(topk_block.columns.keys()), None]], "ordered": False}
 
         # Also test that we can give from_columns and res_cols as lists (no subgroups possible here)
         # TODO: Can be a separate test, but there'd be a lot of boilerplate code.
@@ -861,7 +861,7 @@ class TestReadAnnotatedData:
         assert econ_block.type == "topk"
         assert econ_block.from_columns == ["Q7r1c1", "Q7r1c2"]
         assert econ_block.res_columns == ["Q7r1_R1", "Q7r1_R2"]
-        assert econ_block.segments() == [(list(econ_block.columns.keys()), None, False)]
+        assert econ_block.model_spec == {"structure": [[list(econ_block.columns.keys()), None]], "ordered": False}
 
     def test_topk_two_subgroup_dimensions(self, meta_file, csv_file):
         """TopK with 3 regex groups, 2 subgroup dimensions.
@@ -925,10 +925,10 @@ class TestReadAnnotatedData:
         assert all(c.startswith("Q_A_1_R") for c in ee_block.columns)
         # Each sibling is an independent TopKBlock with its own narrowed from_columns.
         assert ee_block.from_columns == ["Q_A_1_1", "Q_A_1_2"]
-        assert ee_block.segments() == [(list(ee_block.columns.keys()), None, False)]
+        assert ee_block.model_spec == {"structure": [[list(ee_block.columns.keys()), None]], "ordered": False}
 
-    def test_maxdiff_segments_shape(self, meta_file, csv_file):
-        """MaxDiff output block exposes leedu-compatible ordinal ranking segments."""
+    def test_maxdiff_model_spec_shape(self, meta_file, csv_file):
+        """MaxDiff output block stamps one best > set > worst chain per question."""
         items = {"1": "A", "2": "B", "3": "C"}
         meta = {
             "file": "test.csv",
@@ -959,19 +959,16 @@ class TestReadAnnotatedData:
         _data_df, data_meta = read_and_process_data(str(meta_file), return_meta=True)
         block = data_meta.structure["maxdiff"]
         assert isinstance(block, MaxDiffBlock)
-        # Question-aligned lists with the same order, two segments per question (best>set, set>worst).
+        # Question-aligned lists in the same order, one chain per question.
         best_columns = block.best_columns
         worst_columns = block.worst_columns
         set_columns = block.set_columns
         assert isinstance(best_columns, list)
         assert isinstance(worst_columns, list)
         assert isinstance(set_columns, list)
-        q = len(best_columns)
-        segs = block.segments()
-        assert len(segs) == 2 * q
-        for k in range(q):
-            assert segs[k] == ([best_columns[k]], [set_columns[k]], True)
-            assert segs[q + k] == ([set_columns[k]], [worst_columns[k]], True)
+        assert block.model_spec == {
+            "structure": [[[b], [s], [w]] for b, s, w in zip(best_columns, set_columns, worst_columns)]
+        }
 
     def test_maxdiff_with_translate(self, meta_file, csv_file):
         """MaxDiff with `scale.translate` mapping 1-based index strings to display-language topics.
@@ -4629,8 +4626,8 @@ class TestPipelineSchema:
                 warnings=True,
             )
 
-    def test_topk_segments_ranked_and_unranked(self):
-        """Verify segments() returns chain for ranked formats and single entry for flat ones."""
+    def test_topk_model_spec_ranked_and_unranked(self):
+        """The ranked input formats stamp ordered=true; the flat ones do not."""
         from salk_toolkit.validation import soft_validate, TopKBlock
 
         b = soft_validate(
@@ -4645,13 +4642,9 @@ class TestPipelineSchema:
             },
             TopKBlock,
         )
-        assert b.segments() == [
-            (["R1"], ["R2", "R3"], True),
-            (["R2"], ["R3"], True),
-            (["R1", "R2", "R3"], None, False),
-        ]
+        assert b.default_model_spec() == {"structure": [[["R1", "R2", "R3"], None]], "ordered": True}
         b2 = b.model_copy(update={"input_format": "leftpacked"})
-        assert b2.segments() == [(["R1", "R2", "R3"], None, False)]
+        assert b2.default_model_spec() == {"structure": [[["R1", "R2", "R3"], None]], "ordered": False}
 
     def test_maxdiff_schema_has_input_format_and_renamed_fields(self):
         """Verify MaxDiffBlock has input_format; choice_mapping/items/translate removed."""
@@ -4727,7 +4720,7 @@ class TestPipelineSchema:
         out = meta_obj.structure["x"]
         assert list(out.columns.keys()) == ["X_R1", "X_R2"]
         assert out.input_format == "leftpacked"
-        assert out.segments() == [(["X_R1", "X_R2"], None, False)]
+        assert out.model_spec == {"structure": [[["X_R1", "X_R2"], None]], "ordered": False}
 
     def test_topk_ranked_leftpack_segments_chain(self, meta_file, csv_file):
         """input_format=ranked_leftpack skips transform and segments() returns ordered chain."""
@@ -4749,10 +4742,7 @@ class TestPipelineSchema:
         write_json(meta_file, meta)
         _, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
         assert meta_obj is not None
-        assert meta_obj.structure["x"].segments() == [
-            (["X_R1"], ["X_R2"], True),
-            (["X_R1", "X_R2"], None, False),
-        ]
+        assert meta_obj.structure["x"].model_spec == {"structure": [[["X_R1", "X_R2"], None]], "ordered": True}
 
     def test_topk_leftpacked_mismatch_raises(self, meta_file, csv_file):
         """res_columns != from_columns hard-fails on skip transforms."""
@@ -4964,8 +4954,7 @@ class TestPipelineSchema:
         assert sorted(out.best_columns) == ["Q1_b_1", "Q1_b_2"]
         assert sorted(out.worst_columns) == ["Q1_w_1", "Q1_w_2"]
         assert sorted(out.set_columns) == ["Q1_set_abc_1", "Q1_set_abc_2"]
-        segs = out.segments()
-        assert len(segs) == 4
+        assert out.model_spec is not None and len(out.model_spec["structure"]) == 2  # one chain per question
 
     def test_maxdiff_resolved_explicit_lists(self, meta_file, csv_file):
         """input_format=resolved with explicit column lists aligned positionally."""
@@ -4999,7 +4988,7 @@ class TestPipelineSchema:
         assert meta_obj is not None
         out = meta_obj.structure["md"]
         assert out.best_columns == ["best1", "best2"]
-        assert len(out.segments()) == 4
+        assert out.model_spec is not None and len(out.model_spec["structure"]) == 2  # one chain per question
 
     def test_maxdiff_resolved_incomplete_alignment_hard_fails(self, meta_file, csv_file):
         """Missing a role column for one capture key → hard fail."""
