@@ -151,29 +151,30 @@ def pp_transform_data(
     for rc in rcl:
         res_meta = c_meta[rc]
         if pp_desc.convert_res == "continuous":
-            res_meta = _ensure_ldf_categories(c_meta, rc, filtered_df)
-            nvals = _get_cat_num_vals(res_meta, pp_desc)
+            if res_meta.datetime:
+                raise Exception(f"Cannot convert datetime column {rc} to continuous")
 
-            # Conversion only makes sense for ordered (or binary) data
-            if nvals is not None and len(nvals) > 2 and not res_meta.ordered:
-                raise Exception(
-                    f"Cannot convert {rc} to continuous because it has more than 2 values and is not ordered"
-                )
+            nvals: Sequence[float | int] = []
+            if res_meta.is_categorical:
+                res_meta = _ensure_ldf_categories(c_meta, rc, filtered_df)
+                nvals = _get_cat_num_vals(res_meta, pp_desc) or []
 
-            categories = res_meta.categories or []
-            nvals = nvals or []
-            cmap = dict(zip(categories, nvals))
-            # Categories without a numeric value (e.g. nonresponse) become null, not a failed cast.
-            # No mapping at all (already-continuous column, or no categories in meta): plain
-            # non-strict cast — replace_strict with an empty map would null every row.
-            converted = (
-                pl.col(rc).cast(pl.String).replace_strict(cmap, default=None, return_dtype=pl.Float32)
-                if cmap
-                else pl.col(rc).cast(pl.Float32, strict=False)
-            )
+                # Conversion only makes sense for ordered (or binary) data
+                if len(nvals) > 2 and not res_meta.ordered:
+                    raise Exception(
+                        f"Cannot convert {rc} to continuous because it has more than 2 values and is not ordered"
+                    )
+
+                cmap = dict(zip(res_meta.categories or [], nvals))
+                # Categories without a numeric value (e.g. nonresponse) become null, not a failed cast
+                converted = pl.col(rc).cast(pl.String).replace_strict(cmap, default=None, return_dtype=pl.Float32)
+            else:
+                # Nothing to map: the values are already the numbers, so just parse them (unparseable -> null).
+                # Via String because polars refuses to cast a categorical column straight to a number
+                converted = pl.col(rc).cast(pl.String).cast(pl.Float32, strict=False)
             filtered_df = filtered_df.with_columns(converted.fill_nan(None))
-            nvals = np.array(nvals, dtype="float")  # To handle null as nan
-            val_range = (np.nanmin(nvals), np.nanmax(nvals)) if len(nvals) > 0 else (0.0, 1.0)
+            anvals = np.array(nvals, dtype="float")  # To handle null as nan
+            val_range = (np.nanmin(anvals), np.nanmax(anvals)) if len(nvals) > 0 else (res_meta.val_range or (0.0, 1.0))
             update_payload: Dict[str, Any] = {
                 "continuous": True,
                 "categories": None,

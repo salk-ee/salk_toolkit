@@ -373,47 +373,86 @@ def test_convert_res_continuous_maps_unmapped_nonresponse_to_null() -> None:
     assert by_gender["Male"] == pytest.approx((-1 + 1 + 1 + 2 + 2) / 5)
 
 
-def test_convert_res_continuous_on_native_continuous_keeps_values() -> None:
-    """convert_res on an already-continuous column (no categories → empty cmap) must not null the data."""
-    data_meta = make_data_meta(
+def _continuous_res_meta(col_meta: dict[str, Any], col: str = "vote_prob") -> DataMeta:
+    """A gender + one-response-column data meta, response column meta given by the caller."""
+    return make_data_meta(
         {
             "structure": [
-                {
-                    "name": "demographics",
-                    "scale": {},
-                    "columns": [["gender", {"categories": ["Female", "Male"]}]],
-                },
-                {
-                    "name": "probs",
-                    "scale": {},
-                    "columns": [["vote_prob", {"continuous": True}]],
-                },
+                {"name": "demographics", "scale": {}, "columns": [["gender", {"categories": ["Female", "Male"]}]]},
+                {"name": "probs", "scale": {}, "columns": [[col, col_meta]]},
             ]
         }
     )
+
+
+@pytest.mark.parametrize(
+    "col_meta,values",
+    [
+        ({"continuous": True}, [2.0, 4.0, 6.0, 8.0]),  # No categories at all
+        ({"continuous": True, "categories": "infer"}, [2.0, 4.0, 6.0, 8.0]),  # Categories inferred off the numbers
+        ({"continuous": True, "categories": [2.0, 4.0, 6.0, 8.0], "ordered": True}, [2.0, 4.0, 6.0, 8.0]),
+        # 'infer' on a continuous column also makes io store the values as a string categorical
+        ({"continuous": True, "categories": "infer"}, pd.Categorical(["2", "4", "6", "8"])),
+    ],
+    ids=["no-categories", "infer", "explicit-categories", "infer-stored-as-categorical"],
+)
+def test_convert_res_continuous_ignores_categories_on_continuous_col(col_meta: dict[str, Any], values: Any) -> None:
+    """Categories mean nothing on a continuous column: convert_res must cast, never map (and never null the data)."""
     df = pd.DataFrame(
         {
             "draw": [0] * 4,
             "gender": ["Female", "Male", "Female", "Male"],
-            "vote_prob": [2.0, 4.0, 6.0, 8.0],
+            "vote_prob": values,
         }
     )
     ppd = soft_validate(
-        {
-            "res_col": "vote_prob",
-            "factor_cols": ["gender"],
-            "convert_res": "continuous",
-            "plot": "boxplots",
-        },
+        {"res_col": "vote_prob", "factor_cols": ["gender"], "convert_res": "continuous", "plot": "boxplots"},
         PlotDescriptor,
     )
 
-    pi = pp_transform_data(pl.LazyFrame(df), data_meta, ppd)
+    pi = pp_transform_data(pl.LazyFrame(df), _continuous_res_meta(col_meta), ppd)
 
     assert len(pi.data) > 0
     by_gender = dict(zip(pi.data["gender"], pd.to_numeric(pi.data[pi.value_col], errors="raise")))
     assert by_gender["Female"] == pytest.approx(4.0)
     assert by_gender["Male"] == pytest.approx(6.0)
+
+
+def test_convert_res_continuous_keeps_declared_val_range() -> None:
+    """A continuous column's declared val_range survives convert_res - it must not collapse to (0, 1)."""
+    df = pd.DataFrame({"draw": [0] * 4, "gender": ["Female", "Male"] * 2, "vote_prob": [2.0, 4.0, 6.0, 8.0]})
+    ppd = soft_validate(
+        {"res_col": "vote_prob", "factor_cols": ["gender"], "convert_res": "continuous", "plot": "boxplots"},
+        PlotDescriptor,
+    )
+
+    data_meta = _continuous_res_meta({"continuous": True, "val_range": [0.0, 10.0]})
+    pi = pp_transform_data(pl.LazyFrame(df), data_meta, ppd)
+
+    assert pi.val_range == (0.0, 10.0)
+
+
+def test_convert_res_continuous_rejects_datetime() -> None:
+    """convert_res on a datetime column is not a thing - fail loudly instead of casting timestamps to floats."""
+    df = pd.DataFrame({"draw": [0] * 2, "gender": ["Female", "Male"], "when": pd.to_datetime(["2026-01-01"] * 2)})
+    ppd = soft_validate(
+        {"res_col": "when", "factor_cols": ["gender"], "convert_res": "continuous", "plot": "boxplots"},
+        PlotDescriptor,
+    )
+
+    with pytest.raises(Exception, match="Cannot convert datetime column when"):
+        pp_transform_data(pl.LazyFrame(df), _continuous_res_meta({"datetime": True}, col="when"), ppd)
+
+
+@pytest.mark.parametrize("col_meta", [{"continuous": True, "categories": "infer"}, {"datetime": True}])
+def test_non_categorical_res_col_is_not_faceted_by_itself(col_meta: dict[str, Any]) -> None:
+    """Continuous/datetime response columns are not categories, so they never become a facet dimension."""
+    ppd = soft_validate({"res_col": "score", "facet_dims": ["gender"], "plot": "boxplots"}, PlotDescriptor)
+    col_meta_map, _ = _update_data_meta_with_pp_desc(_continuous_res_meta(col_meta, col="score"), ppd)
+
+    facet_dims = impute_facet_dims(ppd, col_meta_map)
+
+    assert "score" not in facet_dims
 
 
 def test_get_plot_fn_builds_chart_from_plot_input() -> None:

@@ -279,7 +279,7 @@ with st.sidebar:  # .expander("Select dimensions"):
     args["res_col"] = obs_name
 
     res_meta = c_meta[args["res_col"]]
-    res_cont = (not res_meta.categories) or args.get("convert_res") == "continuous"
+    res_cont = (not res_meta.is_categorical) or args.get("convert_res") == "continuous"
 
     modifiers = c_meta[obs_name].modifiers
     all_dims = list(modifiers) + all_dims

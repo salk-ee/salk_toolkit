@@ -182,6 +182,11 @@ class ColumnMeta(PBase):
     mandates: Optional[MandatesDict] = None  # Mandate count mapping for the electoral system
     col_prefix: Optional[str] = None  # Prefix prepended to column names in data (from scale block)
 
+    @property
+    def is_categorical(self) -> bool:
+        """Categories only describe categorical columns - they mean nothing on continuous/datetime ones."""
+        return self.categories is not None and not self.continuous and not self.datetime
+
     @model_serializer(mode="wrap")
     def _serialize_model(
         self, handler: Callable[[BaseModel], dict[str, Any]], info: SerializationInfo
