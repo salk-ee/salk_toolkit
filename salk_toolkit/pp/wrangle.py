@@ -163,10 +163,15 @@ def pp_transform_data(
             categories = res_meta.categories or []
             nvals = nvals or []
             cmap = dict(zip(categories, nvals))
-            # Categories without a numeric value (e.g. nonresponse) become null, not a failed cast
-            filtered_df = filtered_df.with_columns(
-                pl.col(rc).cast(pl.String).replace_strict(cmap, default=None, return_dtype=pl.Float32).fill_nan(None)
+            # Categories without a numeric value (e.g. nonresponse) become null, not a failed cast.
+            # No mapping at all (already-continuous column, or no categories in meta): plain
+            # non-strict cast — replace_strict with an empty map would null every row.
+            converted = (
+                pl.col(rc).cast(pl.String).replace_strict(cmap, default=None, return_dtype=pl.Float32)
+                if cmap
+                else pl.col(rc).cast(pl.Float32, strict=False)
             )
+            filtered_df = filtered_df.with_columns(converted.fill_nan(None))
             nvals = np.array(nvals, dtype="float")  # To handle null as nan
             val_range = (np.nanmin(nvals), np.nanmax(nvals)) if len(nvals) > 0 else (0.0, 1.0)
             update_payload: Dict[str, Any] = {

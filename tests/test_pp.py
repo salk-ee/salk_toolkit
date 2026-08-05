@@ -373,6 +373,49 @@ def test_convert_res_continuous_maps_unmapped_nonresponse_to_null() -> None:
     assert by_gender["Male"] == pytest.approx((-1 + 1 + 1 + 2 + 2) / 5)
 
 
+def test_convert_res_continuous_on_native_continuous_keeps_values() -> None:
+    """convert_res on an already-continuous column (no categories → empty cmap) must not null the data."""
+    data_meta = make_data_meta(
+        {
+            "structure": [
+                {
+                    "name": "demographics",
+                    "scale": {},
+                    "columns": [["gender", {"categories": ["Female", "Male"]}]],
+                },
+                {
+                    "name": "probs",
+                    "scale": {},
+                    "columns": [["vote_prob", {"continuous": True}]],
+                },
+            ]
+        }
+    )
+    df = pd.DataFrame(
+        {
+            "draw": [0] * 4,
+            "gender": ["Female", "Male", "Female", "Male"],
+            "vote_prob": [2.0, 4.0, 6.0, 8.0],
+        }
+    )
+    ppd = soft_validate(
+        {
+            "res_col": "vote_prob",
+            "factor_cols": ["gender"],
+            "convert_res": "continuous",
+            "plot": "boxplots",
+        },
+        PlotDescriptor,
+    )
+
+    pi = pp_transform_data(pl.LazyFrame(df), data_meta, ppd)
+
+    assert len(pi.data) > 0
+    by_gender = dict(zip(pi.data["gender"], pd.to_numeric(pi.data[pi.value_col], errors="raise")))
+    assert by_gender["Female"] == pytest.approx(4.0)
+    assert by_gender["Male"] == pytest.approx(6.0)
+
+
 def test_get_plot_fn_builds_chart_from_plot_input() -> None:
     """`get_plot_fn` returns the plot function, callable with a PlotInput plus plot kwargs."""
 
