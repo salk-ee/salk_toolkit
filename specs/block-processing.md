@@ -60,17 +60,32 @@ model desc, a `res_cols` entry of `{"name": "<block>", "model_spec": {…}}`
 shallow-merges its dict over the block's spec — override parameters (`mode`,
 `model`, …) without restating the structure.
 
-### `na_labels` — global not-asked codes
+### Missing data: `not_asked` vs `not_selected` vs `nonresponse`
 
-A meta-level `na_labels` lists raw cell values meaning the question was **not
-asked / not collected** (mode/filter skips: `"Nicht erhoben: Filter"`, …). They
-are mapped to NA in every block before translation, so they never surface as
-categories. A block-level `na_labels` overrides the global list (`[]` opts the
-block out). This is **not** for substantive non-responses — "Don't know" /
-"Refused" that were actually offered and picked stay as categories, flagged via
-`nonresponse`. Distinct from the typed blocks' `na_vals`, which marks
-*not-selected* cells within a multi-select. Replaces global
-`df.replace(na_labels, nan)` preprocessing.
+Three different things, never interchangeable:
+
+| Field | Level | Means | Effect |
+|---|---|---|---|
+| `not_asked` | meta (block override) | the question was never put to this respondent — mode/filter skips, `"Nicht erhoben: Filter"` | cell → NA, **and the row is unasked**, so blocks emit NA instead of an answer |
+| `not_selected` | typed block | the item was offered and **not** picked — `"Not mentioned"`, `0` | cell → NA for packing, and it **proves the question was asked** |
+| `nonresponse` | column/scale | the respondent answered "Don't know" / "Refused" | stays a category, flagged for tooling |
+
+`not_asked` is applied first, on raw cells, in every block (plain columns too);
+`not_selected` right after. A block-level `not_asked` overrides the meta-level
+list (`[]` opts the block out). Replaces global `df.replace(na_labels, nan)`
+preprocessing.
+
+**Asked vs answered-nothing.** A row counts as *asked* if any source cell still
+holds a value once `not_asked` codes are nulled — a pick, or an explicit
+`not_selected` marker. Blocks must not fabricate answers for unasked rows:
+- **onehot** emits NA for every choice of an unasked row, and `No` for a row that
+  was asked but picked nothing (an all-`No` row is a real answer).
+- **topk / maxdiff** leave unasked rows' slots empty, as they do for any row with
+  no picks.
+
+This is why a blank-everywhere row reads as *unasked*: with no marker anywhere,
+nothing distinguishes it from a respondent who never saw the question, and
+inventing a definite "picked nothing" would be a fabrication.
 
 ### `scale.translate` vs `scale.translate_after`
 
@@ -90,7 +105,8 @@ block out). This is **not** for substantive non-responses — "Don't know" /
   "columns": [],
   "from_columns": "q(\\d+)_(\\d+)",
   "res_columns": "q\\1_R\\2",
-  "na_vals": ["not_selected"],
+  "k": 3,
+  "not_selected": ["Not mentioned"],
   "input_format": "onehot",
   "scale": { "translate_after": { "1": "USA", "2": "Canada", "3": "Mexico" } }
 }
@@ -99,17 +115,19 @@ block out). This is **not** for substantive non-responses — "Don't know" /
 - `from_columns` regex capture groups index subgroups and items; siblings explode
   per leading group. `res_columns` is a substitution template (`\1`, `\2`).
 - `agg_index` (default `-1`) selects which capture group is the item index.
-- `input_format`: `onehot` (one 0/1 column per item, the default), `leftpacked`
-  (`R1..Rk` already hold chosen names — transform is skipped), or the `ranked_*`
-  variants which additionally treat slot order as a ranking (`segments()`).
+- `k` is **mandatory** and is a data check, not a truncation: it is how many items
+  the question let a respondent pick, and more picks than that in any row is an
+  error (fix `k` or the data).
 - `cell_values: true` (onehot): the cells hold the item value itself (e.g.
   LimeSurvey multi-choice: `"Social inequalities"` / `"Not mentioned"`), so the
   values are leftpacked as-is instead of mapped to column identity. `res_columns`
   then acts as a slot-name prefix template — `"q4a_"` yields `q4a_1..q4a_k`, and
   backrefs resolve per sibling (`"Q9_\\1b"` → `Q9_1b1`, `Q9_1b2`, …). This replaces
   `stk.aggregate_multiselect(colnames_as_values=False)` preprocessing.
-- Translate/na_vals matching is round-trip tolerant: integer-string keys/values
-  (`"1"`, `"0"`) also match the `1` / `1.0` / `"1.0"` cell forms CSV round-trips
+- `not_selected` names **raw** cell values (it is applied before `scale.translate`)
+  and must match something, or the block raises — a silently inert marker list is
+  the bug this catches. Matching is round-trip tolerant: integer-string values
+  (`"1"`, `"0"`) also match the `1` / `1.0` / `"1.0"` forms CSV round-trips
   produce, so no `astype` coercion preprocessing is needed.
 - Column matching follows **raw survey order** even when some matched columns are
   also declared as plain columns elsewhere in the meta.
@@ -159,12 +177,15 @@ block out). This is **not** for substantive non-responses — "Don't know" /
   "input_format": "leftpacked",
   "choices": ["Facebook", "TikTok"],
   "res_prefix": "sm_",
-  "na_vals": ["99"]
+  "not_selected": ["none"]
 }
 ```
 
 - `input_format`: `leftpacked` (`M_1..M_n` hold chosen choice names packed left) or
   `wide` (one column per choice already: 0/1 dummies or mention markers).
+- `not_selected` marks "offered but not picked" cells, as for TopK.
+- Rows that were never asked come out NA rather than all-`No`; see the `not_asked`
+  section above.
 - Output cells are coded via `coding` — default `["No", "Yes"]`, stamped as ordered
   categories (the negative-pole-first house convention); `"coding": null` keeps raw
   booleans. The block scale can add `likert` / `num_values` on top.
@@ -173,7 +194,7 @@ block out). This is **not** for substantive non-responses — "Don't know" /
   (`{"1": "Facebook", …}`); cells are *not* translated. Choices the universe
   expects but the data lacks become all-unselected columns with a warning
   (cross-wave dummy-column drift). A wide cell is selected iff non-NA and, when
-  numeric, nonzero (after `na_vals` replacement).
+  numeric, nonzero (after `not_selected` replacement).
 - `choices` is optional; if omitted it's derived from `scale.translate` values
   (wide) or the sorted union of non-null cell values (leftpacked).
 - Replaces `stk.deaggregate_multiselect` (leftpacked) and hand-rolled
@@ -189,6 +210,8 @@ These block-level fields were **removed** and now raise a `ValueError` at load:
 | MaxDiff `topics` / `items` / `choice_mapping` / `row_labels` | `scale.translate` (index → name). |
 | MaxDiff `sets`               | `set_columns` / `setindex_column`.                        |
 | TopK `translate_values`      | `scale.translate_after`.                                  |
+| block-level `translate` / `translate_after` | `scale.translate` / `scale.translate_after`. |
+| `na_vals`                    | `not_selected` (see also meta-level `not_asked`).         |
 | TopK `groups`                | `subgroup_labels`.                                         |
 
 Because the schema only *ignores* genuinely-unknown fields, these named legacy
@@ -206,7 +229,7 @@ what the create/typed-block stages actually see.
 - **Categories**: unioned (preserving order); `"infer"` on either side stays `"infer"`.
 - **Column/scale meta fields** (`_MERGE_SCALAR_FIELDS`): last-file-wins, with a warning
   on disagreement.
-- **All other block fields** (`from_columns`, `res_columns`, `k`, `na_vals`, …):
+- **All other block fields** (`from_columns`, `res_columns`, `k`, `not_selected`, …):
   first-file-wins, silently — `_merge_blocks` copies the accumulated block and only
   overrides `columns`/`scale`. A typed block whose source pattern changed between waves
   therefore keeps the earlier wave's pattern; such blocks need distinct names.

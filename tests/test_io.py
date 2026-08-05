@@ -311,10 +311,11 @@ class TestReadAnnotatedData:
             "structure": [
                 {
                     "type": "topk",
+                    "k": 9,
                     "name": "topkcols",
                     "columns": ["id", "q1_1", "q1_2", "q1_3", "q2_1", "q2_2", "q2_3"],
                     "from_columns": r"q(\d+)_(\d+)",
-                    "na_vals": ["not_selected"],
+                    "not_selected": ["not_selected"],
                     "res_columns": r"q\1_R\2",
                     "scale": {"translate_after": {"1": "USA", "2": "Canada", "3": "Mexico"}},
                 }
@@ -353,8 +354,8 @@ class TestReadAnnotatedData:
             {"name": "topkcols_2", "columns": ["q2_R1", "q2_R2", "q2_R3"]},
         ]
         assert_frame_equal(
-            diffs.fillna(pd.NA),
-            expected_result.fillna(pd.NA),
+            diffs.astype(object).where(diffs.notna(), "NA"),
+            expected_result.astype(object).where(expected_result.notna(), "NA"),
             check_dtype=False,
             check_categorical=False,
         )
@@ -390,24 +391,25 @@ class TestReadAnnotatedData:
         assert "q1_R2" not in data_df2.columns  # Testing for top 1
         assert data_df2["q1_R1"].tolist() == ["USA", "Canada", "Mexico"]
 
-    def test_topk_create_block_errors_when_na_vals_never_match(self, meta_file, csv_file):
-        """topk must error if na_vals never appear (same guard as aggregate_multiselect)."""
+    def test_topk_create_block_errors_when_not_selected_never_matches(self, meta_file, csv_file):
+        """topk must error if not_selected never appears (same guard as aggregate_multiselect)."""
         meta = {
             "file": "test.csv",
             "structure": [
                 {
                     "type": "topk",
+                    "k": 9,
                     "name": "topkcols",
                     "columns": ["id", "a1", "a2"],
                     "from_columns": r"a(\d+)",
-                    "na_vals": ["this_string_is_not_in_the_data"],
+                    "not_selected": ["this_string_is_not_in_the_data"],
                     "res_columns": r"a_R\1",
                 }
             ],
         }
         write_json(meta_file, meta)
         df_to_csv(pd.DataFrame({"a1": ["yes", "no"], "a2": ["no", "yes"], "id": [1, 2]}), csv_file)
-        with pytest.raises(ValueError, match="No na_vals found"):
+        with pytest.raises(ValueError, match="matched no cell"):
             read_and_process_data(str(meta_file), return_meta=True)
 
     @staticmethod
@@ -586,37 +588,28 @@ class TestReadAnnotatedData:
             check_q2_version=True,
         )
 
-    def test_input_df_columns_topk_onehot_maxdiff(self):
-        """Each block type reports the df-columns safe to pre-translate. Topk/onehot
-        use from_columns. MaxDiff reports best+worst+set for ``resolved`` input_format
-        (cells are scalar index strings) but best+worst only for ``choice_sets``
-        (set cells hold lists and are not pre-translated)."""
+    def test_source_vs_translate_columns(self):
+        """source_columns = every column a block reads; translate_columns = the subset whose
+        cell values scale.translate maps (not onehot-wide choice keys, not MaxDiff set lists)."""
         from salk_toolkit.validation import TopKBlock, MaxDiffBlock, OneHotBlock
 
         df = pd.DataFrame({"a": [1], "b": [1], "c": [1], "d": [1]})
-        tk = TopKBlock(name="t", from_columns=["a", "b"], res_columns=["R1", "R2"])
-        assert tk.input_df_columns(df) == ["a", "b"]
+        tk = TopKBlock(name="t", k=2, from_columns=["a", "b"], res_columns=["R1", "R2"])
+        assert tk.source_columns(df) == tk.translate_columns(df) == ["a", "b"]
 
         oh = OneHotBlock(name="o", from_columns=["a", "c"])
-        assert oh.input_df_columns(df) == ["a", "c"]
+        assert oh.source_columns(df) == ["a", "c"] and oh.translate_columns(df) == ["a", "c"]
 
-        md_resolved = MaxDiffBlock(
-            name="m",
-            best_columns=["a"],
-            worst_columns=["b"],
-            set_columns=["c"],
-            input_format="resolved",
-        )
-        assert set(md_resolved.input_df_columns(df)) == {"a", "b", "c"}
+        oh_wide = OneHotBlock(name="o", from_columns=["a", "c"], input_format="wide")
+        assert oh_wide.source_columns(df) == ["a", "c"] and oh_wide.translate_columns(df) == []
 
-        md_choice_sets = MaxDiffBlock(
-            name="m",
-            best_columns=["a"],
-            worst_columns=["b"],
-            set_columns=["c"],
-            input_format="choice_sets",
-        )
-        assert set(md_choice_sets.input_df_columns(df)) == {"a", "b"}
+        roles = dict(best_columns=["a"], worst_columns=["b"], set_columns=["c"])
+        md_resolved = MaxDiffBlock(name="m", input_format="resolved", **roles)
+        assert set(md_resolved.source_columns(df)) == set(md_resolved.translate_columns(df)) == {"a", "b", "c"}
+
+        md_choice_sets = MaxDiffBlock(name="m", input_format="choice_sets", **roles)
+        assert set(md_choice_sets.source_columns(df)) == {"a", "b", "c"}
+        assert set(md_choice_sets.translate_columns(df)) == {"a", "b"}
 
     def test_maxdiff_explode_resolves_role_columns_per_sibling(self, meta_file, csv_file):
         """After subgroup_explode the source regex in best/worst/set_columns is replaced
@@ -781,12 +774,13 @@ class TestReadAnnotatedData:
             "structure": [
                 {
                     "type": "topk",
+                    "k": 9,
                     "name": "issue_importance",
                     "columns": ["Q6r1", "Q6r2", "Q6r3"],
                     "from_columns": r"Q6r(\d+)",
                     "res_columns": r"Q6p_R\1",
                     "agg_index": 1,
-                    "na_vals": ["NO TO: Cost of living", "NO TO: Healthcare", "NO TO: Pensions"],
+                    "not_selected": ["NO TO: Cost of living", "NO TO: Healthcare", "NO TO: Pensions"],
                     "scale": {
                         "categories": "infer",
                         "translate_after": {
@@ -828,13 +822,14 @@ class TestReadAnnotatedData:
             "structure": [
                 {
                     "type": "topk",
+                    "k": 9,
                     "name": "issue ownership",
                     "columns": ["Q7r1c1", "Q7r1c2", "Q7r2c1", "Q7r2c2"],
                     "from_columns": r"Q7r(\d+)c(\d+)",
                     "res_columns": r"Q7r\1_R\2",
                     "agg_index": 2,
                     "subgroup_labels": {"1": {"1": "economics", "2": "healthcare"}},
-                    "na_vals": ["not_selected"],
+                    "not_selected": ["not_selected"],
                     "scale": {
                         "categories": "infer",
                         "translate_after": {"1": "Party A", "2": "Party B"},
@@ -878,6 +873,7 @@ class TestReadAnnotatedData:
             "structure": [
                 {
                     "type": "topk",
+                    "k": 9,
                     "name": "survey",
                     "columns": [
                         "Q_A_1_1",
@@ -896,7 +892,7 @@ class TestReadAnnotatedData:
                         "1": {"A": "Estonia", "B": "Latvia"},
                         "2": {"1": "economics", "2": "healthcare"},
                     },
-                    "na_vals": ["no"],
+                    "not_selected": ["no"],
                     "scale": {
                         "categories": "infer",
                         "translate_after": {"1": "Party X", "2": "Party Y"},
@@ -1253,39 +1249,53 @@ class TestReadAnnotatedData:
         with pytest.raises(ValueError, match=r"(?i)translate_after.*maxdiff.*scale\.translate"):
             read_and_process_data(str(meta_file), return_meta=True)
 
-    def test_topk_scale_translate_feeds_na_vals_detection(self, meta_file, csv_file):
-        """Pre-translate fires before na_vals check: translated sentinel is dropped, raw form is not."""
-        # Row 0: Qa=raw_keep, Qb=raw_drop. Row 1: Qa=raw_drop, Qb=raw_keep.
-        # Pre-translate: raw_drop -> <drop> (matches na_vals, dropped), raw_keep -> keep.
-        # After drop: each row has exactly ONE non-NA cell, so only one result column (Ra) survives.
-        # Without pre-translate: na_vals=["<drop>"] never matches "raw_drop", both cells survive,
-        # leftpack fills Ra AND Rb for every row → two result columns.
+    def test_not_selected_matches_raw_cells_before_translate(self, meta_file, csv_file):
+        """not_selected names RAW cell values: it is applied before scale.translate."""
         pd.DataFrame({"Qa": ["raw_keep", "raw_drop"], "Qb": ["raw_drop", "raw_keep"]}).to_csv(csv_file, index=False)
         meta = {
             "file": "test.csv",
             "structure": [
                 {
                     "type": "topk",
+                    "k": 2,
                     "name": "q",
                     "from_columns": r"Q(\w)",
-                    "res_columns": r"R\1",
+                    "res_columns": "R",
                     "agg_index": 1,
-                    "na_vals": ["<drop>"],
-                    "scale": {
-                        "translate": {"raw_keep": "keep", "raw_drop": "<drop>"},
-                    },
+                    "cell_values": True,
+                    "not_selected": ["raw_drop"],
+                    "scale": {"translate": {"raw_keep": "keep"}},
                 }
             ],
         }
         write_json(meta_file, meta)
-        ndf, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
-        assert meta_obj is not None
-        out = meta_obj.structure["q"]
-        assert out.input_format == "onehot"
-        res_cols = [c for c in ndf.columns if c.startswith("R")]
-        # If pre-translate fired: only 1 non-NA cell per row → dropna(how="all") removes Rb → 1 result col.
-        # If pre-translate did NOT fire: 2 non-NA cells per row → 2 result columns survive.
-        assert len(res_cols) == 1
+        ndf, _ = read_annotated_data(str(meta_file), return_meta=True)
+        # One pick per row survives, and it is translated
+        assert list(ndf["R1"]) == ["keep", "keep"]
+        assert [c for c in ndf.columns if c.startswith("R")] == ["R1"]
+
+    def test_not_selected_in_translated_terms_raises(self, meta_file, csv_file):
+        """A not_selected value that only exists post-translate matches nothing - loud, not silent."""
+        pd.DataFrame({"Qa": ["raw_keep", "raw_drop"]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "topk",
+                    "k": 1,
+                    "name": "q",
+                    "from_columns": r"Q(\w)",
+                    "res_columns": "R",
+                    "agg_index": 1,
+                    "cell_values": True,
+                    "not_selected": ["<drop>"],
+                    "scale": {"translate": {"raw_drop": "<drop>"}},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        with pytest.raises(ValueError, match="matched no cell"):
+            read_annotated_data(str(meta_file), return_meta=True)
 
     def test_scale_translate_none_is_noop(self, meta_file, csv_file):
         """Blocks without scale.translate pass through unchanged without error."""
@@ -1295,11 +1305,12 @@ class TestReadAnnotatedData:
             "structure": [
                 {
                     "type": "topk",
+                    "k": 9,
                     "name": "q",
                     "from_columns": r"Q(\w)",
                     "res_columns": r"R\1",
                     "agg_index": 1,
-                    "na_vals": [],
+                    "not_selected": [],
                 }
             ],
         }
@@ -4229,6 +4240,7 @@ class TestMultiSourceColumns:
                 },
                 {
                     "type": "topk",
+                    "k": 9,
                     "name": "demographics",
                     "scale": {
                         "categories": "infer",
@@ -4253,7 +4265,7 @@ class TestMultiSourceColumns:
                         },
                     },
                     "from_columns": r"topk_(\d)",
-                    "na_vals": ["Not mentioned", "No", "False"],
+                    "not_selected": ["Not mentioned", "No", "False"],
                     "res_columns": r"topk_R\1",
                 },
             ],
@@ -4394,6 +4406,7 @@ class TestStructureMerge:
                         {
                             "name": "issues",
                             "type": "topk",
+                            "k": 9,
                             "from_columns": pattern,
                             "res_columns": r"issue_\1",
                             "scale": {"categories": ["a", "b"], "label": label},
@@ -4492,7 +4505,7 @@ class TestStructureMerge:
         m2 = make_data_meta(
             {
                 "file": "y.csv",
-                "structure": [{"type": "topk", "name": "b", "from_columns": "Q(\\d+)", "res_columns": "R\\1"}],
+                "structure": [{"type": "topk", "k": 9, "name": "b", "from_columns": "Q(\\d+)", "res_columns": "R\\1"}],
             }
         )  # topk
         with pytest.raises(ValueError, match="type mismatch"):
@@ -4602,7 +4615,7 @@ class TestPipelineSchema:
 
         for legacy in ("translate_values", "groups"):
             with pytest.raises(ValueError, match=legacy):
-                _default_block_type({"type": "topk", "name": "t", legacy: {"1": "x"}})
+                _default_block_type({"type": "topk", "k": 9, "name": "t", legacy: {"1": "x"}})
 
     def test_onehot_choices_rejects_dict(self):
         """OneHotBlock no longer accepts the unreachable Dict[str, list] choices form;
@@ -4623,6 +4636,7 @@ class TestPipelineSchema:
         b = soft_validate(
             {
                 "type": "topk",
+                "k": 9,
                 "name": "t",
                 "from_columns": ["R1", "R2", "R3"],
                 "res_columns": ["R1", "R2", "R3"],
@@ -4680,14 +4694,14 @@ class TestPipelineSchema:
                 "input_format": "leftpacked",
                 "choices": ["Facebook", "TikTok"],
                 "res_prefix": "sm_",
-                "na_vals": ["99"],
+                "not_selected": ["99"],
             },
             OneHotBlock,
         )
         assert b.input_format == "leftpacked"
         assert b.choices == ["Facebook", "TikTok"]
         assert b.res_prefix == "sm_"
-        assert b.na_vals == ["99"]
+        assert b.not_selected == ["99"]
         assert not hasattr(b, "segments")
 
     def test_topk_leftpacked_skip_passthrough(self, meta_file, csv_file):
@@ -4698,6 +4712,7 @@ class TestPipelineSchema:
             "structure": [
                 {
                     "type": "topk",
+                    "k": 9,
                     "name": "x",
                     "from_columns": ["X_R1", "X_R2"],
                     "res_columns": ["X_R1", "X_R2"],
@@ -4722,6 +4737,7 @@ class TestPipelineSchema:
             "structure": [
                 {
                     "type": "topk",
+                    "k": 9,
                     "name": "x",
                     "from_columns": ["X_R1", "X_R2"],
                     "res_columns": ["X_R1", "X_R2"],
@@ -4746,6 +4762,7 @@ class TestPipelineSchema:
             "structure": [
                 {
                     "type": "topk",
+                    "k": 9,
                     "name": "x",
                     "from_columns": ["X_R1"],
                     "res_columns": ["X_R1", "X_R2"],
@@ -4757,14 +4774,15 @@ class TestPipelineSchema:
         with pytest.raises(ValueError, match="res_columns to match from_columns"):
             read_annotated_data(str(meta_file), return_meta=True)
 
-    def test_topk_ranked_onehot_raises(self, meta_file, csv_file):
-        """ranked_onehot is a scaffold — hard-fails with NotImplementedError."""
-        pd.DataFrame({"Qa": [1, 2], "Qb": [2, 1]}).to_csv(csv_file, index=False)
+    def test_topk_ranked_onehot_orders_by_rank(self, meta_file, csv_file):
+        """ranked_onehot: the cell is the item's rank, so slots come out in rank order."""
+        pd.DataFrame({"Qa": [2, 1, None], "Qb": [1, None, None], "Qc": [3, 2, 1]}).to_csv(csv_file, index=False)
         meta = {
             "file": "test.csv",
             "structure": [
                 {
                     "type": "topk",
+                    "k": 3,
                     "name": "x",
                     "from_columns": r"Q(\w)",
                     "res_columns": r"R\1",
@@ -4774,11 +4792,40 @@ class TestPipelineSchema:
             ],
         }
         write_json(meta_file, meta)
-        with pytest.raises(NotImplementedError, match="ranked_onehot"):
+        ndf, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        assert meta_obj is not None
+        slots = [c for c in ndf.columns if c.startswith("R")]
+        assert [list(ndf[c].astype(object).where(ndf[c].notna(), None)) for c in slots] == [
+            ["b", "a", "c"],
+            ["a", "c", None],
+            ["c", None, None],
+        ]
+        # slot order is a ranking, so the stamped model spec says so
+        assert meta_obj.structure["x"].model_spec == {"structure": [[slots, None]], "ordered": True}
+
+    def test_topk_ranked_onehot_non_numeric_rank_raises(self, meta_file, csv_file):
+        """A non-numeric cell in a ranked_onehot block is a data error, not a silent drop."""
+        pd.DataFrame({"Qa": ["first"], "Qb": [2]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "topk",
+                    "k": 2,
+                    "name": "x",
+                    "from_columns": r"Q(\w)",
+                    "res_columns": r"R\1",
+                    "agg_index": 1,
+                    "input_format": "ranked_onehot",
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        with pytest.raises(ValueError, match="numeric rank cells"):
             read_annotated_data(str(meta_file), return_meta=True)
 
-    def test_topk_truncate_drops_non_na_hard_fails(self, meta_file, csv_file):
-        """k=N with more than N non-NA selections per row hard-fails."""
+    def test_topk_more_picks_than_k_hard_fails(self, meta_file, csv_file):
+        """k is a data check: a row with more picks than the question allowed is an error."""
         pd.DataFrame({"Qa": ["A", None], "Qb": ["A", "B"], "Qc": ["A", "C"]}).to_csv(csv_file, index=False)
         meta = {
             "file": "test.csv",
@@ -4790,12 +4837,24 @@ class TestPipelineSchema:
                     "res_columns": r"R\1",
                     "agg_index": 1,
                     "k": 2,
-                    "na_vals": [],
                 }
             ],
         }
         write_json(meta_file, meta)
-        with pytest.raises(ValueError, match="truncation to k=2"):
+        with pytest.raises(ValueError, match="exceeds k=2"):
+            read_annotated_data(str(meta_file), return_meta=True)
+
+    def test_topk_k_is_mandatory(self, meta_file, csv_file):
+        """Omitting k is rejected: without it the pick-count check cannot run."""
+        pd.DataFrame({"Qa": ["A"], "Qb": [None]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {"type": "topk", "name": "x", "from_columns": r"Q(\w)", "res_columns": r"R\1", "agg_index": 1}
+            ],
+        }
+        write_json(meta_file, meta)
+        with pytest.raises(ValidationError):
             read_annotated_data(str(meta_file), return_meta=True)
 
     def test_maxdiff_multi_sibling_keyed_end_to_end(self, meta_file, csv_file):
@@ -4995,16 +5054,18 @@ class TestPipelineSchema:
         assert out.scale is not None and out.scale.categories == ["No", "Yes"]
 
     def test_onehot_coding_null_keeps_booleans(self, meta_file, csv_file):
-        """coding=null opts out of value coding: raw boolean columns."""
-        pd.DataFrame({"M_1": ["FB", None]}).to_csv(csv_file, index=False)
+        """coding=null opts out of value coding: raw booleans (for rows that were asked)."""
+        pd.DataFrame({"M_1": ["FB", "none"], "M_2": [None, None]}).to_csv(csv_file, index=False)
         meta = {
             "file": "test.csv",
             "structure": [
                 {
                     "type": "onehot",
                     "name": "sm",
-                    "from_columns": ["M_1"],
+                    "from_columns": r"M_(\d+)",
                     "input_format": "leftpacked",
+                    "choices": ["FB"],
+                    "not_selected": ["none"],
                     "coding": None,
                 }
             ],
@@ -5012,6 +5073,49 @@ class TestPipelineSchema:
         write_json(meta_file, meta)
         ndf, _ = read_annotated_data(str(meta_file), return_meta=True)
         assert list(ndf["sm_FB"]) == [True, False]
+
+    def test_onehot_unasked_row_is_na_not_no(self, meta_file, csv_file):
+        """An unasked row must not be coded as a definite 'No': row 1 holds an explicit
+        not-picked marker (asked, picked nothing), row 2 is blank (never asked)."""
+        pd.DataFrame({"M_1": ["FB", "none", None], "M_2": [None, None, None]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "onehot",
+                    "name": "sm",
+                    "from_columns": r"M_(\d+)",
+                    "input_format": "leftpacked",
+                    "choices": ["FB"],
+                    "not_selected": ["none"],
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        ndf, _ = read_annotated_data(str(meta_file), return_meta=True)
+        assert list(ndf["sm_FB"].astype(object).where(ndf["sm_FB"].notna(), "NA")) == ["Yes", "No", "NA"]
+
+    def test_onehot_wide_not_asked_marker_is_na(self, meta_file, csv_file):
+        """A wide dummy holding a not_asked code yields NA, not a fabricated 'Yes'."""
+        pd.DataFrame({"d_1": [1, "SKIP"], "d_2": [0, "SKIP"]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "not_asked": ["SKIP"],
+            "structure": [
+                {
+                    "type": "onehot",
+                    "name": "x",
+                    "from_columns": r"d_(\d+)",
+                    "input_format": "wide",
+                    "res_prefix": "x_",
+                    "scale": {"translate": {"1": "A", "2": "B"}},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        ndf, _ = read_annotated_data(str(meta_file), return_meta=True)
+        assert list(ndf["x_A"].astype(object).where(ndf["x_A"].notna(), "NA")) == ["Yes", "NA"]
+        assert list(ndf["x_B"].astype(object).where(ndf["x_B"].notna(), "NA")) == ["No", "NA"]
 
     def test_onehot_leftpacked_inferred_choices(self, meta_file, csv_file):
         """choices=None derives the sorted union from observed cells."""
@@ -5105,10 +5209,10 @@ class TestPipelineSchema:
 
 
 class TestCreateAdjustments:
-    """cell_values topk, design-keyed maxdiff sets, and translate/na_vals key expansion."""
+    """cell_values topk, design-keyed maxdiff sets, and translate/not_selected key expansion."""
 
-    def test_global_na_labels(self, meta_file, csv_file):
-        """Meta-level na_labels null not-asked codes in every block before translation;
+    def test_global_not_asked(self, meta_file, csv_file):
+        """Meta-level not_asked nulls not-asked codes in every block before translation;
         the labels never surface as categories."""
         pd.DataFrame(
             {
@@ -5119,15 +5223,16 @@ class TestCreateAdjustments:
         ).to_csv(csv_file, index=False)
         meta = {
             "file": "test.csv",
-            "na_labels": ["Nicht erhoben: Filter"],
+            "not_asked": ["Nicht erhoben: Filter"],
             "structure": [
                 {"name": "main", "columns": {"opinion": {"categories": "infer"}}},
                 {
                     "type": "topk",
+                    "k": 9,
                     "name": "issues",
                     "from_columns": r"i_(\d+)",
                     "res_columns": r"R\1",
-                    "na_vals": ["Not mentioned"],
+                    "not_selected": ["Not mentioned"],
                     "scale": {"translate_after": {"1": "Econ", "2": "Health"}},
                 },
             ],
@@ -5139,15 +5244,15 @@ class TestCreateAdjustments:
         assert set(meta_obj.structure["main"].columns["opinion"].categories or []) == {"Agree", "Disagree"}
         assert list(ndf["R1"].astype(object).fillna("NA")) == ["Econ", "NA", "Health"]
 
-    def test_block_na_labels_override(self, meta_file, csv_file):
-        """A block's own na_labels replaces the global list; [] opts the block out."""
+    def test_block_not_asked_override(self, meta_file, csv_file):
+        """A block's own not_asked replaces the global list; [] opts the block out."""
         pd.DataFrame({"a": ["x", "GLOBAL_NA", "BLOCK_NA"], "b": ["x", "GLOBAL_NA", "y"]}).to_csv(csv_file, index=False)
         meta = {
             "file": "test.csv",
-            "na_labels": ["GLOBAL_NA"],
+            "not_asked": ["GLOBAL_NA"],
             "structure": [
-                {"name": "own", "na_labels": ["BLOCK_NA"], "columns": {"a": {}}},
-                {"name": "optout", "na_labels": [], "columns": {"b": {}}},
+                {"name": "own", "not_asked": ["BLOCK_NA"], "columns": {"a": {}}},
+                {"name": "optout", "not_asked": [], "columns": {"b": {}}},
             ],
         }
         write_json(meta_file, meta)
@@ -5169,11 +5274,12 @@ class TestCreateAdjustments:
             "structure": [
                 {
                     "type": "topk",
+                    "k": 9,
                     "name": "challenges",
                     "from_columns": r"q4_(\d+)",
                     "res_columns": "q4a_",
                     "cell_values": True,
-                    "na_vals": ["Not mentioned"],
+                    "not_selected": ["Not mentioned"],
                 }
             ],
         }
@@ -5199,12 +5305,13 @@ class TestCreateAdjustments:
             "structure": [
                 {
                     "type": "topk",
+                    "k": 9,
                     "name": "md_best",
                     "from_columns": r"Q9_(\d+)best#(\d+)",
                     "res_columns": r"Q9_\1b",
                     "agg_index": 2,
                     "cell_values": True,
-                    "na_vals": ["Not selected"],
+                    "not_selected": ["Not selected"],
                 }
             ],
         }
@@ -5321,10 +5428,11 @@ class TestCreateAdjustments:
             "structure": [
                 {
                     "type": "topk",
+                    "k": 9,
                     "name": "issues",
                     "from_columns": r"i_(\d+)",
                     "res_columns": r"R\1",
-                    "na_vals": ["0"],
+                    "not_selected": ["0"],
                     "scale": {"translate_after": {"1": "Econ", "2": "Health"}},
                 }
             ],
@@ -5378,6 +5486,7 @@ class TestInternalPipelineHelpers:
         b = soft_validate(
             {
                 "type": "topk",
+                "k": 9,
                 "name": "io",
                 "from_columns": r"Q7r(\d+)c(\d+)",
                 "res_columns": r"Q7r\1_R\2",
@@ -5409,7 +5518,8 @@ class TestInternalPipelineHelpers:
 
         df = pd.DataFrame(columns=["Qa", "Qb"])
         b = soft_validate(
-            {"type": "topk", "name": "io", "from_columns": r"Q(\w)", "res_columns": r"R\1", "agg_index": 1}, TopKBlock
+            {"type": "topk", "k": 9, "name": "io", "from_columns": r"Q(\w)", "res_columns": r"R\1", "agg_index": 1},
+            TopKBlock,
         )
         sibs = _subgroup_explode(b, df)
         assert len(sibs) == 1
@@ -5438,7 +5548,7 @@ class TestInternalPipelineHelpers:
 
         df = pd.DataFrame(columns=["Qa", "Qb"])
         b = soft_validate(
-            {"type": "topk", "name": "io", "from_columns": r"Q(\w)", "res_columns": r"R\1", "agg_index": 5},
+            {"type": "topk", "k": 9, "name": "io", "from_columns": r"Q(\w)", "res_columns": r"R\1", "agg_index": 5},
             TopKBlock,
         )
         with pytest.raises(ValueError, match="agg_index=5 out of range"):
@@ -5488,11 +5598,12 @@ class TestModelSpec:
             "structure": [
                 {
                     "type": "topk",
+                    "k": 9,
                     "name": "x",
                     "from_columns": r"Q(\w)",
                     "res_columns": r"R\1",
                     "agg_index": 1,
-                    "na_vals": [],
+                    "not_selected": [],
                 }
             ],
         }
@@ -5513,6 +5624,7 @@ class TestModelSpec:
             "structure": [
                 {
                     "type": "topk",
+                    "k": 9,
                     "name": "x",
                     "from_columns": ["X_R1", "X_R2"],
                     "res_columns": ["X_R1", "X_R2"],
@@ -5576,11 +5688,12 @@ class TestModelSpec:
             "structure": [
                 {
                     "type": "topk",
+                    "k": 9,
                     "name": "x",
                     "from_columns": r"Q(\w)",
                     "res_columns": r"R\1",
                     "agg_index": 1,
-                    "na_vals": [],
+                    "not_selected": [],
                     "model_spec": spec,
                 }
             ],
@@ -5600,11 +5713,12 @@ class TestModelSpec:
             "structure": [
                 {
                     "type": "topk",
+                    "k": 9,
                     "name": "x",
                     "from_columns": r"Q_(\w)_(\d)",
                     "res_columns": r"R_\1_\2",
                     "agg_index": 2,
-                    "na_vals": [],
+                    "not_selected": [],
                     "model_spec": {"structure": [[["R_A_1"], None]]},
                 }
             ],
@@ -5622,11 +5736,12 @@ class TestModelSpec:
             "structure": [
                 {
                     "type": "topk",
+                    "k": 9,
                     "name": "x",
                     "from_columns": r"Q(\w)",
                     "res_columns": r"R\1",
                     "agg_index": 1,
-                    "na_vals": [],
+                    "not_selected": [],
                     "columns": [["aux", {"categories": ["u", "v"]}]],
                 }
             ],

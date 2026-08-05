@@ -17,7 +17,8 @@ Always read the schema and the pipeline before starting annotation work — both
 
 1. **`translate` / `translate_after`** — for plain value → value remappings (e.g. merging `"Don't remember"` and `"Difficult to answer"` into `"Don't know"`, renaming categories, fixing typos).
 2. **`transform`** (per column) — for expression-level fixes that need the cell / column in scope (casting, regex, `stk.cut_nice`, rule-based recoding).
-3. **`preprocessing`** (top-level code block) — last resort, for changes that need multiple source columns at once, row filtering, or cross-column derivations before any column-level processing runs.
+3. **`not_asked`** (meta level, per-block override) — for skip codes meaning the question was never put to this respondent (`"Nicht erhoben: Filter"`, mode/filter skips). Never hand-roll these with a global `df.replace(...)` in preprocessing.
+4. **`preprocessing`** (top-level code block) — last resort, for changes that need multiple source columns at once, row filtering, or cross-column derivations before any column-level processing runs.
 
 If you think you need to edit the raw file, you're wrong — use translate/transform/preprocessing instead.
 
@@ -302,7 +303,8 @@ it before authoring these blocks. The essentials:
 
 > **No nested `create`.** The legacy `"create": { ... }` wrapper and the removed
 > block-level fields (`topics`, `sets`, `choice_mapping`, `items`, `translate_values`,
-> `groups`) now **raise at load time**. Put `type` at the top level and flatten the
+> `groups`, `na_vals`, block-level `translate`/`translate_after`) now **raise at load
+> time**. Put `type` at the top level and flatten the
 > rest onto the block. **Updating an annotation written in the old syntax?** Follow
 > the migration guide in [legacy.md](legacy.md) — it maps every legacy field (and the
 > maxdiff `scale.translate` semantic change) to the new language.
@@ -318,7 +320,8 @@ For "select top K" questions (e.g. "which 3 issues matter most?"):
   "from_columns": "Q6r(\\d+)",
   "res_columns": "Q6p_R\\1",
   "agg_index": 1,
-  "na_vals": ["NO TO: ...", "..."],
+  "k": 3,
+  "not_selected": ["NO TO: ...", "..."],
   "input_format": "onehot",
   "scale": { "translate_after": { "1": "Cost of living", "2": "Healthcare" } },
   "columns": []
@@ -327,10 +330,48 @@ For "select top K" questions (e.g. "which 3 issues matter most?"):
 
 - `from_columns` / `res_columns`: regex (with capture groups) or explicit lists.
 - `agg_index`: which regex group indexes the items (1-based; -1 = last).
-- `na_vals`: values meaning "not selected" — replaced with NA.
+- `k`: **required** — how many items the question let people pick. It is a data check:
+  a row with more picks raises, so put the questionnaire's real limit here.
+- `not_selected`: **raw** cell values meaning "offered but not picked" (`"Not mentioned"`,
+  `0`). Must match something or the block raises. Do not use it for skip codes — those
+  are `not_asked` (see Missing data below).
 - `scale.translate_after`: maps the reshaped output values (indices or local names)
   to final English names; its values become the output `categories`.
-- `input_format`: `onehot` (default), `leftpacked`, or the `ranked_*` variants — see the doc.
+- `input_format`: `onehot` (default; a non-null cell = picked), `ranked_onehot` (the cell
+  is that item's rank), `leftpacked` / `ranked_leftpack` (columns are already the slots).
+- `cell_values: true`: onehot cells hold the item name itself (LimeSurvey style) — the
+  values are packed as-is and `res_columns` becomes a slot-name prefix (`"q4a_"` →
+  `q4a_1..q4a_k`). This replaces `stk.aggregate_multiselect` preprocessing.
+
+### OneHot
+
+The inverse of TopK: turn a multi-select into one column per choice (for crosstabs
+and per-choice modeling). Replaces `stk.deaggregate_multiselect` and hand-rolled
+`(df[dummy] == 1).map({True: "Yes", False: "No"})` preprocessing.
+
+```json
+{
+  "type": "onehot",
+  "name": "social_media",
+  "from_columns": "vQ12_M_(\\d+)",
+  "input_format": "wide",
+  "res_prefix": "sm_",
+  "scale": { "translate": { "1": "Facebook", "2": "TikTok", "88": "no_account" } }
+}
+```
+
+- `input_format`: `leftpacked` (mention slots hold chosen names) or `wide` (one 0/1
+  dummy column per choice already).
+- **Wide mode**: the choice is identified by the regex capture group (or the bare
+  column name) and *named* through `scale.translate` — the translate keys are column
+  keys, not cell values. A choice in the universe with no column in this wave becomes
+  all-unselected with a warning (cross-wave dummy drift).
+- **Leftpacked mode**: `choices` fixes the list and order; omitted, it is the sorted
+  union of observed cell values.
+- `coding`: `["No", "Yes"]` by default, stamped as ordered categories (add `likert` /
+  `num_values` on the scale as usual). `"coding": null` keeps raw booleans.
+- `res_prefix`: output names are `<prefix><choice>`; defaults to `<block>_`, and
+  `""` gives bare choice names.
 
 ### MaxDiff
 
@@ -348,6 +389,10 @@ For "select top K" questions (e.g. "which 3 issues matter most?"):
 }
 ```
 
+- Topic universe: an index-keyed `scale.translate` (`"1"` → name), **or**
+  `scale.categories` when the cells already hold display names.
+- `choice_sets`: the design table. Flat list = per-version item lists; a dict keyed by
+  **design name** when `setindex_column` cells hold design names rather than numbers.
 - `scale.translate` maps 1-based index strings to topic names; it is both the topic
   universe for `setindex_column` lookups and the element-wise translator for raw
   best/worst/set cells. There is **no `translate_after`** for maxdiff.
@@ -425,13 +470,19 @@ skill (salk_internal_package).
    3. For A vs B choices without explicit valence, pick the pole aligned with the survey's analytical reference direction (e.g. Western/EU orientation as positive in Eastern-European polling) and document with `comment`.
 
    **Always order likert categories from the negative pole to the positive pole** (disagree → agree, distrust → trust, no → yes, against → for, leave → stay, EAEU → EU); `num_values` increase monotonically from negative to positive. Flip with `translate` if the source data codes the other way.
-7. **Non-response categories** (`nonresponse`): Mark true non-responses ("Don't know", "No answer", "Refused", "Hard to say") in `nonresponse` on **every** categorical block — ordered **and** nominal (unordered) — not only on ordered scales. This is the recommended field going forward; the signal is relied on by data-quality checks and other tooling. The model treats non-responses as out-of-order automatically, so do **not** repeat them in `nonordered`. Reserve `nonordered` for categories that are off-scale but still *substantive* — **not** non-responses (e.g. "Other", "none", "Would not participate", "Did not vote"). On an ordered scale the union (`nonresponse` ∪ `nonordered`) is lifted out of the order and gets `null` in `num_values`; on a nominal categorical neither changes modeling but both record structure worth keeping.
-8. **Party consistency**: Party names must be identical across `party_preference`, `thermometer`, and `ownership` blocks.
-9. **Discrete scales**: Use categorical (not continuous) for scales with <20 values, even if numeric.
-10. **`col_prefix`**: Use to disambiguate columns that share names across blocks (e.g. `attitude_`, `issue_`, `therm_`).
-11. **Auto-inferred blocks from topk/maxdiff**: Delete any blocks that were auto-generated by `infer_meta` for columns that belong to typed topk/maxdiff/onehot blocks — those get regenerated.
-12. **`weight_col`**: If you declare one, it must name a column that exists in the data — pp errors rather than quietly running unweighted, so a renamed weight column (`N_voters` → `N`) surfaces immediately instead of turning weighted numbers into unweighted ones. Leave it `null` when the dataset genuinely has no weights.
-13. **Document non-obvious decisions with `comment`**: Any choice that deviates from best practice or is non-obvious (unusual merges, ambiguous ordering calls, deliberate category mismatches, tricky transforms) must be noted in a `comment` field on the block, scale, or column where it applies. See the Comments subsection above.
+7. **Three kinds of missing — keep them apart**:
+   - **`not_asked`** (meta-level list, block override, `[]` opts out): the question was never put to this respondent (mode/filter skips). Nulled everywhere, and blocks then emit NA for that row rather than inventing an answer — a onehot row goes NA, not all-"No".
+   - **`not_selected`** (typed blocks): the item was offered and not picked (`"Not mentioned"`, `0`). Nulled for packing, but it proves the question *was* asked, so an all-"No" onehot row is a real answer.
+   - **`nonresponse`** (below): the respondent answered "Don't know" / "Refused". Stays a category.
+
+   Getting these wrong is silent: a skip code left unlisted reads as a substantive answer, and a `not_asked` list that swallows "Don't know" throws away real responses.
+8. **Non-response categories** (`nonresponse`): Mark true non-responses ("Don't know", "No answer", "Refused", "Hard to say") in `nonresponse` on **every** categorical block — ordered **and** nominal (unordered) — not only on ordered scales. This is the recommended field going forward; the signal is relied on by data-quality checks and other tooling. The model treats non-responses as out-of-order automatically, so do **not** repeat them in `nonordered`. Reserve `nonordered` for categories that are off-scale but still *substantive* — **not** non-responses (e.g. "Other", "none", "Would not participate", "Did not vote"). On an ordered scale the union (`nonresponse` ∪ `nonordered`) is lifted out of the order and gets `null` in `num_values`; on a nominal categorical neither changes modeling but both record structure worth keeping.
+9. **Party consistency**: Party names must be identical across `party_preference`, `thermometer`, and `ownership` blocks.
+10. **Discrete scales**: Use categorical (not continuous) for scales with <20 values, even if numeric.
+11. **`col_prefix`**: Use to disambiguate columns that share names across blocks (e.g. `attitude_`, `issue_`, `therm_`).
+12. **Auto-inferred blocks from topk/maxdiff**: Delete any blocks that were auto-generated by `infer_meta` for columns that belong to typed topk/maxdiff/onehot blocks — those get regenerated.
+13. **`weight_col`**: If you declare one, it must name a column that exists in the data — pp errors rather than quietly running unweighted, so a renamed weight column (`N_voters` → `N`) surfaces immediately instead of turning weighted numbers into unweighted ones. Leave it `null` when the dataset genuinely has no weights.
+14. **Document non-obvious decisions with `comment`**: Any choice that deviates from best practice or is non-obvious (unusual merges, ambiguous ordering calls, deliberate category mismatches, tricky transforms) must be noted in a `comment` field on the block, scale, or column where it applies. See the Comments subsection above.
 
 ## Common Pitfalls
 

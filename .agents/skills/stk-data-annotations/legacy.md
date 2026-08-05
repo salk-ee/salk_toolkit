@@ -35,7 +35,8 @@ discriminator and flatten the remaining `create` fields onto the block itself.
 | MaxDiff `sets` | `choice_sets` (same `[version][set][item-index]` shape, now inline on the block, not a constant) |
 | — (new, optional) | `input_format` — declares the raw-data shape; defaults (`topk: "onehot"`, `maxdiff: "choice_sets"`) match the old behavior |
 
-Unchanged: `from_columns`, `res_columns`, `agg_index`, `na_vals`, `k`, `from_prefix`
+Renamed: `na_vals` -> `not_selected`. Now required: `k` (the question's pick limit; it is
+checked against the data). Unchanged: `from_columns`, `res_columns`, `agg_index`, `from_prefix`
 (TopK); `best_columns`, `worst_columns`, `set_columns`, `setindex_column` (MaxDiff);
 `scale`, `columns`, and all plain-block fields.
 
@@ -59,8 +60,9 @@ To migrate, compose the two old structures:
 ```
 
 If the raw best/worst cells hold *names* rather than index strings (so integer-keyed
-translate can't apply), use `input_format: "resolved"` with a name-keyed translate
-instead — see the "Two maxdiff routes" note in SKILL.md.
+translate can't apply), keep the default `choice_sets` format and declare the topic
+universe with `scale.categories` — a name-keyed `translate` is then just a recode.
+`input_format: "resolved"` is only for data already aligned per question.
 
 ## Output block names changed
 
@@ -77,14 +79,14 @@ to the unsuffixed name.
 { "name": "issue_importance",
   "create": { "type": "topk",
               "from_columns": "Q6r(\\d+)", "res_columns": "Q6p_R\\1",
-              "agg_index": 1, "na_vals": ["NO TO: ..."],
+              "agg_index": 1, "k": 3, "not_selected": ["NO TO: ..."],
               "translate_after": { "1": "Cost of living", "2": "Healthcare" } },
   "scale": { "categories": "infer" }, "columns": [] }
 
 // NEW
 { "type": "topk", "name": "issue_importance",
   "from_columns": "Q6r(\\d+)", "res_columns": "Q6p_R\\1",
-  "agg_index": 1, "na_vals": ["NO TO: ..."],
+  "agg_index": 1, "k": 3, "not_selected": ["NO TO: ..."],
   "input_format": "onehot",
   "scale": { "categories": "infer",
              "translate_after": { "1": "Cost of living", "2": "Healthcare" } },
