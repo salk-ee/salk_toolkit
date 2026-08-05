@@ -448,7 +448,7 @@ class DataMeta(PBase):
 
         ``excluded`` is now ``(row_id, reason)`` keyed on the stable string row id, not an
         absolute position into the concatenated frame. Legacy ``[[int, reason], ...]`` metas
-        must be migrated - see specs/stable-row-index-design.md.
+        must be migrated - see specs/2026-07-16-#60-stable-row-index.md.
         """
         if isinstance(v, list):
             for entry in v:
@@ -459,7 +459,7 @@ class DataMeta(PBase):
                         f"excluded entry {entry!r} uses a positional integer row index. "
                         "Exclusions are now keyed on the stable string row_id (e.g. 'F0::42' "
                         "or 'F0::<respondent_id>'). Migrate the meta to the new format - see "
-                        "specs/stable-row-index-design.md."
+                        "specs/2026-07-16-#60-stable-row-index.md."
                     )
         return v
 
