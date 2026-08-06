@@ -25,8 +25,7 @@ from .common import (
     _normalize_color_dict,
     special_columns,
 )
-from .matching import _inner_outer_facets, impute_facet_dims, matching_plots
-from .meta import _extract_column_meta_cached
+from .matching import _impute_facet_dims, _inner_outer_facets, matching_plots
 from .registry import PlotMeta, _stk_deregister, get_plot_fn, get_plot_meta, stk_plot
 from .wrangle import pp_transform_data
 
@@ -226,6 +225,21 @@ def create_plot(
             elif cn in col_meta and col_meta[cn].ordered:
                 continue
 
+            # Distribution-valued response (a categorized transform, e.g. a rank axis): the value is
+            # a share per category, so sort by the share-weighted mean of the category scale - for
+            # ranks, the mean rank. A plain mean of the shares would be near-constant.
+            elif (
+                (pp_desc.convert_res or plot_meta.convert_res) == "categorical"
+                and pi.cat_col
+                and pi.cat_col in col_meta
+                and len(nvals := _get_cat_num_vals(col_meta[pi.cat_col], pp_desc)) > 0
+            ):
+                cmap = dict(zip(col_meta[pi.cat_col].categories or [], nvals))
+                sdf = data[[cn, pi.cat_col, pi.value_col]].copy()
+                sdf["sort_val"] = sdf[pi.value_col] * sdf[pi.cat_col].astype("object").map(cmap)
+                grouped = sdf.groupby(cn, observed=True)
+                ordervals = grouped["sort_val"].sum() / grouped[pi.value_col].sum()
+
             # Otherwise, we are good to sort, simply by value_col
             else:
                 ordervals = data.groupby(cn, observed=True)[pi.value_col].mean()
@@ -321,6 +335,9 @@ def create_plot(
         for c in sorted(pi.outer_factors, key=lambda c: c not in obs_dims)
     }
     pi.outer_factors = [_tfunc(c) for c in pi.outer_factors]
+    # Plots that read cat_col as a data column need the translated name too; after obs_dims above,
+    # which matches it against the still-untranslated outer factors
+    pi.cat_col = _tfunc(pi.cat_col) if pi.cat_col else pi.cat_col
 
     # If we still have more than 1 factor left, merge the rest into one so we have a 2d facet
     if len(pi.outer_factors) > 1:
@@ -448,11 +465,16 @@ def e2e_plot(
     impute: bool = True,
     plot_cache: MutableMapping[str, PlotInput] | None = None,
     return_data: bool = False,
+    return_input: bool = False,
     **kwargs: object,
-) -> AltairChart | List[List[AltairChart]] | pd.DataFrame:
+) -> AltairChart | List[List[AltairChart]] | pd.DataFrame | PlotInput:
     """A convenience function to draw a plot straight from a dataset.
 
     High-level helper that loads data, transforms, and renders a plot.
+    ``return_data=True`` returns just the aggregated frame; ``return_input=True``
+    returns the full ``PlotInput``, which also carries ``filtered_size`` /
+    ``total_size`` — the post-filter and pre-filter weight (row counts under
+    ``weights: False``), i.e. the "n = ..." consumers show next to the numbers.
     """
 
     if data_file is None and full_df is None:
@@ -462,6 +484,9 @@ def e2e_plot(
 
     # Validate the plot descriptor and convert to Pydantic object
     pp_desc = soft_validate(pp_desc, PlotDescriptor)
+
+    if pp_desc.stats and not (return_input or return_data):
+        raise ValueError("stats output is data-only (a column per statistic); pass return_data or return_input")
 
     if full_df is None:
         data_file_str = cast(str, data_file)
@@ -475,8 +500,7 @@ def e2e_plot(
         raise ValueError(f"Parquet file {data_file} has no data metadata")
 
     if impute:
-        facet_dims = impute_facet_dims(pp_desc, _extract_column_meta_cached(data_meta), get_plot_meta(pp_desc.plot))
-        pp_desc = pp_desc.model_copy(update={"facet_dims": facet_dims})
+        pp_desc, _ = _impute_facet_dims(pp_desc, data_meta)
 
     if check_match:
         # If we imputed above, the descriptor already has final facet_dims - skip re-imputing
@@ -499,6 +523,8 @@ def e2e_plot(
     else:  # No caching
         pi = pp_transform_data(full_df, data_meta, pp_desc)
 
+    if return_input:  # Takes precedence: the PlotInput carries pi.data anyway
+        return pi
     if return_data:
         return pi.data
     # dry_run=True can cause create_plot to return Dict[str, Any], but we don't support that here
@@ -520,7 +546,7 @@ def test_new_plot(
     *args: object,
     plot_meta: Mapping[str, Any] | PlotMeta | None = None,
     **kwargs: object,
-) -> AltairChart | List[List[AltairChart]] | pd.DataFrame:
+) -> AltairChart | List[List[AltairChart]] | pd.DataFrame | PlotInput:
     """Temporarily register a plot for interactive testing."""
 
     # Ensure pp_desc is a PlotDescriptor object

@@ -79,7 +79,7 @@ from salk_toolkit.io import (
     group_columns_dict,
     list_aliases,
 )
-from salk_toolkit.pp import AltairChart, e2e_plot
+from salk_toolkit.pp import AltairChart, PlotInput, e2e_plot
 from salk_toolkit.validation import DataMeta, GroupOrColumnMeta, FilterSpec
 
 import streamlit as st
@@ -1796,7 +1796,7 @@ class FronteggAuthenticationManager(UserAuthenticationManager):
 
     def refresh_user(self) -> None:
         """No-op: silent-login hack stopped working in 1.53.0.
-           New refresh logic has not yet been merged (https://github.com/streamlit/streamlit/pull/14437)"""
+        New refresh logic has not yet been merged (https://github.com/streamlit/streamlit/pull/14437)"""
         pass
 
     def login_screen(self) -> None:
@@ -2184,7 +2184,9 @@ def draw_plot_matrix(pmat: list[list[object]] | object | None) -> None:
             c.vega_lite_chart(spec=chart_dict, width="stretch" if ucw else "content")
 
 
-def st_plot(pp_desc: dict[str, object], **kwargs: object) -> AltairChart | list[list[AltairChart]] | pd.DataFrame:
+def st_plot(
+    pp_desc: dict[str, object], **kwargs: object
+) -> AltairChart | list[list[AltairChart]] | pd.DataFrame | PlotInput:
     """Draw a plot using the end-to-end plot pipeline.
 
     Args:

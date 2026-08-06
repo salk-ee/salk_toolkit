@@ -23,25 +23,48 @@ def _apply_npf_on_pl_df(
     return df
 
 
-# Row-wise ordinal rank across cols, 1..n, matching numpy's argsort-of-argsort on distinct values
-def _ordinal_ranks(cols: Sequence[str]) -> pl.Expr:
-    return pl.concat_list(cols).list.eval(pl.element().rank(method="ordinal"))
+# Counting pairwise comparisons is 3-4x faster than concat_list + list.eval, and nulls fall out for free
+def _count_ahead(col: str, cols: Sequence[str], ahead: Callable[[str, int], pl.Expr]) -> pl.Expr:
+    """How many of ``cols`` come before ``col`` in the row, counting only non-null rivals."""
+
+    counts = [ahead(x, j).fill_null(False).cast(pl.Int32) for j, x in enumerate(cols) if x != col]
+    return pl.sum_horizontal(counts) if counts else pl.lit(0, pl.Int32)
 
 
-def _rank_transform(data: pl.LazyFrame, cols: Sequence[str], fn: Callable[[pl.Expr], pl.Expr]) -> pl.LazyFrame:
+def _ordinal_rank(col: str, cols: Sequence[str], *, descending: bool = False) -> pl.Expr:
+    """Rank of ``col`` among the row's non-null values, 1..m.
+
+    Ties go to the later column, matching the ordinal rank this replaced - so ascending
+    and descending pick the same k, and >= vs > carries the tie-break for free.
+    """
+    i = cols.index(col)
+
+    def ahead(x: str, j: int) -> pl.Expr:
+        wins_tie = j > i if descending else j < i
+        if descending:
+            return pl.col(x) >= pl.col(col) if wins_tie else pl.col(x) > pl.col(col)
+        return pl.col(x) <= pl.col(col) if wins_tie else pl.col(x) < pl.col(col)
+
+    return pl.when(pl.col(col).is_null()).then(None).otherwise(1 + _count_ahead(col, cols, ahead))
+
+
+def _rank_transform(
+    data: pl.LazyFrame,
+    cols: Sequence[str],
+    fn: Callable[[pl.Expr], pl.Expr],
+    *,
+    descending: bool = False,
+) -> pl.LazyFrame:
     """Rewrite each column as ``fn`` of its row-wise rank, without leaving polars."""
 
-    ranks = "__ranks__"
-    return (
-        data.with_columns(_ordinal_ranks(cols).alias(ranks))
-        .with_columns([fn(pl.col(ranks).list.get(i)).alias(c) for i, c in enumerate(cols)])
-        .drop(ranks)
-    )
+    return data.with_columns([fn(_ordinal_rank(c, cols, descending=descending)).alias(c) for c in cols])
 
 
 # Row-wise transforms expressible natively; the rest fall through to custom_row_transforms
 ordered_expr_transforms: Dict[str, tuple[Callable[[pl.LazyFrame, Sequence[str]], pl.LazyFrame], str]] = {
     "ordered-avgrank": (lambda d, c: _rank_transform(d, c, lambda r: r), ".1f"),
+    # Rank from the top: 1 = highest of the row's non-null values
+    "ordered-avgrank-desc": (lambda d, c: _rank_transform(d, c, lambda r: r, descending=True), ".1f"),
     "ordered-warf": (lambda d, c: _rank_transform(d, c, lambda r: ((r - 1) / len(c)) ** 12), ".1%"),
     "ordered-top1": (
         lambda d, c: d.with_columns([(pl.col(x) == pl.max_horizontal(c)).cast(pl.Int64).alias(x) for x in c]),
@@ -63,12 +86,50 @@ ordered_expr_transforms: Dict[str, tuple[Callable[[pl.LazyFrame, Sequence[str]],
         ),
         ".1%",
     ),
-    "ordered-top2": (lambda d, c: _rank_transform(d, c, lambda r: r >= len(c) - 1), ".1%"),
-    "ordered-top3": (lambda d, c: _rank_transform(d, c, lambda r: r >= len(c) - 2), ".1%"),
+    # Fixed-k conveniences; ordered-top-ties:<k> covers any k, tie-inclusively
+    "ordered-top2": (lambda d, c: _rank_transform(d, c, lambda r: r <= 2, descending=True), ".1%"),
+    "ordered-top3": (lambda d, c: _rank_transform(d, c, lambda r: r <= 3, descending=True), ".1%"),
 }
 
 
+def _ordered_topk(transform: str) -> int | None:
+    """Parse ``ordered-top-ties:<k>`` — every column reaching the row's k-th best value."""
+
+    op, _, value = transform.partition(":")
+    if op != "ordered-top-ties":
+        return None
+    try:
+        k = int(value)
+    except ValueError:
+        raise ValueError(f"{transform!r}: {value!r} is not an integer, expected ordered-top-ties:<k>") from None
+    if k < 1:
+        raise ValueError(f"{transform!r}: k must be at least 1")
+    return k
+
+
+def _ties_topk_transform(data: pl.LazyFrame, cols: Sequence[str], k: int) -> pl.LazyFrame:
+    """Mark columns with fewer than k strictly better values in the row, so ties all count."""
+
+    def keep(c: str) -> pl.Expr:
+        beaten = _count_ahead(c, cols, lambda x, _j: pl.col(x) > pl.col(c))
+        return pl.when(pl.col(c).is_null()).then(None).otherwise(beaten < k)
+
+    return data.with_columns([keep(c).alias(c) for c in cols])
+
+
 # Polars is annoyingly verbose for these but it is fast enough to be worth it
+
+
+def _threshold_cutoff(transform: str) -> float | None:
+    """Parse ``ge:<x>`` — "at least x". The threshold belongs to the transform, so it travels as one string."""
+
+    op, _, value = transform.partition(":")
+    if op != "ge":
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        raise ValueError(f"{transform!r}: {value!r} is not a number, expected ge:<x>") from None
 
 
 def _transform_cont(
@@ -77,8 +138,9 @@ def _transform_cont(
     transform: str | None,
     val_format: str = ".1f",
     val_range: tuple[float, float] | None = None,
+    agg_fn: str | None = None,
 ) -> tuple[pl.LazyFrame, str, tuple[float, float] | None]:
-    """Apply standardized continuous transforms (center, z-score, etc.)."""
+    """Apply standardized continuous transforms (center, z-score, etc.); ``agg_fn`` only picks the value format."""
 
     if not transform:
         return data, val_format, val_range
@@ -96,6 +158,10 @@ def _transform_cont(
             ".2f",
             None,
         )
+    elif (cutoff := _threshold_cutoff(transform)) is not None:
+        # An indicator column: `mean` is the share past the threshold, `sum` the weighted count
+        data = data.with_columns((pl.col(cols) >= cutoff).cast(pl.Float32))
+        return (data, ".0f", None) if agg_fn == "sum" else (data, ".1%", (0.0, 1.0))
     elif transform == "proportion":
         return (
             data.with_columns(pl.col(cols) / pl.sum_horizontal(pl.col(cols).abs())),
@@ -111,6 +177,9 @@ def _transform_cont(
             val_format,
             (0.0, 1.0 * mult),
         )
+    elif (k := _ordered_topk(transform)) is not None:
+        return _ties_topk_transform(data, cols, k), ".1%", None
+
     elif transform in ordered_expr_transforms:
         build, fmt = ordered_expr_transforms[transform]
         return build(data, cols), fmt, None
@@ -133,8 +202,11 @@ def _transform_cont(
         )  # NB! Set validate to true if debugging this
         return data, fmt, None
 
-    else:
-        raise Exception(f"Unknown transform '{transform}'")
+    else:  # Reachable for a plot's registered transform_fn, which never passes through validation
+        raise ValueError(
+            f"unknown cont_transform {transform!r}; registered: {', '.join(known_cont_transforms())}; "
+            f"families: {TRANSFORM_FAMILIES}"
+        )
 
 
 def _softmax_expected_ranks(p: np.ndarray) -> np.ndarray:
@@ -161,15 +233,18 @@ def _softmax_expected_ranks(p: np.ndarray) -> np.ndarray:
 custom_row_transforms["softmax-avgrank"] = _softmax_expected_ranks, ".1f"
 
 
+# Inline scale transforms, i.e. the ones _transform_cont handles without consulting a registry
+SCALE_TRANSFORMS = ("center", "zscore", "01range", "proportion", "softmax", "softmax-ratio")
+
+TRANSFORM_FAMILIES = "ge:<number>, ordered-top-ties:<k>"  # Parameterized, so not enumerable
+
+
+def known_cont_transforms() -> list[str]:
+    """Every dispatchable transform name; read live, since the registries take late registrations."""
+
+    return sorted({*SCALE_TRANSFORMS, *ordered_expr_transforms, *custom_row_transforms})
+
+
 cont_transform_options = (
-    [
-        "center",
-        "zscore",
-        "01range",
-        "proportion",
-        "softmax",
-        "softmax-ratio",
-    ]
-    + list(ordered_expr_transforms.keys())
-    + list(custom_row_transforms.keys())
+    list(SCALE_TRANSFORMS) + list(ordered_expr_transforms.keys()) + list(custom_row_transforms.keys())
 )

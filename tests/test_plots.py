@@ -106,7 +106,7 @@ class TestPlots:
             result = e2e_plot(config, data_file, **test_kwargs)
 
         self._assert_chart_matches_reference(test_name, result, matches_dict, recompute, float_tolerance)
-        assert not isinstance(result, pd.DataFrame)
+        assert not isinstance(result, (pd.DataFrame, PlotInput))
         return result
 
     def _assert_chart_matches_reference(

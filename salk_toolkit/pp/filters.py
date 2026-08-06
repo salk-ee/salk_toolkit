@@ -12,6 +12,8 @@ import polars as pl
 import salk_toolkit.utils as utils
 from salk_toolkit.validation import GroupOrColumnMeta
 
+JITTER_GRANULARITY = 10**6  # Hash buckets the integer-tie jitter is drawn from
+
 
 def _ensure_ldf_categories(
     col_meta: MutableMapping[str, GroupOrColumnMeta],
@@ -153,12 +155,11 @@ def _discretize_continuous(
 
     if isinstance(breaks, int):  # Quantiles
         if isint:
-            ldf = ldf.with_columns(
-                pl.col(col).map_batches(
-                    lambda x: x + np.random.uniform(-0.5, 0.5, len(x)),
-                    is_elementwise=True,
-                )
-            )
+            # Jitter integer ties so the quantiles can split them. Hashing the row index keeps it
+            # deterministic across engines and chunkings, and - unlike a within-value rank - keeps
+            # which side of an edge a row lands on uncorrelated with how the file happens to be sorted.
+            jitter = pl.int_range(pl.len()).hash(seed=42) % JITTER_GRANULARITY / JITTER_GRANULARITY - 0.5
+            ldf = ldf.with_columns(pl.col(col) + jitter)
         bpoints = np.linspace(0, 1, breaks + 1)
         breaks = list(_pl_quantiles(ldf, col, bpoints))
         span = breaks[-1] - breaks[0]

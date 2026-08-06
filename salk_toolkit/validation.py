@@ -742,29 +742,44 @@ FilterValue = Union[FilterScalar, FilterCategories, FilterRange]
 FilterSpec = Dict[str, FilterValue]
 
 SortSpec = Union[List[str], Dict[str, bool]]
-ConvertResOption = Literal["continuous"]
-ContTransformOption = Literal[
-    "center",
-    "zscore",
-    "01range",
-    "proportion",
-    "softmax",
-    "softmax-ratio",
-    "softmax-avgrank",
-    "ordered-avgrank",
-    "ordered-warf",
-    "ordered-top1",
-    "ordered-bot1",
-    "ordered-topbot1",
-    "ordered-top2",
-    "ordered-top3",
-]
+ConvertResOption = Literal["continuous", "categorical"]
+
+# The transform registries are extendable at runtime, so cont_transform is validated
+# against the live ones rather than a frozen Literal - see `_valid_cont_transform`.
+ContTransformOption = str
 AggFnOption = Literal["mean", "sum", "posneg_mean", "median", "min", "max"]
+
+
+def _valid_cont_transform(value: str) -> str:
+    """Accept any transform the pipeline can dispatch, including ones a dashboard registered after import."""
+    from salk_toolkit.pp.transforms import (
+        TRANSFORM_FAMILIES,
+        _ordered_topk,
+        _threshold_cutoff,
+        known_cont_transforms,
+    )
+
+    known = known_cont_transforms()
+    if value in known:
+        return value
+    if _threshold_cutoff(value) is not None or _ordered_topk(value) is not None:  # raise on malformed parameters
+        return value
+    raise ValueError(
+        f"unknown cont_transform {value!r}; registered: {', '.join(known)}; families: {TRANSFORM_FAMILIES}"
+    )
 
 
 # --------------------------------------------------------
 #          PLOT DESCRIPTION
 # --------------------------------------------------------
+
+
+class StatSpec(PBase):
+    """One named statistic: a row-level polars expression plus its weighted aggregation."""
+
+    name: str  # Output column name
+    expr: str  # Row-level polars expression, evaluated with {"pl": pl}
+    agg_fn: Literal["mean", "sum"] = "mean"
 
 
 class PlotDescriptor(PBase):
@@ -778,9 +793,16 @@ class PlotDescriptor(PBase):
     filter: FilterSpec = {}  # Column filters applied before aggregation
 
     # Plotting choices
-    convert_res: Optional[ConvertResOption] = None  # Convert categorical responses (currently only 'continuous')
+    convert_res: Optional[ConvertResOption] = None  # 'continuous' to number an ordinal, 'categorical' to bin a number
     cont_transform: Optional[ContTransformOption] = None  # Continuous transform to apply before aggregation
+
     agg_fn: Optional[AggFnOption] = None  # Aggregation override for summary statistics
+    # Named row-level expressions aggregated in one group_by, so cells over different
+    # row sets ride one scan. Data-only: a column per statistic, no single value column.
+    stats: Optional[List[StatSpec]] = None
+    # True = the declared weight_col (required if declared); False = unweighted; a string is a column
+    # name, or a polars expression if it references pl. Anything but True recomputes total_size.
+    weights: Union[bool, str] = True
     sort: Optional[SortSpec] = None  # Sorting instructions for categorical dimensions
     n_facet_cols: Optional[int] = None  # Number of facet columns to display
     internal_facet: Optional[Union[bool, int]] = None  # Control inner facet (True/False or count)
@@ -801,3 +823,23 @@ class PlotDescriptor(PBase):
     # Internal / debugging
     calculated_draws: bool = True  # Whether to compute synthetic draws when metadata allows it
     data: Optional[str] = None  # Identifier for the data source (used for caching)
+
+    @field_validator("cont_transform")
+    @classmethod
+    def _check_cont_transform(cls, value: Optional[str]) -> Optional[str]:
+        return None if value is None else _valid_cont_transform(value)
+
+    @model_validator(mode="after")
+    def _check_stats(self) -> "PlotDescriptor":
+        """`stats` replaces the single-statistic path rather than combining with it."""
+        if not self.stats:
+            return self
+        clash = {k: v for k, v in (("agg_fn", self.agg_fn), ("cont_transform", self.cont_transform)) if v}
+        if clash:
+            drop = ", ".join(f"{k}={v!r}" for k, v in clash.items())
+            raise ValueError(f"stats cannot combine with {drop}: each stat carries its own agg_fn and expression")
+        names = [s.name for s in self.stats]
+        if len(set(names)) != len(names):
+            dupes = sorted({n for n in names if names.count(n) > 1})
+            raise ValueError(f"stat name(s) {dupes} appear more than once; each names an output column")
+        return self

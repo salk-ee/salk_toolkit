@@ -10,7 +10,7 @@ import polars as pl
 from salk_toolkit.validation import DataMeta, GroupOrColumnMeta, PlotDescriptor, soft_validate
 
 from .common import _get_cat_num_vals
-from .meta import _extract_column_meta_cached, _update_data_meta_with_pp_desc
+from .meta import _update_data_meta_with_pp_desc
 from .registry import PlotMeta, _ensure_plot_registry_loaded, get_plot_meta, registry, registry_meta
 
 
@@ -24,6 +24,12 @@ priority_weights = {
     "likert": [n_a, 200],
     "required_meta": [n_a, 500],
 }
+
+
+def _res_is_categorical(res_meta: GroupOrColumnMeta, convert_res: str | None) -> bool:
+    """Whether the response is categorical once ``convert_res`` has had its say."""
+
+    return (convert_res == "categorical") if convert_res else res_meta.is_categorical
 
 
 def _calculate_priority(plot_meta: PlotMeta, match: Mapping[str, Any]) -> tuple[int, List[str]]:
@@ -125,10 +131,9 @@ def matching_plots(
     pp_desc = soft_validate(pp_desc, PlotDescriptor)
 
     if impute:
-        facet_dims = impute_facet_dims(pp_desc, _extract_column_meta_cached(data_meta), get_plot_meta(pp_desc.plot))
-        pp_desc = pp_desc.model_copy(update={"facet_dims": facet_dims})
-
-    col_meta, _ = _update_data_meta_with_pp_desc(data_meta, pp_desc)
+        pp_desc, col_meta = _impute_facet_dims(pp_desc, data_meta)
+    else:
+        col_meta, _ = _update_data_meta_with_pp_desc(data_meta, pp_desc)
 
     rc = pp_desc.res_col
     rcm = col_meta[rc]
@@ -144,14 +149,16 @@ def matching_plots(
     if not cols:
         raise ValueError(f"Columns {ocols} not found in data")
 
-    if rcm.is_categorical:
+    convert_res = pp_desc.convert_res
+    is_categorical = _res_is_categorical(rcm, convert_res)
+
+    if is_categorical:  # Bin labels and category names are never negative
         nonneg = True
     else:
         # Metadata-only: a data scan would cost a full pass per render; unknown counts as not non-negative
         val_range = rcm.val_range
         nonneg = val_range is not None and val_range[0] is not None and val_range[0] >= 0
 
-    convert_res = pp_desc.convert_res
     if convert_res == "continuous" and rcm.is_categorical:
         cat_vals_seq = _get_cat_num_vals(rcm, pp_desc)
         cat_vals = [v for v in (cat_vals_seq or []) if v is not None]
@@ -163,7 +170,6 @@ def matching_plots(
     for cn in facet_dims:
         meta = col_meta.get(cn, GroupOrColumnMeta())
         facet_metas.append({"name": cn, **meta.model_dump(mode="python")})
-    is_categorical = rcm.is_categorical and convert_res != "continuous"
     match = {
         "draws": ("draw" in df_cols),
         "nonnegative": nonneg,
@@ -239,7 +245,8 @@ def impute_facet_dims(
     convert_res = pp_desc.convert_res
     res_col_meta = col_meta[res_col]
     has_q = res_col_meta.columns is not None
-    cat_res = res_col_meta.is_categorical and convert_res != "continuous"
+    # A number bound for binning ends up categorical too, so it wants res_col as a facet
+    cat_res = _res_is_categorical(res_col_meta, convert_res)
 
     # Add res_col if we are working with a categorical input (and not converting it to continuous)
     if cat_res and res_col not in facet_dims:
@@ -262,6 +269,16 @@ def impute_facet_dims(
         facet_dims, _ = _inner_outer_facets(facet_dims, pp_desc, plot_meta)
 
     return facet_dims
+
+
+def _impute_facet_dims(
+    pp_desc: PlotDescriptor, data_meta: DataMeta
+) -> tuple[PlotDescriptor, Dict[str, GroupOrColumnMeta]]:
+    """Fill in facet_dims, reading the meta through the descriptor's overrides so res_meta blocks are visible."""
+
+    col_meta, _ = _update_data_meta_with_pp_desc(data_meta, pp_desc)
+    facet_dims = impute_facet_dims(pp_desc, col_meta, get_plot_meta(pp_desc.plot))
+    return pp_desc.model_copy(update={"facet_dims": facet_dims}), col_meta
 
 
 # Legacy name kept for external callers
