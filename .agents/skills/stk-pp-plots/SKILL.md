@@ -138,9 +138,13 @@ Any override (everything except `True`) recomputes `total_size` from the actual 
                             "bin_labels": [str(b) for b in range(11)]}}}
 ```
 
-Binning is per column, so it needs a **single-column** `res_col`: on a block each column would get its own quantiles and labels and only the last one's would survive the shared axis.
+Binning is per column, so it needs a **single-column** numeric `res_col`: a block and a non-numeric column are both rejected rather than binned per column, where each column would get its own quantiles and labels and only the last one's would survive the shared axis.
 
-**With a `cont_transform`, `"categorical"` describes the result**, not the input: convert to continuous as needed, transform, *then* categorize. Without bin specs that is **literal bins** — one ordered category per distinct transformed value, ordered numerically (rank 10 after 9, not after 1). Labels and ordering are resolved after aggregation on the small aggregated frame, so no second scan; past 50 distinct values it errors, since genuinely continuous output wants bins. This is the one categorization that **does** work on a block, and the point of it — the transform puts every column on one shared domain, so the category list is derived globally rather than per column:
+Binning also **drops the meta keyed to the old values** — a colour map, filter `groups`, `labels` or a `neutral_middle` naming pre-binning categories would survive the merge matching nothing. `question_colors` is the exception, being keyed by column rather than by value.
+
+A to-be-binned response counts as **categorical** for both plot matching and facet imputation, so `matching_plots` offers the categorical plots and `impute_facet_dims` inserts the response itself as a facet dimension — the same treatment a natively categorical `res_col` gets.
+
+**With a `cont_transform`, `"categorical"` describes the result**, not the input: convert to continuous as needed, transform, *then* categorize. Without bin specs that is **literal bins** — one ordered category per distinct transformed value, ordered numerically (rank 10 after 9, not after 1). Labels (`%g`, widened to `repr` when six significant digits are not injective) and their ordering are resolved after aggregation on the small aggregated frame, so no second scan; past 50 distinct values it errors, since genuinely continuous output wants bins. This is the one categorization that **does** work on a block, and the point of it — the transform puts every column on one shared domain, so the category list is derived globally rather than per column:
 
 ```python
 # distribution over each topic's rank: which rank does each topic get, and how often
@@ -158,7 +162,7 @@ Applied **after** `convert_res` when a rescaling / summary is desired; it only r
 - Softmax family: `softmax`, `softmax-ratio`, `softmax-avgrank`
 - Ordered helpers: `ordered-avgrank` (1 = lowest of the battery) and `ordered-avgrank-desc` (1 = highest), `ordered-warf`, `ordered-top1`, `ordered-bot1`, `ordered-topbot1`, `ordered-top2`, `ordered-top3`
 - Threshold family: `ge:<x>` — replaces the column with a 0/1 indicator, so `mean` gives the share past the cutoff and `sum` the weighted count (value format follows: `.1%` / `.0f`). The cutoff is compared *after* `convert_res`, so on an ordered categorical it is a `num_values` number, not a category index. `ge:-inf` is the "answered at all" indicator, so its weighted sum is the response count. `gt:`, `le:` and non-numeric cutoffs are rejected at validation.
-- Top-k family: `ordered-top-ties:<k>` selects everything reaching the row's k-th best *value*, so ties can select more than k (`ordered-top1` is its k=1 case); `ordered-top2` / `ordered-top3` select exactly k, ties broken by column order. All rank among the row's *answered* columns, so a partly-answered row still has a top-k.
+- Top-k family: `ordered-top-ties:<k>` selects everything reaching the row's k-th best *value*, so ties can select more than k (`ordered-top1` is its k=1 case); `ordered-top2` / `ordered-top3` select exactly k, ties going to the later column. All rank among the row's *answered* columns, so a partly-answered row still has a top-k.
 
 ```python
 # share who rate each party at least 1 on a -5..5 thermometer, all parties in one scan
@@ -193,7 +197,9 @@ Mean + threshold shares + n for every column of a battery is *one* question, not
 ]}  # data-only: pass return_data=True or return_input=True
 ```
 
-This covers the filter-varying class — overlap matrices ("uses i but not j"), audience masks, marginal reach — where a `pl_filter` per cell costs a descriptor per cell. `agg_fn` folds the declared (or overridden) weighting in per stat; referenced columns are harvested from the expressions; output is a column per stat.
+This covers the filter-varying class — overlap matrices ("uses i but not j"), audience masks, marginal reach — where a `pl_filter` per cell costs a descriptor per cell. Referenced columns are harvested from the expressions into the projection; output is a column per stat (the first one's name becomes the value column).
+
+Per-stat `agg_fn` is `mean` (default) or `sum`, and folds the declared (or overridden) weighting in: `mean` is the weighted mean **over the rows where the expression is non-null**, `sum` the weighted sum. So a boolean expression aggregates to a share or a weighted count with no hand-woven weights, and a `pl.when(...).then(...)` expression that leaves rows null excludes them from that statistic's denominator without touching the others.
 
 Expressions see the frame as stored, the same vocabulary `pl_filter` sees. Unlike `filter` they get no meta resolution — no `groups` aliases, no category expansion — so write annotation-declared values literally.
 
@@ -232,6 +238,8 @@ Grid layout controls when a plot wraps multiple facets. Rarely needed — the de
 ```
 
 The merged result is revalidated, so an override contradicting the annotation raises. To read a categorical column as numbers use `convert_res="continuous"`, not `col_meta: {"continuous": true}`. `col_meta` **cannot introduce a column** — it only overrides meta on columns that exist. If you set the same override from several call sites, the annotation is wrong; fix it there.
+
+Imputation reads the meta *through* these overrides, so a `categories` or `columns` override can change which dimensions get imputed — worth checking `impute_facet_dims` output when an override moves more than labels.
 
 ### `res_meta` — a virtual block
 

@@ -56,3 +56,6 @@ Two limits behind the last two rows:
 **deadlocks under `POLARS_FORCE_NEW_STREAMING=1`**. The `ordered-*` family was migrated to
 `ordered_expr_transforms` for exactly these reasons and got 3.5x faster on 500k × 18
 (`ordered-top3` 0.711s → 0.201s, `ordered-avgrank` 0.693s → 0.194s).
+
+The pairwise formulation is n(n-1) expressions, so it crosses back over the list-based one
+around 50 columns. The widest block any rank transform runs on today is 25.
