@@ -182,6 +182,11 @@ class ColumnMeta(PBase):
     mandates: Optional[MandatesDict] = None  # Mandate count mapping for the electoral system
     col_prefix: Optional[str] = None  # Prefix prepended to column names in data (from scale block)
 
+    @property
+    def is_categorical(self) -> bool:
+        """Has categories to work with. `datetime` is orthogonal: parsed dates can be bucketed into categories."""
+        return self.categories is not None and not self.continuous
+
     @model_serializer(mode="wrap")
     def _serialize_model(
         self, handler: Callable[[BaseModel], dict[str, Any]], info: SerializationInfo
@@ -193,6 +198,12 @@ class ColumnMeta(PBase):
 
     @model_validator(mode="after")
     def check_categorical(self, info: ValidationInfo) -> Self:
+        # Continuous and categorical are exclusive, and this is never soft: a column claiming both is
+        # pure confusion, so fail the load rather than pick a winner. (datetime is orthogonal - it
+        # describes parsing, and the parsed values can be bucketed into categories.)
+        if self.continuous and self.categories is not None:
+            raise ValueError(f"Column is continuous, so it cannot have categories: {self.categories}")
+
         if info.context and info.context.get("validation_mode") == "soft":
             return self
         if self.categories is None:
@@ -287,7 +298,13 @@ class ColumnBlockMeta(PBase):
         # Merge scale with each column's metadata
         merged_columns: dict[str, ColumnMeta] = {}
         for col_name, col_meta in self.columns.items():
-            merged_meta = merge_pydantic_models(self.scale, col_meta, context=info.context)
+            # A column declaring its own type overrides the block's, so drop the counterpart it would inherit
+            scale = self.scale
+            if col_meta.continuous and scale.categories is not None:
+                scale = scale.model_copy(update={"categories": None})
+            elif col_meta.categories is not None and scale.continuous:
+                scale = scale.model_copy(update={"continuous": False})
+            merged_meta = merge_pydantic_models(scale, col_meta, context=info.context)
 
             # Special case: Don't inherit label from scale unless explicitly set on column
             # This prevents scale-level labels from propagating to individual columns

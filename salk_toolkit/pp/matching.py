@@ -144,7 +144,7 @@ def matching_plots(
     if not cols:
         raise ValueError(f"Columns {ocols} not found in data")
 
-    if rcm.categories is not None:
+    if rcm.is_categorical:
         nonneg = True
     else:
         # Metadata-only: a data scan would cost a full pass per render; unknown counts as not non-negative
@@ -152,7 +152,7 @@ def matching_plots(
         nonneg = val_range is not None and val_range[0] is not None and val_range[0] >= 0
 
     convert_res = pp_desc.convert_res
-    if convert_res == "continuous" and (rcm.categories is not None):
+    if convert_res == "continuous" and rcm.is_categorical:
         cat_vals_seq = _get_cat_num_vals(rcm, pp_desc)
         cat_vals = [v for v in (cat_vals_seq or []) if v is not None]
         if cat_vals:
@@ -163,8 +163,7 @@ def matching_plots(
     for cn in facet_dims:
         meta = col_meta.get(cn, GroupOrColumnMeta())
         facet_metas.append({"name": cn, **meta.model_dump(mode="python")})
-    # Categorical = has categories, not marked continuous, not being converted to continuous
-    is_categorical = (rcm.categories is not None) and not rcm.continuous and convert_res != "continuous"
+    is_categorical = rcm.is_categorical and convert_res != "continuous"
     match = {
         "draws": ("draw" in df_cols),
         "nonnegative": nonneg,
@@ -239,9 +238,8 @@ def impute_facet_dims(
     res_col = pp_desc.res_col
     convert_res = pp_desc.convert_res
     res_col_meta = col_meta[res_col]
-    has_categories = res_col_meta.categories is not None
     has_q = res_col_meta.columns is not None
-    cat_res = has_categories and convert_res != "continuous"
+    cat_res = res_col_meta.is_categorical and convert_res != "continuous"
 
     # Add res_col if we are working with a categorical input (and not converting it to continuous)
     if cat_res and res_col not in facet_dims:

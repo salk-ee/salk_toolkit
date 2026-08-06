@@ -399,7 +399,6 @@ class TestReadAnnotatedData:
         expected_structure: dict[str, ColumnBlockMeta],
         data_df: pd.DataFrame | None = None,
         check_q2_version: bool = False,
-        expected_topics: list[str] | None = None,
     ) -> None:
         """Helper to compare actual and expected structures."""
         # System blocks like 'files' are automatically added by read_and_process_data
@@ -436,10 +435,10 @@ class TestReadAnnotatedData:
                     assert q2_version_meta.continuous, (
                         f"Q2_Version should be continuous, got continuous={q2_version_meta.continuous}"
                     )
-                    if expected_topics:
-                        assert q2_version_meta.categories == expected_topics, (
-                            f"Q2_Version should inherit scale categories, got {q2_version_meta.categories}"
-                        )
+                    # It is the version number, not a topic: continuous columns never carry categories
+                    assert q2_version_meta.categories is None, (
+                        f"Q2_Version is continuous, so it should have no categories, got {q2_version_meta.categories}"
+                    )
                     column_list = list(actual_block.columns.keys())
                     assert column_list[0] == "Q2_Version", (
                         f"Q2_Version should be first column, but got order: {column_list[:5]}"
@@ -558,7 +557,7 @@ class TestReadAnnotatedData:
             topics=topics.tolist(),
             column_names=columnorder,
             setindex_column="Q2_Version",
-            setindex_meta=ColumnMeta(continuous=True, categories=topics.tolist()),
+            setindex_meta=ColumnMeta(continuous=True),
         )
 
         df = df[["Q2_Version"] + sorted(columnorder)]
@@ -579,7 +578,6 @@ class TestReadAnnotatedData:
             expected_structure,
             data_df=data_df,
             check_q2_version=True,
-            expected_topics=topics.tolist(),
         )
 
     def test_maxdiff_create_block_explicit_sets(self, meta_file, csv_file):
@@ -1294,6 +1292,43 @@ class TestCategoricalFeatures:
 
         assert df["dt"].dtype.name == "category"
         assert list(df["dt"].dtype.categories) == ["01 Jan 25", "01 Dec 25", "02 Dec 25"]
+
+    @pytest.mark.parametrize("categories", ["infer", [1, 2, 3]], ids=["infer", "explicit"])
+    def test_continuous_column_with_categories_fails_to_load(self, csv_file, meta_file, categories):
+        """Continuous and categorical are exclusive: a column claiming both is rejected, not silently resolved."""
+        df_to_csv(pd.DataFrame({"score": [1, 2, 3], "id": [1, 2, 3]}), csv_file)
+        col_meta = {"continuous": True, "categories": categories}
+        write_json(
+            meta_file, {"file": "test.csv", "structure": [{"name": "test", "columns": ["id", ["score", col_meta]]}]}
+        )
+
+        with pytest.raises(ValidationError, match="continuous, so it cannot have categories"):
+            read_annotated_data(str(meta_file))
+
+    def test_column_type_overrides_block_scale_type(self, csv_file, meta_file):
+        """A column declaring `continuous` opts out of the block's categories instead of inheriting a contradiction."""
+        df_to_csv(pd.DataFrame({"score": [1, 2, 3], "rating": ["a", "b", "a"], "id": [1, 2, 3]}), csv_file)
+        write_json(
+            meta_file,
+            {
+                "file": "test.csv",
+                "structure": [
+                    {"name": "sys", "columns": ["id"]},
+                    {
+                        "name": "block",
+                        "scale": {"categories": ["a", "b"]},
+                        "columns": [["rating", {}], ["score", {"continuous": True}]],
+                    },
+                ],
+            },
+        )
+
+        df, dmeta = read_and_process_data(str(meta_file), return_meta=True)
+
+        cmeta = extract_column_meta(dmeta)
+        assert (cmeta["score"].continuous, cmeta["score"].categories) == (True, None)
+        assert cmeta["rating"].categories == ["a", "b"]
+        assert df["score"].tolist() == [1, 2, 3]
 
     def test_numeric_to_categorical_nearest_mapping(self, csv_file, meta_file):
         """Test numeric series mapping to nearest categorical values"""
