@@ -40,11 +40,10 @@ getting it there.
   not statistics: 5 KPIs × 7 parties is not 35 scans, it is ~2 descriptors once blocks and
   factors batch.
 
-- **Counts stay polars — keep one `scoped_lf()` sibling.** pp reports weighted shares; every
-  payload also reports raw respondent `n`s. Keep a single lazy-scope helper with *identical*
-  scope semantics to the descriptor filter (same wave pin, same equality/is_in handling) so
-  the `n` and the share always describe the same rows. Divergence here is a silent-wrong-answer
-  mode.
+- **Counts come out of the same descriptor.** ~~Keep one `scoped_lf()` sibling~~ — superseded
+  by #76: `weights: False` plus `return_input=True` gives `filtered_size` as an exact row
+  count off the same scan that produced the shares, so the `n` and the share cannot describe
+  different rows.
 
 - **Genuine row-level models get a one-shot artifact, not a resident frame.** The
   undecided-destination and runoff models are the only paths needing per-respondent values.
@@ -56,10 +55,7 @@ getting it there.
 
 - **`res_meta` already builds a virtual block from loose columns** — it is injected into
   `meta.structure` before processing and inherits `scale` from the first column when unset.
-  The skill mentions `res_meta` only as "what binning settings are *not*"; it should
-  positively document `res_col: "<name>", res_meta: {"name": "<name>", "columns": [...]}` as
-  the answer to "my battery columns aren't in an annotation block" (lt26's media batteries
-  stayed bare-polars for exactly this reason).
+  Documented in the skill as of #76, along with the imputation fix it needed.
 
 - **A block name is not a column name.** Guards that check `res_col in schema.names()` reject
   every block descriptor; check `meta.structure` for blocks and the schema for columns
@@ -106,7 +102,7 @@ getting it there.
 - **Deterministic ordering is on you.** `group_by` does not preserve order and ties are common
   (many regions at support 0). Every `.sort()` feeding a payload needs the label as a
   tie-break, or captures diff nondeterministically.
-- What the refactors could not express, and is therefore pp backlog: per-cell `n` / weight-mass
-  output, wide-form aggregation for block descriptors (the melt amplification above),
-  parameterized and ties-inclusive top-k, complete-case counts, pairwise co-occurrence over a
-  block.
+- What the refactors could not express became the pp backlog, and #76 delivered it:
+  per-cell `n` / weight-mass output (`return_input`), ties-inclusive parameterized top-k
+  (`ordered-top-ties:<k>`), complete-case counts (`ge:-inf`) and pairwise co-occurrence over a
+  block (`stats`). Wide-form aggregation for block descriptors already existed on `main`.
