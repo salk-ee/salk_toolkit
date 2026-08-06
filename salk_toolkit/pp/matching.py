@@ -10,7 +10,7 @@ import polars as pl
 from salk_toolkit.validation import DataMeta, GroupOrColumnMeta, PlotDescriptor, soft_validate
 
 from .common import _get_cat_num_vals
-from .meta import _extract_column_meta_cached, _update_data_meta_with_pp_desc
+from .meta import _update_data_meta_with_pp_desc
 from .registry import PlotMeta, _ensure_plot_registry_loaded, get_plot_meta, registry, registry_meta
 
 
@@ -125,10 +125,9 @@ def matching_plots(
     pp_desc = soft_validate(pp_desc, PlotDescriptor)
 
     if impute:
-        facet_dims = impute_facet_dims(pp_desc, _extract_column_meta_cached(data_meta), get_plot_meta(pp_desc.plot))
-        pp_desc = pp_desc.model_copy(update={"facet_dims": facet_dims})
-
-    col_meta, _ = _update_data_meta_with_pp_desc(data_meta, pp_desc)
+        pp_desc, col_meta = _impute_facet_dims(pp_desc, data_meta)
+    else:
+        col_meta, _ = _update_data_meta_with_pp_desc(data_meta, pp_desc)
 
     rc = pp_desc.res_col
     rcm = col_meta[rc]
@@ -163,7 +162,8 @@ def matching_plots(
     for cn in facet_dims:
         meta = col_meta.get(cn, GroupOrColumnMeta())
         facet_metas.append({"name": cn, **meta.model_dump(mode="python")})
-    is_categorical = rcm.is_categorical and convert_res != "continuous"
+    # convert_res decides it outright ('categorical' bins a number, 'continuous' numbers an ordinal)
+    is_categorical = (convert_res == "categorical") if convert_res else rcm.is_categorical
     match = {
         "draws": ("draw" in df_cols),
         "nonnegative": nonneg,
@@ -239,7 +239,8 @@ def impute_facet_dims(
     convert_res = pp_desc.convert_res
     res_col_meta = col_meta[res_col]
     has_q = res_col_meta.columns is not None
-    cat_res = res_col_meta.is_categorical and convert_res != "continuous"
+    # A number bound for binning ends up categorical too, so it wants res_col as a facet
+    cat_res = (res_col_meta.is_categorical or convert_res == "categorical") and convert_res != "continuous"
 
     # Add res_col if we are working with a categorical input (and not converting it to continuous)
     if cat_res and res_col not in facet_dims:
@@ -262,6 +263,16 @@ def impute_facet_dims(
         facet_dims, _ = _inner_outer_facets(facet_dims, pp_desc, plot_meta)
 
     return facet_dims
+
+
+def _impute_facet_dims(
+    pp_desc: PlotDescriptor, data_meta: DataMeta
+) -> tuple[PlotDescriptor, Dict[str, GroupOrColumnMeta]]:
+    """Fill in facet_dims, reading the meta through the descriptor's overrides so res_meta blocks are visible."""
+
+    col_meta, _ = _update_data_meta_with_pp_desc(data_meta, pp_desc)
+    facet_dims = impute_facet_dims(pp_desc, col_meta, get_plot_meta(pp_desc.plot))
+    return pp_desc.model_copy(update={"facet_dims": facet_dims}), col_meta
 
 
 # Legacy name kept for external callers

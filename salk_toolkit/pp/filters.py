@@ -153,12 +153,10 @@ def _discretize_continuous(
 
     if isinstance(breaks, int):  # Quantiles
         if isint:
-            ldf = ldf.with_columns(
-                pl.col(col).map_batches(
-                    lambda x: x + np.random.uniform(-0.5, 0.5, len(x)),
-                    is_elementwise=True,
-                )
-            )
+            # Spread each tie group evenly over its unit interval so the quantiles can split it.
+            # Deterministic, unlike a batch-seeded RNG: independent of engine, chunking and threads.
+            offset = (pl.col(col).cum_count().over(col) - 0.5) / pl.col(col).count().over(col) - 0.5
+            ldf = ldf.with_columns(pl.col(col) + offset)
         bpoints = np.linspace(0, 1, breaks + 1)
         breaks = list(_pl_quantiles(ldf, col, bpoints))
         span = breaks[-1] - breaks[0]

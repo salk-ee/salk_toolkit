@@ -25,8 +25,7 @@ from .common import (
     _normalize_color_dict,
     special_columns,
 )
-from .matching import _inner_outer_facets, impute_facet_dims, matching_plots
-from .meta import _extract_column_meta_cached
+from .matching import _impute_facet_dims, _inner_outer_facets, matching_plots
 from .registry import PlotMeta, _stk_deregister, get_plot_fn, get_plot_meta, stk_plot
 from .wrangle import pp_transform_data
 
@@ -448,11 +447,16 @@ def e2e_plot(
     impute: bool = True,
     plot_cache: MutableMapping[str, PlotInput] | None = None,
     return_data: bool = False,
+    return_input: bool = False,
     **kwargs: object,
-) -> AltairChart | List[List[AltairChart]] | pd.DataFrame:
+) -> AltairChart | List[List[AltairChart]] | pd.DataFrame | PlotInput:
     """A convenience function to draw a plot straight from a dataset.
 
     High-level helper that loads data, transforms, and renders a plot.
+    ``return_data=True`` returns just the aggregated frame; ``return_input=True``
+    returns the full ``PlotInput``, which also carries ``filtered_size`` /
+    ``total_size`` — the post-filter and pre-filter weight (row counts under
+    ``weights: False``), i.e. the "n = ..." consumers show next to the numbers.
     """
 
     if data_file is None and full_df is None:
@@ -462,6 +466,9 @@ def e2e_plot(
 
     # Validate the plot descriptor and convert to Pydantic object
     pp_desc = soft_validate(pp_desc, PlotDescriptor)
+
+    if pp_desc.stats and not (return_input or return_data):
+        raise ValueError("stats output is data-only (a column per statistic); pass return_data or return_input")
 
     if full_df is None:
         data_file_str = cast(str, data_file)
@@ -475,8 +482,7 @@ def e2e_plot(
         raise ValueError(f"Parquet file {data_file} has no data metadata")
 
     if impute:
-        facet_dims = impute_facet_dims(pp_desc, _extract_column_meta_cached(data_meta), get_plot_meta(pp_desc.plot))
-        pp_desc = pp_desc.model_copy(update={"facet_dims": facet_dims})
+        pp_desc, _ = _impute_facet_dims(pp_desc, data_meta)
 
     if check_match:
         # If we imputed above, the descriptor already has final facet_dims - skip re-imputing
@@ -499,6 +505,8 @@ def e2e_plot(
     else:  # No caching
         pi = pp_transform_data(full_df, data_meta, pp_desc)
 
+    if return_input:  # Takes precedence: the PlotInput carries pi.data anyway
+        return pi
     if return_data:
         return pi.data
     # dry_run=True can cause create_plot to return Dict[str, Any], but we don't support that here
@@ -520,7 +528,7 @@ def test_new_plot(
     *args: object,
     plot_meta: Mapping[str, Any] | PlotMeta | None = None,
     **kwargs: object,
-) -> AltairChart | List[List[AltairChart]] | pd.DataFrame:
+) -> AltairChart | List[List[AltairChart]] | pd.DataFrame | PlotInput:
     """Temporarily register a plot for interactive testing."""
 
     # Ensure pp_desc is a PlotDescriptor object

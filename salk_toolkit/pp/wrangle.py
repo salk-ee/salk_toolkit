@@ -22,6 +22,45 @@ from .transforms import _transform_cont
 PRECISION = 10**6  # Hash-sampling granularity for the raw-format row cap
 
 
+def _eval_expr(expr: str) -> pl.Expr:
+    """A descriptor-supplied row expression - the ``pl_filter`` trust model."""
+    return eval(expr, {"pl": pl})  # noqa: S307
+
+
+def _resolve_weight_col(
+    weights: bool | str, declared: str | None, all_col_names: Sequence[str]
+) -> tuple[str, pl.Expr | None]:
+    """The column to weigh by, per the descriptor's ``weights``.
+
+    ``True`` (the default) = the annotation's declared column, which must exist;
+    an annotation declaring none is unweighted. ``False`` = a synthesized unit
+    weight. A string referencing ``pl.`` is a per-row expression, any other
+    string a column name; both are required.
+    """
+    if weights is False:
+        return "__unit_weight__", None  # never a data column; synthesized as 1.0 by the caller
+    if weights is True:
+        if declared is None:
+            return "row_weights", None  # the conventional name; absent means unweighted
+        if declared not in all_col_names:
+            raise ValueError(
+                f"declared weight column {declared!r} is not in the data (columns: {sorted(all_col_names)[:20]}). "
+                "Fix data_meta.weight_col, or pass weights=False for deliberately unweighted numbers."
+            )
+        return declared, None
+    # An expression must reference pl, so a column name that is not a Python
+    # identifier ("w.2024") still resolves as a column - and a *missing* one still
+    # fails loudly rather than being eval'd.
+    if "pl." in weights:
+        return "__expr_weight__", _eval_expr(weights)
+    if weights not in all_col_names:
+        raise ValueError(
+            f"weight column {weights!r} is not in the data (columns: {sorted(all_col_names)[:20]}). "
+            "Pass weights=False for unweighted numbers, or name a column that exists."
+        )
+    return weights, None
+
+
 def pp_transform_data(
     full_df: pl.LazyFrame | pd.DataFrame,
     data_meta: DataMeta,
@@ -48,11 +87,15 @@ def pp_transform_data(
     all_col_names = schema.names()
 
     # Figure out which columns we actually need
-    weight_col = data_meta.weight_col or "row_weights"
+    weight_col, weight_expr = _resolve_weight_col(pp_desc.weights, data_meta.weight_col, all_col_names)
     facet_dims = list(pp_desc.facet_dims)
 
-    # Ensure weight column is present (fill with 1.0 if not)
-    if weight_col not in all_col_names:
+    # Materialize an expression weight into the plan before the column downselect. Its nulls are
+    # left alone: a computed design weight has no reason to sit near 1.0, so filling would distort.
+    if weight_expr is not None:
+        full_df = full_df.with_columns(weight_expr.cast(pl.Float64).alias(weight_col))
+        all_col_names += [weight_col]
+    elif weight_col not in all_col_names:  # Unweighted: synthesize a unit weight
         full_df = full_df.with_columns(pl.lit(1.0).alias(weight_col))
         all_col_names += [weight_col]
     else:
@@ -62,6 +105,8 @@ def pp_transform_data(
     if pp_desc.res_col in facet_dims:
         facet_dims.remove(pp_desc.res_col)
     base_cols = list(columns) if columns is not None else []
+    # Stat expressions name their columns directly; keep those through the projection
+    base_cols += [c for s in pp_desc.stats or [] for c in _eval_expr(s.expr).meta.root_names()]
     extra_cols = base_cols + ([weight_col] + (["draw"] if plot_meta.draws else []))
     cols = [pp_desc.res_col] + facet_dims + list(pp_desc.filter.keys() if pp_desc.filter else [])
     cols += [c for c in extra_cols if c in all_col_names and c not in cols]
@@ -85,12 +130,21 @@ def pp_transform_data(
     max_rows = None if (pp_desc.plot_args or {}).get("full_data") else plot_meta.max_rows
 
     # Count and population total both read off the pre-filter frame; the weight-sum scan counts for
-    # free. Captured before the row index below, which would cost a full scan instead of metadata
+    # free. Captured before the row index below, which would cost a full scan instead of metadata.
+    # The annotation's declared population total describes the *declared* weighting, so any
+    # weights override (unweighted, another column, an expression) recomputes the total instead.
     counting_df, counted_n = full_df, None
-    total_weight = data_meta.total_size
+    total_weight = data_meta.total_size if pp_desc.weights is True else None
     if total_weight is None:
-        counts = counting_df.select(pl.len().alias("n"), pl.col(weight_col).sum().alias("w")).collect()
-        counted_n, total_weight = int(counts["n"].item()), counts["w"].item()
+        if pp_desc.weights is False:
+            # The weight is a synthesized 1.0, so the total weight *is* the row count.
+            # Summing the literal instead forces the whole pre-filter frame to be
+            # produced; pl.len() alone comes off the scan's metadata.
+            counted_n = int(counting_df.select(pl.len()).collect().item())
+            total_weight = float(counted_n)
+        else:
+            counts = counting_df.select(pl.len().alias("n"), pl.col(weight_col).sum().alias("w")).collect()
+            counted_n, total_weight = int(counts["n"].item()), counts["w"].item()
 
     def get_total_n() -> int:
         """Pre-filter row count, needed only to build draws - so scan for it lazily and only once."""
@@ -107,7 +161,7 @@ def pp_transform_data(
 
     # Custom dashboard filtering - must run before downselecting to the needed columns
     if pp_desc.pl_filter:
-        full_df = full_df.filter(eval(pp_desc.pl_filter, {"pl": pl}))
+        full_df = full_df.filter(_eval_expr(pp_desc.pl_filter))
 
     df = full_df.select(cols)  # Select only the columns we need
 
@@ -148,9 +202,38 @@ def pp_transform_data(
 
     # Convert ordered categorical to continuous if we can
     rcl = [c for c in res_cols if c in cols]
+    if pp_desc.convert_res == "categorical" and len(rcl) > 1:
+        # Each column would get its own quantiles and its own labels, and only the last one's
+        # would survive on the shared axis - an incoherent distribution rather than an error.
+        raise ValueError(
+            f"convert_res='categorical' needs a single-column res_col; {pp_desc.res_col!r} is a block of "
+            f"{len(rcl)} columns, which would be binned separately. Bin one column, or declare the "
+            "categories in the annotation."
+        )
     for rc in rcl:
         res_meta = c_meta[rc]
-        if pp_desc.convert_res == "continuous":
+        if pp_desc.convert_res == "categorical":
+            # Bucket edges come from bin_breaks/bin_labels in the column meta, so a descriptor's
+            # col_meta picks them per plot. Gate on dtype: an override may not carry `continuous`.
+            if not schema[rc].is_numeric():
+                raise ValueError(
+                    f"convert_res='categorical' needs a numeric column; {rc!r} is {schema[rc]}. "
+                    "Use convert_res='continuous' to number an ordinal first."
+                )
+            filtered_df, labels = _discretize_continuous(filtered_df, rc, res_meta)
+            update_payload: Dict[str, Any] = {
+                "continuous": False,
+                "categories": list(labels),
+                "ordered": True,
+                "num_values": None,
+                "val_range": None,
+            }
+            update_model = soft_validate(update_payload, GroupOrColumnMeta)
+            c_meta[rc] = merge_pydantic_models(c_meta.get(rc, GroupOrColumnMeta()), update_model)
+            c_meta[pp_desc.res_col] = merge_pydantic_models(
+                c_meta.get(pp_desc.res_col, GroupOrColumnMeta()), update_model
+            )
+        elif pp_desc.convert_res == "continuous":
             nvals: Sequence[float | int] = []
             if res_meta.is_categorical:
                 res_meta = _ensure_ldf_categories(c_meta, rc, filtered_df)
@@ -211,6 +294,7 @@ def pp_transform_data(
                 transform=pp_desc.cont_transform,
                 val_format=val_format,
                 val_range=val_range,
+                agg_fn=pp_desc.agg_fn or plot_meta.agg_fn,
             )
     else:
         val_format, val_range = ".1%", None  # Categoricals report %
@@ -360,10 +444,41 @@ def _wrangle_data(
 
     value_col = "value"
     cat_col: str | None = None
+    scope_df = raw_df  # filtered_size counts the scope, so it is measured before any res_col null filter
+
+    if pp_desc.stats:  # Checked before the dispatch below, which would silently drop stats on a raw plot
+        if data_format != "longform":
+            raise ValueError(f"stats needs a longform plot; {pp_desc.plot!r} is {data_format!r}. Use plot='columns'.")
+        if n_questions > 1:
+            raise ValueError(
+                f"stats cannot take a block res_col ({res_col!r}, {n_questions} columns): the block aggregation "
+                "drops the columns the expressions name. Use a single-column res_col and name the block's "
+                "columns in the expressions."
+            )
+        if clash := [s.name for s in pp_desc.stats if s.name in gb_dims]:
+            raise ValueError(f"stat name(s) {clash} collide with the group-by dimensions {gb_dims}; rename them")
 
     if data_format == "raw":
         value_col = res_col
         data = raw_df.select(gb_dims + [res_col])
+
+    elif pp_desc.stats:
+        # Every named statistic is one aggregate in a single group_by, so cells over *different row
+        # sets* ride one scan instead of one descriptor per cell. Each expression is materialized as
+        # a column first, so the weighted mean's denominator reuses it instead of rebuilding it.
+        names = [f"__stat_{i}__" for i in range(len(pp_desc.stats))]
+        raw_df = raw_df.with_columns(
+            [_eval_expr(s.expr).cast(pl.Float64).alias(n) for n, s in zip(names, pp_desc.stats)]
+        )
+        aggs = []
+        for name, spec in zip(names, pp_desc.stats):
+            value, weight = pl.col(name), pl.col(weight_col)
+            weighted = (value * weight).sum()
+            if spec.agg_fn == "mean":  # Weighted mean over the rows where the expression is non-null
+                weighted = weighted / pl.when(value.is_not_null()).then(weight).sum()
+            aggs.append(weighted.alias(spec.name))
+        data = raw_df.group_by(gb_dims).agg(aggs)
+        value_col = pp_desc.stats[0].name
 
     elif data_format == "longform":
         # Descriptor-level agg_fn overrides the plot's registered default
@@ -484,9 +599,9 @@ def _wrangle_data(
     if gb_dims == ["dummy_col"]:
         data = data.drop("dummy_col")
 
-    # Both branches share the raw_df subplan, so collect_all (comm_subplan_elim) scans the data only once
+    # Both branches share the scope_df subplan, so collect_all (comm_subplan_elim) scans the data only once
     data, fsize = pl.collect_all(
-        [data, raw_df.select(pl.col(weight_col).sum())],
+        [data, scope_df.select(pl.col(weight_col).sum())],
         engine="streaming",
     )
     # Raw plots reduce to a fixed number of points anyway, so drop the excess here rather than

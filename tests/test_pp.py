@@ -3,7 +3,7 @@ Unit tests for plot pipeline utilities in salk_toolkit.pp.
 """
 
 from copy import deepcopy
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -13,6 +13,7 @@ import altair as alt
 
 from salk_toolkit.pp import (
     _calculate_priority as calculate_priority,
+    e2e_plot,
     _transform_cont,
     FacetMeta,
     PlotInput,
@@ -375,6 +376,25 @@ def test_convert_res_continuous_maps_unmapped_nonresponse_to_null() -> None:
     assert by_gender["Male"] == pytest.approx((-1 + 1 + 1 + 2 + 2) / 5)
 
 
+def _threshold_meta() -> DataMeta:
+    return make_data_meta(
+        {
+            "structure": [
+                {
+                    "name": "demographics",
+                    "scale": {},
+                    "columns": [["gender", {"categories": ["Female", "Male"]}]],
+                },
+                {
+                    "name": "ratings",
+                    "scale": {"continuous": True},
+                    "columns": [["party_a"], ["party_b"]],
+                },
+            ]
+        }
+    )
+
+
 def _continuous_res_meta(col_meta: dict[str, Any], col: str = "vote_prob") -> DataMeta:
     """A gender + one-response-column data meta, response column meta given by the caller."""
     return make_data_meta(
@@ -385,6 +405,102 @@ def _continuous_res_meta(col_meta: dict[str, Any], col: str = "vote_prob") -> Da
             ]
         }
     )
+
+
+def test_cont_transform_threshold_is_the_share_past_the_cutoff() -> None:
+    """``ge:<x>`` turns a continuous rating into "share who rated it at least x"."""
+    df = pd.DataFrame(
+        {
+            "draw": [0] * 6,
+            "gender": ["Female"] * 3 + ["Male"] * 3,
+            "party_a": [0.0, 1.0, 2.0, -1.0, 0.0, 5.0],
+            "party_b": [3.0, 3.0, 3.0, 0.0, 0.0, 0.0],
+        }
+    )
+    ppd = soft_validate(
+        {"res_col": "party_a", "factor_cols": ["gender"], "cont_transform": "ge:1", "plot": "columns"},
+        PlotDescriptor,
+    )
+    pi = pp_transform_data(pl.LazyFrame(df), _threshold_meta(), ppd)
+    shares = dict(zip(pi.data["gender"], pi.data[pi.value_col]))
+    assert shares["Female"] == pytest.approx(2 / 3)  # 1.0 and 2.0 clear the cutoff
+    assert shares["Male"] == pytest.approx(1 / 3)  # only 5.0
+
+
+def test_threshold_counts_are_not_formatted_as_percentages() -> None:
+    """Under ``agg_fn: sum`` the indicator is a weighted count, so the ``.1%`` share format is wrong."""
+    df = pd.DataFrame(
+        {"draw": [0] * 4, "gender": ["Female"] * 4, "party_a": [0.0, 1.0, 2.0, 3.0], "party_b": [0.0] * 4}
+    )
+    desc: dict[str, Any] = {"res_col": "party_a", "cont_transform": "ge:1", "plot": "columns", "weights": False}
+    pi = pp_transform_data(pl.LazyFrame(df), _threshold_meta(), soft_validate(desc, PlotDescriptor))
+    assert pi.val_format == ".1%" and pi.data[pi.value_col].iloc[0] == pytest.approx(0.75)
+
+    pi = pp_transform_data(
+        pl.LazyFrame(df), _threshold_meta(), soft_validate({**desc, "agg_fn": "sum"}, PlotDescriptor)
+    )
+    assert pi.val_format == ".0f" and pi.data[pi.value_col].iloc[0] == pytest.approx(3.0)
+
+
+def test_ge_minus_inf_counts_non_null_responses() -> None:
+    """``ge:-inf`` is the "did they answer at all" indicator, so its weighted sum is the response count."""
+    df = pd.DataFrame(
+        {"draw": [0] * 4, "gender": ["Female"] * 4, "party_a": [0.0, None, 2.0, 3.0], "party_b": [0.0] * 4}
+    )
+    ppd = soft_validate(
+        {"res_col": "party_a", "cont_transform": "ge:-inf", "agg_fn": "sum", "plot": "columns", "weights": False},
+        PlotDescriptor,
+    )
+    pi = pp_transform_data(pl.LazyFrame(df), _threshold_meta(), ppd)
+    assert pi.data[pi.value_col].iloc[0] == pytest.approx(3.0)  # the null does not count
+    assert pi.filtered_size == pytest.approx(4.0)  # ... but it is still in the scope
+
+
+@pytest.mark.parametrize("bad", ["ge:", "ge:high", "gt:1", "le:1"])
+def test_cont_transform_rejects_malformed_threshold(bad: str) -> None:
+    """Only `ge` with a numeric cutoff; anything else fails validation, not silently."""
+    with pytest.raises((ValueError, ValidationError)):
+        soft_validate({"res_col": "party_a", "cont_transform": bad, "plot": "columns"}, PlotDescriptor)
+
+
+def test_convert_res_categorical_bins_a_continuous_response() -> None:
+    """``convert_res="categorical"`` is the inverse direction: bin, then take shares."""
+    df = pd.DataFrame(
+        {
+            "draw": [0] * 8,
+            "gender": ["Female"] * 8,
+            "party_a": [0.0, 0.0, 1.0, 1.0, 2.0, 2.0, 2.0, 2.0],
+            "party_b": [0.0] * 8,
+        }
+    )
+    ppd = soft_validate(
+        {
+            "res_col": "party_a",
+            "convert_res": "categorical",
+            "col_meta": {"party_a": {"bin_breaks": [0.5, 1.5], "bin_labels": ["low", "mid", "high"]}},
+            "plot": "columns",
+        },
+        PlotDescriptor,
+    )
+    pi = pp_transform_data(pl.LazyFrame(df), _threshold_meta(), ppd)
+    shares = dict(zip(pi.data["party_a"].astype(str), pi.data[pi.value_col]))
+    assert shares == {
+        "low": pytest.approx(0.25),
+        "mid": pytest.approx(0.25),
+        "high": pytest.approx(0.5),
+    }
+
+
+def test_convert_res_categorical_rejects_what_it_cannot_bin() -> None:
+    """A categorical has nothing to bin; a block would get per-column breaks and keep only the last one's labels."""
+    df = pd.DataFrame({"draw": [0, 0], "gender": ["Female", "Male"], "party_a": [1.0, 2.0], "party_b": [0.0, 3.0]})
+    ppd = soft_validate({"res_col": "gender", "convert_res": "categorical", "plot": "columns"}, PlotDescriptor)
+    with pytest.raises(ValueError, match="needs a numeric column"):
+        pp_transform_data(pl.LazyFrame(df), _threshold_meta(), ppd)
+
+    ppd = soft_validate({"res_col": "ratings", "convert_res": "categorical", "plot": "columns"}, PlotDescriptor)
+    with pytest.raises(ValueError, match="needs a single-column res_col"):
+        pp_transform_data(pl.LazyFrame(df), _threshold_meta(), ppd)
 
 
 @pytest.mark.parametrize(
@@ -549,7 +665,6 @@ def test_plot_descriptor_accepts_legacy_factor_cols_key():
 def test_pp_transform_data_reports_total_and_filtered_weight() -> None:
     """`total_size` is the pre-filter weight, `filtered_size` the post-filter weight -
     both weight-summed (not row counts), so consumers can show "filtered to X%"."""
-    from salk_toolkit.pp import pp_transform_data
 
     data_meta = make_data_meta(
         {
@@ -590,3 +705,580 @@ def test_pp_transform_data_reports_total_and_filtered_weight() -> None:
     pi = pp_transform_data(df, data_meta, ppd)
     assert pi.total_size == 1000.0
     assert pi.filtered_size == 6.0  # post-filter weight is unaffected
+
+
+def _weights_fixture() -> tuple[DataMeta, pd.DataFrame]:
+    data_meta = make_data_meta(
+        {
+            "weight_col": "w",
+            "structure": [
+                {
+                    "name": "demographics",
+                    "scale": {"col_prefix": ""},
+                    "columns": [
+                        ["gender", {"categories": ["Female", "Male"]}],
+                        ["party", {"categories": ["X", "Y"]}],
+                    ],
+                }
+            ],
+        }
+    )
+    # Female rows: X @ w=2, Y @ w=4, X @ w=2 -> weighted X = 0.5, unweighted X = 2/3
+    df = pd.DataFrame(
+        {
+            "gender": ["Female", "Female", "Female", "Male", "Male"],
+            "party": ["X", "Y", "X", "Y", "X"],
+            "w": [2.0, 4.0, 2.0, 3.0, 3.0],
+        }
+    )
+    return data_meta, df
+
+
+def test_weights_false_uses_rows_as_is() -> None:
+    """`weights: False` ignores the declared weight column entirely: shares are
+    unweighted and the sizes report plain row counts - even when the annotation
+    declares a population `total_size`."""
+
+    data_meta, df = _weights_fixture()
+    data_meta.total_size = 1000.0
+    ppd = soft_validate(
+        {"plot": "columns", "res_col": "party", "filter": {"gender": ["Female"]}, "weights": False},
+        PlotDescriptor,
+    )
+
+    pi = pp_transform_data(df, data_meta, ppd)
+
+    assert pi.total_size == 5  # row count, not 12.0 (weight sum) nor 1000.0 (declared)
+    assert pi.filtered_size == 3
+    shares = dict(zip(pi.data["party"], pi.data["percent"]))
+    assert shares["X"] == pytest.approx(2 / 3)  # weighted would be 0.5
+
+
+def test_weights_column_name_overrides_the_declared_one() -> None:
+    """A descriptor can weigh by any column, not just the annotation-declared one."""
+
+    data_meta, df = _weights_fixture()
+    df = df.assign(w2=[1.0, 1.0, 3.0, 1.0, 1.0])  # Female: X 1+3=4, Y 1 -> X = 0.8
+    ppd = soft_validate(
+        {"plot": "columns", "res_col": "party", "filter": {"gender": ["Female"]}, "weights": "w2"},
+        PlotDescriptor,
+    )
+
+    pi = pp_transform_data(df, data_meta, ppd)
+
+    shares = dict(zip(pi.data["party"], pi.data["percent"]))
+    assert shares["X"] == pytest.approx(0.8)
+
+
+def test_a_declared_weight_column_missing_from_the_data_is_an_error() -> None:
+    """Parquet and annotation drifting apart must fail, not quietly produce unweighted numbers."""
+
+    data_meta, df = _weights_fixture()
+    df = df.drop(columns=["w"])
+
+    for weights in (True, "w"):  # True resolves the declared column; naming it is the same demand
+        strict = soft_validate({"plot": "columns", "res_col": "party", "weights": weights}, PlotDescriptor)
+        with pytest.raises(ValueError, match="'w'"):
+            pp_transform_data(df, data_meta, strict)
+
+    unweighted = soft_validate({"plot": "columns", "res_col": "party", "weights": False}, PlotDescriptor)
+    assert pp_transform_data(df, data_meta, unweighted).total_size == 5  # the deliberate way to say it
+
+
+def test_an_annotation_declaring_no_weight_column_is_unweighted() -> None:
+    """`weights: True` is the default, so annotations that never declared a weight column must still run."""
+
+    data_meta, df = _weights_fixture()
+    data_meta.weight_col = None
+
+    pi = pp_transform_data(df, data_meta, soft_validate({"plot": "columns", "res_col": "party"}, PlotDescriptor))
+    assert pi.total_size == 5  # row count: nothing to weigh by
+    assert dict(zip(pi.data["party"], pi.data["percent"]))["X"] == pytest.approx(3 / 5)
+
+
+def test_weights_none_is_not_a_way_to_ask_for_unweighted() -> None:
+    """`None` used to mean "declared column, silently 1.0 if absent"; that ambiguity is gone."""
+    with pytest.raises(ValidationError):
+        PlotDescriptor.model_validate({"plot": "columns", "res_col": "party", "weights": None})
+
+
+def _topk_meta() -> DataMeta:
+    return make_data_meta(
+        {
+            "structure": [
+                {
+                    "name": "ratings",
+                    "scale": {"continuous": True},
+                    "columns": [["a"], ["b"], ["c"], ["d"]],
+                }
+            ]
+        }
+    )
+
+
+def _topk_shares(df: pl.LazyFrame, transform: str) -> dict[str, float]:
+    ppd = soft_validate(
+        {
+            "plot": "columns",
+            "res_col": "ratings",
+            "factor_cols": ["question"],
+            "agg_fn": "mean",
+            "cont_transform": transform,
+        },
+        PlotDescriptor,
+    )
+    pi = pp_transform_data(df, _topk_meta(), ppd)
+    return {q: v for q, v in zip(pi.data["question"], pi.data[pi.value_col]) if not pd.isna(v)}
+
+
+def test_ordered_top_ties_selects_everything_at_the_kth_best_value() -> None:
+    """Unlike the rank-based `ordered-top2/3`, a tie at the cutoff selects more than k."""
+    df = pl.LazyFrame({"a": [3.0], "b": [3.0], "c": [3.0], "d": [1.0]})
+
+    assert _topk_shares(df, "ordered-top-ties:2") == {"a": 1.0, "b": 1.0, "c": 1.0, "d": 0.0}
+    assert sum(_topk_shares(df, "ordered-top2").values()) == pytest.approx(2)  # rank-based: exactly two
+    assert _topk_shares(df, "ordered-top-ties:1") == _topk_shares(df, "ordered-top1")  # top1 is value-based
+
+
+def test_top_k_ranks_a_partly_answered_row_among_its_own_answers() -> None:
+    """A respondent who answered 2 of 4 columns still has a top-2, and the unanswered ones stay null."""
+    df = pl.LazyFrame({"a": [3.0], "b": [None], "c": [1.0], "d": [None]}, schema={c: pl.Float64 for c in "abcd"})
+
+    assert _topk_shares(df, "ordered-top2") == {"a": 1.0, "c": 1.0}  # not "nothing is in the top 2 of 4"
+    assert _topk_shares(df, "ordered-top-ties:2") == {"a": 1.0, "c": 1.0}
+    assert _topk_shares(df, "ordered-avgrank") == {"a": 2.0, "c": 1.0}  # ranked among the answered, not 1..4
+
+
+@pytest.mark.parametrize(
+    "bad", ["ordered-top-ties:", "ordered-top-ties:two", "ordered-top-ties:0", "ordered-mid:2", "ordered-top:2"]
+)
+def test_ordered_topk_rejects_malformed(bad: str) -> None:
+    """Parameterized top-k needs a positive integer k on the one registered family."""
+    with pytest.raises((ValueError, ValidationError)):
+        soft_validate({"plot": "columns", "res_col": "ratings", "cont_transform": bad}, PlotDescriptor)
+
+
+def test_res_meta_declares_a_virtual_block_over_loose_columns() -> None:
+    """`res_meta` builds a block out of columns no annotation block covers —
+    the answer to "my battery isn't in a block", without editing the annotation.
+    The block unpivots into `question` and crosses with facets like any other."""
+    meta = make_data_meta(
+        {
+            "structure": [
+                {"name": "demographics", "scale": {}, "columns": [["gender", {"categories": ["Female", "Male"]}]]},
+            ]
+        }
+    )
+    df = pd.DataFrame(
+        {
+            "gender": ["Female", "Female", "Male", "Male"],
+            "tv": [1.0, 0.0, 1.0, 1.0],
+            "radio": [0.0, 0.0, 1.0, 0.0],
+            "web": [1.0, 1.0, 1.0, 1.0],
+        }
+    )
+    ppd = soft_validate(
+        {
+            "plot": "columns",
+            "res_col": "media",
+            "factor_cols": ["question"],
+            "agg_fn": "mean",
+            "res_meta": {"name": "media", "scale": {"continuous": True}, "columns": [["tv"], ["radio"], ["web"]]},
+        },
+        PlotDescriptor,
+    )
+
+    pi = pp_transform_data(pl.LazyFrame(df), meta, ppd)
+    shares = dict(zip(pi.data["question"], pi.data[pi.value_col]))
+    assert shares == {"tv": 0.75, "radio": 0.25, "web": 1.0}
+
+    ppd = soft_validate(
+        {
+            "plot": "columns",
+            "res_col": "media",
+            "factor_cols": ["question", "gender"],
+            "agg_fn": "mean",
+            "res_meta": {"name": "media", "scale": {"continuous": True}, "columns": [["tv"], ["radio"], ["web"]]},
+        },
+        PlotDescriptor,
+    )
+    pi = pp_transform_data(pl.LazyFrame(df), meta, ppd)
+    by_cell = {(q, g): v for q, g, v in zip(pi.data["question"], pi.data["gender"], pi.data[pi.value_col])}
+    assert by_cell[("tv", "Female")] == 0.5
+    assert by_cell[("tv", "Male")] == 1.0
+
+
+def test_weights_expression_builds_the_weight_per_row() -> None:
+    """A non-identifier `weights` string is a polars expression (the pl_filter
+    contract) - a weight combined from several columns, e.g. design weight x
+    turnout propensity. The declared population total is ignored: totals are
+    recomputed from the actual weights."""
+
+    data_meta, df = _weights_fixture()
+    data_meta.total_size = 1000.0
+    df = df.assign(turnout=[1.0, 0.5, 1.0, 1.0, 0.0])
+    # Female effective weights: X 2*1=2, Y 4*0.5=2, X 2*1=2 -> X = 4/6
+    ppd = soft_validate(
+        {
+            "plot": "columns",
+            "res_col": "party",
+            "filter": {"gender": ["Female"]},
+            "weights": "pl.col('w') * pl.col('turnout')",
+        },
+        PlotDescriptor,
+    )
+
+    pi = pp_transform_data(df, data_meta, ppd)
+
+    shares = dict(zip(pi.data["party"], pi.data["percent"]))
+    assert shares["X"] == pytest.approx(4 / 6)
+    assert pi.total_size == pytest.approx(2 + 2 + 2 + 3 + 0)  # expression sum, not 1000.0
+    assert pi.filtered_size == pytest.approx(6.0)
+
+
+def test_e2e_plot_return_input_carries_the_sizes() -> None:
+    """`return_input=True` hands back the full PlotInput - the aggregate plus
+    `filtered_size`/`total_size`, which under `weights: False` are the row
+    counts a payload reports next to the shares. `return_data` discards them."""
+
+    data_meta, df = _weights_fixture()
+    pi = cast(
+        PlotInput,
+        e2e_plot(
+            {"plot": "columns", "res_col": "party", "filter": {"gender": ["Female"]}, "weights": False},
+            full_df=df,
+            data_meta=data_meta,
+            return_input=True,
+        ),
+    )
+    assert pi.total_size == 5
+    assert pi.filtered_size == 3
+    assert dict(zip(pi.data["party"], pi.data["percent"]))["X"] == pytest.approx(2 / 3)
+
+
+def test_e2e_plot_imputes_facets_for_a_virtual_block() -> None:
+    """`impute_facet_dims` must see the res_meta virtual block - it used to read
+    the raw annotation meta and KeyError on the block name."""
+
+    meta = make_data_meta(
+        {"structure": [{"name": "demographics", "scale": {}, "columns": [["gender", {"categories": ["F", "M"]}]]}]}
+    )
+    df = pd.DataFrame({"gender": ["F", "M"], "tv": [1.0, 0.0], "web": [1.0, 1.0]})
+    pi = cast(
+        PlotInput,
+        e2e_plot(
+            {
+                "plot": "columns",
+                "res_col": "media",
+                "agg_fn": "mean",
+                "weights": False,
+                "res_meta": {"name": "media", "scale": {"continuous": True}, "columns": [["tv"], ["web"]]},
+            },
+            full_df=df,
+            data_meta=meta,
+            return_input=True,
+        ),
+    )
+    assert dict(zip(pi.data["question"], pi.data[pi.value_col])) == {"tv": 0.5, "web": 1.0}
+
+
+def test_integer_facet_quantile_binning_is_engine_independent() -> None:
+    """Splitting integer ties across quantiles used to jitter them with a per-batch RNG, so which
+    rows crossed a bin edge depended on the engine, the chunking and the thread count."""
+    from salk_toolkit.pp.filters import _discretize_continuous
+
+    ldf = pl.LazyFrame({"uses": np.random.default_rng(0).integers(0, 10, 3000)})
+    binned, labels = _discretize_continuous(ldf, "uses", GroupOrColumnMeta(bin_breaks=5))
+
+    counts = [binned.collect(engine=e)["uses"].value_counts().sort("uses") for e in ("in-memory", "streaming")]
+    assert counts[0].equals(counts[1])
+    sizes = sorted(counts[0]["count"])
+    assert sizes[-1] - sizes[0] <= 2 and len(labels) == 5  # ties split evenly, up to quantile interpolation
+
+
+def test_bin_breaks_make_an_integer_facet_exact() -> None:
+    """Declared edges opt out of quantile binning, so each integer value is its own cell."""
+
+    meta = make_data_meta(
+        {"structure": [{"name": "demographics", "scale": {}, "columns": [["party", {"categories": ["X", "Y"]}]]}]}
+    )
+    df = pd.DataFrame({"party": ["X"] * 6 + ["Y"] * 4, "uses": [0, 0, 0, 1, 1, 1, 0, 1, 1, 1]})
+    pi = cast(
+        PlotInput,
+        e2e_plot(
+            {
+                "plot": "columns",
+                "res_col": "party",
+                "factor_cols": ["uses"],
+                "agg_fn": "sum",
+                "weights": False,
+                "col_meta": {"uses": {"bin_breaks": [0, 1, 2]}},
+            },
+            full_df=df,
+            data_meta=meta,
+            return_input=True,
+        ),
+    )
+    cells = dict(zip(zip(map(str, pi.data["uses"]), pi.data["party"]), pi.data["percent"]))
+    assert len(cells) == 4  # one cell per (integer value, party), no quantile collapsing
+    assert sorted(cells.values()) == [1, 3, 3, 3]
+
+
+def test_unweighted_total_size_is_the_row_count_not_the_declared_weight() -> None:
+    """weights: False means the total is a row count, whatever the declared column holds.
+
+    It used to be derived by summing the synthesized unit weight over the whole
+    pre-filter frame, which produces every row to add up a literal; pl.len() comes
+    off the scan's metadata instead.
+    """
+
+    meta = make_data_meta(
+        {
+            "weight_col": "N",
+            "total_size": 500.0,
+            "structure": [{"name": "demographics", "scale": {}, "columns": [["party", {"categories": ["X", "Y"]}]]}],
+        }
+    )
+    df = pd.DataFrame({"party": ["X", "X", "Y", "Y", "Y"], "N": [100.0] * 5})
+
+    unweighted = cast(
+        PlotInput,
+        e2e_plot(
+            {"plot": "columns", "res_col": "party", "weights": False}, full_df=df, data_meta=meta, return_input=True
+        ),
+    )
+    assert unweighted.total_size == 5
+    assert unweighted.filtered_size == 5
+
+    # The declared weighting still reports the annotation's population total.
+    weighted = cast(
+        PlotInput, e2e_plot({"plot": "columns", "res_col": "party"}, full_df=df, data_meta=meta, return_input=True)
+    )
+    assert weighted.total_size == 500.0
+
+
+def test_expression_stats_answer_cells_over_different_row_sets() -> None:
+    """Each stat is a row-level expression, so masked cells ("uses i but not j")
+    ride one group_by instead of one descriptor per row set."""
+
+    meta = make_data_meta({"structure": [{"name": "d", "scale": {}, "columns": [["tv", {"categories": ["0", "1"]}]]}]})
+    df = pd.DataFrame({"tv": [1, 1, 0, 0], "web": [1, 0, 1, 0], "N": [10.0, 20.0, 30.0, 40.0]})
+    d = e2e_plot(
+        {
+            "plot": "columns",
+            "res_col": "tv",
+            "weights": False,
+            "stats": [
+                {"name": "tv_share", "expr": "(pl.col('tv') > 0)"},
+                {"name": "tv_not_web", "expr": "((pl.col('tv') > 0) & ~(pl.col('web') > 0))"},
+                {"name": "tv_n", "expr": "(pl.col('tv') > 0)", "agg_fn": "sum"},
+            ],
+        },
+        full_df=df,
+        data_meta=meta,
+        return_data=True,
+    )
+    row = d.to_dict("records")[0]
+    assert row["tv_share"] == pytest.approx(0.5)
+    assert row["tv_not_web"] == pytest.approx(0.25)
+    assert row["tv_n"] == 2
+
+
+def test_expression_stats_apply_the_declared_weighting() -> None:
+    """agg_fn folds the weight in per stat: mean over non-null rows, weighted sum."""
+
+    meta = make_data_meta(
+        {
+            "weight_col": "N",
+            "structure": [{"name": "d", "scale": {}, "columns": [["tv", {"categories": ["0", "1"]}]]}],
+        }
+    )
+    df = pd.DataFrame({"tv": [1, 1, 0, 0], "N": [10.0, 20.0, 30.0, 40.0]})
+    d = e2e_plot(
+        {
+            "plot": "columns",
+            "res_col": "tv",
+            "stats": [
+                {"name": "share", "expr": "(pl.col('tv') > 0)"},
+                {"name": "mass", "expr": "(pl.col('tv') > 0)", "agg_fn": "sum"},
+            ],
+        },
+        full_df=df,
+        data_meta=meta,
+        return_data=True,
+    )
+    row = d.to_dict("records")[0]
+    assert row["share"] == pytest.approx(30.0 / 100.0)
+    assert row["mass"] == pytest.approx(30.0)
+
+
+def test_cont_transform_validates_against_the_live_registry() -> None:
+    """The point of dropping the frozen Literal: a name registered after import validates."""
+    from salk_toolkit.pp.transforms import custom_row_transforms
+
+    for builtin in ("center", "zscore", "01range", "softmax", "ordered-top1", "ordered-top3"):
+        assert (
+            soft_validate({"plot": "columns", "res_col": "p", "cont_transform": builtin}, PlotDescriptor).cont_transform
+            == builtin
+        )
+
+    with pytest.raises(ValidationError):
+        soft_validate({"plot": "columns", "res_col": "p", "cont_transform": "not-registered"}, PlotDescriptor)
+
+    custom_row_transforms["late-registered"] = (lambda x: x, ".1%")
+    try:
+        assert (
+            soft_validate(
+                {"plot": "columns", "res_col": "p", "cont_transform": "late-registered"}, PlotDescriptor
+            ).cont_transform
+            == "late-registered"
+        )
+    finally:
+        del custom_row_transforms["late-registered"]
+
+
+@pytest.mark.parametrize(
+    ("weights", "total_size"),
+    [
+        (None, 1000.0),  # declared weighting keeps the annotation's population total
+        (True, 1000.0),
+        ("N", 9.0),  # any other override recomputes it from the actual weights
+        ("w2", 7.0),
+        (False, 3.0),  # unweighted: the row count
+        ("pl.col('N') * 2", 18.0),
+    ],
+)
+def test_total_size_per_weights_mode(weights: object, total_size: float) -> None:
+    """A declared population total describes the declared weighting only."""
+
+    meta = make_data_meta(
+        {
+            "weight_col": "N",
+            "total_size": 1000.0,
+            "structure": [{"name": "d", "scale": {}, "columns": [["p", {"categories": ["x", "y"]}]]}],
+        }
+    )
+    df = pd.DataFrame({"p": ["x", "x", "y"], "N": [2.0, 3.0, 4.0], "w2": [1.0, 1.0, 5.0]})
+    desc: dict[str, Any] = {"plot": "columns", "res_col": "p"}
+    if weights is not None:
+        desc["weights"] = weights
+    pi = cast(PlotInput, e2e_plot(desc, full_df=df, data_meta=meta, return_input=True))
+    assert pi.total_size == total_size
+
+
+def test_matching_plots_sees_a_virtual_block() -> None:
+    """`impute` reads the descriptor-updated meta, so a res_meta block is not an unknown
+    column name here either - the same fix e2e_plot got."""
+    meta = make_data_meta(
+        {"structure": [{"name": "demographics", "scale": {}, "columns": [["gender", {"categories": ["F", "M"]}]]}]}
+    )
+    df = pd.DataFrame({"gender": ["F", "M"], "tv": [1.0, 0.0], "web": [1.0, 1.0]})
+    matches = matching_plots(
+        {
+            "plot": "columns",
+            "res_col": "media",
+            "agg_fn": "mean",
+            "weights": False,
+            "res_meta": {"name": "media", "scale": {"continuous": True}, "columns": [["tv"], ["web"]]},
+        },
+        df,
+        meta,
+        impute=True,
+    )
+    assert "columns" in matches
+
+
+def test_stats_rejects_the_shapes_it_cannot_serve() -> None:
+    """A block res_col loses the columns the expressions name, and stats output has no
+    single value column to plot - both should say so rather than fail inside polars."""
+
+    meta = make_data_meta(
+        {
+            "structure": [
+                {"name": "d", "scale": {}, "columns": [["gender", {"categories": ["F", "M"]}]]},
+                {"name": "b", "scale": {"continuous": True}, "columns": [["tv"], ["web"]]},
+            ]
+        }
+    )
+    df = pd.DataFrame({"tv": [1.0, 0.0], "web": [1.0, 1.0], "gender": ["F", "M"]})
+    stats = [{"name": "x", "expr": "(pl.col('tv') > 0)"}]
+
+    # Both the wide-aggregated block (faceted on 'question') and the melted one, which used to
+    # slip past the guard and multiply every `sum` by the block width
+    for facets in (["question"], ["gender"]):
+        with pytest.raises(ValueError, match="block res_col"):
+            e2e_plot(
+                {"plot": "columns", "res_col": "b", "factor_cols": facets, "weights": False, "stats": stats},
+                full_df=df,
+                data_meta=meta,
+                return_data=True,
+                impute=False,
+            )
+
+    with pytest.raises(ValueError, match="data-only"):
+        e2e_plot({"plot": "columns", "res_col": "tv", "weights": False, "stats": stats}, full_df=df, data_meta=meta)
+
+    with pytest.raises(ValueError, match="longform"):  # raw plots would otherwise drop stats silently
+        e2e_plot(
+            {"plot": "boxplots-raw", "res_col": "tv", "weights": False, "stats": stats},
+            full_df=df,
+            data_meta=meta,
+            return_data=True,
+        )
+
+    with pytest.raises(ValueError, match="collide"):
+        e2e_plot(
+            {
+                "plot": "columns",
+                "res_col": "tv",
+                "factor_cols": ["question"],
+                "weights": False,
+                "stats": [{"name": "question", "expr": "(pl.col('tv') > 0)"}],
+            },
+            full_df=df,
+            data_meta=meta,
+            return_data=True,
+        )
+
+
+def test_stats_does_not_combine_with_the_single_statistic_path() -> None:
+    """Each stat carries its own agg_fn, so a descriptor-level one is a contradiction, not a default."""
+    stats = [{"name": "x", "expr": "(pl.col('tv') > 0)"}]
+    for extra in ({"agg_fn": "sum"}, {"cont_transform": "ge:1"}):
+        with pytest.raises(ValidationError, match="carries its own agg_fn"):
+            PlotDescriptor.model_validate({"plot": "columns", "res_col": "tv", "stats": stats, **extra})
+
+
+def test_expression_stats_run_per_facet_in_one_group_by() -> None:
+    """The point of stats: cells over different row sets, resolved for every facet level in one scan."""
+
+    meta = make_data_meta(
+        {
+            "structure": [
+                {
+                    "name": "d",
+                    "scale": {},
+                    "columns": [["tv", {"categories": ["0", "1"]}], ["gender", {"categories": ["F", "M"]}]],
+                }
+            ]
+        }
+    )
+    df = pd.DataFrame({"tv": [1, 1, 0, 0], "web": [1, 0, 1, 0], "gender": ["F", "F", "M", "M"]})
+    d = e2e_plot(
+        {
+            "plot": "columns",
+            "res_col": "tv",
+            "factor_cols": ["gender"],
+            "weights": False,
+            "stats": [
+                {"name": "tv_share", "expr": "(pl.col('tv') > 0)"},
+                {"name": "tv_not_web", "expr": "((pl.col('tv') > 0) & ~(pl.col('web') > 0))", "agg_fn": "sum"},
+            ],
+        },
+        full_df=df,
+        data_meta=meta,
+        return_data=True,
+    )
+    rows = {r["gender"]: r for r in d.to_dict("records")}
+    assert rows["F"]["tv_share"] == pytest.approx(1.0) and rows["M"]["tv_share"] == pytest.approx(0.0)
+    assert rows["F"]["tv_not_web"] == pytest.approx(1.0) and rows["M"]["tv_not_web"] == pytest.approx(0.0)
