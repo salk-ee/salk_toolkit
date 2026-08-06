@@ -21,6 +21,7 @@ from salk_toolkit.pp import (
     impute_facet_dims,
     matching_plots,
     pp_transform_data,
+    create_plot,
     PlotMeta,
     registry,
     registry_meta,
@@ -626,6 +627,207 @@ def test_question_meta_clone_is_nominal() -> None:
 
     assert (clone.datetime, clone.continuous, clone.ordered) == (False, False, False)
     assert clone.categories == ["q1", "q2"]
+
+
+def _battery_meta(n_topics: int, weight_col: str | None = None) -> DataMeta:
+    payload: dict[str, object] = {
+        "structure": [
+            {
+                "name": "demographics",
+                "scale": {},
+                "columns": [["gender", {"categories": ["Female", "Male"]}]],
+            },
+            {
+                "name": "battery",
+                "scale": {"continuous": True},
+                "columns": [[f"t{i}"] for i in range(n_topics)],
+            },
+        ]
+    }
+    if weight_col:
+        payload["weight_col"] = weight_col
+    return make_data_meta(payload)
+
+
+def test_convert_res_categorical_composes_with_cont_transform_as_literal_bins() -> None:
+    """categorical + a transform = convert -> transform -> categorize (not the old silent no-op).
+
+    Every row rates topic i exactly i, so ordered-avgrank puts each topic at rank i+1 with share
+    1.0 - and with 12 topics, numeric label ordering diverges from the lexicographic one.
+    """
+    n = 12
+    df = pd.DataFrame({"draw": [0] * 4, "gender": ["Female"] * 4, **{f"t{i}": [float(i)] * 4 for i in range(n)}})
+    ppd = soft_validate(
+        {
+            "res_col": "battery",
+            "factor_cols": ["question"],
+            "convert_res": "categorical",
+            "cont_transform": "ordered-avgrank",
+            "plot": "columns",
+        },
+        PlotDescriptor,
+    )
+    pi = pp_transform_data(pl.LazyFrame(df), _battery_meta(n), ppd)
+    # Literal bins: one category per distinct rank, ordered numerically - not "1", "10", "11", "2", ...
+    cats = list(pi.data["battery"].cat.categories)
+    assert cats == [str(i) for i in range(1, n + 1)]
+    assert pi.col_meta["battery"].num_values == [float(i) for i in range(1, n + 1)]
+    assert pi.val_format == ".1%"
+    # Topic i sits at rank i+1 with share 1 (shares within each question sum to 1)
+    peak = pi.data[pi.data[pi.value_col] > 0]
+    assert dict(zip(peak["question"].astype(str), peak["battery"].astype(str))) == {
+        f"t{i}": str(i + 1) for i in range(n)
+    }
+    assert peak[pi.value_col].tolist() == pytest.approx([1.0] * n)
+
+
+def test_literal_categorization_is_weighted() -> None:
+    """The literal path aggregates through the declared weight column, unlike a raw-format count."""
+    df = pd.DataFrame(
+        {
+            "draw": [0] * 2,
+            "gender": ["Female"] * 2,
+            "w": [3.0, 1.0],
+            "t0": [1.0, 2.0],  # ranked 1st by the w=3 row, 2nd by the w=1 row
+            "t1": [2.0, 1.0],
+        }
+    )
+    ppd = soft_validate(
+        {
+            "res_col": "battery",
+            "factor_cols": ["question"],
+            "convert_res": "categorical",
+            "cont_transform": "ordered-avgrank",
+            "plot": "columns",
+        },
+        PlotDescriptor,
+    )
+    pi = pp_transform_data(pl.LazyFrame(df), _battery_meta(2, weight_col="w"), ppd)
+    t0 = pi.data[pi.data["question"].astype(str) == "t0"]
+    shares = dict(zip(t0["battery"].astype(str), t0[pi.value_col]))
+    assert shares["1"] == pytest.approx(0.75)  # weight 3 of 4, not row count 1 of 2
+    assert shares["2"] == pytest.approx(0.25)
+
+
+def test_literal_categorization_caps_distinct_values() -> None:
+    """Literal bins on genuinely continuous output fail loudly instead of minting hundreds of categories."""
+    df = pd.DataFrame(
+        {
+            "draw": [0] * 60,
+            "gender": ["Female"] * 60,
+            "party_a": np.linspace(0, 1, 60),
+            "party_b": [0.0] * 60,
+        }
+    )
+    ppd = soft_validate(
+        {"res_col": "party_a", "convert_res": "categorical", "cont_transform": "center", "plot": "columns"},
+        PlotDescriptor,
+    )
+    with pytest.raises(Exception, match="bin_breaks"):
+        pp_transform_data(pl.LazyFrame(df), _threshold_meta(), ppd)
+
+
+def test_post_transform_categorical_honors_bin_specs() -> None:
+    """With bin_breaks set, the post-transform categorization bins instead of literal categories."""
+    df = pd.DataFrame(
+        {
+            "draw": [0] * 4,
+            "gender": ["Female"] * 4,
+            "party_a": [0.0, 1.0, 2.0, 3.0],
+            "party_b": [0.0] * 4,
+        }
+    )
+    ppd = soft_validate(
+        {
+            "res_col": "party_a",
+            "convert_res": "categorical",
+            "cont_transform": "center",  # values become -1.5, -0.5, 0.5, 1.5
+            "col_meta": {"party_a": {"bin_breaks": [0.0], "bin_labels": ["below mean", "above mean"]}},
+            "plot": "columns",
+        },
+        PlotDescriptor,
+    )
+    pi = pp_transform_data(pl.LazyFrame(df), _threshold_meta(), ppd)
+    shares = dict(zip(pi.data["party_a"].astype(str), pi.data[pi.value_col]))
+    assert shares == {"below mean": pytest.approx(0.5), "above mean": pytest.approx(0.5)}
+
+
+def _rank_desc(df: pd.DataFrame, n: int, **extra: object) -> Any:
+    """Run a battery through convert->transform->categorize with 1 = the row's top item."""
+    ppd = soft_validate(
+        {
+            "res_col": "battery",
+            "facet_dims": ["question"],
+            "convert_res": "categorical",
+            "cont_transform": "ordered-avgrank-desc",
+            "plot": "columns",
+            **extra,
+        },
+        PlotDescriptor,
+    )
+    return pp_transform_data(pl.LazyFrame(df), _battery_meta(n), ppd)
+
+
+def test_avgrank_desc_ranks_from_the_top_even_with_nulls() -> None:
+    """1 = the row's best item; a skipped item shortens the row's rank span, it must not shift it."""
+    df = pd.DataFrame({"draw": [0, 0], "gender": ["Female"] * 2, "t0": [3.0, 3.0], "t1": [2.0, 2.0], "t2": [1.0, None]})
+    pi = _rank_desc(df, 3)
+    top = pi.data[(pi.data["question"].astype(str) == "t0") & (pi.data[pi.value_col] > 0)]
+    assert list(top["battery"].astype(str)) == ["1"]  # top item is rank 1 in both rows, null or not
+
+
+def test_literal_categorization_drops_nulls_from_the_denominator() -> None:
+    """A null response is not a category and does not dilute the shares of the ones present."""
+    df = pd.DataFrame(
+        {
+            "draw": [0] * 4,
+            "gender": ["Female"] * 4,
+            "t0": [1.0, 1.0, 1.0, 1.0],
+            "t1": [2.0, 2.0, 2.0, 2.0],
+            "t2": [3.0, 3.0, 3.0, None],  # one respondent skipped t2
+        }
+    )
+    pi = _rank_desc(df, 3)
+    t2 = pi.data[pi.data["question"].astype(str) == "t2"]
+    assert "nan" not in set(t2["battery"].astype(str))
+    assert t2[pi.value_col].sum() == pytest.approx(1.0)  # denominator is the 3 answered rows, not 4
+
+
+def test_facet_sort_on_a_distribution_uses_the_category_scale() -> None:
+    """Sorting a rank distribution orders by mean rank, not by the near-constant mean of shares."""
+    # t0 is everyone's top item, t2 everyone's worst -> mean ranks 1, 2, 3
+    df = pd.DataFrame({"draw": [0] * 3, "gender": ["Female"] * 3, "t0": [3.0] * 3, "t1": [2.0] * 3, "t2": [1.0] * 3})
+    ppd = soft_validate(
+        {
+            "res_col": "battery",
+            "facet_dims": ["question"],
+            "convert_res": "categorical",
+            "cont_transform": "ordered-avgrank-desc",
+            "sort": {"question": True},
+            "plot": "columns",
+        },
+        PlotDescriptor,
+    )
+    pi = create_plot(pp_transform_data(pl.LazyFrame(df), _battery_meta(3), ppd), ppd, dry_run=True)
+    assert isinstance(pi, PlotInput)
+    assert list(pi.data["question"].cat.categories) == ["t0", "t1", "t2"]
+
+
+def test_post_categorize_rejects_a_plot_that_cannot_categorize() -> None:
+    """On a raw-format plot nothing categorizes, so the pair would be the silent no-op it replaced."""
+    df = pd.DataFrame({"draw": [0] * 2, "gender": ["Female"] * 2, "t0": [1.0, 2.0], "t1": [2.0, 1.0]})
+    ppd = soft_validate(
+        {
+            "res_col": "battery",
+            "facet_dims": ["question"],
+            "convert_res": "categorical",
+            "cont_transform": "ordered-avgrank",
+            "plot": "boxplots-raw",
+        },
+        PlotDescriptor,
+    )
+    with pytest.raises(ValueError, match="longform"):
+        pp_transform_data(pl.LazyFrame(df), _battery_meta(2), ppd)
 
 
 def test_get_plot_fn_builds_chart_from_plot_input() -> None:

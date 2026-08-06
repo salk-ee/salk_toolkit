@@ -330,6 +330,24 @@ The inverse of `convert_res="continuous"`: it buckets a numeric response and the
 
 Bin settings go in `col_meta`, not `res_meta` — `res_meta` declares a *block* (it wants `name` and `columns`), while `col_meta` overrides a single column's metadata.
 
+Binning is per column, so it needs a **single-column** `res_col`: on a block each column would get its own quantiles and labels, and only the last one's would survive the shared axis.
+
+### Categorizing a transformed result — `convert_res="categorical"` + `cont_transform`
+
+With a `cont_transform`, `"categorical"` describes the **result**, not the input: the response is converted to continuous as needed, transformed, and *then* categorized. Without bin specs that is **literal bins** — one ordered category per distinct transformed value, ordered numerically (so rank 10 sorts after 9, not after 1). Labels and their ordering are resolved after aggregation on the small aggregated frame, where every distinct value survives as a group key, so no second scan of the data is needed. Past 50 distinct values it errors: genuinely continuous output wants bins.
+
+This is the one categorization that **does** work on a block, and it is the point of it — the transform puts every column on one shared domain, and the category list is derived globally rather than per column:
+
+```python
+# distribution over each topic's rank: which rank does each topic get, and how often
+{"plot": "columns", "res_col": "topic_importance", "factor_cols": ["question"],
+ "convert_res": "categorical", "cont_transform": "ordered-avgrank"}
+```
+
+A plot can register `convert_res` (with `transform_fn` / `agg_fn`) so a bare descriptor gets this shape by default; the descriptor still wins. Sorting a facet on such a distribution orders by the share-weighted mean of the category scale — for ranks, the mean rank — not by the near-constant mean of the shares. The aggregate reports shares under `agg_fn="mean"` and weighted counts under `"sum"`.
+
+Only expressible on a longform plot: a raw-format or `stats` descriptor never categorizes, so the pair raises there instead of silently returning untransformed values.
+
 ## Minimal descriptor
 
 ```python
@@ -438,7 +456,7 @@ Applied **after** `convert_res` when a rescaling / summary is desired. Names val
 
 - Scale-level: `center`, `zscore`, `01range`, `proportion`
 - Softmax family: `softmax`, `softmax-ratio`, `softmax-avgrank`
-- Ordered helpers: `ordered-avgrank`, `ordered-warf`, `ordered-top1`, `ordered-bot1`, `ordered-topbot1`, `ordered-top2`, `ordered-top3`
+- Ordered helpers: `ordered-avgrank` (1 = lowest of the battery) and `ordered-avgrank-desc` (1 = highest), `ordered-warf`, `ordered-top1`, `ordered-bot1`, `ordered-topbot1`, `ordered-top2`, `ordered-top3`
 - Threshold family: `ge:<x>` — a 0/1 indicator, so `mean` gives the share past the cutoff and `sum` the weighted count
 - Top-k family: `ordered-top-ties:<k>` selects everything reaching the row's k-th best *value*, so ties can select more than k; `ordered-top1` is its k=1 case. The rank-based `ordered-top2`/`ordered-top3` select exactly k, ties broken by column order. All of them rank among the row's *answered* columns, so a partly-answered row still has a top-k.
 

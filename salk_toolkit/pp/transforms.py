@@ -58,6 +58,8 @@ def _rank_transform(
 # Row-wise transforms expressible natively; the rest fall through to custom_row_transforms
 ordered_expr_transforms: Dict[str, tuple[Callable[[pl.LazyFrame, Sequence[str]], pl.LazyFrame], str]] = {
     "ordered-avgrank": (lambda d, c: _rank_transform(d, c, lambda r: r), ".1f"),
+    # Rank from the top: 1 = highest of the row's non-null values
+    "ordered-avgrank-desc": (lambda d, c: _rank_transform(d, c, lambda r: r, descending=True), ".1f"),
     "ordered-warf": (lambda d, c: _rank_transform(d, c, lambda r: ((r - 1) / len(c)) ** 12), ".1%"),
     "ordered-top1": (
         lambda d, c: d.with_columns([(pl.col(x) == pl.max_horizontal(c)).cast(pl.Int64).alias(x) for x in c]),

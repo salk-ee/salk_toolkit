@@ -225,6 +225,21 @@ def create_plot(
             elif cn in col_meta and col_meta[cn].ordered:
                 continue
 
+            # Distribution-valued response (a categorized transform, e.g. a rank axis): the value is
+            # a share per category, so sort by the share-weighted mean of the category scale - for
+            # ranks, the mean rank. A plain mean of the shares would be near-constant.
+            elif (
+                (pp_desc.convert_res or plot_meta.convert_res) == "categorical"
+                and pi.cat_col
+                and pi.cat_col in col_meta
+                and len(nvals := _get_cat_num_vals(col_meta[pi.cat_col], pp_desc)) > 0
+            ):
+                cmap = dict(zip(col_meta[pi.cat_col].categories or [], nvals))
+                sdf = data[[cn, pi.cat_col, pi.value_col]].copy()
+                sdf["sort_val"] = sdf[pi.value_col] * sdf[pi.cat_col].astype("object").map(cmap)
+                grouped = sdf.groupby(cn, observed=True)
+                ordervals = grouped["sort_val"].sum() / grouped[pi.value_col].sum()
+
             # Otherwise, we are good to sort, simply by value_col
             else:
                 ordervals = data.groupby(cn, observed=True)[pi.value_col].mean()
@@ -320,6 +335,9 @@ def create_plot(
         for c in sorted(pi.outer_factors, key=lambda c: c not in obs_dims)
     }
     pi.outer_factors = [_tfunc(c) for c in pi.outer_factors]
+    # Plots that read cat_col as a data column need the translated name too; after obs_dims above,
+    # which matches it against the still-untranslated outer factors
+    pi.cat_col = _tfunc(pi.cat_col) if pi.cat_col else pi.cat_col
 
     # If we still have more than 1 factor left, merge the rest into one so we have a 2d facet
     if len(pi.outer_factors) > 1:

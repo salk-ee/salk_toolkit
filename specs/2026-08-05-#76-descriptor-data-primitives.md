@@ -70,8 +70,34 @@ Measured on the dashboards: lt26's whole surface 112s → 83s, i.e. faster than 
 hand-written polars it replaced; its media page 10.9s → 0.5s and one war-room media slice
 16.1s → 2.1s (46 descriptors → 4); rk2027 156s → 115s.
 
+**Categorizing a transformed result.** `convert_res="categorical"` combined with a
+`cont_transform` describes the *result*: convert to continuous as needed, transform, then
+categorize. Without `bin_breaks`/`bin_labels` that is **literal bins** — one ordered category
+per distinct transformed value. This is the one categorization that works on a block, and the
+reason to want it: the transform puts every column on one shared domain (a rank axis over a
+battery), and the category list is derived globally instead of per column. `PlotMeta` gains
+`convert_res` so a plot can register this shape as its default, `transform_fn`-style.
+
+Literal bins never leave polars as strings. The value stays a numeric group key through the
+lazy aggregation, and labels plus their numeric ordering are resolved after collection on the
+aggregated frame — every distinct value survives aggregation as a group key, so the category
+set is complete without a second scan. Sorting a facet on such a distribution orders by the
+share-weighted mean of the category scale (for ranks, the mean rank) rather than the
+near-constant mean of the shares.
+
 ## Implementation notes
 
+- **Only the binning path is per column.** Literal bins are exempt from the single-column
+  guard, and `ordered-avgrank-desc` is the descending sibling of `ordered-avgrank` (1 = the
+  row's top item), which the pairwise ranking already supports.
+- **NaN is not null to polars.** `proportion` and `01range` produce it on legitimate input (a
+  zero-sum row, a constant column), where it would aggregate as a real "nan" category inside
+  the denominator; the transformed columns get `fill_nan(None)` before categorizing.
+- **Literal labels are `%g`, widened to `repr` when six significant digits are not injective** —
+  two distinct values sharing a label crash `pd.Categorical`. Past 50 distinct values the
+  categorization errors instead: continuous output wants bins.
+- **The pair only reaches a categorization on a longform plot**, so it raises on raw/stats
+  descriptors rather than switching the value format while silently skipping the transform.
 - **Top-k and rank transforms count pairwise comparisons.** `pl.concat_list` + `list.eval`
   builds a list column and a sorted copy per row; summing `(col_j > col_i)` horizontally
   instead is 3.5x faster on a 500k × 18 block for identical output — `ordered-top3` 0.711s

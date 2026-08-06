@@ -61,6 +61,18 @@ def _resolve_weight_col(
     return weights, None
 
 
+def _set_categorical_res(
+    c_meta: MutableMapping[str, GroupOrColumnMeta], rc: str, res_col: str, labels: list[str]
+) -> None:
+    """Mark a (now binned or literal) response column categorical, on the column and its block."""
+    update = soft_validate(
+        {"continuous": False, "categories": labels, "ordered": True, "num_values": None, "val_range": None},
+        GroupOrColumnMeta,
+    )
+    for key in {rc, res_col}:
+        c_meta[key] = merge_pydantic_models(c_meta.get(key, GroupOrColumnMeta()), update)
+
+
 def pp_transform_data(
     full_df: pl.LazyFrame | pd.DataFrame,
     data_meta: DataMeta,
@@ -202,17 +214,35 @@ def pp_transform_data(
 
     # Convert ordered categorical to continuous if we can
     rcl = [c for c in res_cols if c in cols]
-    if pp_desc.convert_res == "categorical" and len(rcl) > 1:
-        # Each column would get its own quantiles and its own labels, and only the last one's
-        # would survive on the shared axis - an incoherent distribution rather than an error.
+    # The registered transform_fn / convert_res are defaults; the descriptor wins when set
+    transform_fn = pp_desc.cont_transform or plot_meta.transform_fn
+    convert_res = pp_desc.convert_res or plot_meta.convert_res
+    # "categorical" with a transform means the *result* should be categorical: convert as needed,
+    # transform, then categorize. Binning first would silently skip the transform - a no-op pitfall.
+    post_categorize = convert_res == "categorical" and transform_fn is not None
+    if post_categorize and (plot_meta.data_format != "longform" or pp_desc.stats):
+        raise ValueError(
+            f"convert_res='categorical' with cont_transform='{transform_fn}' needs a longform plot "
+            f"without stats; '{pp_desc.plot}' is {plot_meta.data_format}. Drop convert_res to get the "
+            "transformed values as-is."
+        )
+    # Per-column binning on a block is incoherent (each column gets its own quantiles and labels,
+    # and only the last survives the shared axis). Literal bins are exempt: they derive one global
+    # category list from the aggregate, which is exactly how a battery becomes a rank axis.
+    literal_bins = post_categorize and not any(
+        c_meta[rc].bin_breaks is not None or c_meta[rc].bin_labels is not None for rc in rcl
+    )
+    if convert_res == "categorical" and len(rcl) > 1 and not literal_bins:
         raise ValueError(
             f"convert_res='categorical' needs a single-column res_col; {pp_desc.res_col!r} is a block of "
-            f"{len(rcl)} columns, which would be binned separately. Bin one column, or declare the "
-            "categories in the annotation."
+            f"{len(rcl)} columns, which would be binned separately. Bin one column, declare the "
+            "categories in the annotation, or drop bin_breaks/bin_labels to get one literal category "
+            "per distinct transformed value."
         )
+    literal_res = False
     for rc in rcl:
         res_meta = c_meta[rc]
-        if pp_desc.convert_res == "categorical":
+        if convert_res == "categorical" and not post_categorize:
             # Bucket edges come from bin_breaks/bin_labels in the column meta, so a descriptor's
             # col_meta picks them per plot. Gate on dtype: an override may not carry `continuous`.
             if not schema[rc].is_numeric():
@@ -221,19 +251,8 @@ def pp_transform_data(
                     "Use convert_res='continuous' to number an ordinal first."
                 )
             filtered_df, labels = _discretize_continuous(filtered_df, rc, res_meta)
-            update_payload: Dict[str, Any] = {
-                "continuous": False,
-                "categories": list(labels),
-                "ordered": True,
-                "num_values": None,
-                "val_range": None,
-            }
-            update_model = soft_validate(update_payload, GroupOrColumnMeta)
-            c_meta[rc] = merge_pydantic_models(c_meta.get(rc, GroupOrColumnMeta()), update_model)
-            c_meta[pp_desc.res_col] = merge_pydantic_models(
-                c_meta.get(pp_desc.res_col, GroupOrColumnMeta()), update_model
-            )
-        elif pp_desc.convert_res == "continuous":
+            _set_categorical_res(c_meta, rc, pp_desc.res_col, list(labels))
+        elif convert_res == "continuous" or (post_categorize and not schema[rc].is_numeric()):
             nvals: Sequence[float | int] = []
             if res_meta.is_categorical:
                 res_meta = _ensure_ldf_categories(c_meta, rc, filtered_df)
@@ -283,8 +302,6 @@ def pp_transform_data(
     if c_meta[rcl[0]].continuous:
         val_format = c_meta[rcl[0]].val_format or ".1f"
         val_range = c_meta[rcl[0]].val_range
-        # The plot's registered transform_fn is only a default; the descriptor wins when set
-        transform_fn = pp_desc.cont_transform or plot_meta.transform_fn
         if transform_fn:
             pp_desc = pp_desc.model_copy(update={"cont_transform": transform_fn})
         if pp_desc.cont_transform:
@@ -296,8 +313,32 @@ def pp_transform_data(
                 val_range=val_range,
                 agg_fn=pp_desc.agg_fn or plot_meta.agg_fn,
             )
+    elif post_categorize:
+        raise ValueError(
+            f"convert_res='categorical' with cont_transform='{transform_fn}' needs a numeric response; "
+            f"'{rcl[0]}' is not continuous. Mark the column continuous in the annotation, or give it "
+            "num_values so it can be converted."
+        )
     else:
         val_format, val_range = ".1%", None  # Categoricals report %
+
+    # Post-transform categorization: bin specs go through the discretizer; without them the values
+    # are grouped on as-is ("literal" bins - one category per distinct value), with labels and
+    # ordering resolved post-collect on the small aggregated frame in _wrangle_data.
+    if post_categorize:
+        # NaN is not null to polars, so a transform that can divide by zero (proportion, 01range)
+        # would otherwise aggregate NaN as a real category
+        filtered_df = filtered_df.with_columns(pl.col(rcl).fill_nan(None))
+        for rc in rcl:
+            res_meta = c_meta[rc]
+            if res_meta.bin_breaks is not None or res_meta.bin_labels is not None:
+                filtered_df, labels = _discretize_continuous(filtered_df, rc, res_meta)
+                _set_categorical_res(c_meta, rc, pp_desc.res_col, list(labels))
+            else:
+                literal_res = True
+        # The aggregate is categorical again: shares under mean, weighted counts under sum
+        agg = pp_desc.agg_fn or plot_meta.agg_fn or "mean"
+        val_format, val_range = (".1f", None) if agg == "sum" else (".1%", None)
     val_format = pp_desc.val_format or val_format  # Plot can override the default
     val_range = pp_desc.val_range or val_range
 
@@ -349,7 +390,8 @@ def pp_transform_data(
         # Wide-aggregate the group when draws are shared or absent (mean/sum only for categorical) - skips the big melt
         fschema = filtered_df.collect_schema()
         agg_fn_resolved = pp_desc.agg_fn or plot_meta.agg_fn or "mean"
-        cat_flags = [isinstance(fschema[c], (pl.Categorical, pl.Enum, pl.String)) for c in value_vars]
+        # literal_res columns are numeric in the schema but semantically categorical group keys
+        cat_flags = [isinstance(fschema[c], (pl.Categorical, pl.Enum, pl.String)) or literal_res for c in value_vars]
         if (
             plot_meta.data_format == "longform"
             and "question" in facet_dims
@@ -391,7 +433,15 @@ def pp_transform_data(
 
     # Aggregate the data into right shape
     pi = _wrangle_data(
-        filtered_df, c_meta, facet_dims, weight_col, pp_desc, n_questions, float(total_weight), wide_value_vars
+        filtered_df,
+        c_meta,
+        facet_dims,
+        weight_col,
+        pp_desc,
+        n_questions,
+        float(total_weight),
+        wide_value_vars,
+        literal_res=literal_res,
     )
 
     pi.val_format = val_format
@@ -418,11 +468,15 @@ def _wrangle_data(
     n_questions: int,
     total_size: float = 0.0,
     wide_value_vars: List[str] | None = None,
+    literal_res: bool = False,
 ) -> PlotInput:
     """Aggregate filtered data into a structured ``PlotInput`` model for create_plot.
 
     If ``wide_value_vars`` is given, ``raw_df`` is still in wide form: the question columns
     are aggregated per group first and only the (small) aggregated frame is unpivoted.
+
+    ``literal_res`` marks a numeric response to treat as categorical with one category per distinct
+    value: it is grouped on as-is, and labels/ordering are resolved post-collect on the small frame.
     """
 
     plot_meta = get_plot_meta(pp_desc.plot)
@@ -490,18 +544,23 @@ def _wrangle_data(
                 raw_df = raw_df.with_columns(pl.lit("dummy").alias("dummy_col"))
                 gb = ["dummy_col"]
 
-            if isinstance(schema[wide_value_vars[0]], (pl.Categorical, pl.Enum, pl.String)):
+            if isinstance(schema[wide_value_vars[0]], (pl.Categorical, pl.Enum, pl.String)) or literal_res:
                 cat_col = res_col
                 value_col = "percent"
 
                 # Per-question group_bys share the filtered scan (comm_subplan_elim), like the melt path would
+                # (literal_res groups on the raw numeric values; labels come post-collect)
                 parts = [
-                    raw_df.group_by(gb + [pl.col(q).cast(pl.Categorical).alias(res_col)])
+                    raw_df.group_by(
+                        gb + [(pl.col(q) if literal_res else pl.col(q).cast(pl.Categorical)).alias(res_col)]
+                    )
                     .agg(pl.col(weight_col).sum().alias("percent"))
                     .with_columns(pl.lit(q).alias("question"))
                     for q in wide_value_vars
                 ]
                 data = pl.concat(parts)
+                if literal_res:  # Null values count toward no aggregate; drop before the group totals
+                    data = data.filter(pl.col(res_col).is_not_null())
                 data = data.with_columns(pl.col("percent").sum().over(gb + ["question"]).alias(weight_col))
 
             else:  # Continuous: aggregate each question column per group
@@ -533,12 +592,14 @@ def _wrangle_data(
             if gb == ["dummy_col"]:
                 data = data.drop("dummy_col")
 
-        elif isinstance(schema[res_col], (pl.Categorical, pl.Enum, pl.String)):  # Categorical
+        elif isinstance(schema[res_col], (pl.Categorical, pl.Enum, pl.String)) or literal_res:  # Categorical
             cat_col = res_col
             value_col = "percent"
 
             # Group totals as a window sum over the small aggregate - avoids a second full group_by + join
             data = raw_df.group_by(gb_dims + [res_col]).agg(pl.col(weight_col).sum().alias("percent"))
+            if literal_res:  # Null values count toward no aggregate; drop before the group totals
+                data = data.filter(pl.col(res_col).is_not_null())
             data = data.with_columns(pl.col("percent").sum().over(gb_dims).alias(weight_col))
 
             if agg_fn == "mean":
@@ -614,6 +675,27 @@ def _wrangle_data(
     data = data.to_pandas()
     # In wide form each row covers all questions at once, so no division is needed
     filtered_size = fsize.item() / (1 if wide_value_vars is not None else n_questions)
+
+    # Literal bins: every distinct value survives aggregation as a group key, so labels and their
+    # numeric ordering are resolved here on the small frame - no extra scan of the full data
+    if literal_res and cat_col:
+        vals = np.sort(np.asarray(pd.unique(data[cat_col]), dtype=float))
+        if len(vals) > 50:
+            raise Exception(
+                f"Literal categorization of '{cat_col}' yields {len(vals)} distinct values; "
+                "set bin_breaks (an int bins by quantiles) or round the transform output"
+            )
+        # %g is 6 significant digits, so distinct values can share a label; widen until they don't
+        labels = [f"{v:g}" for v in vals]
+        if len(set(labels)) < len(vals):
+            labels = [repr(float(v)) for v in vals]
+        # Codes by position in the sorted values - no re-formatting or string factorization per row
+        data[cat_col] = pd.Categorical.from_codes(np.searchsorted(vals, data[cat_col].to_numpy()), labels, ordered=True)
+        update = soft_validate(
+            {"continuous": False, "categories": labels, "ordered": True, "num_values": [float(v) for v in vals]},
+            GroupOrColumnMeta,
+        )
+        col_meta[cat_col] = merge_pydantic_models(col_meta.get(cat_col, GroupOrColumnMeta()), update)
 
     # Ensure derived columns have placeholder metadata so later lookups succeed
     for key in [value_col, cat_col]:

@@ -37,6 +37,9 @@ class PlotMeta(PBase):
     args: Dict[str, Any] = DF(dict)
     hidden: bool = False
     transform_fn: Optional[str] = None
+    # Default convert_res, like transform_fn a default the descriptor can override. "categorical"
+    # composes with a cont_transform: convert -> transform -> categorize (literal bins by default).
+    convert_res: Optional[Literal["continuous", "categorical"]] = None
     nonnegative: bool = False
     payload: bool = False  # plot fn honors PlotInput.return_df (supports create_plot_payload)
 
