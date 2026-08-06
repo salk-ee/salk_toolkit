@@ -1198,6 +1198,23 @@ def test_integer_facet_quantile_binning_is_engine_independent() -> None:
     assert sizes[-1] - sizes[0] <= 2 and len(labels) == 5  # ties split evenly, up to quantile interpolation
 
 
+def test_integer_facet_binning_does_not_follow_file_order() -> None:
+    """Deterministic is not enough: splitting a tie group by its position in the frame invents a
+    100/0 association with anything the file happens to be sorted by, e.g. wave or region."""
+    from salk_toolkit.pp.filters import _discretize_continuous
+
+    # The 40s straddle the median, and the file is grouped by gender - as survey exports are
+    ldf = pl.LazyFrame({"age": [30] * 300 + [40] * 400 + [50] * 300, "gender": ["F"] * 500 + ["M"] * 500})
+    binned, _ = _discretize_continuous(ldf, "age", GroupOrColumnMeta(bin_breaks=2))
+
+    cells = {
+        (str(r["age"]), r["gender"]): r["len"]
+        for r in binned.collect().group_by(["age", "gender"]).len().rows(named=True)
+    }
+    tied_below = cells[("Bottom 50%", "M")]  # all-M side of the tie group that fell below the edge
+    assert 60 <= tied_below <= 140  # 0 when the split follows row order; ~100 when it does not
+
+
 def test_bin_breaks_make_an_integer_facet_exact() -> None:
     """Declared edges opt out of quantile binning, so each integer value is its own cell."""
 

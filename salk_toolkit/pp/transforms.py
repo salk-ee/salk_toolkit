@@ -24,21 +24,26 @@ def _apply_npf_on_pl_df(
 
 
 # Counting pairwise comparisons is 3-4x faster than concat_list + list.eval, and nulls fall out for free
-def _count_ahead(col: str, cols: Sequence[str], ahead: Callable[[str, str], pl.Expr]) -> pl.Expr:
+def _count_ahead(col: str, cols: Sequence[str], ahead: Callable[[str, int], pl.Expr]) -> pl.Expr:
     """How many of ``cols`` come before ``col`` in the row, counting only non-null rivals."""
 
-    counts = [ahead(x, col).fill_null(False).cast(pl.Int32) for x in cols if x != col]
+    counts = [ahead(x, j).fill_null(False).cast(pl.Int32) for j, x in enumerate(cols) if x != col]
     return pl.sum_horizontal(counts) if counts else pl.lit(0, pl.Int32)
 
 
 def _ordinal_rank(col: str, cols: Sequence[str], *, descending: bool = False) -> pl.Expr:
-    """Rank of ``col`` among the row's non-null values, 1..m, ties broken by column order."""
+    """Rank of ``col`` among the row's non-null values, 1..m.
 
+    Ties go to the later column, matching the ordinal rank this replaced - so ascending
+    and descending pick the same k, and >= vs > carries the tie-break for free.
+    """
     i = cols.index(col)
 
-    def ahead(x: str, c: str) -> pl.Expr:
-        better = pl.col(x) > pl.col(c) if descending else pl.col(x) < pl.col(c)
-        return better | ((pl.col(x) == pl.col(c)) & pl.lit(cols.index(x) < i))
+    def ahead(x: str, j: int) -> pl.Expr:
+        wins_tie = j > i if descending else j < i
+        if descending:
+            return pl.col(x) >= pl.col(col) if wins_tie else pl.col(x) > pl.col(col)
+        return pl.col(x) <= pl.col(col) if wins_tie else pl.col(x) < pl.col(col)
 
     return pl.when(pl.col(col).is_null()).then(None).otherwise(1 + _count_ahead(col, cols, ahead))
 
@@ -106,7 +111,7 @@ def _ties_topk_transform(data: pl.LazyFrame, cols: Sequence[str], k: int) -> pl.
     """Mark columns with fewer than k strictly better values in the row, so ties all count."""
 
     def keep(c: str) -> pl.Expr:
-        beaten = _count_ahead(c, cols, lambda x, cc: pl.col(x) > pl.col(cc))
+        beaten = _count_ahead(c, cols, lambda x, _j: pl.col(x) > pl.col(c))
         return pl.when(pl.col(c).is_null()).then(None).otherwise(beaten < k)
 
     return data.with_columns([keep(c).alias(c) for c in cols])
