@@ -47,8 +47,11 @@ than a separate scan.
 **Response binning.** `convert_res: "categorical"` buckets a numeric *response*, the inverse
 of `"continuous"`; edges come from the column meta's `bin_breaks` / `bin_labels` (an int
 means that many quantiles), which a descriptor's `col_meta` supplies per plot. Numeric
-*facet* dimensions were already discretized this way; this adds the response side, and plot
-matching and facet imputation treat a to-be-binned response as categorical.
+*facet* dimensions were already discretized this way; this adds the response side. One
+predicate, `_res_is_categorical`, decides what `convert_res` makes of the response, so plot
+matching, its non-negativity shortcut and facet imputation cannot drift apart. It bins one
+column: a block `res_col` and a non-numeric column are both rejected rather than binned
+per column.
 
 **Expression statistics.** `stats: [{name, expr, agg_fn}]` — each entry a row-level polars
 expression, all aggregated in one `group_by`. This is the primitive for cells over
@@ -66,10 +69,6 @@ expressions name), on a name colliding with a group-by dimension, alongside a
 descriptor-level `agg_fn`/`cont_transform` (each statistic carries its own), and when
 neither `return_data` nor `return_input` is set.
 
-Measured on the dashboards: lt26's whole surface 112s → 83s, i.e. faster than the
-hand-written polars it replaced; its media page 10.9s → 0.5s and one war-room media slice
-16.1s → 2.1s (46 descriptors → 4); rk2027 156s → 115s.
-
 **Categorizing a transformed result.** `convert_res="categorical"` combined with a
 `cont_transform` describes the *result*: convert to continuous as needed, transform, then
 categorize. Without `bin_breaks`/`bin_labels` that is **literal bins** — one ordered category
@@ -85,6 +84,10 @@ set is complete without a second scan. Sorting a facet on such a distribution or
 share-weighted mean of the category scale (for ranks, the mean rank) rather than the
 near-constant mean of the shares.
 
+Measured on the dashboards: lt26's whole surface 112s → 83s, i.e. faster than the
+hand-written polars it replaced; its media page 10.9s → 0.5s and one war-room media slice
+16.1s → 2.1s (46 descriptors → 4); rk2027 156s → 115s.
+
 ## Implementation notes
 
 - **Only the binning path is per column.** Literal bins are exempt from the single-column
@@ -94,29 +97,35 @@ near-constant mean of the shares.
   zero-sum row, a constant column), where it would aggregate as a real "nan" category inside
   the denominator; the transformed columns get `fill_nan(None)` before categorizing.
 - **Literal labels are `%g`, widened to `repr` when six significant digits are not injective** —
-  two distinct values sharing a label crash `pd.Categorical`. Past 50 distinct values the
-  categorization errors instead: continuous output wants bins.
-- **The pair only reaches a categorization on a longform plot**, so it raises on raw/stats
-  descriptors rather than switching the value format while silently skipping the transform.
+  two distinct values sharing a label crash `pd.Categorical`. Past 50 distinct values it errors
+  instead: continuous output wants bins. The pair only categorizes on a longform plot, so a
+  raw/stats descriptor raises rather than silently skipping the transform.
 - **Top-k and rank transforms count pairwise comparisons.** `pl.concat_list` + `list.eval`
   builds a list column and a sorted copy per row; summing `(col_j > col_i)` horizontally
   instead is 3.5x faster on a 500k × 18 block for identical output — `ordered-top3` 0.711s
-  → 0.201s, `ordered-avgrank` 0.693s → 0.194s, `ordered-top-ties:3` 0.643s → 0.163s. The
-  ranks are taken among the row's *non-null* values, so a respondent who answered 2 of 18
+  → 0.201s, `ordered-avgrank` 0.693s → 0.194s, `ordered-top-ties:3` 0.643s → 0.163s. It is
+  n(n-1) expressions, so it crosses back over around 50 columns; the widest block any rank
+  transform runs on today is 25. Ties still go to the later column, as the ordinal rank did.
+  The ranks are taken among the row's *non-null* values, so a respondent who answered 2 of 18
   columns has a top-3 rather than dropping out of the numerator while staying in the
   denominator.
-- **`weights: False` must not sum a literal.** For `weights: False` the weight column is a
-  synthesized `pl.lit(1.0)`, so recomputing the total summed a constant over the *pre-filter*
-  frame — producing every row to learn how many there are. It takes `pl.len()` instead, off
-  the scan's metadata. The cost was ~1s per descriptor *independent of data size* (450k rows
-  and 19.5k rows both 1.20s), landed before any filtering, and hit every unweighted
-  descriptor: single-column count 1.20s → 0.13s.
-- **Integer-facet binning splits ties by rank, not by jitter.** Quantile-binning an integer
-  facet has to break ties so the quantiles can split them. A random jitter makes bin
-  membership depend on the RNG; seeding it inside `map_batches` only moves the dependency to
-  the engine, chunking and thread count, which differ between the quantile scan (in-memory)
-  and the aggregate (streaming). Spreading each tie group evenly over its unit interval by
-  `cum_count().over(col)` is deterministic and exactly balanced.
+- **Binning drops the meta keyed to the old values.** A colour map, filter groups, `labels`
+  or a `neutral_middle` naming pre-binning categories survives the merge otherwise, matching
+  nothing. The one thing kept is `question_colors`, which is keyed by column, not by value.
+- **A synthesized unit weight must not be summed.** When the weight column is a synthesized
+  `pl.lit(1.0)`, recomputing the population total summed a constant over the *pre-filter* frame
+  — producing every row to learn how many there are. `pl.len()` reads it off scan metadata
+  instead. The cost was ~1s per descriptor *independent of data size* (450k rows and 19.5k rows
+  both 1.20s) and landed before any filtering: single-column count 1.20s → 0.13s. The fast path
+  keys on whether the column was synthesized rather than on `weights: False`, so it also covers
+  the default over an annotation declaring no weight column (500k × 20: 0.056s → 0.027s).
+- **Integer-facet ties are jittered by a hash of the row index.** Quantile-binning an integer
+  facet has to break ties so the quantiles can split them, and the jitter has to be both
+  reproducible and uncorrelated with everything else. An RNG fails the first; seeding it inside
+  `map_batches` only moves the dependency to engine, chunking and thread count, which differ
+  between the quantile scan (in-memory) and the aggregate (streaming); and splitting the tie
+  group by its position in the frame fails the second, inventing a 100/0 association with
+  whatever the file is sorted by. Hashing the row index satisfies both.
 - **Imputation sees virtual blocks.** `impute_facet_dims` read the raw annotation meta, so a
   `res_meta` block was invisible and raised on its own name; `e2e_plot` and `matching_plots`
   both route through `_impute_facet_dims`. Side effect: a descriptor's `col_meta` overrides

@@ -492,6 +492,40 @@ def test_convert_res_categorical_bins_a_continuous_response() -> None:
     }
 
 
+def test_binning_drops_meta_keyed_to_the_old_values() -> None:
+    """Colours, groups and a neutral middle naming categories that no longer exist are worse than none."""
+    df = pd.DataFrame(
+        {"draw": [0] * 4, "gender": ["Female"] * 4, "party_a": [0.0, 1.0, 2.0, 3.0], "party_b": [0.0] * 4}
+    )
+    stale = {"colors": {"0.0": "#ff0000"}, "groups": {"low": ["0.0", "1.0"]}, "likert": True, "neutral_middle": "1.0"}
+    ppd = soft_validate(
+        {
+            "res_col": "party_a",
+            "convert_res": "categorical",
+            "col_meta": {"party_a": {"bin_breaks": [1.5], "bin_labels": ["low", "high"], **stale}},
+            "plot": "columns",
+        },
+        PlotDescriptor,
+    )
+    meta = pp_transform_data(pl.LazyFrame(df), _threshold_meta(), ppd).col_meta["party_a"]
+    assert meta.categories == ["low", "high"]
+    assert not meta.colors and not meta.groups and not meta.likert and meta.neutral_middle is None
+
+
+def test_a_binned_response_matches_plots_as_a_categorical_one() -> None:
+    """convert_res decides categorical-ness everywhere, not just where the frame is built."""
+    df = pd.DataFrame(
+        {"draw": [0] * 4, "gender": ["Female", "Male"] * 2, "party_a": [0.0, 1.0, 2.0, 3.0], "party_b": [0.0] * 4}
+    )
+    desc: dict[str, Any] = {"plot": "default", "res_col": "party_a", "facet_dims": ["gender"]}
+
+    binned = cast(dict, matching_plots({**desc, "convert_res": "categorical"}, df, _threshold_meta(), details=True))
+
+    # Bin labels are never negative, so a plot demanding non-negative values must not reject them
+    assert all("nonnegative" not in reasons for _fit, reasons in binned.values())
+    assert binned["stacked_columns"][0] >= 0  # a categorical-response plot, reachable only if both agree
+
+
 def test_convert_res_categorical_rejects_what_it_cannot_bin() -> None:
     """A categorical has nothing to bin; a block would get per-column breaks and keep only the last one's labels."""
     df = pd.DataFrame({"draw": [0, 0], "gender": ["Female", "Male"], "party_a": [1.0, 2.0], "party_b": [0.0, 3.0]})
@@ -1464,8 +1498,21 @@ def test_stats_does_not_combine_with_the_single_statistic_path() -> None:
     """Each stat carries its own agg_fn, so a descriptor-level one is a contradiction, not a default."""
     stats = [{"name": "x", "expr": "(pl.col('tv') > 0)"}]
     for extra in ({"agg_fn": "sum"}, {"cont_transform": "ge:1"}):
-        with pytest.raises(ValidationError, match="carries its own agg_fn"):
+        with pytest.raises(ValidationError, match="each stat carries its own"):
             PlotDescriptor.model_validate({"plot": "columns", "res_col": "tv", "stats": stats, **extra})
+
+    with pytest.raises(ValidationError, match="appear more than once"):  # else polars dies on the duplicate alias
+        PlotDescriptor.model_validate({"plot": "columns", "res_col": "tv", "stats": stats + stats})
+
+
+def test_a_bad_expression_names_the_field_it_came_from() -> None:
+    """`stats`, `weights` and `pl_filter` share one eval, so the message has to say which one failed."""
+    from salk_toolkit.pp.wrangle import _eval_expr
+
+    with pytest.raises(ValueError, match=r"stats\[x\].expr"):
+        _eval_expr("pl.col('tv'", "stats[x].expr")
+    with pytest.raises(ValueError, match="not a polars expression"):
+        _eval_expr("'tv'", "weights")
 
 
 def test_expression_stats_run_per_facet_in_one_group_by() -> None:

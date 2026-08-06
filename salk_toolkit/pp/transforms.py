@@ -202,8 +202,11 @@ def _transform_cont(
         )  # NB! Set validate to true if debugging this
         return data, fmt, None
 
-    else:
-        raise Exception(f"Unknown transform '{transform}'")
+    else:  # Reachable for a plot's registered transform_fn, which never passes through validation
+        raise ValueError(
+            f"unknown cont_transform {transform!r}; registered: {', '.join(known_cont_transforms())}; "
+            f"families: {TRANSFORM_FAMILIES}"
+        )
 
 
 def _softmax_expected_ranks(p: np.ndarray) -> np.ndarray:
@@ -232,6 +235,15 @@ custom_row_transforms["softmax-avgrank"] = _softmax_expected_ranks, ".1f"
 
 # Inline scale transforms, i.e. the ones _transform_cont handles without consulting a registry
 SCALE_TRANSFORMS = ("center", "zscore", "01range", "proportion", "softmax", "softmax-ratio")
+
+TRANSFORM_FAMILIES = "ge:<number>, ordered-top-ties:<k>"  # Parameterized, so not enumerable
+
+
+def known_cont_transforms() -> list[str]:
+    """Every dispatchable transform name; read live, since the registries take late registrations."""
+
+    return sorted({*SCALE_TRANSFORMS, *ordered_expr_transforms, *custom_row_transforms})
+
 
 cont_transform_options = (
     list(SCALE_TRANSFORMS) + list(ordered_expr_transforms.keys()) + list(custom_row_transforms.keys())

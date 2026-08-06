@@ -22,9 +22,17 @@ from .transforms import _transform_cont
 PRECISION = 10**6  # Hash-sampling granularity for the raw-format row cap
 
 
-def _eval_expr(expr: str) -> pl.Expr:
+def _eval_expr(expr: str, field: str = "expression") -> pl.Expr:
     """A descriptor-supplied row expression - the ``pl_filter`` trust model."""
-    return eval(expr, {"pl": pl})  # noqa: S307
+    try:
+        result = eval(expr, {"pl": pl})  # noqa: S307
+    except Exception as e:
+        raise ValueError(
+            f"{field} {expr!r} is not valid Python: {e}. Write a polars expression, e.g. \"pl.col('x') > 0\"."
+        ) from e
+    if not isinstance(result, pl.Expr):
+        raise ValueError(f"{field} {expr!r} gave {type(result).__name__}, not a polars expression; use pl.col(...).")
+    return result
 
 
 def _resolve_weight_col(
@@ -44,7 +52,8 @@ def _resolve_weight_col(
             return "row_weights", None  # the conventional name; absent means unweighted
         if declared not in all_col_names:
             raise ValueError(
-                f"declared weight column {declared!r} is not in the data (columns: {sorted(all_col_names)[:20]}). "
+                f"declared weight column {declared!r} is not in the data ({len(all_col_names)} columns, "
+                f"e.g. {sorted(all_col_names)[:10]}). "
                 "Fix data_meta.weight_col, or pass weights=False for deliberately unweighted numbers."
             )
         return declared, None
@@ -52,10 +61,11 @@ def _resolve_weight_col(
     # identifier ("w.2024") still resolves as a column - and a *missing* one still
     # fails loudly rather than being eval'd.
     if "pl." in weights:
-        return "__expr_weight__", _eval_expr(weights)
+        return "__expr_weight__", _eval_expr(weights, "weights")
     if weights not in all_col_names:
         raise ValueError(
-            f"weight column {weights!r} is not in the data (columns: {sorted(all_col_names)[:20]}). "
+            f"weight column {weights!r} is not in the data ({len(all_col_names)} columns, "
+            f"e.g. {sorted(all_col_names)[:10]}). "
             "Pass weights=False for unweighted numbers, or name a column that exists."
         )
     return weights, None
@@ -64,9 +74,24 @@ def _resolve_weight_col(
 def _set_categorical_res(
     c_meta: MutableMapping[str, GroupOrColumnMeta], rc: str, res_col: str, labels: list[str]
 ) -> None:
-    """Mark a (now binned or literal) response column categorical, on the column and its block."""
+    """Mark a (now binned or literal) response column categorical, on the column and its block.
+
+    Everything keyed to the pre-binning values goes with it - a colour map, filter groups or a
+    neutral middle naming categories that no longer exist is worse than none.
+    """
     update = soft_validate(
-        {"continuous": False, "categories": labels, "ordered": True, "num_values": None, "val_range": None},
+        {
+            "continuous": False,
+            "categories": labels,
+            "ordered": True,
+            "num_values": None,
+            "val_range": None,
+            "groups": {},
+            "colors": {},
+            "labels": {},
+            "likert": False,
+            "neutral_middle": None,
+        },
         GroupOrColumnMeta,
     )
     for key in {rc, res_col}:
@@ -104,10 +129,11 @@ def pp_transform_data(
 
     # Materialize an expression weight into the plan before the column downselect. Its nulls are
     # left alone: a computed design weight has no reason to sit near 1.0, so filling would distort.
+    unit_weight = weight_expr is None and weight_col not in all_col_names
     if weight_expr is not None:
         full_df = full_df.with_columns(weight_expr.cast(pl.Float64).alias(weight_col))
         all_col_names += [weight_col]
-    elif weight_col not in all_col_names:  # Unweighted: synthesize a unit weight
+    elif unit_weight:
         full_df = full_df.with_columns(pl.lit(1.0).alias(weight_col))
         all_col_names += [weight_col]
     else:
@@ -118,7 +144,7 @@ def pp_transform_data(
         facet_dims.remove(pp_desc.res_col)
     base_cols = list(columns) if columns is not None else []
     # Stat expressions name their columns directly; keep those through the projection
-    base_cols += [c for s in pp_desc.stats or [] for c in _eval_expr(s.expr).meta.root_names()]
+    base_cols += [c for s in pp_desc.stats or [] for c in _eval_expr(s.expr, f"stats[{s.name}].expr").meta.root_names()]
     extra_cols = base_cols + ([weight_col] + (["draw"] if plot_meta.draws else []))
     cols = [pp_desc.res_col] + facet_dims + list(pp_desc.filter.keys() if pp_desc.filter else [])
     cols += [c for c in extra_cols if c in all_col_names and c not in cols]
@@ -148,10 +174,9 @@ def pp_transform_data(
     counting_df, counted_n = full_df, None
     total_weight = data_meta.total_size if pp_desc.weights is True else None
     if total_weight is None:
-        if pp_desc.weights is False:
-            # The weight is a synthesized 1.0, so the total weight *is* the row count.
-            # Summing the literal instead forces the whole pre-filter frame to be
-            # produced; pl.len() alone comes off the scan's metadata.
+        if unit_weight:
+            # The weight is a synthesized 1.0, so the total weight *is* the row count. Summing the
+            # literal instead produces the whole pre-filter frame; pl.len() comes off scan metadata.
             counted_n = int(counting_df.select(pl.len()).collect().item())
             total_weight = float(counted_n)
         else:
@@ -173,7 +198,7 @@ def pp_transform_data(
 
     # Custom dashboard filtering - must run before downselecting to the needed columns
     if pp_desc.pl_filter:
-        full_df = full_df.filter(_eval_expr(pp_desc.pl_filter))
+        full_df = full_df.filter(_eval_expr(pp_desc.pl_filter, "pl_filter"))
 
     df = full_df.select(cols)  # Select only the columns we need
 
@@ -522,7 +547,10 @@ def _wrangle_data(
         # a column first, so the weighted mean's denominator reuses it instead of rebuilding it.
         names = [f"__stat_{i}__" for i in range(len(pp_desc.stats))]
         raw_df = raw_df.with_columns(
-            [_eval_expr(s.expr).cast(pl.Float64).alias(n) for n, s in zip(names, pp_desc.stats)]
+            [
+                _eval_expr(s.expr, f"stats[{s.name}].expr").cast(pl.Float64).alias(n)
+                for n, s in zip(names, pp_desc.stats)
+            ]
         )
         aggs = []
         for name, spec in zip(names, pp_desc.stats):

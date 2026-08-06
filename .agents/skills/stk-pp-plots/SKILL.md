@@ -11,7 +11,7 @@ description: Author stk `pp_desc` plot descriptors for `salk_toolkit.pp.e2e_plot
 
 All business logic — tooltips, colors, category orders, labels, translations — is read from `data_meta` via `cmeta`. **Never hand-configure any of that at the descriptor level.** If a label or color is wrong, fix the annotation (`stk-data-annotations` skill), not the descriptor.
 
-Pipeline summary (authoritative flow: `salk_toolkit/pp.py`):
+Pipeline summary (authoritative flow: `salk_toolkit/pp/`, `wrangle.py` → `plotting.py`):
 
 1. `matching_plots` — checks the selected plot is feasible given the data + annotations.
 2. `pp_transform_data` / `wrangle_data` — lazy polars filter / unpivot / aggregate → pandas frame + `pparams`.
@@ -123,7 +123,7 @@ the block (5× the cost, measured). Two right answers:
    This is what covers the filter-varying class — overlap matrices ("uses i
    but not j"), audience masks, marginal reach — where a `pl_filter` per cell
    costs a descriptor per cell. Measured: a 13-channel exclusive-reach matrix
-   (169 cells) is one 0.5s descriptor instead of 27 descriptors / 5.6s, exact
+   (169 cells) is one 0.22s descriptor instead of 27 descriptors / 5.6s, exact
    against hand-written polars. `agg_fn` folds the declared (or overridden)
    weighting in per stat; referenced columns are harvested from the
    expressions automatically; output is data-only (a column per stat).
@@ -192,19 +192,20 @@ Building a `(draw, district, party)` tensor by hand to feed `simulate_election` 
 
 Needs `num_values` in the annotation for the conversion to be meaningful. If a transform appears to be a no-op, check `convert_res` before suspecting the transform.
 
-### "my values all came back NaN" — you converted an already-continuous block
+### `convert_res: "continuous"` on an already-continuous block
 
-The mirror image of the trap above, and it fails just as quietly. Asking for
-`convert_res: "continuous"` on a block the annotation **already declares
-continuous** yields all-NaN cells rather than an error — it silently nulled every
-ownership score *and* every ownership rank in lt26. Decide from the annotation:
-read `cmeta[res_col].continuous` and only convert when it is false.
+Harmless as of #79: an already-numeric response is parsed rather than mapped
+through categories it does not have. It used to yield all-NaN cells — silently
+nulling every ownership score *and* rank in lt26 — so on an older stk, decide from
+the annotation and only convert when `cmeta[res_col].continuous` is false.
 
 ### a numeric `factor_col` is binned, not grouped by value
 
 Faceting on a numeric column discretizes it — by default into quantiles, with
-jitter to break integer ties (now seeded per batch, so runs are reproducible;
-before that ~2% of cell mass moved between identical runs). When you want
+integer ties broken by a jitter drawn from a hash of the row index. That is
+deterministic across engines, chunkings and thread counts, and — unlike splitting
+a tie group by its position in the frame — leaves which side of an edge a row
+lands on uncorrelated with however the file happens to be sorted. When you want
 value-exact groups, say so:
 
 ```python
@@ -234,7 +235,7 @@ columns from the schema.
 
 ### `weights` — the default is the declared column, and it must exist
 
-pp weights by the column `data_meta.weight_col` names. If the annotation declares one and the parquet does not have it — a dataset vintage renaming `N_voters` → `N`, say — that is an **error**, not a silent fallback to unweighted numbers with a plausible-looking result. An annotation that declares no weight column is unweighted.
+pp weights by the column `data_meta.weight_col` names. If the annotation declares one and the parquet does not have it — a dataset vintage renaming `N_voters` → `N`, say — that is an **error**, not a silent fallback to unweighted numbers with a plausible-looking result. An annotation that declares no weight column is unweighted, unless the data happens to carry the conventional `row_weights` column, which is picked up.
 
 The descriptor-level `weights` field controls all of this explicitly:
 
@@ -242,8 +243,6 @@ The descriptor-level `weights` field controls all of this explicitly:
 - `weights: "<column>"` — weigh by a specific column (also required-or-error).
 - `weights: False` — deliberately unweighted: every row counts 1, and `total_size` / `filtered_size` come back as **plain row counts** rather than weight mass or the annotation's population total. This is how you get respondent `n`s out of the same descriptor that produces the shares.
 - `weights: "<polars expression>"` — a string **containing `pl.`** is evaluated as a polars expression building the weight per row (the `pl_filter` contract): `"pl.col('N') * pl.col('turnout_prob')"` for a design weight × turnout propensity, or a window expression (`.sum().over(...)`) that renormalizes within a partition. This is the "second per-respondent weighting" that previously forced a model out of pp — an expected-votes aggregation is now just a descriptor.
-- omitted — the historical silent-1.0 default; fine for exploration, not for payloads.
-
 A column whose name is not a Python identifier (`w.2024`) therefore still resolves as a column, and a missing one still errors rather than being eval'd. `weights: None` is not accepted — the mode that silently weighed 1.0 is gone.
 
 Any override (everything except `True`) recomputes `total_size` from the actual weights instead of trusting the annotation's declared population total — the annotation's declared total describes the *declared* weighting, so it no longer applies. Under `weights: False` that recomputation is answered by `pl.len()` off the scan's metadata, not by summing a synthesized `1.0` over the pre-filter frame; the latter cost a flat ~1s per descriptor regardless of data size until it was fixed.
@@ -606,7 +605,7 @@ Unit-test sub-helpers in `tests/test_pp.py`.
 
 ## For more details
 
-- Registry and pipeline: `salk_toolkit/pp.py` — `registry_meta`, `e2e_plot`, `matching_plots`, `impute_factor_cols`, `pp_transform_data`, `wrangle_data`.
+- Registry and pipeline: `salk_toolkit/pp/` — `registry_meta`, `e2e_plot`, `matching_plots`, `impute_factor_cols`, `pp_transform_data`, `wrangle_data`.
 - Payload serializer: `salk_toolkit/payload.py` — `create_plot_payload`, `UnsupportedPayloadError` (also importable from `pp`).
 - Plot implementations: `salk_toolkit/plots.py` — one `@stk_plot(...)` per registered name.
 - Descriptor schema: `salk_toolkit/validation.py` — `PlotDescriptor`, `FilterSpec`, `SortSpec`, `ConvertResOption`, `ContTransformOption`, `AggFnOption`.

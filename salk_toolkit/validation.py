@@ -753,20 +753,19 @@ AggFnOption = Literal["mean", "sum", "posneg_mean", "median", "min", "max"]
 def _valid_cont_transform(value: str) -> str:
     """Accept any transform the pipeline can dispatch, including ones a dashboard registered after import."""
     from salk_toolkit.pp.transforms import (
-        SCALE_TRANSFORMS,
+        TRANSFORM_FAMILIES,
         _ordered_topk,
         _threshold_cutoff,
-        custom_row_transforms,
-        ordered_expr_transforms,
+        known_cont_transforms,
     )
 
-    if value in SCALE_TRANSFORMS or value in ordered_expr_transforms or value in custom_row_transforms:
+    known = known_cont_transforms()
+    if value in known:
         return value
     if _threshold_cutoff(value) is not None or _ordered_topk(value) is not None:  # raise on malformed parameters
         return value
-    known = sorted({*SCALE_TRANSFORMS, *ordered_expr_transforms, *custom_row_transforms})
     raise ValueError(
-        f"unknown cont_transform {value!r}; registered: {', '.join(known)}; families: ge:<number>, ordered-top-ties:<k>"
+        f"unknown cont_transform {value!r}; registered: {', '.join(known)}; families: {TRANSFORM_FAMILIES}"
     )
 
 
@@ -833,9 +832,14 @@ class PlotDescriptor(PBase):
     @model_validator(mode="after")
     def _check_stats(self) -> "PlotDescriptor":
         """`stats` replaces the single-statistic path rather than combining with it."""
-        if self.stats and (self.agg_fn or self.cont_transform):
-            raise ValueError(
-                f"stats carries its own agg_fn per statistic; drop agg_fn={self.agg_fn!r} / "
-                f"cont_transform={self.cont_transform!r}"
-            )
+        if not self.stats:
+            return self
+        clash = {k: v for k, v in (("agg_fn", self.agg_fn), ("cont_transform", self.cont_transform)) if v}
+        if clash:
+            drop = ", ".join(f"{k}={v!r}" for k, v in clash.items())
+            raise ValueError(f"stats cannot combine with {drop}: each stat carries its own agg_fn and expression")
+        names = [s.name for s in self.stats]
+        if len(set(names)) != len(names):
+            dupes = sorted({n for n in names if names.count(n) > 1})
+            raise ValueError(f"stat name(s) {dupes} appear more than once; each names an output column")
         return self

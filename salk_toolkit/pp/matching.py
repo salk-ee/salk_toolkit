@@ -26,6 +26,12 @@ priority_weights = {
 }
 
 
+def _res_is_categorical(res_meta: GroupOrColumnMeta, convert_res: str | None) -> bool:
+    """Whether the response is categorical once ``convert_res`` has had its say."""
+
+    return (convert_res == "categorical") if convert_res else res_meta.is_categorical
+
+
 def _calculate_priority(plot_meta: PlotMeta, match: Mapping[str, Any]) -> tuple[int, List[str]]:
     """Score how well a plot definition matches the requested descriptor."""
     priority, reasons = int(plot_meta.priority or 0), []
@@ -143,14 +149,16 @@ def matching_plots(
     if not cols:
         raise ValueError(f"Columns {ocols} not found in data")
 
-    if rcm.is_categorical:
+    convert_res = pp_desc.convert_res
+    is_categorical = _res_is_categorical(rcm, convert_res)
+
+    if is_categorical:  # Bin labels and category names are never negative
         nonneg = True
     else:
         # Metadata-only: a data scan would cost a full pass per render; unknown counts as not non-negative
         val_range = rcm.val_range
         nonneg = val_range is not None and val_range[0] is not None and val_range[0] >= 0
 
-    convert_res = pp_desc.convert_res
     if convert_res == "continuous" and rcm.is_categorical:
         cat_vals_seq = _get_cat_num_vals(rcm, pp_desc)
         cat_vals = [v for v in (cat_vals_seq or []) if v is not None]
@@ -162,8 +170,6 @@ def matching_plots(
     for cn in facet_dims:
         meta = col_meta.get(cn, GroupOrColumnMeta())
         facet_metas.append({"name": cn, **meta.model_dump(mode="python")})
-    # convert_res decides it outright ('categorical' bins a number, 'continuous' numbers an ordinal)
-    is_categorical = (convert_res == "categorical") if convert_res else rcm.is_categorical
     match = {
         "draws": ("draw" in df_cols),
         "nonnegative": nonneg,
@@ -240,7 +246,7 @@ def impute_facet_dims(
     res_col_meta = col_meta[res_col]
     has_q = res_col_meta.columns is not None
     # A number bound for binning ends up categorical too, so it wants res_col as a facet
-    cat_res = (res_col_meta.is_categorical or convert_res == "categorical") and convert_res != "continuous"
+    cat_res = _res_is_categorical(res_col_meta, convert_res)
 
     # Add res_col if we are working with a categorical input (and not converting it to continuous)
     if cat_res and res_col not in facet_dims:

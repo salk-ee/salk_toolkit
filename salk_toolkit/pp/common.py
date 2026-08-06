@@ -60,7 +60,7 @@ class PlotInput:
     cat_col: Optional[str] = None
     val_format: str = "%"
     val_range: Optional[Tuple[Optional[float], Optional[float]]] = None
-    filtered_size: float = 0.0  # post-filter weight (the "displayed_n" the plot is based on)
+    filtered_size: float = 0.0  # post-filter weight of the scope, whatever the response's nullity
     total_size: float = 0.0  # pre-filter total weight, so consumers can show "filtered to X%"
     facets: List[FacetMeta] = field(default_factory=list)
     translate: Optional[Callable[[str], str]] = None

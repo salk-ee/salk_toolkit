@@ -40,10 +40,10 @@ getting it there.
   not statistics: 5 KPIs × 7 parties is not 35 scans, it is ~2 descriptors once blocks and
   factors batch.
 
-- **Counts come out of the same descriptor.** ~~Keep one `scoped_lf()` sibling~~ — superseded
-  by #76: `weights: False` plus `return_input=True` gives `filtered_size` as an exact row
-  count off the same scan that produced the shares, so the `n` and the share cannot describe
-  different rows.
+- **Counts come out of the same descriptor.** `weights: False` plus `return_input=True` gives
+  `filtered_size` as an exact row count off the same scan that produced the shares, so the `n`
+  and the share cannot describe different rows. No parallel `scoped_lf()` sibling to keep in
+  step with the descriptor filter.
 
 - **Genuine row-level models get a one-shot artifact, not a resident frame.** The
   undecided-destination and runoff models are the only paths needing per-respondent values.
@@ -55,7 +55,8 @@ getting it there.
 
 - **`res_meta` already builds a virtual block from loose columns** — it is injected into
   `meta.structure` before processing and inherits `scale` from the first column when unset.
-  Documented in the skill as of #76, along with the imputation fix it needed.
+  The pp skill documents it, and imputation reads the meta through the descriptor's overrides
+  so a virtual block is visible to it.
 
 - **A block name is not a column name.** Guards that check `res_col in schema.names()` reject
   every block descriptor; check `meta.structure` for blocks and the schema for columns
@@ -102,7 +103,7 @@ getting it there.
 - **Deterministic ordering is on you.** `group_by` does not preserve order and ties are common
   (many regions at support 0). Every `.sort()` feeding a payload needs the label as a
   tie-break, or captures diff nondeterministically.
-- What the refactors could not express became the pp backlog, and #76 delivered it:
-  per-cell `n` / weight-mass output (`return_input`), ties-inclusive parameterized top-k
-  (`ordered-top-ties:<k>`), complete-case counts (`ge:-inf`) and pairwise co-occurrence over a
-  block (`stats`). Wide-form aggregation for block descriptors already existed on `main`.
+- What the refactors could not express, pp now expresses: scope-level `n` / weight mass
+  (`return_input`), ties-inclusive parameterized top-k (`ordered-top-ties:<k>`), complete-case
+  counts (`ge:-inf`), pairwise co-occurrence over a block (`stats`), and wide-form aggregation
+  for block descriptors.
