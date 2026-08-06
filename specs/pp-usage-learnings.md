@@ -1,18 +1,19 @@
 # pp usage learnings from the dashboard refactors
 
-**Modules:** `.claude/skills/stk-pp-plots/`, the `salk-dashboard` (create-dashboard) skill —
-raw material distilled from converting rk2027 / lt26 / am_dashboard onto the plot pipeline.
+**Modules:** the `salk-dashboard` skill in `salk_dashboard_tools` — raw material distilled
+from converting rk2027 / lt26 / am_dashboard onto the plot pipeline.
 
 ## Goal
 
 Three dashboards were moved from bespoke polars code onto `pp` descriptors. What that
 exercise taught about *holding* pp correctly — where the boundary goes, what to memoize, how
-to verify a conversion — is not in either skill yet. This is the source material for
-getting it there.
+to verify a conversion — is not in the dashboard skill yet. This is the source material for
+getting it there. The descriptor-level half is done: it landed in `stk-pp-plots` with #76
+(`reference/excuses.md` for the failure modes, `reference/perf.md` for the cost model).
 
 ## Design
 
-**How a dashboard should hold pp** (→ salk-dashboard skill):
+**How a dashboard should hold pp:**
 
 - **Scope is data, not a dataframe.** The single biggest structural win. The old convention
   passed pre-filtered eager frames around, which kept every dataset resident and made call
@@ -27,18 +28,17 @@ getting it there.
 
 - **One `pp_support.py` module owns the boundary.** All descriptor construction, vocabulary
   translation (canonical ↔ internal keys), wave pinning and caching in one file. Nothing
-  downstream ever sees both vocabularies or writes a descriptor.
+  downstream ever sees both vocabularies or writes a descriptor. Wave pinning in particular
+  belongs in the descriptor factory rather than at call sites: one `_scope_filter()` that
+  always injects `{"t": latest_wave}` — deriving latest as min |t| from the data, not a
+  hard-coded `0` — means no descriptor can forget it. (The failure mode is in the pp skill;
+  the centralize-it pattern is not.)
 
 - **Memoize on `(dataset file identity, descriptor-json)`.** Not an optimization — a
   requirement. War-room endpoints ask the same scope-level question for every party ×
   audience; one shared descriptor keyed this way turns ~35 endpoint hits into one scan.
   `frame_cache_key(dataset)` (mtime/size) as a cache-key argument makes invalidation
   automatic on parquet republish.
-
-- **Batch by `factor_cols`, not by loop.** A per-party or per-category loop over filtered
-  frames is almost always one descriptor with `factor_cols=[dimension]`. Count *descriptors*,
-  not statistics: 5 KPIs × 7 parties is not 35 scans, it is ~2 descriptors once blocks and
-  factors batch.
 
 - **Counts come out of the same descriptor.** `weights: False` plus `return_input=True` gives
   `filtered_size` as an exact row count off the same scan that produced the shares, so the `n`
@@ -51,28 +51,7 @@ getting it there.
   artifact on dataset file identity, have the server only read it —
   `am_dashboard/backend/model_artifact.py` and `rk2027/backend/model_artifact.py`.
 
-**Descriptor-level deltas** (→ stk-pp-plots skill):
-
-- **`res_meta` already builds a virtual block from loose columns** — it is injected into
-  `meta.structure` before processing and inherits `scale` from the first column when unset.
-  The pp skill documents it, and imputation reads the meta through the descriptor's overrides
-  so a virtual block is visible to it.
-
-- **A block name is not a column name.** Guards that check `res_col in schema.names()` reject
-  every block descriptor; check `meta.structure` for blocks and the schema for columns
-  (`dataset_blocks()` / `dataset_columns()` in rk's pp_support). Getting this wrong returns
-  `{}` silently, not an error.
-
-- **Wave pinning belongs in the descriptor factory, not at call sites.** One `_scope_filter()`
-  that always injects `{"t": latest_wave}` — deriving latest as min |t| from the data, not a
-  hard-coded `0` — means no descriptor can forget it. (The failure mode is in the skill; the
-  centralize-it pattern is not.)
-
-- **Pooling `draws=True` output:** per-(question, draw) rows pool with
-  `np.average(value, weights=group_size)`, where group_size is the post-filter weight mass and
-  therefore the correct pooling weight. Reach for `draws=False` first.
-
-**Verification** (→ salk-dashboard skill):
+**Verification:**
 
 - **Endpoint capture is the gate, and the baseline comes from the branch point.** Capture
   every `/api/*` route to JSON before and after; diff at 1e-3. A kept fixture rots the moment
@@ -103,7 +82,3 @@ getting it there.
 - **Deterministic ordering is on you.** `group_by` does not preserve order and ties are common
   (many regions at support 0). Every `.sort()` feeding a payload needs the label as a
   tie-break, or captures diff nondeterministically.
-- What the refactors could not express, pp now expresses: scope-level `n` / weight mass
-  (`return_input`), ties-inclusive parameterized top-k (`ordered-top-ties:<k>`), complete-case
-  counts (`ge:-inf`), pairwise co-occurrence over a block (`stats`), and wide-form aggregation
-  for block descriptors.
