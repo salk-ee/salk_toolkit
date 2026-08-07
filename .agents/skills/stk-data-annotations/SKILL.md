@@ -7,9 +7,9 @@ description: Create, validate, align and audit stk (salk_toolkit) JSON data meta
 
 ## Overview
 
-STK annotations are JSON files (`*_meta.json`) that describe how to transform raw survey data (`.sav`, `.csv`, `.parquet`) into a standardised, English-language, typed DataFrame. The authoritative schema lives in `salk_toolkit/validation.py` (`DataMeta`); processing logic lives in `salk_toolkit/io.py`.
+STK annotations are JSON files (`*_meta.json`) that describe how to transform raw survey data (`.sav`, `.csv`, `.parquet`) into a standardised, English-language, typed DataFrame. The authoritative schema is the `DataMeta` model in `salk_toolkit.validation`; the processing pipeline lives in the `salk_toolkit.io` package, entered via `read_and_process_data`.
 
-Always read these two files before starting annotation work — the schema evolves.
+Always read the schema and the pipeline before starting annotation work — both evolve. Grep for the symbol names listed under [For more details](#for-more-details) rather than for file paths; the modules get reorganised, the names are stable.
 
 **IMPORTANT**: When in doubt about the semantics of a survey question — what categories mean, whether something is ordered, topk or somethi— **always ask the user rather than assuming**. Wrong semantic assumptions (e.g. treating an unordered category as ordered, or merging categories that shouldn't be merged) produce silent errors that are extremely hard to detect later in the modeling pipeline.
 
@@ -229,7 +229,7 @@ Two fields, orthogonal dimensions:
 | Field | Where | Maps |
 |-------|-------|------|
 | `colors` | Column meta (or `scale` as default) | category value → hex |
-| `question_colors` | Block `scale` only | column name → hex; becomes `colors` on the synthetic `question` column after unpivot (see `pp.py::_question_meta_clone`, ~line 1110) |
+| `question_colors` | Block `scale` only | column name → hex; becomes `colors` on the synthetic `question` column after unpivot (see `_question_meta_clone`) |
 
 Both accept an inline dict or a string referencing a constant. For `question_colors`, the block's column **names must match the keys** in the referenced dict. If a block's `scale` is a string reference to a shared constant (e.g. `"scale": "trust_scale"`), inline the scale to add `question_colors` — string refs are whole-value replacements.
 
@@ -298,6 +298,8 @@ For "select top K" questions (e.g. "which 3 issues matter most?"):
 - `na_vals`: values meaning "not selected" — replaced with NA
 - `translate_after`: map item indices to readable names (applied first)
 - `from_prefix`: if `from_columns` is a list, strip this prefix for translation
+
+**Regex mode rejects `|`** — a `from_columns` pattern containing alternation (e.g. a lookahead excluding DK/None suffixes) raises before any columns are built. To exclude items (DK/None/Other one-hots) or control slot order, use **list mode**: `from_columns` as an explicit column list with a parallel `res_columns` list of the same length. List mode masks cells to the *full source column name*, so key `translate_after` by column name (or set `from_prefix` to strip a shared prefix first); output slots are named by your `res_columns`, so you pick them (`issues_1`, `issues_2`, …), whereas regex mode derives slot names from the source columns via the `res_columns` template in dataframe order.
 
 The `columns` list in a topk block is usually **empty** — output columns are auto-generated. However, some topk blocks (e.g. issue ownership) list the raw source columns alongside the `create` block when those columns are also needed for other purposes.
 
@@ -484,7 +486,7 @@ Any category mismatch or duplicate column name will surface as a warning or erro
 
 ## Worked Example
 
-A complete minimal example lives in `.cursor/skills/stk-data-annotations/examples/`:
+A complete minimal example lives in the `examples/` directory beside this skill:
 
 | File | Description |
 |------|-------------|
@@ -507,7 +509,7 @@ A complete minimal example lives in `.cursor/skills/stk-data-annotations/example
 
 ## For more details
 
-- Schema: `salk_toolkit/validation.py` — `DataMeta`, `ColumnMeta`, `ColumnBlockMeta`, `TopKBlock`, `MaxDiffBlock`
-- Processing: `salk_toolkit/io.py` — `_process_annotated_data`, `infer_meta`, `_fix_meta_categories`
-- Cursor rule: `salk_toolkit/.cursor/rules/data_annotations.mdc`
+- Schema (`salk_toolkit.validation`): `DataMeta`, `ColumnMeta`, `ColumnBlockMeta`, `TopKBlock`, `MaxDiffBlock`
+- Processing (`salk_toolkit.io`): `read_and_process_data` → `_process_annotated_data`; `infer_meta` bootstraps a meta from raw data; `_fix_meta_categories` reconciles categories across files; topk/maxdiff output columns are built by the block-creation helpers in the same package
+- Plot-side meta handling (`salk_toolkit.pp`): `_question_meta_clone`
 - Examples: look at recent `*_meta.json` files in the sandbox repo for real-world patterns
