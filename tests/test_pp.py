@@ -1548,3 +1548,21 @@ def test_expression_stats_run_per_facet_in_one_group_by() -> None:
     rows = {r["gender"]: r for r in d.to_dict("records")}
     assert rows["F"]["tv_share"] == pytest.approx(1.0) and rows["M"]["tv_share"] == pytest.approx(0.0)
     assert rows["F"]["tv_not_web"] == pytest.approx(1.0) and rows["M"]["tv_not_web"] == pytest.approx(0.0)
+
+
+def test_shared_draws_do_not_multiply_rows(registry_guard: Any) -> None:
+    """Questions sharing a (uid, ndraws) each need their own draw frame, else the post-unpivot join doubles them."""
+
+    @stk_plot("draws_sum", data_format="longform", agg_fn="sum", draws=True, factor_columns=1)
+    def _draws_sum(**_):
+        return _
+
+    df = pd.DataFrame({"draw": [0] * 4, "gender": ["Female"] * 4, **{f"t{i}": [1.0] * 4 for i in range(3)}})
+    meta = _battery_meta(3)
+    meta.draws_data = {"t0": ("A", 1), "t1": ("A", 1), "t2": ("B", 1)}  # two groups -> no single pre-melt merge
+    ppd = soft_validate(
+        {"res_col": "battery", "factor_cols": ["question"], "plot": "draws_sum", "weights": False}, PlotDescriptor
+    )
+    pi = pp_transform_data(pl.LazyFrame(df), meta, ppd)
+    sums = dict(zip(pi.data["question"].astype(str), pi.data[pi.value_col]))
+    assert sums == {k: pytest.approx(4.0) for k in ("t0", "t1", "t2")}  # 4 rows each, t0 not doubled
