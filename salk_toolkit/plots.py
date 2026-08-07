@@ -21,6 +21,7 @@ __all__ = [
     "maxdiff_manual",
     "columns",
     "stacked_columns",
+    "rank_columns",
     "diff_columns",
     "massplot",
     "make_start_end",
@@ -478,6 +479,161 @@ def stacked_columns(p: PlotInput, normalized: bool = False) -> AltairChart:
         )
     )
     return plot
+
+
+@stk_plot(
+    "rank_columns",
+    data_format="longform",
+    draws=False,
+    continuous=True,
+    n_facets=(1, 1),
+    transform_fn="ordered-avgrank",
+    convert_res="categorical",
+    agg_fn="sum",
+    factor_columns=3,
+    args={"max_height_ratio": "float", "split_groups": "int", "center": "bool"},
+)
+def rank_columns(
+    p: PlotInput,
+    max_height_ratio: float = 2.0,
+    split_groups: int = 0,
+    center: bool = False,
+) -> AltairChart:
+    """Per-rank distribution as edge-to-edge columns stacked by the first facet, best rank first.
+
+    A column taller than ``max_height_ratio`` x the average widens instead of growing, so area stays
+    proportional to share and one dominant rank cannot flatten every panel on the shared scale.
+    """
+
+    if not p.facets:
+        raise ValueError("rank_columns requires at least one facet dimension")
+    if p.cat_col is None:
+        raise ValueError(
+            f"rank_columns categorizes '{p.value_col}' itself (it registers convert_res='categorical'), "
+            "but the descriptor set convert_res='continuous', which turns that off - in the explorer, "
+            "the 'Convert to continuous' toggle."
+        )
+    f0 = p.facets[0]
+    xcol = p.cat_col
+
+    # Draw the best rank first. Only the axis is reversed - the category scale keeps its own
+    # direction, so `sort` still orders facets by mean rank the way every other plot reads it.
+    labels = [str(c) for c in reversed(utils.get_categories(p.data[xcol].dtype))]
+    data = p.data.assign(**{xcol: pd.Categorical(p.data[xcol], labels, ordered=True)})
+
+    # Complete the (rank x stack) grid with explicit zeros, then normalize the weighted counts
+    gcols = p.outer_factors + [xcol, f0.col]
+    ndata = data.groupby(gcols, observed=False)[p.value_col].sum().rename("share").reset_index()
+    denom_cols = list(p.outer_factors)
+    totals = ndata.groupby(denom_cols, observed=False)["share"].transform("sum") if denom_cols else ndata["share"].sum()
+    ndata["share"] = ndata["share"] / (totals if denom_cols else totals or 1)
+
+    # Stack order follows the facet's category order; y0/y1 computed manually since the geometry
+    # below needs explicit rects rather than an ordinal band stack
+    order = f0.order or sorted(ndata[f0.col].dropna().unique())
+    ldict = {category: idx for idx, category in enumerate(order)}
+    ndata["f_order"] = ndata[f0.col].astype("object").map(ldict).fillna(len(ldict)).astype("int")
+    ndata = ndata.sort_values(p.outer_factors + [xcol, "f_order"], kind="stable")
+    grp = ndata.groupby(p.outer_factors + [xcol], observed=False)
+    ndata["y1"] = grp["share"].cumsum()
+    ndata["y0"] = ndata["y1"] - ndata["share"]
+    ndata["total"] = grp["share"].transform("sum")
+
+    # Height cap at max_height_ratio x the average column total; the overflow goes into width so
+    # area stays proportional to share. Widths are then renormalized per panel to a constant total,
+    # keeping panels of one facet grid the same width.
+    n_ranks = max(len(labels), 1)
+    cap = max_height_ratio / n_ranks if max_height_ratio else None
+    if cap:
+        squeeze = np.minimum(1.0, cap / ndata["total"].where(ndata["total"] > 0, 1))
+        ndata[["y0", "y1"]] = ndata[["y0", "y1"]].mul(squeeze, axis=0)
+        ndata["w"] = np.maximum(1.0, ndata["total"] / cap)
+    else:
+        ndata["w"] = 1.0
+
+    # Centered layout: offset each column by half its (post-squeeze) height so it grows symmetrically
+    # about the midline instead of up from a baseline
+    if center:
+        half = ndata.groupby(p.outer_factors + [xcol], observed=False)["y1"].transform("max") / 2
+        ndata[["y0", "y1"]] = ndata[["y0", "y1"]].sub(half, axis=0)
+
+    # Cumulative edge-to-edge x layout per panel: normalize each panel's widths to a constant total
+    # (n_ranks) so the facet grid stays aligned, then lay columns out by cumulative sum
+    pg = list(p.outer_factors)
+    cols = ndata.drop_duplicates(pg + [xcol])[pg + [xcol, "w"]].copy()
+    wsum = cols.groupby(pg, observed=False)["w"].transform("sum") if pg else cols["w"].sum()
+    cols["w"] = cols["w"] * n_ranks / wsum
+    cols["x1"] = cols.groupby(pg, observed=False)["w"].cumsum() if pg else cols["w"].cumsum()
+    cols["x0"] = cols["x1"] - cols["w"]
+    ndata = ndata.merge(cols[pg + [xcol, "x0", "x1"]], on=pg + [xcol], how="left")
+    ndata["xc"] = (ndata["x0"] + ndata["x1"]) / 2
+
+    # p.tooltip already carries the facet labels/translations; only the derived fields are new
+    tooltip = [t for t in p.tooltip if getattr(t, "field", None) != p.value_col] + [
+        alt.Tooltip(field=xcol, type="nominal"),
+        alt.Tooltip("share:Q", format=".1%", title="share"),
+        alt.Tooltip("total:Q", format=".1%", title="column total"),
+    ]
+
+    # The cap is by construction the tallest column, so pin the domain to it exactly instead of
+    # letting Vega round it up - otherwise every panel carries dead space above its tallest column
+    # Pin the domain to the tallest column (at most the cap) - Vega would round it up and leave
+    # dead space above every panel, and a cap nothing reaches would leave even more
+    y_top = (
+        min(cap, float(ndata.groupby(p.outer_factors + [xcol], observed=True)["share"].sum().max())) if cap else None
+    )
+    y_domain = ([-y_top / 2, y_top / 2] if center else [0, y_top]) if y_top else None
+    y_scale = alt.Scale(domain=y_domain, nice=False, clamp=True) if y_domain else alt.Undefined
+    # Centered columns run negative below the midline; label them by distance from it
+    y_axis = alt.Axis(format=".0%", labelExpr="format(abs(datum.value), '.0%')" if center else alt.Undefined)
+    y_floor = y_domain[0] if y_domain else float(ndata["y0"].min())
+
+    base = alt.Chart(ndata)
+    bars = base.mark_rect(stroke="white", strokeWidth=0.5).encode(
+        x=alt.X("x0:Q", title=xcol, axis=None, scale=alt.Scale(domain=[0, n_ranks], nice=False)),
+        x2=alt.X2("x1:Q"),
+        y=alt.Y("y0:Q", title=None, axis=y_axis, scale=y_scale),
+        y2=alt.Y2("y1:Q"),
+        color=alt.Color(
+            field=f0.col,
+            type="nominal",
+            scale=f0.colors,
+            sort=f0.order,
+            legend=alt.Legend(
+                orient="top",
+                columns=estimate_legend_columns_horiz(f0.order, p.width),
+            ),
+        ),
+        tooltip=tooltip,
+    )
+    layers = []
+
+    # Group separators: drawn at the trailing edge of each group's last column, so they follow the
+    # per-panel widths. Styled and layered as vertical grid lines (below the bars, axis grid color).
+    # Filtering the plot's own frame (rather than layering a second dataset) keeps the lines inside
+    # the facet operator, which only partitions the top-level data.
+    if split_groups > 1:
+        edges = [round(k * n_ranks / split_groups) - 1 for k in range(1, split_groups)]
+        blabels = [labels[i] for i in edges if 0 <= i < n_ranks - 1]
+        if blabels:
+            layers.append(
+                base.transform_filter(alt.datum.f_order == 0)
+                .transform_filter(alt.FieldOneOfPredicate(field=xcol, oneOf=blabels))
+                .mark_rule(color="#ddd", strokeWidth=1)
+                # Same x scale/axis as the bars: as the first layer it drives axis resolution, and
+                # a bare quantitative x here makes Vega-Lite fail to build the layer group's axes
+                .encode(x=alt.X("x1:Q", axis=None, scale=alt.Scale(domain=[0, n_ranks], nice=False)))
+            )
+
+    layers.append(bars)
+
+    # Rank labels under the baseline (the quantitative x axis is hidden; centers vary per panel)
+    layers.append(
+        base.transform_filter(alt.datum.f_order == 0)
+        .mark_text(baseline="top", dy=3, fontSize=9, color="#666", clip=False)
+        .encode(x=alt.X("xc:Q"), y=alt.datum(y_floor), text=alt.Text(f"{xcol}:N"))
+    )
+    return alt.layer(*layers)
 
 
 @stk_plot(

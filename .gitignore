@@ -161,3 +161,6 @@ data/
 tests/reference_plots/diff_html
 !.cursor/skills/**/*.json
 !.cursor/skills/**/*.csv
+
+# Local git worktrees (CLAUDE.md puts them in <repo>/.worktrees)
+.worktrees/

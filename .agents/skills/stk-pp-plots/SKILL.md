@@ -61,6 +61,7 @@ All entries come from `salk_toolkit/plots.py` via `@stk_plot(...)`. The `data_fo
 | `lines_hdi` / `line_hdi` | longform | 1–2 | continuous | as above with posterior HDI ribbons — requires draws |
 | `area_smooth` | longform | 1–2 | continuous | stacked smooth areas |
 | `maxdiff` | longform | 1–2 | maxdiff block | columns of best-minus-worst scores; ships `transform_fn="ordered-topbot1"` + `agg_fn="posneg_mean"` by default |
+| `rank_columns` | longform | up to 3 (1 stacked, rest outer grid) | continuous or ordered block (model scores) | per-rank stacked distribution, area-proportional height cap; ships `transform_fn="ordered-avgrank"` + `convert_res="categorical"` + `agg_fn="sum"`, so a bare descriptor works; draws the best rank first (axis only - `sort` still reads the unreversed scale); args: `max_height_ratio`, `split_groups`, `center` |
 | `barbell` | longform | 2 | categorical or likert | two-point barbell — good for before/after, variant A/B |
 | `facet_dist` | raw | — | mixture of columns | facet grid of distributions |
 | `ordered_population` | raw | — | ordered categorical | population pyramid for ordered categories |
@@ -152,7 +153,7 @@ A to-be-binned response counts as **categorical** for both plot matching and fac
  "convert_res": "categorical", "cont_transform": "ordered-avgrank"}
 ```
 
-A plot can register `convert_res` (with `transform_fn` / `agg_fn`) so a bare descriptor gets this shape by default; the descriptor still wins. Sorting a facet on such a distribution orders by the share-weighted mean of the category scale — for ranks, the mean rank — not the near-constant mean of the shares. Shares under `agg_fn="mean"`, weighted counts under `"sum"`. Only expressible on a longform plot: a raw-format or `stats` descriptor raises instead of silently returning untransformed values.
+A plot can register `convert_res` (with `transform_fn` / `agg_fn`) so a bare descriptor gets this shape by default — `rank_columns` does, and draws the resulting rank axis; the descriptor still wins. Sorting a facet on such a distribution orders by the share-weighted mean of the category scale — for ranks, the mean rank — not the near-constant mean of the shares. Shares under `agg_fn="mean"`, weighted counts under `"sum"`. Only expressible on a longform plot: a raw-format or `stats` descriptor raises instead of silently returning untransformed values.
 
 ### `cont_transform`
 
