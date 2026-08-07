@@ -399,13 +399,14 @@ def pp_transform_data(
                 if c in draws_data:
                     uid, ndraws = draws_data[c]
                     if (uid, ndraws) not in ddf_cache:
-                        total_n = get_total_n()
-                        draws = utils.stable_draws(total_n, ndraws, uid)
-                        ddf_cache[(uid, ndraws)] = pl.DataFrame(
-                            {"draw": draws, "question": c, "id": np.arange(0, total_n)}
+                        ddf_cache[(uid, ndraws)] = utils.stable_draws(get_total_n(), ndraws, uid)
+                    # Cache the draws, not the frame: questions sharing (uid, ndraws) each need
+                    # their own question label, else the post-unpivot join multiplies rows
+                    draw_dfs.append(
+                        pl.DataFrame(
+                            {"draw": ddf_cache[(uid, ndraws)], "question": c, "id": np.arange(0, get_total_n())}
                         )
-                    ddf = ddf_cache[(uid, ndraws)]
-                    draw_dfs.append(ddf)
+                    )
 
             # If all draws are identical (very common), one pre-melt merge beats merging per question
             if len(ddf_cache) == 1 and len(draw_dfs) == len(value_vars):
