@@ -141,6 +141,12 @@
       "n_facets"
     ]
   ],
+  "rank_columns": [
+    -1000000,
+    [
+      "continuous_only"
+    ]
+  ],
   "stacked_columns": [
     -1000000,
     [

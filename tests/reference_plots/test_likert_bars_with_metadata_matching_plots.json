@@ -136,6 +136,12 @@
       "electoral_system"
     ]
   ],
+  "rank_columns": [
+    -1000000,
+    [
+      "continuous_only"
+    ]
+  ],
   "stacked_columns": [
     60,
     []

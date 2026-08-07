@@ -14,7 +14,7 @@ import pytest
 
 from salk_toolkit.election_models import mandate_plot
 from salk_toolkit.io import read_json, read_parquet_with_metadata
-from salk_toolkit.pp import AltairChart, FacetMeta, e2e_plot, matching_plots, PlotInput
+from salk_toolkit.pp import AltairChart, FacetMeta, e2e_plot, get_plot_fn, matching_plots, PlotInput
 from salk_toolkit.validation import (
     ColumnMeta,
     DataMeta,
@@ -334,6 +334,88 @@ class TestPlots:
             "filter": {},
         }
         self._run_plot_test("test_stacked_columns", config, recompute=recompute)
+
+    def test_rank_columns(self, recompute):
+        """Test rank_columns: per-question rank distribution stacked by party."""
+        config = {
+            "res_col": "thermometer",
+            "facet_dims": ["party_preference", "question"],
+            "internal_facet": True,
+            "plot": "rank_columns",
+            "plot_args": {},
+            "filter": {},
+        }
+        self._run_plot_test("test_rank_columns", config, recompute=recompute)
+
+    def test_rank_columns_draws_the_best_rank_first(self) -> None:
+        """The axis is reversed at draw time; the value scale - and so `sort` - keeps its direction."""
+        config = {
+            "res_col": "thermometer",
+            "facet_dims": ["party_preference", "question"],
+            "internal_facet": True,
+            "plot": "rank_columns",
+            "sort": {"question": True},
+            "filter": {},
+        }
+        from salk_toolkit.pp import create_plot, pp_transform_data
+
+        ldf, full_meta = read_parquet_with_metadata(str(self.data_file), lazy=True)
+        assert full_meta is not None and full_meta.data is not None
+        ppd = soft_validate(config, PlotDescriptor)
+        pi = create_plot(pp_transform_data(ldf, full_meta.data, ppd), ppd, dry_run=True, width=400)
+        assert isinstance(pi, PlotInput) and pi.cat_col is not None
+        aggregated = list(pi.data[pi.cat_col].cat.categories)
+        chart = get_plot_fn("rank_columns")(pi)
+        df = chart.data if isinstance(chart.data, pd.DataFrame) else chart.layer[0].data
+        assert isinstance(df, pd.DataFrame)
+
+        # Highest rank leftmost, i.e. the aggregate's order read backwards
+        drawn = list(df.sort_values("x0").drop_duplicates(pi.cat_col)[pi.cat_col].astype(str))
+        assert drawn == [str(c) for c in reversed(aggregated)]
+        # ... while the facet sort still reads the unreversed scale: ascending mean rank
+        means = (
+            pi.data.assign(v=pi.data[pi.cat_col].astype(float) * pi.data[pi.value_col])
+            .groupby("question", observed=True)["v"]
+            .sum()
+        )
+        assert list(means.index) == list(means.sort_values().index)
+
+    @pytest.mark.parametrize(
+        "plot_args",
+        [{}, {"center": True, "split_groups": 3}, {"max_height_ratio": 0}],
+    )
+    def test_rank_columns_geometry(self, plot_args) -> None:
+        """Area stays proportional to share, widths tile the panel, and heights respect the cap."""
+        config = {
+            "res_col": "thermometer",
+            "facet_dims": ["party_preference", "question"],
+            "internal_facet": True,
+            "plot": "rank_columns",
+            "filter": {},
+        }
+        from salk_toolkit.pp import create_plot, pp_transform_data
+
+        ldf, full_meta = read_parquet_with_metadata(str(self.data_file), lazy=True)
+        assert full_meta is not None and full_meta.data is not None
+        ppd = soft_validate(config, PlotDescriptor)
+        pi = create_plot(pp_transform_data(ldf, full_meta.data, ppd), ppd, dry_run=True, width=400)
+        assert isinstance(pi, PlotInput)
+        chart = get_plot_fn("rank_columns")(pi, **plot_args)
+        df = chart.data if isinstance(chart.data, pd.DataFrame) else chart.layer[0].data
+        assert isinstance(df, pd.DataFrame) and pi.cat_col is not None
+        n_ranks = df[pi.cat_col].nunique()
+
+        for _, panel in df.groupby(pi.outer_factors, observed=True):
+            widths = panel.drop_duplicates(pi.cat_col)
+            assert widths["x1"].max() == pytest.approx(n_ranks)  # widths tile the panel exactly
+            areas = (panel["y1"] - panel["y0"]) * (panel["x1"] - panel["x0"])
+            ratios = (areas / panel["share"])[panel["share"] > 1e-12]
+            assert ratios.std() == pytest.approx(0, abs=1e-9)  # area proportional to share
+            if plot_args.get("max_height_ratio") == 0:
+                assert widths["x1"].sub(widths["x0"]).std() == pytest.approx(0, abs=1e-9)  # uniform
+            else:
+                cap = 2.0 / n_ranks
+                assert panel["y1"].max() <= cap + 1e-9  # height capped, overflow went to width
 
     def test_diff_columns(self, recompute):
         """Test difference column plots."""

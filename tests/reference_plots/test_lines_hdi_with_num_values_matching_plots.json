@@ -124,6 +124,10 @@
       "electoral_system"
     ]
   ],
+  "rank_columns": [
+    10,
+    []
+  ],
   "stacked_columns": [
     40,
     []
