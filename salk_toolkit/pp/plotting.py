@@ -441,6 +441,13 @@ def create_plot(
         if return_matrix_of_plots:
             plot = [[plot]]
 
+    if hasattr(plot, "to_dict") and hasattr(plot_fn, "_stk_style"):
+        for style_name in getattr(plot_fn, "_stk_style", []):
+            s_dict = utils.get_style(style_name)
+            if s_dict:
+                merged = utils.recursive_dict_merge(plot.to_dict(), s_dict)
+                plot = type(plot).from_dict(merged)
+
     return plot
 
 

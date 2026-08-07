@@ -558,6 +558,20 @@ class TestPlots:
         }
         self._run_plot_test("test_lines_date", config, recompute=recompute)
 
+    def test_lines_single_facet_has_no_color_encoding(self) -> None:
+        """Single facet dim = no `fy` (color) split; the dict-spec build must omit `color`, not send a null field."""
+        config = {"res_col": "wave", "facet_dims": ["td"], "plot": "lines", "filter": {}}
+        from salk_toolkit.pp import create_plot, pp_transform_data
+
+        ldf, full_meta = read_parquet_with_metadata(str(self.data_file), lazy=True)
+        assert full_meta is not None and full_meta.data is not None
+        ppd = soft_validate(config, PlotDescriptor)
+        pi = create_plot(pp_transform_data(ldf, full_meta.data, ppd), ppd, dry_run=True, width=400)
+        assert isinstance(pi, PlotInput) and len(pi.facets) == 1
+        chart = get_plot_fn("lines")(pi)
+        assert "color" not in chart.to_dict()["layer"][0]["encoding"]
+        assert chart.to_dict(validate=True)  # would raise if a null-field color spec slipped through
+
     def test_lines_hdi_basic(self, recompute):
         """Test HDI line plot."""
         config = {

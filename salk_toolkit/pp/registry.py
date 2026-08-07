@@ -87,6 +87,18 @@ def _ensure_plot_args_sync(func: Callable[..., Any], decorator_kwargs: Dict[str,
         )
 
 
+def style(style_name: str) -> Callable[[Callable[..., object]], Callable[..., object]]:
+    """Decorator to attach a style configuration to a plot function."""
+
+    def _decorator(gfunc: Callable[..., object]) -> Callable[..., object]:
+        if not hasattr(gfunc, "_stk_style"):
+            gfunc._stk_style = []  # type: ignore[attr-defined]
+        gfunc._stk_style.append(style_name)  # type: ignore[attr-defined]
+        return gfunc
+
+    return _decorator
+
+
 def stk_plot(plot_name: str, **r_kwargs: object) -> Callable[[Callable[..., object]], Callable[..., object]]:
     """Register a plotting function inside the global plot registry."""
 

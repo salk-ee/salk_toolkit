@@ -42,6 +42,7 @@ from .registry import (
     registry as registry,
     registry_meta as registry_meta,
     stk_plot as stk_plot,
+    style as style,
     get_plot_fn as get_plot_fn,
     get_plot_meta as get_plot_meta,
     _ensure_plot_registry_loaded as _ensure_plot_registry_loaded,
