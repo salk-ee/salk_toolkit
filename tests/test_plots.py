@@ -348,7 +348,7 @@ class TestPlots:
         self._run_plot_test("test_rank_columns", config, recompute=recompute)
 
     def test_rank_columns_draws_the_best_rank_first(self) -> None:
-        """The axis is reversed at draw time; the value scale - and so `sort` - keeps its direction."""
+        """Descending ranks: 1 = a respondent's top item, drawn leftmost; `sort` reads the same scale."""
         config = {
             "res_col": "thermometer",
             "facet_dims": ["party_preference", "question"],
@@ -369,10 +369,11 @@ class TestPlots:
         df = chart.data if isinstance(chart.data, pd.DataFrame) else chart.layer[0].data
         assert isinstance(df, pd.DataFrame)
 
-        # Highest rank leftmost, i.e. the aggregate's order read backwards
+        # Rank 1 (best) leftmost, in the aggregate's own order — no draw-time reversal
         drawn = list(df.sort_values("x0").drop_duplicates(pi.cat_col)[pi.cat_col].astype(str))
-        assert drawn == [str(c) for c in reversed(aggregated)]
-        # ... while the facet sort still reads the unreversed scale: ascending mean rank
+        assert drawn == [str(c) for c in aggregated]
+        assert drawn[0] == str(aggregated[0]) and str(aggregated[0]).startswith("1")
+        # ... while the facet sort reads the same scale: ascending mean rank = best first
         means = (
             pi.data.assign(v=pi.data[pi.cat_col].astype(float) * pi.data[pi.value_col])
             .groupby("question", observed=True)["v"]
