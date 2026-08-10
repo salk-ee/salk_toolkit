@@ -487,7 +487,7 @@ def stacked_columns(p: PlotInput, normalized: bool = False) -> AltairChart:
     draws=False,
     continuous=True,
     n_facets=(1, 1),
-    transform_fn="ordered-avgrank",
+    transform_fn="ordered-avgrank-desc",
     convert_res="categorical",
     agg_fn="sum",
     factor_columns=3,
@@ -501,8 +501,10 @@ def rank_columns(
 ) -> AltairChart:
     """Per-rank distribution as edge-to-edge columns stacked by the first facet, best rank first.
 
-    A column taller than ``max_height_ratio`` x the average widens instead of growing, so area stays
-    proportional to share and one dominant rank cannot flatten every panel on the shared scale.
+    Ranks come from ``ordered-avgrank-desc``, so rank 1 = a respondent's top item and the axis reads
+    1..n left to right. A column taller than ``max_height_ratio`` x the average widens instead of
+    growing, so area stays proportional to share and one dominant rank cannot flatten every panel on
+    the shared scale.
     """
 
     if not p.facets:
@@ -516,9 +518,8 @@ def rank_columns(
     f0 = p.facets[0]
     xcol = p.cat_col
 
-    # Draw the best rank first. Only the axis is reversed - the category scale keeps its own
-    # direction, so `sort` still orders facets by mean rank the way every other plot reads it.
-    labels = [str(c) for c in reversed(utils.get_categories(p.data[xcol].dtype))]
+    # Descending ranks already put the best rank (1) first, so the category order draws as-is.
+    labels = [str(c) for c in utils.get_categories(p.data[xcol].dtype)]
     data = p.data.assign(**{xcol: pd.Categorical(p.data[xcol], labels, ordered=True)})
 
     # Complete the (rank x stack) grid with explicit zeros, then normalize the weighted counts
