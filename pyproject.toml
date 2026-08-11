@@ -26,7 +26,6 @@ dependencies = [
   "authlib",
   "frontegg",
   "hsluv",
-  "ipywidgets",
   "kdepy",
   "libsql_client",
   "matplotlib",
@@ -50,7 +49,6 @@ dependencies = [
   "streamlit-dimensions",
   "streamlit-js",
   "streamlit_option_menu",
-  "streamlit_dimensions",
   "vl-convert-python",
 ]
 
