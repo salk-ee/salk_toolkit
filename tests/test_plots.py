@@ -511,6 +511,13 @@ class TestPlots:
             assert set(cell["data"]["gender"]) == {cell["keys"]["gender"]}
             assert not [v for col in cell["data"].values() for v in col if v is None or v != v]
 
+        # An outer category the frame has no rows for still gets a cell, and it comes back empty
+        pi = pp_transform_data(ldf, full_meta.data, ppd)
+        pi.data = pi.data[pi.data["gender"] != "Male"]  # "Male" stays in the dtype, so the cell remains
+        cells = [c for row in create_plot_payload(pi, ppd)["cells"] for c in row]
+        sizes = {c["keys"]["gender"]: len(next(iter(c["data"].values()), [])) for c in cells}
+        assert sizes["Male"] == 0 and sizes["Female"] > 0
+
     def test_diff_columns(self, recompute):
         """Test difference column plots."""
         config = {

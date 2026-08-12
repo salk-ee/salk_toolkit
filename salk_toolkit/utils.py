@@ -1000,6 +1000,10 @@ def gb_in_apply(
     else:
         # Convert to list for pandas groupby overload matching
         res = df.groupby(list(gb_cols), observed=True)[cols].apply(fn, **kwargs)  # type: ignore[call-overload]
+        # No groups means pandas never called fn and handed back the input's columns, group keys
+        # included - which then collide with the same names in the index on reset_index()
+        if df.empty:
+            res = res.drop(columns=[c for c in gb_cols if c in res.columns])
     return res
 
 
