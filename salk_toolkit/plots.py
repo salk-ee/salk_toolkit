@@ -527,7 +527,7 @@ def rank_columns(
     pg = list(p.outer_factors)  # panel keys
     ndata = data.groupby(pg + [xcol, f0.col], observed=True)[p.value_col].sum().rename("share").reset_index()
     totals = ndata.groupby(pg, observed=True)["share"].transform("sum") if pg else ndata["share"].sum()
-    live = ndata["share"] > 0  # a zero-weight row draws nothing, and a panel of them drops out with them
+    live = ndata["share"] != 0  # a zero-weight row draws nothing, and a panel of them drops out with them
     ndata = ndata[live].assign(share=ndata.loc[live, "share"] / (totals[live] if pg else totals))
 
     # Stack order follows the facet's category order; y0/y1 computed manually since the geometry
@@ -559,19 +559,22 @@ def rank_columns(
         half = ndata.groupby(p.outer_factors + [xcol], observed=True)["y1"].transform("max") / 2
         ndata[["y0", "y1"]] = ndata[["y0", "y1"]].sub(half, axis=0)
 
-    # Cumulative edge-to-edge x layout: widths normalized per panel to a constant total (n_ranks) so
-    # the facet grid stays aligned, and a rank with no rows still keeps an empty slot of unit width.
+    # Cumulative edge-to-edge x layout: every rank gets a slot, so each panel spans the same [0,
+    # n_ranks] domain in the same rank order; widths are then normalized per panel to that total.
     panels = ndata[pg].drop_duplicates() if pg else pd.DataFrame(index=[0])
-    cols = (
-        panels.merge(pd.DataFrame({xcol: pd.Categorical(labels, labels, ordered=True)}), how="cross")
-        .merge(ndata.drop_duplicates(pg + [xcol])[pg + [xcol, "w"]], on=pg + [xcol], how="left")
-        .fillna({"w": 1.0})
+    cols = panels.merge(pd.DataFrame({xcol: pd.Categorical(labels, labels, ordered=True)}), how="cross").merge(
+        ndata.drop_duplicates(pg + [xcol])[pg + [xcol, "w"]], on=pg + [xcol], how="left"
     )
+    empty = cols["w"].isna()  # ranks this panel has no rows for; they keep a slot of unit width
+    cols["w"] = cols["w"].fillna(1.0)
     wsum = cols.groupby(pg, observed=True)["w"].transform("sum") if pg else cols["w"].sum()
     cols["w"] = cols["w"] * n_ranks / wsum
     cols["x1"] = cols.groupby(pg, observed=True)["w"].cumsum() if pg else cols["w"].cumsum()
     cols["x0"] = cols["x1"] - cols["w"]
     ndata = ndata.merge(cols[pg + [xcol, "x0", "x1"]], on=pg + [xcol], how="left")
+    # The label and separator layers anchor on f_order == 0, so an empty slot needs one flat row
+    slots = cols.loc[empty, pg + [xcol, "x0", "x1"]].assign(share=0.0, y0=0.0, y1=0.0, total=0.0, f_order=0)
+    ndata = pd.concat([ndata, slots], ignore_index=True)
     ndata["xc"] = (ndata["x0"] + ndata["x1"]) / 2
 
     # p.tooltip already carries the facet labels/translations; only the derived fields are new
@@ -764,7 +767,7 @@ def make_start_end(
 ) -> pd.DataFrame:
     """Compute start/end positions for split likert bars."""
 
-    if len(x) == 0:  # empty phantom group (per-cell payload filters an outer facet to one value)
+    if len(x) == 0:  # unreachable from likert_bars, which groups observed-only; kept for direct callers
         return x
 
     if len(x) != len(cat_order):

@@ -32,7 +32,9 @@ rows, and `pivot_table` already ignores unobserved columns under pandas 3.
 draws nothing reaches the wire; a panel whose rows all carry zero weight disappears with them, as it
 did in #83. The rank axis is instead completed in the x layout: the cumulative layout cross-joins the
 observed panels with the full rank labels, so a rank no row falls into still reserves an empty slot of
-unit width and ranks stay aligned across panels.
+unit width and every panel spans the same `[0, n_ranks]` domain in the same rank order. (Widths are
+normalized per panel, so a given rank does not start at the same x in every panel — only the slot
+count, their order and the domain are shared.)
 
 ## Implementation notes
 
@@ -42,3 +44,7 @@ unit width and ranks stay aligned across panels.
   crash or a panel's worth of nulls. `payload.py` still enumerates cells from the dtype categories.
 - **The x-slot reservation is what keeps the old geometry.** Regenerating `test_rank_columns.json`
   removes 924 lines and adds none: every surviving row, `x0`/`x1` included, is unchanged.
+- **An empty slot still carries one flat row.** The rank-label and group-separator layers filter the
+  plot's own frame on `f_order == 0`, so a slot with no rows would otherwise lose its label and its
+  separator. One zero row per empty slot restores both — at most `n_ranks` per panel, not the
+  `n_ranks x n_stack` the old completion added.

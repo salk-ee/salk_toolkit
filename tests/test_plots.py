@@ -449,10 +449,10 @@ class TestPlots:
             assert 0 < len(cell["data"]["share"]) <= n_ranks * n_stack
             # ...and no all-null rows left behind by the grid completion (share was 0/0)
             assert all(v is not None for v in cell["data"]["share"])
-            assert all(v > 0 for v in cell["data"]["share"])  # nor any zero-height rect
+            assert all(v > 0 for v in cell["data"]["share"])  # every panel here fills every slot
 
     def test_rank_columns_missing_rank_keeps_its_slot(self) -> None:
-        """A rank no row falls into still reserves its width, so ranks line up across panels."""
+        """A rank no row falls into keeps its slot and its label, so the rank axis stays intact."""
         config = {
             "res_col": "thermometer",
             "facet_dims": ["party_preference", "question"],
@@ -473,10 +473,15 @@ class TestPlots:
             get_plot_fn("rank_columns")(pi.model_copy(update={"data": holed}), max_height_ratio=0),
         ]
         full_df, holed_df = [c.data if isinstance(c.data, pd.DataFrame) else c.layer[0].data for c in charts]
+        assert isinstance(full_df, pd.DataFrame) and isinstance(holed_df, pd.DataFrame)
 
         slots = lambda df, q: df[df["question"] == q].drop_duplicates(pi.cat_col).set_index(pi.cat_col)["x0"]
-        assert rank not in slots(holed_df, panel).index  # the hole is not zero-filled back in
-        assert slots(holed_df, panel).to_dict() == pytest.approx(slots(full_df, panel).drop(rank).to_dict())
+        assert slots(holed_df, panel).to_dict() == pytest.approx(slots(full_df, panel).to_dict())
+        holed_panel = holed_df[holed_df["question"] == panel]
+        assert (holed_panel[pi.cat_col] == rank).sum() == 1  # the hole is one flat row, not a stack
+        assert holed_panel.loc[holed_panel[pi.cat_col] == rank, "share"].eq(0).all()
+        # the rank label layer anchors on f_order == 0, so every rank must still have such a row
+        assert set(holed_panel[holed_panel["f_order"] == 0][pi.cat_col]) == set(full_df[pi.cat_col])
 
     @pytest.mark.parametrize(
         "plot,facet_dims",
