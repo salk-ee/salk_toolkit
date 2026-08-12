@@ -522,24 +522,14 @@ def rank_columns(
     labels = [str(c) for c in utils.get_categories(p.data[xcol].dtype)]
     data = p.data.assign(**{xcol: pd.Categorical(p.data[xcol], labels, ordered=True)})
 
-    # Complete the (rank x stack) grid with explicit zeros, then normalize the weighted counts.
-    # The completion is meant to be *within* a panel, but `observed=False` spans every key it is
-    # given, so it also reinstates outer-factor levels the frame carries no rows for. On a frame
-    # already narrowed to one panel - which is exactly how `create_plot_payload` builds a payload,
-    # cell by cell - those are pure noise, and they land on the wire: an 18-topic maxdiff x 13
-    # parties shipped 4212 rows per cell where 234 were the cell's own. So drop the panels that
-    # carry no weight. Panels that do carry weight are untouched, hence so is the faceted
-    # (single-frame) path, where every panel has weight by construction.
+    # Weighted counts per (rank x stack), normalized within each panel. Empty combinations are left
+    # out rather than zero-filled - the rank axis is completed per panel in the layout below, and
+    # zero-filling here would also resurrect outer-factor panels the frame has no rows for at all.
     gcols = p.outer_factors + [xcol, f0.col]
-    ndata = data.groupby(gcols, observed=False)[p.value_col].sum().rename("share").reset_index()
+    ndata = data.groupby(gcols, observed=True)[p.value_col].sum().rename("share").reset_index()
     denom_cols = list(p.outer_factors)
-    if denom_cols:
-        totals = ndata.groupby(denom_cols, observed=False)["share"].transform("sum")
-        live = totals > 0
-        ndata, totals = ndata.loc[live].copy(), totals[live]
-    else:
-        totals = ndata["share"].sum() or 1
-    ndata["share"] = ndata["share"] / totals
+    totals = ndata.groupby(denom_cols, observed=True)["share"].transform("sum") if denom_cols else ndata["share"].sum()
+    ndata["share"] = ndata["share"] / np.where(np.asarray(totals) > 0, totals, 1)  # zero-weight panel stays zero
 
     # Stack order follows the facet's category order; y0/y1 computed manually since the geometry
     # below needs explicit rects rather than an ordinal band stack
@@ -547,7 +537,7 @@ def rank_columns(
     ldict = {category: idx for idx, category in enumerate(order)}
     ndata["f_order"] = ndata[f0.col].astype("object").map(ldict).fillna(len(ldict)).astype("int")
     ndata = ndata.sort_values(p.outer_factors + [xcol, "f_order"], kind="stable")
-    grp = ndata.groupby(p.outer_factors + [xcol], observed=False)
+    grp = ndata.groupby(p.outer_factors + [xcol], observed=True)
     ndata["y1"] = grp["share"].cumsum()
     ndata["y0"] = ndata["y1"] - ndata["share"]
     ndata["total"] = grp["share"].transform("sum")
@@ -567,16 +557,20 @@ def rank_columns(
     # Centered layout: offset each column by half its (post-squeeze) height so it grows symmetrically
     # about the midline instead of up from a baseline
     if center:
-        half = ndata.groupby(p.outer_factors + [xcol], observed=False)["y1"].transform("max") / 2
+        half = ndata.groupby(p.outer_factors + [xcol], observed=True)["y1"].transform("max") / 2
         ndata[["y0", "y1"]] = ndata[["y0", "y1"]].sub(half, axis=0)
 
     # Cumulative edge-to-edge x layout per panel: normalize each panel's widths to a constant total
-    # (n_ranks) so the facet grid stays aligned, then lay columns out by cumulative sum
+    # (n_ranks) so the facet grid stays aligned, then lay columns out by cumulative sum. Every rank
+    # keeps its slot, including ones the panel has no rows for, so ranks line up across panels.
     pg = list(p.outer_factors)
-    cols = ndata.drop_duplicates(pg + [xcol])[pg + [xcol, "w"]].copy()
-    wsum = cols.groupby(pg, observed=False)["w"].transform("sum") if pg else cols["w"].sum()
+    panels = ndata[pg].drop_duplicates() if pg else pd.DataFrame(index=[0])
+    cols = panels.merge(pd.DataFrame({xcol: pd.Categorical(labels, labels, ordered=True)}), how="cross")
+    cols = cols.merge(ndata.drop_duplicates(pg + [xcol])[pg + [xcol, "w"]], on=pg + [xcol], how="left")
+    cols["w"] = cols["w"].fillna(1.0)
+    wsum = cols.groupby(pg, observed=True)["w"].transform("sum") if pg else cols["w"].sum()
     cols["w"] = cols["w"] * n_ranks / wsum
-    cols["x1"] = cols.groupby(pg, observed=False)["w"].cumsum() if pg else cols["w"].cumsum()
+    cols["x1"] = cols.groupby(pg, observed=True)["w"].cumsum() if pg else cols["w"].cumsum()
     cols["x0"] = cols["x1"] - cols["w"]
     ndata = ndata.merge(cols[pg + [xcol, "x0", "x1"]], on=pg + [xcol], how="left")
     ndata["xc"] = (ndata["x0"] + ndata["x1"]) / 2
@@ -845,7 +839,7 @@ def likert_bars(
     ninds = [f0.order.index(c) for c in neutral]
 
     gb_cols = p.outer_factors + [facet.col for facet in facets[1:]]
-    bar_data = data.groupby(gb_cols, group_keys=False, observed=False)[data.columns].apply(
+    bar_data = data.groupby(gb_cols, group_keys=False, observed=True)[data.columns].apply(
         make_start_end,
         value_col=p.value_col,
         cat_col=f0.col,
@@ -968,8 +962,6 @@ def density(
     ls = np.linspace(np.nextafter(vmin, -np.inf), np.nextafter(vmax, np.inf), 101)
     if bw is None:
         bw = kde_bw(data[[p.value_col]])
-    # observed=True: on the payload/matrix-of-plots per-cell frames, observed=False would
-    # manufacture a phantom zero-density curve per unobserved outer-facet category
     ndata = utils.gb_in_apply(
         data,
         gb_cols,
@@ -979,7 +971,6 @@ def density(
         ls=ls,
         scale=stacked,
         bw=bw,
-        observed=True,
     ).reset_index()
     _clean_levels(ndata)
 
@@ -1274,7 +1265,7 @@ def corr_matrix(
 
     # id is required to match the rows for correllations
     cm = (
-        data.pivot_table(index="id", columns=p.facets[0].col, values=p.value_col, observed=False)
+        data.pivot_table(index="id", columns=p.facets[0].col, values=p.value_col, observed=True)
         .corr()
         .reset_index(names="index")
     )
@@ -2504,7 +2495,7 @@ def marimekko(
 
     if separate:  # Split and center each ycol group so dynamics can be better tracked for all of them
         ndata = (
-            data.groupby(outer_cols + [xcol], observed=False)[[ycol, p.value_col, "w"]]
+            data.groupby(outer_cols + [xcol], observed=True)[[ycol, p.value_col, "w"]]
             .apply(lambda df: pd.DataFrame({ycol: df[ycol], "yv": df["w"] / df["w"].sum(), "w": df["w"]}))
             .reset_index()
         )
@@ -2513,7 +2504,7 @@ def marimekko(
             on=outer_cols + [ycol],
         ).fillna({"ym": 0.0})
         ndata = (
-            ndata.groupby(outer_cols + [xcol], observed=False)[[ycol, "w", "yv", "ym"]]
+            ndata.groupby(outer_cols + [xcol], observed=True)[[ycol, "w", "yv", "ym"]]
             .apply(
                 lambda df: pd.DataFrame(
                     {
@@ -2529,7 +2520,7 @@ def marimekko(
         )
     else:  # Regular marimekko
         ndata = (
-            data.groupby(outer_cols + [xcol], observed=False)[[ycol, p.value_col, "w"]]
+            data.groupby(outer_cols + [xcol], observed=True)[[ycol, p.value_col, "w"]]
             .apply(
                 lambda df: pd.DataFrame(
                     {
@@ -2545,7 +2536,7 @@ def marimekko(
         ndata["y1"] = ndata["y2"] - ndata["yv"]
 
     ndata = (
-        ndata.groupby(outer_cols + [ycol], observed=False)[[xcol, "yv", "y1", "y2", "w"]]
+        ndata.groupby(outer_cols + [ycol], observed=True)[[xcol, "yv", "y1", "y2", "w"]]
         .apply(
             lambda df: pd.DataFrame(
                 {

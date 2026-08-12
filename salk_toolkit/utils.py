@@ -953,7 +953,7 @@ def gb_in(df: pd.DataFrame, gb_cols: Sequence[str]) -> DataFrameGroupBy | pd.Dat
     """Return ``df.groupby`` when ``gb_cols`` not empty; otherwise return ``df``."""
 
     # Convert to list for pandas groupby overload matching
-    return df.groupby(list(gb_cols), observed=False) if len(gb_cols) > 0 else df  # type: ignore[call-overload]
+    return df.groupby(list(gb_cols), observed=True) if len(gb_cols) > 0 else df  # type: ignore[call-overload]
 
 
 def gb_in_apply(
@@ -961,13 +961,9 @@ def gb_in_apply(
     gb_cols: Sequence[str],
     fn: Callable[..., pd.DataFrame | pd.Series],
     cols: Sequence[str] | None = None,
-    observed: bool = False,
     **kwargs: object,
 ) -> pd.DataFrame:
-    """Groupby apply if needed - similar to gb_in but for apply.
-
-    ``observed=True`` restricts groups to category combinations actually present in ``df``.
-    """
+    """Groupby apply if needed - similar to gb_in but for apply."""
 
     if cols is None:
         cols = list(df.columns)
@@ -977,7 +973,7 @@ def gb_in_apply(
             res = pd.DataFrame(res).T
     else:
         # Convert to list for pandas groupby overload matching
-        res = df.groupby(list(gb_cols), observed=observed)[cols].apply(fn, **kwargs)  # type: ignore[call-overload]
+        res = df.groupby(list(gb_cols), observed=True)[cols].apply(fn, **kwargs)  # type: ignore[call-overload]
     return res
 
 

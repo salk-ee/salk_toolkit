@@ -41,9 +41,9 @@ third); `center=True` grows columns symmetrically about a midline for a streamgr
   need it, so the rank labels are a text layer at each column's true centre rather than axis ticks.
 - **The separator and label layers filter the plot's own frame.** The facet operator partitions only
   top-level data, so a separate frame would repeat identically in every panel.
-- **The grid is completed with `observed=False`** before the geometry runs: a rank absent from one
-  panel still occupies its slot, or the cumulative x layout would shift that panel out of alignment
-  with its neighbours.
+- **Only the x layout is completed, not the data.** A rank absent from one panel still gets its width
+  slot, or the cumulative x layout would shift that panel out of alignment with its neighbours; the
+  aggregation itself groups with `observed=True`, so no zero-height rects reach the wire.
 - **Tests assert invariants, not pinned pixels** — area proportional to share, widths tiling the
   panel, heights within the cap — which catches a 2% error in the squeeze that a chart fixture at the
   usual tolerance passes.
