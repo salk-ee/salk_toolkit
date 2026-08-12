@@ -353,15 +353,6 @@ def test_payload_likert_bars_smoke(likert_cell_pi_and_ppd):
     assert len(pl["facets"][0]["neutrals"]) > 0
 
 
-def test_make_start_end_empty_group_returns_empty():
-    """Empty phantom groups (per-cell payload filters an outer facet) return empty, not IndexError."""
-
-    cats = ["a", "b", "c"]
-    empty = pd.DataFrame({"cat": pd.Categorical([], categories=cats, ordered=True), "val": []})
-    out = stk_plots.make_start_end(empty, value_col="val", cat_col="cat", cat_order=cats, neutral=[1], n_negative=1)
-    assert len(out) == 0
-
-
 def test_payload_likert_bars_faceted_no_crash():
     """likert_bars with an OUTER facet: per-cell filtering used to crash make_start_end (IndexError)."""
 

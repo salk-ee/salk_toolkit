@@ -23,6 +23,7 @@ __all__ = [
     "call_kwsafe",
     "censor_dict",
     "clean_kwargs",
+    "complete_grid",
     "continify",
     "cut_nice",
     "cut_nice_labels",
@@ -73,6 +74,7 @@ __all__ = [
     "recursive_dict_merge",
 ]
 
+import itertools as it
 import json
 import re
 import warnings
@@ -949,11 +951,35 @@ def gb_cols_with_tooltip_fields(
     return out
 
 
+def complete_grid(
+    df: pd.DataFrame,
+    levels: Mapping[str, Sequence[Any]],
+    keys: Sequence[str] = (),
+    fill: Mapping[str, Any] | None = None,
+) -> pd.DataFrame:
+    """Left-join ``df`` onto every combination of ``levels``, within each combination of ``keys`` it observes.
+
+    ``keys`` are taken as observed, so no panel the frame has no rows for is invented. Rows the join
+    does not match keep NaN unless ``fill`` names a value for the column.
+    """
+
+    grid = pd.DataFrame(it.product(*levels.values()), columns=list(levels))
+    if len(keys):
+        grid = df[list(keys)].drop_duplicates().merge(grid, how="cross")
+    out = grid.merge(df, on=list(levels) + list(keys), how="left")
+    if fill:
+        out = out.fillna(dict(fill))
+    # Ordered categoricals, so that a sort or groupby downstream follows the given order, not the merge's
+    for col, lvls in levels.items():
+        out[col] = pd.Categorical(out[col], list(lvls), ordered=True)
+    return out
+
+
 def gb_in(df: pd.DataFrame, gb_cols: Sequence[str]) -> DataFrameGroupBy | pd.DataFrame:
     """Return ``df.groupby`` when ``gb_cols`` not empty; otherwise return ``df``."""
 
     # Convert to list for pandas groupby overload matching
-    return df.groupby(list(gb_cols), observed=False) if len(gb_cols) > 0 else df  # type: ignore[call-overload]
+    return df.groupby(list(gb_cols), observed=True) if len(gb_cols) > 0 else df  # type: ignore[call-overload]
 
 
 def gb_in_apply(
@@ -961,13 +987,9 @@ def gb_in_apply(
     gb_cols: Sequence[str],
     fn: Callable[..., pd.DataFrame | pd.Series],
     cols: Sequence[str] | None = None,
-    observed: bool = False,
     **kwargs: object,
 ) -> pd.DataFrame:
-    """Groupby apply if needed - similar to gb_in but for apply.
-
-    ``observed=True`` restricts groups to category combinations actually present in ``df``.
-    """
+    """Groupby apply if needed - similar to gb_in but for apply."""
 
     if cols is None:
         cols = list(df.columns)
@@ -977,7 +999,11 @@ def gb_in_apply(
             res = pd.DataFrame(res).T
     else:
         # Convert to list for pandas groupby overload matching
-        res = df.groupby(list(gb_cols), observed=observed)[cols].apply(fn, **kwargs)  # type: ignore[call-overload]
+        res = df.groupby(list(gb_cols), observed=True)[cols].apply(fn, **kwargs)  # type: ignore[call-overload]
+        # No groups means pandas never called fn and handed back the input's columns, group keys
+        # included - which then collide with the same names in the index on reset_index()
+        if df.empty:
+            res = res.drop(columns=[c for c in gb_cols if c in res.columns])
     return res
 
 

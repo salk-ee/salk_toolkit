@@ -42,6 +42,7 @@ from salk_toolkit.utils import (
     merge_series,
     aggregate_multiselect,
     deaggregate_multiselect,
+    complete_grid,
     gb_in,
     gb_in_apply,
     gb_cols_with_tooltip_fields,
@@ -600,6 +601,23 @@ class TestHelperFunctions:
         rename_cats(df, "col", {"a": "x", "b": "y"})
         assert (df["col"] == ["x", "y", "c"]).all()
 
+    # "c" is a category the frame carries no rows for: both helpers group observed-only, so it never
+    # becomes a phantom group.
+    unobserved_df = pd.DataFrame({"group": pd.Categorical(["a", "a", "b"], ["a", "b", "c"]), "value": [1, 2, 3]})
+
+    def test_complete_grid(self):
+        """Levels are completed within each observed key combination, and no other."""
+        df = pd.DataFrame({"panel": ["a", "a", "b"], "rank": ["1", "3", "1"], "w": [1.0, 2.0, 3.0]})
+
+        out = complete_grid(df, {"rank": ["1", "2", "3"]}, keys=["panel"])
+        assert len(out) == 6  # 2 observed panels x 3 ranks, not a panel "c" nobody has rows for
+        assert out["w"].isna().sum() == 3  # unmatched rows stay NaN without a fill
+        assert list(out["rank"].cat.categories) == ["1", "2", "3"]
+
+        filled = complete_grid(df[df["panel"] == "a"], {"rank": ["1", "2", "3"]}, fill={"w": 0.0, "panel": "a"})
+        assert filled["w"].tolist() == [1.0, 0.0, 2.0]
+        assert filled["panel"].tolist() == ["a"] * 3
+
     def test_gb_in(self):
         """Test gb_in function."""
         df = pd.DataFrame({"group": ["a", "a", "b"], "value": [1, 2, 3]})
@@ -612,6 +630,8 @@ class TestHelperFunctions:
         result = gb_in(df, [])
         assert isinstance(result, pd.DataFrame)  # Should be the original DataFrame
 
+        assert len(gb_in(self.unobserved_df, ["group"])["value"].sum()) == 2
+
     def test_gb_in_apply(self):
         """Test gb_in_apply function."""
         df = pd.DataFrame({"group": ["a", "a", "b"], "value": [1, 2, 3]})
@@ -623,6 +643,8 @@ class TestHelperFunctions:
         # Without groupby
         result = gb_in_apply(df, [], lambda x: x.mean(), cols=["value"])
         assert len(result) == 1  # Single result
+
+        assert len(gb_in_apply(self.unobserved_df, ["group"], lambda x: x.mean(), cols=["value"])) == 2
 
     def test_gb_cols_with_tooltip_fields(self):
         """Append Altair tooltip fields present in data; skip value_col and exclude_fields."""
