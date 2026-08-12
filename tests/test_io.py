@@ -2131,6 +2131,16 @@ class TestMultipleFiles:
         assert set(df["source"].values) == {"file1", "file2"}
         assert df["id"].tolist() == [1, 2, 3, 4]
 
+    def test_reconcile_categories_str_dtype(self):
+        """pandas>=3 default string columns get dtype 'str' (not 'object'); they must still be inferred."""
+        from salk_toolkit.io.sources import _reconcile_categories
+
+        d1 = pd.DataFrame({"city": pd.Series(["Tallinn", "Tartu"], dtype="str")})
+        d2 = pd.DataFrame({"city": pd.Series(["Narva", "Tartu"], dtype="str")})
+        res = _reconcile_categories({"F1": d1, "F2": d2})
+        assert "city" in res
+        assert set(res["city"].categories) == {"Tallinn", "Tartu", "Narva"}
+
     def test_multiple_files_with_extra_columns(self, temp_dir, meta_file):
         """Test multiple files with extra metadata columns"""
         csv_file1 = temp_dir / "test1.csv"

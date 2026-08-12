@@ -57,7 +57,11 @@ def _reconcile_categories(
     for file_code, raw_data in raw_data_dict.items():
         for c in raw_data.columns:
             dropped = raw_data[c].dropna()
-            if raw_data[c].dtype.name == "object" and len(dropped) > 0 and not isinstance(dropped.iloc[0], list):
+            if (
+                raw_data[c].dtype.name in ("object", "str")
+                and len(dropped) > 0
+                and not isinstance(dropped.iloc[0], list)
+            ):
                 cat_dtypes[c] = cat_dtypes.get(c, None)  # Infer a categorical type unless already given
             elif (
                 raw_data[c].dtype.name == "category" and multiple_files
@@ -89,7 +93,7 @@ def _reconcile_categories(
         if dtype is None:  # Added as an extra field, infer categories
             s = fdf[c].dropna()
             if (
-                s.dtype.name == "object"
+                s.dtype.name in ("object", "str")
                 and len(s) > 0
                 and not isinstance(s.iloc[0], str)  # Check for string as string is also iterable
                 and isinstance(s.iloc[0], Iterable)

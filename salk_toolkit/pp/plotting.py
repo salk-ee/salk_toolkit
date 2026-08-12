@@ -261,6 +261,11 @@ def create_plot(
     if n_inner > 0:
         for cn in facet_dims[:n_inner]:
             base_meta = col_meta.get(cn, GroupOrColumnMeta())
+            if base_meta.categories and data[cn].dtype.name != "category":
+                raise ValueError(
+                    f"Facet column '{cn}' has categories in metadata but dtype is "
+                    f"'{data[cn].dtype}' instead of categorical — data file is malformed"
+                )
             fd = FacetMeta(
                 col=cn,
                 ocol=cn,

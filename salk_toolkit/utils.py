@@ -120,9 +120,6 @@ import hsluv  # type: ignore[import-untyped]
 import Levenshtein
 from pydantic import BaseModel
 
-pd.set_option("future.no_silent_downcasting", True)
-
-
 JSONScalar: TypeAlias = str | int | float | bool | None
 JSONValue: TypeAlias = JSONScalar | dict[str, "JSONValue"] | list["JSONValue"]
 JSONObject: TypeAlias = dict[str, JSONValue]
