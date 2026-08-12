@@ -600,6 +600,10 @@ class TestHelperFunctions:
         rename_cats(df, "col", {"a": "x", "b": "y"})
         assert (df["col"] == ["x", "y", "c"]).all()
 
+    # "c" is a category the frame carries no rows for: both helpers group observed-only, so it never
+    # becomes a phantom group.
+    unobserved_df = pd.DataFrame({"group": pd.Categorical(["a", "a", "b"], ["a", "b", "c"]), "value": [1, 2, 3]})
+
     def test_gb_in(self):
         """Test gb_in function."""
         df = pd.DataFrame({"group": ["a", "a", "b"], "value": [1, 2, 3]})
@@ -612,6 +616,8 @@ class TestHelperFunctions:
         result = gb_in(df, [])
         assert isinstance(result, pd.DataFrame)  # Should be the original DataFrame
 
+        assert len(gb_in(self.unobserved_df, ["group"])["value"].sum()) == 2
+
     def test_gb_in_apply(self):
         """Test gb_in_apply function."""
         df = pd.DataFrame({"group": ["a", "a", "b"], "value": [1, 2, 3]})
@@ -623,6 +629,8 @@ class TestHelperFunctions:
         # Without groupby
         result = gb_in_apply(df, [], lambda x: x.mean(), cols=["value"])
         assert len(result) == 1  # Single result
+
+        assert len(gb_in_apply(self.unobserved_df, ["group"], lambda x: x.mean(), cols=["value"])) == 2
 
     def test_gb_cols_with_tooltip_fields(self):
         """Append Altair tooltip fields present in data; skip value_col and exclude_fields."""

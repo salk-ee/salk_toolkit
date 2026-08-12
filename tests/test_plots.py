@@ -14,7 +14,17 @@ import pytest
 
 from salk_toolkit.election_models import mandate_plot
 from salk_toolkit.io import read_json, read_parquet_with_metadata
-from salk_toolkit.pp import AltairChart, FacetMeta, e2e_plot, get_plot_fn, matching_plots, PlotInput
+from salk_toolkit.pp import (
+    AltairChart,
+    create_plot,
+    create_plot_payload,
+    e2e_plot,
+    FacetMeta,
+    get_plot_fn,
+    matching_plots,
+    PlotInput,
+    pp_transform_data,
+)
 from salk_toolkit.validation import (
     ColumnMeta,
     DataMeta,
@@ -357,8 +367,6 @@ class TestPlots:
             "sort": {"question": True},
             "filter": {},
         }
-        from salk_toolkit.pp import create_plot, pp_transform_data
-
         ldf, full_meta = read_parquet_with_metadata(str(self.data_file), lazy=True)
         assert full_meta is not None and full_meta.data is not None
         ppd = soft_validate(config, PlotDescriptor)
@@ -394,8 +402,6 @@ class TestPlots:
             "plot": "rank_columns",
             "filter": {},
         }
-        from salk_toolkit.pp import create_plot, pp_transform_data
-
         ldf, full_meta = read_parquet_with_metadata(str(self.data_file), lazy=True)
         assert full_meta is not None and full_meta.data is not None
         ppd = soft_validate(config, PlotDescriptor)
@@ -427,8 +433,6 @@ class TestPlots:
             "plot": "rank_columns",
             "filter": {},
         }
-        from salk_toolkit.pp import create_plot_payload, pp_transform_data
-
         ldf, full_meta = read_parquet_with_metadata(str(self.data_file), lazy=True)
         assert full_meta is not None and full_meta.data is not None
         ppd = soft_validate(config, PlotDescriptor)
@@ -456,8 +460,6 @@ class TestPlots:
             "plot": "rank_columns",
             "filter": {},
         }
-        from salk_toolkit.pp import create_plot, pp_transform_data
-
         ldf, full_meta = read_parquet_with_metadata(str(self.data_file), lazy=True)
         assert full_meta is not None and full_meta.data is not None
         ppd = soft_validate(config, PlotDescriptor)
@@ -476,18 +478,23 @@ class TestPlots:
         assert rank not in slots(holed_df, panel).index  # the hole is not zero-filled back in
         assert slots(holed_df, panel).to_dict() == pytest.approx(slots(full_df, panel).drop(rank).to_dict())
 
-    @pytest.mark.parametrize("plot", ["facet_dist", "density-raw", "rank_columns"])
-    def test_faceted_payload_cell_sees_only_its_own_panel(self, plot: str) -> None:
-        """Per-cell frames carry one panel only. RED for facet_dist, which crashed on the empty groups."""
+    @pytest.mark.parametrize(
+        "plot,facet_dims",
+        [
+            ("facet_dist", ["party_preference", "gender"]),  # RED: crashed on the empty groups
+            ("density-raw", ["party_preference", "gender"]),
+            ("likert_rad_pol", ["question", "party_preference", "gender"]),  # RED: leaked, and as NaN
+        ],
+    )
+    def test_faceted_payload_cell_sees_only_its_own_panel(self, plot: str, facet_dims: list[str]) -> None:
+        """Per-cell frames carry one panel and no phantom rows - the latter arrive as nulls."""
         config = {
             "res_col": "thermometer",
-            "facet_dims": ["party_preference", "gender"],
+            "facet_dims": facet_dims,
             "internal_facet": True,
             "plot": plot,
             "filter": {},
         }
-        from salk_toolkit.pp import create_plot_payload, pp_transform_data
-
         ldf, full_meta = read_parquet_with_metadata(str(self.data_file), lazy=True)
         assert full_meta is not None and full_meta.data is not None
         ppd = soft_validate(config, PlotDescriptor)
@@ -497,6 +504,7 @@ class TestPlots:
         assert len(cells) > 1 and payload["outer_factors"] == ["gender"]
         for cell in cells:
             assert set(cell["data"]["gender"]) == {cell["keys"]["gender"]}
+            assert not [v for col in cell["data"].values() for v in col if v is None or v != v]
 
     def test_diff_columns(self, recompute):
         """Test difference column plots."""
@@ -796,7 +804,6 @@ class TestPlots:
         `translate` (the stk_explorer path), or maxdiff raises its missing-companion ValueError."""
 
         from salk_toolkit.dashboard import default_translate
-        from salk_toolkit.pp import pp_transform_data, create_plot
 
         ldf, full_meta = read_parquet_with_metadata(str(self.data_file), lazy=True)
         assert full_meta is not None and full_meta.data is not None

@@ -299,7 +299,7 @@ pi = pp_transform_data(full_df, data_meta, pp_desc)   # same wrangle e2e_plot us
 payload = create_plot_payload(pi, pp_desc)            # PlotPayload v1 dict
 ```
 
-Contents: `cells` (2D grid of `{title, keys, columns, data}`, column-wise JSON-safe data), `facets` (order / plain-hex `colors`, default palette synthesized when the annotation has none / `neutrals`), `value_col` / `cat_col` / `val_format` / `value_range` / `filtered_size`, `grid` layout, and plot-specific `scale` (resolved hex stops + domain for matrix/geoplot) and `geo` (topojson url/object/join keys). Labels come through unescaped — no Vega-escape artifacts.
+Contents: `cells` (2D grid of `{title, keys, columns, data}`, column-wise JSON-safe data), `facets` (order / plain-hex `colors`, default palette synthesized when the annotation has none / `neutrals`), `value_col` / `cat_col` / `val_format` / `value_range` / `filtered_size`, `grid` layout, and plot-specific `scale` (resolved hex stops + domain for matrix/geoplot) and `geo` (topojson url/object/join keys). Labels come through unescaped — no Vega-escape artifacts. A cell carries only the combinations its own panel observes, so row counts vary across the grid and an outer-factor category with no rows gives a cell with empty `data` — never assume a full category cross-product.
 
 Use it when **another engine renders** (the ECharts path in dms-plots-api `/plot-data`), or for **CSV exports of "the numbers behind the chart"** — `pd.DataFrame(cell["data"]).to_csv(...)` matches what the chart displays (boxplot whisker stats, likert segments, maxdiff Most/Least split) rather than the raw aggregate.
 

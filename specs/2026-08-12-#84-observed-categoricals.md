@@ -1,0 +1,44 @@
+# Observed-only categoricals in the plot layer (PR #84)
+
+**Modules:** `salk_toolkit/plots.py`, `salk_toolkit/utils.py`
+
+## Goal
+
+A pandas groupby with `observed=False` spans every category the *dtype* carries, not the ones the
+frame holds. `create_plot_payload` calls a plot function once per grid cell with the frame already
+narrowed to one panel, so under that flag each cell reinstated every *other* panel's rows — and in
+`facet_dist` the empty groups were not merely waste but a crash. This PR makes the whole plot layer
+group observed-only, and moves `rank_columns`' grid completion to the one place it is load-bearing.
+
+## Design
+
+Every `observed=False` in `salk_toolkit/` is gone; `grep -rn "observed=False" salk_toolkit/` is empty.
+The shared helpers `utils.gb_in` and `utils.gb_in_apply` group observed-only, and `gb_in_apply`'s
+`observed` parameter is dropped — no caller in stk, sip, sdt or the dashboards passed it. Since #82
+the project requires pandas>=3.0, where `observed=True` is already the pandas default and
+`pivot`/`unstack` no longer expand categoricals, so each of these sites was an active opt-out.
+
+Two completions remain, both deliberate and explicit: `marimekko` builds its mosaic grid from
+`it.product` over observed outer values, and `rank_columns` reserves its x slots (below).
+
+**What the flip changes per plot.** `facet_dist` stops crashing: `likert_aggregate`-style helpers that
+return one row per group divided by an empty group's zero sum. `likert_rad_pol` stops emitting all-NaN
+phantom rows — and because it z-scores across the surviving groups when `normalized=True`, the phantom
+groups moved the plotted values of every real point. `likert_bars`, `corr_matrix`, `marimekko` and
+`density` are output-inert: `groupby.apply` calls the function on an empty group but contributes no
+rows, and `pivot_table` already ignores unobserved columns under pandas 3.
+
+**rank_columns.** The aggregation groups observed-only and drops rows of zero weight, so nothing that
+draws nothing reaches the wire; a panel whose rows all carry zero weight disappears with them, as it
+did in #83. The rank axis is instead completed in the x layout: the cumulative layout cross-joins the
+observed panels with the full rank labels, so a rank no row falls into still reserves an empty slot of
+unit width and ranks stay aligned across panels.
+
+## Implementation notes
+
+- **A payload cell's row count is not a cross-product.** Cells carry only the combinations their own
+  panel observes, so counts vary across the grid (88 uniformly → 77–82 per cell on the test battery),
+  and an outer-factor category with no rows yields a cell with an empty data array rather than a
+  crash or a panel's worth of nulls. `payload.py` still enumerates cells from the dtype categories.
+- **The x-slot reservation is what keeps the old geometry.** Regenerating `test_rank_columns.json`
+  removes 924 lines and adds none: every surviving row, `x0`/`x1` included, is unchanged.

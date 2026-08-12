@@ -522,14 +522,13 @@ def rank_columns(
     labels = [str(c) for c in utils.get_categories(p.data[xcol].dtype)]
     data = p.data.assign(**{xcol: pd.Categorical(p.data[xcol], labels, ordered=True)})
 
-    # Weighted counts per (rank x stack), normalized within each panel. Empty combinations are left
-    # out rather than zero-filled - the rank axis is completed per panel in the layout below, and
-    # zero-filling here would also resurrect outer-factor panels the frame has no rows for at all.
-    gcols = p.outer_factors + [xcol, f0.col]
-    ndata = data.groupby(gcols, observed=True)[p.value_col].sum().rename("share").reset_index()
-    denom_cols = list(p.outer_factors)
-    totals = ndata.groupby(denom_cols, observed=True)["share"].transform("sum") if denom_cols else ndata["share"].sum()
-    ndata["share"] = ndata["share"] / np.where(np.asarray(totals) > 0, totals, 1)  # zero-weight panel stays zero
+    # Weighted counts per (rank x stack), normalized within the panel; the rank axis itself is
+    # completed in the x layout below, so empty combinations stay out instead of drawing nothing.
+    pg = list(p.outer_factors)  # panel keys
+    ndata = data.groupby(pg + [xcol, f0.col], observed=True)[p.value_col].sum().rename("share").reset_index()
+    totals = ndata.groupby(pg, observed=True)["share"].transform("sum") if pg else ndata["share"].sum()
+    live = ndata["share"] > 0  # a zero-weight row draws nothing, and a panel of them drops out with them
+    ndata = ndata[live].assign(share=ndata.loc[live, "share"] / (totals[live] if pg else totals))
 
     # Stack order follows the facet's category order; y0/y1 computed manually since the geometry
     # below needs explicit rects rather than an ordinal band stack
@@ -560,14 +559,14 @@ def rank_columns(
         half = ndata.groupby(p.outer_factors + [xcol], observed=True)["y1"].transform("max") / 2
         ndata[["y0", "y1"]] = ndata[["y0", "y1"]].sub(half, axis=0)
 
-    # Cumulative edge-to-edge x layout per panel: normalize each panel's widths to a constant total
-    # (n_ranks) so the facet grid stays aligned, then lay columns out by cumulative sum. Every rank
-    # keeps its slot, including ones the panel has no rows for, so ranks line up across panels.
-    pg = list(p.outer_factors)
+    # Cumulative edge-to-edge x layout: widths normalized per panel to a constant total (n_ranks) so
+    # the facet grid stays aligned, and a rank with no rows still keeps an empty slot of unit width.
     panels = ndata[pg].drop_duplicates() if pg else pd.DataFrame(index=[0])
-    cols = panels.merge(pd.DataFrame({xcol: pd.Categorical(labels, labels, ordered=True)}), how="cross")
-    cols = cols.merge(ndata.drop_duplicates(pg + [xcol])[pg + [xcol, "w"]], on=pg + [xcol], how="left")
-    cols["w"] = cols["w"].fillna(1.0)
+    cols = (
+        panels.merge(pd.DataFrame({xcol: pd.Categorical(labels, labels, ordered=True)}), how="cross")
+        .merge(ndata.drop_duplicates(pg + [xcol])[pg + [xcol, "w"]], on=pg + [xcol], how="left")
+        .fillna({"w": 1.0})
+    )
     wsum = cols.groupby(pg, observed=True)["w"].transform("sum") if pg else cols["w"].sum()
     cols["w"] = cols["w"] * n_ranks / wsum
     cols["x1"] = cols.groupby(pg, observed=True)["w"].cumsum() if pg else cols["w"].cumsum()
