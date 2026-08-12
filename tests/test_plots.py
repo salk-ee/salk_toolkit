@@ -418,6 +418,34 @@ class TestPlots:
                 cap = 2.0 / n_ranks
                 assert panel["y1"].max() <= cap + 1e-9  # height capped, overflow went to width
 
+    def test_rank_columns_payload_cell_carries_only_its_own_panel(self) -> None:
+        """Each payload cell holds one panel's rows, not every panel's completed with nulls."""
+        config = {
+            "res_col": "thermometer",
+            "facet_dims": ["party_preference", "question"],
+            "internal_facet": True,
+            "plot": "rank_columns",
+            "filter": {},
+        }
+        from salk_toolkit.pp import create_plot_payload, pp_transform_data
+
+        ldf, full_meta = read_parquet_with_metadata(str(self.data_file), lazy=True)
+        assert full_meta is not None and full_meta.data is not None
+        ppd = soft_validate(config, PlotDescriptor)
+        payload = create_plot_payload(pp_transform_data(ldf, full_meta.data, ppd), ppd)
+
+        assert payload["outer_factors"] == ["question"]
+        cells = [c for row in payload["cells"] for c in row]
+        assert len(cells) > 1  # a single-cell grid could not show the duplication either way
+        n_ranks = len(set(cells[0]["data"][payload["cat_col"]]))
+        n_stack = len(payload["facets"][0]["order"])
+        for cell in cells:
+            # RED before the fix: every panel's rows, i.e. len(cells) x this
+            assert set(cell["data"]["question"]) == {cell["keys"]["question"]}
+            assert len(cell["data"]["share"]) == n_ranks * n_stack
+            # ...and no all-null rows left behind by the grid completion (share was 0/0)
+            assert all(v is not None for v in cell["data"]["share"])
+
     def test_diff_columns(self, recompute):
         """Test difference column plots."""
         config = {
