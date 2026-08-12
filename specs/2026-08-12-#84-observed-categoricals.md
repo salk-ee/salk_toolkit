@@ -18,8 +18,12 @@ The shared helpers `utils.gb_in` and `utils.gb_in_apply` group observed-only, an
 the project requires pandas>=3.0, where `observed=True` is already the pandas default and
 `pivot`/`unstack` no longer expand categoricals, so each of these sites was an active opt-out.
 
-Two completions remain, both deliberate and explicit: `marimekko` builds its mosaic grid from
-`it.product` over observed outer values, and `rank_columns` reserves its x slots (below).
+The completions that remain are deliberate, and they now share one helper. `utils.complete_grid(df,
+levels, keys, fill)` left-joins a frame onto every combination of `levels` *within each combination of
+`keys` the frame observes* — so it completes a grid without inventing a panel — and returns the level
+columns as ordered categoricals, so a downstream sort or groupby follows the given order rather than
+whatever the merge resolved. It replaces three inline copies: `make_start_end`'s per-group likert
+completion, `marimekko`'s mosaic grid, and `rank_columns`' x slots.
 
 **What the flip changes per plot.** `facet_dist` stops crashing: `likert_aggregate`-style helpers that
 return one row per group divided by an empty group's zero sum. `likert_rad_pol` stops emitting all-NaN
@@ -48,3 +52,8 @@ count, their order and the domain are shared.)
   plot's own frame on `f_order == 0`, so a slot with no rows would otherwise lose its label and its
   separator. One zero row per empty slot restores both — at most `n_ranks` per panel, not the
   `n_ranks x n_stack` the old completion added.
+- **marimekko's outer facet was ordered alphabetically.** Its `it.product` grid flattened the outer
+  key to plain strings, so the merge dropped the categorical and every groupby after it fell back to
+  lexicographic order. Through `complete_grid` the key stays categorical and the annotation's order
+  holds. The visible effect is one row: the axis-title hack (`ndata.iloc[0, -1] = xcol`) lands on the
+  first panel in annotation order rather than the alphabetically first one.

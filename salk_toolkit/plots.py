@@ -49,7 +49,6 @@ __all__ = [
     "marimekko",
 ]
 
-import itertools as it
 import math
 from typing import Any, Dict, Sequence
 
@@ -561,10 +560,7 @@ def rank_columns(
 
     # Cumulative edge-to-edge x layout: every rank gets a slot, so each panel spans the same [0,
     # n_ranks] domain in the same rank order; widths are then normalized per panel to that total.
-    panels = ndata[pg].drop_duplicates() if pg else pd.DataFrame(index=[0])
-    cols = panels.merge(pd.DataFrame({xcol: pd.Categorical(labels, labels, ordered=True)}), how="cross").merge(
-        ndata.drop_duplicates(pg + [xcol])[pg + [xcol, "w"]], on=pg + [xcol], how="left"
-    )
+    cols = utils.complete_grid(ndata.drop_duplicates(pg + [xcol])[pg + [xcol, "w"]], {xcol: labels}, keys=pg)
     empty = cols["w"].isna()  # ranks this panel has no rows for; they keep a slot of unit width
     cols["w"] = cols["w"].fillna(1.0)
     wsum = cols.groupby(pg, observed=True)["w"].transform("sum") if pg else cols["w"].sum()
@@ -767,14 +763,10 @@ def make_start_end(
 ) -> pd.DataFrame:
     """Compute start/end positions for split likert bars."""
 
-    if len(x) == 0:  # unreachable from likert_bars, which groups observed-only; kept for direct callers
-        return x
-
     if len(x) != len(cat_order):
-        shared = x.to_dict(orient="records")[0]
         # Fill in missing rows with value zero so they would just be skipped
-        mdf = pd.DataFrame({cat_col: pd.Categorical(list(cat_order), categories=list(cat_order), ordered=True)})
-        x = pd.merge(mdf, x, on=cat_col, how="left").fillna({**shared, value_col: 0})
+        shared = x.to_dict(orient="records")[0]
+        x = utils.complete_grid(x, {cat_col: cat_order}, fill={**shared, value_col: 0})
     x = x.sort_values(by=cat_col)
 
     if len(neutral) == 0:  # No neutrals
@@ -2484,13 +2476,10 @@ def marimekko(
     )
 
     # Fill in missing values with zero
-    mdf = pd.DataFrame(
-        it.product(f1.order, f0.order, *[data[c].unique() for c in outer_cols]),
-        columns=[xcol, ycol] + outer_cols,
+    data = utils.complete_grid(
+        data, {xcol: f1.order, ycol: f0.order}, keys=outer_cols, fill={p.value_col: 0, "group_size": 1}
     )
-    data = mdf.merge(data, on=[xcol, ycol] + outer_cols, how="left").fillna({p.value_col: 0, "group_size": 1})
-    data[xcol] = pd.Categorical(data[xcol], f1.order, ordered=True)
-    data[ycol] = pd.Categorical(data[ycol], yorder, ordered=True)
+    data[ycol] = pd.Categorical(data[ycol], yorder, ordered=True)  # the stack draws bottom-up
 
     data["w"] = data["group_size"] * data[p.value_col]
     data.sort_values([ycol, xcol], ascending=[True, False], inplace=True)

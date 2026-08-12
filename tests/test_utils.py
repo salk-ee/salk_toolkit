@@ -42,6 +42,7 @@ from salk_toolkit.utils import (
     merge_series,
     aggregate_multiselect,
     deaggregate_multiselect,
+    complete_grid,
     gb_in,
     gb_in_apply,
     gb_cols_with_tooltip_fields,
@@ -603,6 +604,19 @@ class TestHelperFunctions:
     # "c" is a category the frame carries no rows for: both helpers group observed-only, so it never
     # becomes a phantom group.
     unobserved_df = pd.DataFrame({"group": pd.Categorical(["a", "a", "b"], ["a", "b", "c"]), "value": [1, 2, 3]})
+
+    def test_complete_grid(self):
+        """Levels are completed within each observed key combination, and no other."""
+        df = pd.DataFrame({"panel": ["a", "a", "b"], "rank": ["1", "3", "1"], "w": [1.0, 2.0, 3.0]})
+
+        out = complete_grid(df, {"rank": ["1", "2", "3"]}, keys=["panel"])
+        assert len(out) == 6  # 2 observed panels x 3 ranks, not a panel "c" nobody has rows for
+        assert out["w"].isna().sum() == 3  # unmatched rows stay NaN without a fill
+        assert list(out["rank"].cat.categories) == ["1", "2", "3"]
+
+        filled = complete_grid(df[df["panel"] == "a"], {"rank": ["1", "2", "3"]}, fill={"w": 0.0, "panel": "a"})
+        assert filled["w"].tolist() == [1.0, 0.0, 2.0]
+        assert filled["panel"].tolist() == ["a"] * 3
 
     def test_gb_in(self):
         """Test gb_in function."""

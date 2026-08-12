@@ -23,6 +23,7 @@ __all__ = [
     "call_kwsafe",
     "censor_dict",
     "clean_kwargs",
+    "complete_grid",
     "continify",
     "cut_nice",
     "cut_nice_labels",
@@ -73,6 +74,7 @@ __all__ = [
     "recursive_dict_merge",
 ]
 
+import itertools as it
 import json
 import re
 import warnings
@@ -946,6 +948,30 @@ def gb_cols_with_tooltip_fields(
         if fld and fld in data_columns and fld not in skip:
             skip.add(fld)
             out.append(fld)
+    return out
+
+
+def complete_grid(
+    df: pd.DataFrame,
+    levels: Mapping[str, Sequence[Any]],
+    keys: Sequence[str] = (),
+    fill: Mapping[str, Any] | None = None,
+) -> pd.DataFrame:
+    """Left-join ``df`` onto every combination of ``levels``, within each combination of ``keys`` it observes.
+
+    ``keys`` are taken as observed, so no panel the frame has no rows for is invented. Rows the join
+    does not match keep NaN unless ``fill`` names a value for the column.
+    """
+
+    grid = pd.DataFrame(it.product(*levels.values()), columns=list(levels))
+    if len(keys):
+        grid = df[list(keys)].drop_duplicates().merge(grid, how="cross")
+    out = grid.merge(df, on=list(levels) + list(keys), how="left")
+    if fill:
+        out = out.fillna(dict(fill))
+    # Ordered categoricals, so that a sort or groupby downstream follows the given order, not the merge's
+    for col, lvls in levels.items():
+        out[col] = pd.Categorical(out[col], list(lvls), ordered=True)
     return out
 
 
