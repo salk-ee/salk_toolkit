@@ -522,12 +522,24 @@ def rank_columns(
     labels = [str(c) for c in utils.get_categories(p.data[xcol].dtype)]
     data = p.data.assign(**{xcol: pd.Categorical(p.data[xcol], labels, ordered=True)})
 
-    # Complete the (rank x stack) grid with explicit zeros, then normalize the weighted counts
+    # Complete the (rank x stack) grid with explicit zeros, then normalize the weighted counts.
+    # The completion is meant to be *within* a panel, but `observed=False` spans every key it is
+    # given, so it also reinstates outer-factor levels the frame carries no rows for. On a frame
+    # already narrowed to one panel - which is exactly how `create_plot_payload` builds a payload,
+    # cell by cell - those are pure noise, and they land on the wire: an 18-topic maxdiff x 13
+    # parties shipped 4212 rows per cell where 234 were the cell's own. So drop the panels that
+    # carry no weight. Panels that do carry weight are untouched, hence so is the faceted
+    # (single-frame) path, where every panel has weight by construction.
     gcols = p.outer_factors + [xcol, f0.col]
     ndata = data.groupby(gcols, observed=False)[p.value_col].sum().rename("share").reset_index()
     denom_cols = list(p.outer_factors)
-    totals = ndata.groupby(denom_cols, observed=False)["share"].transform("sum") if denom_cols else ndata["share"].sum()
-    ndata["share"] = ndata["share"] / (totals if denom_cols else totals or 1)
+    if denom_cols:
+        totals = ndata.groupby(denom_cols, observed=False)["share"].transform("sum")
+        live = totals > 0
+        ndata, totals = ndata.loc[live].copy(), totals[live]
+    else:
+        totals = ndata["share"].sum() or 1
+    ndata["share"] = ndata["share"] / totals
 
     # Stack order follows the facet's category order; y0/y1 computed manually since the geometry
     # below needs explicit rects rather than an ordinal band stack
