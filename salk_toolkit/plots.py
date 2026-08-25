@@ -1158,12 +1158,7 @@ def matrix(
     reorder: bool | str = False,
     log_colors: bool = False,
 ) -> AltairChart:
-    """Heatmap-style matrix plot.
-
-    `reorder` is either clustering (True) or `"smooth"`, which minimizes the difference
-    between neighbouring rows and columns directly and orders shared categories the
-    same on both axes. See `utils.seriate_matrix`.
-    """
+    """Heatmap-style matrix plot, optionally reordered by clustering (True) or `utils.seriate_matrix` ("smooth")."""
 
     data = p.data.copy()
     if len(p.facets) < 2:

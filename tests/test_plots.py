@@ -636,20 +636,6 @@ class TestPlots:
         }
         self._run_plot_test("test_matrix_smooth_reorder_shared_categories", config, recompute=recompute)
 
-    def test_matrix_with_smooth_reorder(self, recompute):
-        """Test matrix plot with smooth (shortest-path) reordering."""
-        config = {
-            "res_col": "issues",
-            "facet_dims": ["party_preference"],
-            "filter": {},
-            "plot": "matrix",
-            "plot_args": {"reorder": "smooth"},
-            "internal_facet": True,
-            "convert_res": "continuous",
-            "cont_transform": "center",
-        }
-        self._run_plot_test("test_matrix_with_smooth_reorder", config, recompute=recompute)
-
     def test_corr_matrix(self, recompute):
         """Test correlation matrix plot."""
         config = {

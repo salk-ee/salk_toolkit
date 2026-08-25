@@ -1565,11 +1565,9 @@ def plot_matrix_html(
 
 
 def tsp_path(dist: np.ndarray, start: int | None = None, budget: float = 0.05) -> list[int]:
-    """Shortest Hamiltonian path over a symmetric distance matrix, as a list of indices.
+    """Shortest Hamiltonian path over a symmetric distance matrix, free-ended unless `start` is given.
 
-    Endpoints are free unless `start` is given. Generic: any ordering problem that wants
-    "put similar things next to each other" reduces to this. `budget` caps the heuristic
-    search used above 15 nodes; below that the solve is exact and ignores it.
+    Exact up to 15 nodes; above that `budget` caps the heuristic search.
     """
     try:
         import fast_tsp
@@ -1580,9 +1578,8 @@ def tsp_path(dist: np.ndarray, start: int | None = None, budget: float = 0.05) -
     if n < 3:
         return list(range(n))
 
-    # A depot at distance 0 from every node turns the open path into a cycle; making it
-    # far from everything but `start` instead forces the path to begin there, at a cost
-    # that is the same constant whichever node ends up last.
+    # A depot 0 from every node makes the open path a cycle; far from all but `start`
+    # instead pins the start, for the same constant cost whichever node ends last.
     big = dist.max() * n + 1
     ext = np.full((n + 1, n + 1), 0.0 if start is None else big)
     ext[:n, :n] = dist
@@ -1590,8 +1587,7 @@ def tsp_path(dist: np.ndarray, start: int | None = None, budget: float = 0.05) -
     if start is not None:
         ext[n, start] = ext[start, n] = 0.0
 
-    # Held-Karp is exact and, unlike the time-budgeted local search, reproducible;
-    # it stays under ~40ms up to this size, which covers any readable heatmap.
+    # Held-Karp is exact and, unlike the budgeted search, reproducible run to run.
     scaled = (ext / max(ext.max(), 1e-12) * 10**6).round().astype(int).tolist()
     solve = fast_tsp.solve_tsp_exact if n + 1 <= 16 else lambda d: fast_tsp.find_tour(d, duration_seconds=budget)
     tour = list(solve(scaled))
@@ -1614,14 +1610,10 @@ def seriate_matrix(
     cols: Sequence[Hashable],
     budget: float = 0.05,
 ) -> tuple[list[int], list[int]]:
-    """Row and column orders that make neighbouring rows and columns as alike as possible.
+    """Index permutations of `rows` and `cols` making neighbouring rows and columns alike.
 
-    Categories appearing on both axes are ordered first and identically on both, so the
-    matrix keeps a readable diagonal; their distances skip the two diagonal cells, which
-    otherwise swamp the comparison. Rows and columns unique to one axis follow, each
-    chained onto the last shared category so that transition is smooth too.
-
-    Returns index permutations into `rows` and `cols`.
+    Categories on both axes are ordered first, identically, ignoring the diagonal; the rest
+    are chained onto them.
     """
     m = np.asarray(matrix, dtype=float)
     ri = {c: i for i, c in enumerate(rows)}
@@ -1638,12 +1630,11 @@ def seriate_matrix(
     if joint:
         d = np.array([[joint_dist(a, b) for b in joint] for a in joint])
         path = tsp_path(d, budget=budget)
-        if path[-1] < path[0]:  # a path and its reverse cost the same; pin one for stable output
+        if path[-1] < path[0]:  # a path and its reverse cost the same, so pin one
             path = path[::-1]
         j_order = [joint[i] for i in path]
 
     def tail(labels: list[Hashable], vec: Callable[[Hashable], np.ndarray], anchor: Hashable | None) -> list[Hashable]:
-        """Order `labels`, chained onto `anchor` when there is one to chain onto."""
         if len(labels) < 2:
             return labels
         pool = ([anchor] if anchor is not None else []) + labels
