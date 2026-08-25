@@ -68,6 +68,7 @@ __all__ = [
     "stk_defaultdict",
     "str_replace",
     "to_alt_scale",
+    "tsp_path",
     "unescape_vega_label",
     "warn",
     "plot_matrix_html",
@@ -1563,8 +1564,13 @@ def plot_matrix_html(
 # ---- Matrix seriation ------------------------------------------------------
 
 
-def _tsp_path(dist: np.ndarray, start: int | None = None, budget: float = 0.05) -> list[int]:
-    """Shortest Hamiltonian path over `dist`, free endpoints unless `start` is given."""
+def tsp_path(dist: np.ndarray, start: int | None = None, budget: float = 0.05) -> list[int]:
+    """Shortest Hamiltonian path over a symmetric distance matrix, as a list of indices.
+
+    Endpoints are free unless `start` is given. Generic: any ordering problem that wants
+    "put similar things next to each other" reduces to this. `budget` caps the heuristic
+    search used above 15 nodes; below that the solve is exact and ignores it.
+    """
     try:
         import fast_tsp
     except ImportError:  # pragma: no cover - only hit when the extra is missing
@@ -1631,7 +1637,7 @@ def seriate_matrix(
     j_order: list[Hashable] = []
     if joint:
         d = np.array([[joint_dist(a, b) for b in joint] for a in joint])
-        path = _tsp_path(d, budget=budget)
+        path = tsp_path(d, budget=budget)
         if path[-1] < path[0]:  # a path and its reverse cost the same; pin one for stable output
             path = path[::-1]
         j_order = [joint[i] for i in path]
@@ -1642,7 +1648,7 @@ def seriate_matrix(
             return labels
         pool = ([anchor] if anchor is not None else []) + labels
         d = np.array([[_l1(vec(a), vec(b)) for b in pool] for a in pool])
-        path = _tsp_path(d, start=0 if anchor is not None else None, budget=budget)
+        path = tsp_path(d, start=0 if anchor is not None else None, budget=budget)
         out = [pool[i] for i in path]
         return out[1:] if anchor is not None else out
 

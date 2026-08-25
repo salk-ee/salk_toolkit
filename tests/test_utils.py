@@ -27,6 +27,7 @@ from salk_toolkit.utils import (
     gradient_from_color_alt,
     split_to_neg_neutral_pos,
     seriate_matrix,
+    tsp_path,
     is_date_str_series,
     is_datetime,
     is_numeric_str_series,
@@ -955,3 +956,31 @@ class TestSeriateMatrix:
         r, c = seriate_matrix(m, ["r1", "r2", "r3"], ["c1", "c2", "c3"])
         assert sorted(r) == [0, 1, 2] and sorted(c) == [0, 1, 2]
         assert [r[0], r[1]] in ([0, 2], [2, 0]), r
+
+
+class TestTspPath:
+    """tsp_path: the ordering primitive seriate_matrix is built on."""
+
+    # Four points on a line: the cheapest path is the line itself.
+    LINE = np.array([[0.0, 1.0, 2.0, 3.0], [1.0, 0.0, 1.0, 2.0], [2.0, 1.0, 0.0, 1.0], [3.0, 2.0, 1.0, 0.0]])
+
+    def test_recovers_the_obvious_order(self):
+        """Collinear points come back in order (either direction)."""
+        assert tsp_path(self.LINE) in ([0, 1, 2, 3], [3, 2, 1, 0])
+
+    def test_start_is_honoured(self):
+        """A given start must be first, and the rest still ordered."""
+        assert tsp_path(self.LINE, start=2)[0] == 2
+        assert sorted(tsp_path(self.LINE, start=2)) == [0, 1, 2, 3]
+
+    def test_returns_a_permutation(self):
+        """Every node appears exactly once, whatever the distances."""
+        rng = np.random.default_rng(0)
+        d = rng.uniform(0, 1, (9, 9))
+        d = (d + d.T) / 2
+        np.fill_diagonal(d, 0.0)
+        assert sorted(tsp_path(d)) == list(range(9))
+
+    def test_too_small_to_reorder(self):
+        """Under three nodes there is nothing to solve."""
+        assert tsp_path(np.zeros((2, 2))) == [0, 1]

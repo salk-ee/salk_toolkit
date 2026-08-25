@@ -624,31 +624,31 @@ class TestPlots:
         }
         self._run_plot_test("test_matrix_with_reorder", config, recompute=recompute)
 
-    def test_matrix_tsp_reorder_shared_categories(self, recompute):
+    def test_matrix_smooth_reorder_shared_categories(self, recompute):
         """Parties on both axes: the shared categories must be ordered symmetrically."""
         config = {
             "res_col": "thermometer",
             "facet_dims": ["party_preference"],
             "filter": {},
             "plot": "matrix",
-            "plot_args": {"reorder": "tsp"},
+            "plot_args": {"reorder": "smooth"},
             "internal_facet": True,
         }
-        self._run_plot_test("test_matrix_tsp_reorder_shared_categories", config, recompute=recompute)
+        self._run_plot_test("test_matrix_smooth_reorder_shared_categories", config, recompute=recompute)
 
-    def test_matrix_with_tsp_reorder(self, recompute):
-        """Test matrix plot with TSP-based reordering."""
+    def test_matrix_with_smooth_reorder(self, recompute):
+        """Test matrix plot with smooth (shortest-path) reordering."""
         config = {
             "res_col": "issues",
             "facet_dims": ["party_preference"],
             "filter": {},
             "plot": "matrix",
-            "plot_args": {"reorder": "tsp"},
+            "plot_args": {"reorder": "smooth"},
             "internal_facet": True,
             "convert_res": "continuous",
             "cont_transform": "center",
         }
-        self._run_plot_test("test_matrix_with_tsp_reorder", config, recompute=recompute)
+        self._run_plot_test("test_matrix_with_smooth_reorder", config, recompute=recompute)
 
     def test_corr_matrix(self, recompute):
         """Test correlation matrix plot."""

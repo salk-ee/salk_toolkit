@@ -1150,7 +1150,7 @@ def cluster_based_reorder(X: np.ndarray) -> np.ndarray:
     data_format="longform",
     aspect_ratio=(1 / 0.8),
     n_facets=(2, 2),
-    args={"reorder": [False, True, "tsp"], "log_colors": "bool"},
+    args={"reorder": [False, True, "smooth"], "log_colors": "bool"},
     priority=55,
 )
 def matrix(
@@ -1160,7 +1160,7 @@ def matrix(
 ) -> AltairChart:
     """Heatmap-style matrix plot.
 
-    `reorder` is either clustering (True) or `"tsp"`, which minimizes the difference
+    `reorder` is either clustering (True) or `"smooth"`, which minimizes the difference
     between neighbouring rows and columns directly and orders shared categories the
     same on both axes. See `utils.seriate_matrix`.
     """
@@ -1176,7 +1176,7 @@ def matrix(
     if len(fcols) == 1 and reorder:  # Reordering only works if no external facets
         pt = data.pivot(columns=f1.col, index=f0.col, values=p.value_col).reindex(index=f0.order, columns=f1.order)
         X = np.nan_to_num(pt.to_numpy())
-        if reorder == "tsp":
+        if reorder == "smooth":
             r_ord, c_ord = utils.seriate_matrix(X, f0.order, f1.order)
         else:
             r_ord, c_ord = cluster_based_reorder(X), cluster_based_reorder(X.T)
