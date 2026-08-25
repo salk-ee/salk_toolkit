@@ -26,6 +26,7 @@ from salk_toolkit.utils import (
     gradient_from_color,
     gradient_from_color_alt,
     split_to_neg_neutral_pos,
+    seriate_matrix,
     is_date_str_series,
     is_datetime,
     is_numeric_str_series,
@@ -891,3 +892,21 @@ class TestConstants:
 
 if __name__ == "__main__":
     pytest.main([__file__])
+
+
+class TestSeriateMatrix:
+    """seriate_matrix: orders rows/cols so neighbours are alike."""
+
+    def test_shared_categories_ordered_symmetrically_ignoring_the_diagonal(self):
+        """The whole contract: two interleaved blocks, one order for both axes, extras last."""
+        blocky = np.array([[5.0, 0.0, 5.0, 0.0], [0.0, 5.0, 0.0, 5.0], [5.0, 0.0, 5.0, 0.0], [0.0, 5.0, 0.0, 5.0]])
+        m = np.vstack([blocky, [5.0, 0.0, 5.0, 0.0]])
+        np.fill_diagonal(m, 500.0)  # a huge self-affinity diagonal must not drag the order around
+        labels = ["a", "b", "c", "d"]
+
+        r, c = seriate_matrix(m, labels + ["e"], labels)
+        got_r, got_c = [(labels + ["e"])[i] for i in r], [labels[i] for i in c]
+
+        assert got_r[:4] == got_c, "shared categories must get one order on both axes"
+        assert {got_c[0], got_c[1]} in ({"a", "c"}, {"b", "d"}), got_c
+        assert got_r[4] == "e", "row-only categories follow the shared block"

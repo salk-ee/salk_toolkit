@@ -61,12 +61,14 @@ __all__ = [
     "replace_cat_with_dummies",
     "replace_constants",
     "scores_to_ordinal_rankings",
+    "seriate_matrix",
     "split_to_neg_neutral_pos",
     "stable_draws",
     "stable_rng",
     "stk_defaultdict",
     "str_replace",
     "to_alt_scale",
+    "tsp_path",
     "unescape_vega_label",
     "warn",
     "plot_matrix_html",
@@ -90,6 +92,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    Hashable,
     Iterable,
     Iterator,
     cast,
@@ -1556,3 +1559,91 @@ def plot_matrix_html(
     if responsive:
         html = html.replace(f'"{rstring}"', repl)
     return html
+
+
+# ---- Matrix seriation ------------------------------------------------------
+
+
+def tsp_path(dist: np.ndarray, start: int | None = None, budget: float = 0.05) -> list[int]:
+    """Shortest Hamiltonian path over a symmetric distance matrix, free-ended unless `start` is given.
+
+    Exact up to 15 nodes; above that `budget` caps the heuristic search.
+    """
+    try:
+        import fast_tsp
+    except ImportError:  # pragma: no cover - only hit when the extra is missing
+        raise ImportError("Matrix seriation needs the `fast-tsp` package") from None
+
+    n = len(dist)
+    if n < 3:
+        return list(range(n))
+
+    # A depot 0 from every node makes the open path a cycle; far from all but `start`
+    # instead pins the start, for the same constant cost whichever node ends last.
+    big = dist.max() * n + 1
+    ext = np.full((n + 1, n + 1), 0.0 if start is None else big)
+    ext[:n, :n] = dist
+    np.fill_diagonal(ext, 0.0)
+    if start is not None:
+        ext[n, start] = ext[start, n] = 0.0
+
+    # Held-Karp is exact and, unlike the budgeted search, reproducible run to run.
+    scaled = (ext / max(ext.max(), 1e-12) * 10**6).round().astype(int).tolist()
+    solve = fast_tsp.solve_tsp_exact if n + 1 <= 16 else lambda d: fast_tsp.find_tour(d, duration_seconds=budget)
+    tour = list(solve(scaled))
+    if tour[-1] == tour[0]:
+        tour = tour[:-1]
+    k = tour.index(n)
+    path = tour[k + 1 :] + tour[:k]
+    if start is not None and path[0] != start:
+        path = path[::-1]
+    return path
+
+
+def _l1(a: np.ndarray, b: np.ndarray) -> float:
+    return float(np.abs(a - b).sum())
+
+
+def seriate_matrix(
+    matrix: np.ndarray,
+    rows: Sequence[Hashable],
+    cols: Sequence[Hashable],
+    budget: float = 0.05,
+) -> tuple[list[int], list[int]]:
+    """Index permutations of `rows` and `cols` making neighbouring rows and columns alike.
+
+    Categories on both axes are ordered first, identically, ignoring the diagonal; the rest
+    are chained onto them.
+    """
+    m = np.asarray(matrix, dtype=float)
+    ri = {c: i for i, c in enumerate(rows)}
+    ci = {c: i for i, c in enumerate(cols)}
+    joint = [c for c in rows if c in ci]
+
+    def joint_dist(a: Hashable, b: Hashable) -> float:
+        ra, rb, ca, cb = ri[a], ri[b], ci[a], ci[b]
+        keep_c = [k for k in range(m.shape[1]) if k not in (ca, cb)]
+        keep_r = [k for k in range(m.shape[0]) if k not in (ra, rb)]
+        return _l1(m[ra, keep_c], m[rb, keep_c]) + _l1(m[keep_r, ca], m[keep_r, cb])
+
+    j_order: list[Hashable] = []
+    if joint:
+        d = np.array([[joint_dist(a, b) for b in joint] for a in joint])
+        path = tsp_path(d, budget=budget)
+        if path[-1] < path[0]:  # a path and its reverse cost the same, so pin one
+            path = path[::-1]
+        j_order = [joint[i] for i in path]
+
+    def tail(labels: list[Hashable], vec: Callable[[Hashable], np.ndarray], anchor: Hashable | None) -> list[Hashable]:
+        if len(labels) < 2:
+            return labels
+        pool = ([anchor] if anchor is not None else []) + labels
+        d = np.array([[_l1(vec(a), vec(b)) for b in pool] for a in pool])
+        path = tsp_path(d, start=0 if anchor is not None else None, budget=budget)
+        out = [pool[i] for i in path]
+        return out[1:] if anchor is not None else out
+
+    rest_rows = tail([c for c in rows if c not in ci], lambda c: m[ri[c], :], j_order[-1] if j_order else None)
+    rest_cols = tail([c for c in cols if c not in ri], lambda c: m[:, ci[c]], j_order[-1] if j_order else None)
+
+    return [ri[c] for c in j_order + rest_rows], [ci[c] for c in j_order + rest_cols]

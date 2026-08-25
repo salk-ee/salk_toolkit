@@ -624,6 +624,18 @@ class TestPlots:
         }
         self._run_plot_test("test_matrix_with_reorder", config, recompute=recompute)
 
+    def test_matrix_smooth_reorder_shared_categories(self, recompute):
+        """Parties on both axes: the shared categories must be ordered symmetrically."""
+        config = {
+            "res_col": "thermometer",
+            "facet_dims": ["party_preference"],
+            "filter": {},
+            "plot": "matrix",
+            "plot_args": {"reorder": "smooth"},
+            "internal_facet": True,
+        }
+        self._run_plot_test("test_matrix_smooth_reorder_shared_categories", config, recompute=recompute)
+
     def test_corr_matrix(self, recompute):
         """Test correlation matrix plot."""
         config = {
