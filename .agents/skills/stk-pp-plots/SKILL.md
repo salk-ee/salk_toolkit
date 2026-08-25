@@ -53,7 +53,7 @@ All entries come from `salk_toolkit/plots.py` via `@stk_plot(...)`. The `data_fo
 | `boxplots` | longform | 1–2 | continuous (or `convert_res="continuous"`) | Tukey whiskers; uses draws when present |
 | `massplot` | longform | 1–2 | categorical | bubble/mass chart — useful for 3+ dimensional breakdowns |
 | `marimekko` | longform | 2 | categorical | rows sum to 1 within each first-facet level; shows composition × size |
-| `matrix` | longform | 2 | categorical | heatmap of category frequencies |
+| `matrix` | longform | 2 | categorical | heatmap of category frequencies; `plot_args={"reorder": "tsp"}` orders both axes so neighbouring rows/cols are alike (`True` = clustering instead) |
 | `corr_matrix` | raw | — | a *block* with multiple numeric columns | pairwise correlations; input is raw (not aggregated) |
 | `density` | longform | up to 3 factor cols | continuous | KDE / smoothed density |
 | `violin` | raw-ish (as_is) | 1–2 | continuous | violin plot; supports `plot_args={"bw": 0.3}` |
@@ -219,7 +219,7 @@ Leave unset to inherit the annotation's category order. Only set when the annota
 
 ### `plot_args`
 
-Extra kwargs forwarded to the concrete plot function; allowed keys come from the `args` map on `@stk_plot(...)`. Examples: `{"normalized": True}` for `stacked_columns`, `{"bw": 0.3}` for `violin`, `{"sort_descending": True}` for `diff_columns`.
+Extra kwargs forwarded to the concrete plot function; allowed keys come from the `args` map on `@stk_plot(...)`. Examples: `{"normalized": True}` for `stacked_columns`, `{"bw": 0.3}` for `violin`, `{"sort_descending": True}` for `diff_columns`, `{"reorder": "tsp"}` for `matrix`.
 
 ### `val_name` / `val_format` / `val_range`
 

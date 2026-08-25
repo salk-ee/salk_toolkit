@@ -26,6 +26,7 @@ from salk_toolkit.utils import (
     gradient_from_color,
     gradient_from_color_alt,
     split_to_neg_neutral_pos,
+    seriate_matrix,
     is_date_str_series,
     is_datetime,
     is_numeric_str_series,
@@ -891,3 +892,66 @@ class TestConstants:
 
 if __name__ == "__main__":
     pytest.main([__file__])
+
+
+class TestSeriateMatrix:
+    """seriate_matrix: orders rows/cols so neighbours are alike."""
+
+    # Two blocks that are internally alike and unlike each other, deliberately interleaved.
+    BLOCKY = np.array([[5.0, 0.0, 5.0, 0.0], [0.0, 5.0, 0.0, 5.0], [5.0, 0.0, 5.0, 0.0], [0.0, 5.0, 0.0, 5.0]])
+    LABELS = ["a", "b", "c", "d"]
+
+    def _cost(self, m, rows, cols, r_ord, c_ord):
+        """Objective: total L1 difference between neighbouring rows and columns."""
+        x = np.asarray(m)[np.ix_(r_ord, c_ord)]
+        return np.abs(np.diff(x, axis=0)).sum() + np.abs(np.diff(x, axis=1)).sum()
+
+    def test_shared_categories_get_the_same_order_on_both_axes(self):
+        """Categories on both axes must share one order."""
+        r, c = seriate_matrix(self.BLOCKY, self.LABELS, self.LABELS)
+        assert r == c
+
+    def test_blocks_come_out_contiguous(self):
+        """Alike categories must end up adjacent."""
+        r, _ = seriate_matrix(self.BLOCKY, self.LABELS, self.LABELS)
+        got = [self.LABELS[i] for i in r]
+        assert {got[0], got[1]} in ({"a", "c"}, {"b", "d"}), got
+
+    def test_it_beats_the_input_order(self):
+        """Seriation must improve on the order it was handed."""
+        r, c = seriate_matrix(self.BLOCKY, self.LABELS, self.LABELS)
+        base = self._cost(self.BLOCKY, self.LABELS, self.LABELS, range(4), range(4))
+        assert self._cost(self.BLOCKY, self.LABELS, self.LABELS, r, c) < base
+
+    def test_diagonal_is_ignored_for_shared_categories(self):
+        """A huge self-affinity diagonal must not drag the order around."""
+        plain = np.array(self.BLOCKY)
+        spiked = np.array(self.BLOCKY)
+        np.fill_diagonal(spiked, 500.0)
+        assert seriate_matrix(spiked, self.LABELS, self.LABELS) == seriate_matrix(plain, self.LABELS, self.LABELS)
+
+    def test_extra_rows_and_cols_follow_the_shared_block(self):
+        """Axis-only categories are appended after the shared ones."""
+        m = np.vstack([self.BLOCKY, [5.0, 0.0, 5.0, 0.0]])
+        rows = self.LABELS + ["e"]
+        r, c = seriate_matrix(m, rows, self.LABELS)
+        got_r, got_c = [rows[i] for i in r], [self.LABELS[i] for i in c]
+        assert got_r[:4] == got_c, "the shared prefix must match the column order"
+        assert got_r[4] == "e"
+
+    def test_is_deterministic(self):
+        """Repeated calls must agree, or plots would jitter."""
+        a = seriate_matrix(self.BLOCKY, self.LABELS, self.LABELS)
+        assert a == seriate_matrix(self.BLOCKY, self.LABELS, self.LABELS)
+
+    def test_degenerate_shapes(self):
+        """Matrices too small to reorder come back untouched."""
+        assert seriate_matrix(np.zeros((1, 1)), ["a"], ["a"]) == ([0], [0])
+        assert seriate_matrix(np.zeros((2, 2)), ["a", "b"], ["a", "b"]) == ([0, 1], [0, 1])
+
+    def test_disjoint_axes_are_ordered_independently(self):
+        """With no shared categories each axis is ordered on its own."""
+        m = np.array([[5.0, 0.0, 5.0], [0.0, 5.0, 0.0], [5.0, 0.0, 5.0]])
+        r, c = seriate_matrix(m, ["r1", "r2", "r3"], ["c1", "c2", "c3"])
+        assert sorted(r) == [0, 1, 2] and sorted(c) == [0, 1, 2]
+        assert [r[0], r[1]] in ([0, 2], [2, 0]), r

@@ -1150,15 +1150,20 @@ def cluster_based_reorder(X: np.ndarray) -> np.ndarray:
     data_format="longform",
     aspect_ratio=(1 / 0.8),
     n_facets=(2, 2),
-    args={"reorder": "bool", "log_colors": "bool"},
+    args={"reorder": [False, True, "tsp"], "log_colors": "bool"},
     priority=55,
 )
 def matrix(
     p: PlotInput,
-    reorder: bool = False,
+    reorder: bool | str = False,
     log_colors: bool = False,
 ) -> AltairChart:
-    """Heatmap-style matrix plot (optionally reorder rows/cols via clustering)."""
+    """Heatmap-style matrix plot.
+
+    `reorder` is either clustering (True) or `"tsp"`, which minimizes the difference
+    between neighbouring rows and columns directly and orders shared categories the
+    same on both axes. See `utils.seriate_matrix`.
+    """
 
     data = p.data.copy()
     if len(p.facets) < 2:
@@ -1169,9 +1174,14 @@ def matrix(
 
     fcols = [c for c in data.columns if c not in [p.value_col, f0.col]]
     if len(fcols) == 1 and reorder:  # Reordering only works if no external facets
-        X = data.pivot(columns=f1.col, index=f0.col).to_numpy()
-        f0.order = np.array(f0.order)[cluster_based_reorder(X)].tolist()
-        f1.order = np.array(f1.order)[cluster_based_reorder(X.T)].tolist()
+        pt = data.pivot(columns=f1.col, index=f0.col, values=p.value_col).reindex(index=f0.order, columns=f1.order)
+        X = np.nan_to_num(pt.to_numpy())
+        if reorder == "tsp":
+            r_ord, c_ord = utils.seriate_matrix(X, f0.order, f1.order)
+        else:
+            r_ord, c_ord = cluster_based_reorder(X), cluster_based_reorder(X.T)
+        f0.order = np.array(f0.order)[r_ord].tolist()
+        f1.order = np.array(f1.order)[c_ord].tolist()
 
     if log_colors:
         data["val_log"] = np.log(data[p.value_col])
