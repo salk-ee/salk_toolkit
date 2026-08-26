@@ -426,6 +426,10 @@ class DataMeta(PBase):
 
     collection_start: Optional[str] = None  # Date in a way pd.to_datetime can parse it
     collection_end: Optional[str] = None  # Date in a way pd.to_datetime can parse it
+    collection_center: Optional[str] = None  # Mean of per-row collection dates; defaults to start/end midpoint
+
+    # Auto-generated survey-date column: False disables, a string renames (default "wave_time")
+    time_field: Optional[Union[bool, str]] = None
 
     author: Optional[str] = None  # AUthor of the metafile
 

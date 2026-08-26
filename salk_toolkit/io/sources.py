@@ -30,7 +30,7 @@ from salk_toolkit.io.core import (
 )
 from salk_toolkit.io.meta import _fix_meta_categories
 from salk_toolkit.io.parquet import read_parquet_with_metadata
-from salk_toolkit.io.pipeline import process
+from salk_toolkit.io.pipeline import _sort_wave_time_block, process
 
 
 def _reconcile_categories(
@@ -245,6 +245,8 @@ def _load_data_files(
     # This will fix categories inside meta too - use concatenated view for this
     fdf = pd.concat(raw_data_dict.values())
     meta = _fix_meta_categories(meta, fdf, warnings=False)
+    # Category union above appends in first-seen order; wave dates must stay chronological
+    meta = _sort_wave_time_block(meta, raw_data_dict)
     return SourceBundle(frames=raw_data_dict, env=einfo, meta=meta)
 
 

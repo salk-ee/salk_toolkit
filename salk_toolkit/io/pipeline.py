@@ -78,6 +78,90 @@ def _inject_files_block(bundle: SourceBundle, meta_obj: DataMeta, file_names: di
     return meta_obj.model_copy(update={"structure": structure2})
 
 
+WAVE_TIME_COL = "wave_time"
+WAVES_BLOCK = "waves"
+
+
+def _resolve_time_field(meta_obj: DataMeta) -> str | None:
+    """Resolve the auto survey-date column name; None when disabled."""
+    tf = meta_obj.time_field
+    if tf is False:
+        return None
+    return tf if isinstance(tf, str) else WAVE_TIME_COL
+
+
+def _collection_date(meta_obj: DataMeta) -> str | None:
+    """Meta's survey date as an ISO string: collection_center, else start/end midpoint."""
+    start, end = meta_obj.collection_start, meta_obj.collection_end
+    if meta_obj.collection_center:
+        dt = pd.to_datetime(meta_obj.collection_center)
+    elif start or end:
+        s, e = pd.to_datetime(cast(str, start or end)), pd.to_datetime(cast(str, end or start))
+        dt = s + (e - s) / 2
+    else:
+        return None
+    return cast(pd.Timestamp, dt).strftime("%Y-%m-%d")
+
+
+def _sort_wave_time_block(meta_obj: DataMeta, frames: dict[str, pd.DataFrame] | None = None) -> DataMeta:
+    """Chronologically sort the waves block categories; hide it when there is a single wave.
+
+    Combining files appends novel categories in first-seen order (`_fix_meta_categories`),
+    so the combined block needs an explicit date-order re-sort. Frame dtypes are recast to match.
+    """
+    name = _resolve_time_field(meta_obj)
+    if name is None or WAVES_BLOCK not in meta_obj.structure:
+        return meta_obj
+    block = meta_obj.structure[WAVES_BLOCK]
+    col_meta = block.columns.get(name)
+    if col_meta is None or not isinstance(col_meta.categories, list):
+        return meta_obj
+    cats = sorted(col_meta.categories, key=pd.to_datetime)
+    block = block.model_copy(
+        update={
+            "columns": {**block.columns, name: col_meta.model_copy(update={"categories": cats})},
+            "hidden": len(cats) <= 1,
+        }
+    )
+    for fdf in (frames or {}).values():
+        if name in fdf.columns:
+            fdf[name] = fdf[name].astype(pd.CategoricalDtype(cats, ordered=True))
+    return meta_obj.model_copy(update={"structure": {**meta_obj.structure, WAVES_BLOCK: block}})
+
+
+def _inject_wave_time(bundle: SourceBundle, meta_obj: DataMeta) -> DataMeta:
+    """Add the auto survey-date column: nested sources keep their values, others get this meta's date.
+
+    Skipped when disabled, when the meta declares the column itself, or when no date is available.
+    """
+    name = _resolve_time_field(meta_obj)
+    if name is None:
+        return meta_obj
+    for g in meta_obj.structure.values():  # user-declared column of that name wins
+        prefix = (g.scale.col_prefix if g.scale else None) or ""
+        if g.name != WAVES_BLOCK and any(prefix + cn == name for cn in g.columns):
+            return meta_obj
+
+    date = _collection_date(meta_obj)
+    labels: set[str] = set()
+    for fc, fdf in bundle.frames.items():
+        if name in fdf.columns and fdf[name].notna().any():
+            labels |= set(fdf[name].dropna().astype(str).unique())
+        elif date is not None:
+            fdf[name] = date
+            labels.add(date)
+        elif labels or any(name in f.columns for f in bundle.frames.values()):
+            fdf[name] = None
+            warn(f"File {fc} has no collection date for '{name}' - values left empty")
+    if not labels:
+        return meta_obj
+
+    col = {"categories": sorted(labels, key=pd.to_datetime), "ordered": True, "label": "Survey wave"}
+    block = soft_validate({"name": WAVES_BLOCK, "generated": True, "columns": {name: col}}, ColumnBlockMeta)
+    meta_obj = meta_obj.model_copy(update={"structure": {**meta_obj.structure, WAVES_BLOCK: block}})
+    return _sort_wave_time_block(meta_obj)
+
+
 def _gather_source(
     bundle: SourceBundle, source_spec: str | dict[str, str], orig_cn: str, cn: str, generated: bool
 ) -> pd.Series | None:
@@ -323,6 +407,7 @@ def process(bundle: SourceBundle, meta_obj: DataMeta, opts: ProcessOpts) -> Data
 
     # File provenance columns must survive end-to-end (also if preprocessing dropped/mutated them)
     meta_obj = _inject_files_block(bundle, meta_obj, file_names)
+    meta_obj = _inject_wave_time(bundle, meta_obj)
 
     ndf_df, meta_obj = _build_columns(bundle, meta_obj, hooks)
 
