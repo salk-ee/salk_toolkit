@@ -21,6 +21,7 @@ from salk_toolkit.io.core import (
     HookEnv,
     ProcessOpts,
     SourceBundle,
+    WAVE_TIME_COL,
     _deterministic_categories_and_values,
     _is_series_of_lists,
     finalize_row_index,
@@ -82,12 +83,6 @@ def _inject_files_block(bundle: SourceBundle, meta_obj: DataMeta, file_names: di
 WAVES_BLOCK = "waves"
 
 
-def _resolve_time_field(meta_obj: DataMeta) -> str | None:
-    """The auto survey-date column name for this meta; None when disabled via ``time_field: false``."""
-    tf = meta_obj.time_field
-    return None if tf is False else (tf if isinstance(tf, str) else "wave_time")
-
-
 def _collection_date(meta_obj: DataMeta) -> str | None:
     """Meta's survey date as an ISO string: collection_center, else start/end midpoint."""
     start, end = meta_obj.collection_start, meta_obj.collection_end
@@ -119,8 +114,8 @@ def _sort_wave_time_block(meta_obj: DataMeta, frames: dict[str, pd.DataFrame] | 
 
     Needed because `_fix_meta_categories` unions categories in first-seen order; frames are recast to match.
     """
-    name = _resolve_time_field(meta_obj)
-    if name is None or WAVES_BLOCK not in meta_obj.structure:
+    name = WAVE_TIME_COL
+    if not meta_obj.wave_time or WAVES_BLOCK not in meta_obj.structure:
         return meta_obj
     block = meta_obj.structure[WAVES_BLOCK]
     col_meta = block.columns.get(name)
@@ -153,14 +148,14 @@ def _inject_wave_time(bundle: SourceBundle, meta_obj: DataMeta) -> DataMeta:
 
     Skipped when disabled, when the meta declares that column itself, or when no dates are available.
     """
-    name = _resolve_time_field(meta_obj)
+    name = WAVE_TIME_COL
     declared = {  # only our own generated block is exempt: a user block of any name owns its columns
         ((g.scale.col_prefix if g.scale else "") or "") + cn
         for g in meta_obj.structure.values()
         if not g.generated
         for cn in g.columns
     }
-    if name is None or name in declared:  # a user-declared column of that name wins
+    if not meta_obj.wave_time or name in declared:  # a user-declared column of that name wins
         return meta_obj
 
     date = _collection_date(meta_obj)
@@ -189,8 +184,7 @@ def _inject_wave_time(bundle: SourceBundle, meta_obj: DataMeta) -> DataMeta:
         upd["hidden"] = len(cats) <= 1
     empty = soft_validate({"name": WAVES_BLOCK, "generated": True, "columns": {}}, ColumnBlockMeta)
     block = (old or empty).model_copy(update=upd)
-    # Stamp the resolved name so consumers (e.g. SIP) read it off the meta instead of re-deriving it
-    return meta_obj.model_copy(update={"structure": {**meta_obj.structure, WAVES_BLOCK: block}, "time_field": name})
+    return meta_obj.model_copy(update={"structure": {**meta_obj.structure, WAVES_BLOCK: block}})
 
 
 def _gather_source(

@@ -58,19 +58,11 @@ class TestSingleMeta:
         df = read_annotated_data(make_wave(tmp_path, "w1"))
         assert "wave_time" not in df.columns
 
-    def test_time_field_false_disables(self, tmp_path):
-        """time_field: false suppresses injection."""
-        m = make_wave(tmp_path, "w1", {"collection_start": "2026-01-10"}, {"time_field": False})
+    def test_wave_time_false_disables(self, tmp_path):
+        """wave_time: false suppresses injection."""
+        m = make_wave(tmp_path, "w1", {"collection_start": "2026-01-10"}, {"wave_time": False})
         df = read_annotated_data(m)
         assert "wave_time" not in df.columns
-
-    def test_time_field_renames(self, tmp_path):
-        """time_field: "t" renames the column."""
-        m = make_wave(tmp_path, "w1", {"collection_center": "2026-01-10"}, {"time_field": "t"})
-        df, meta = read_annotated_data(m, return_meta=True)
-        assert meta is not None
-        assert list(df["t"].unique()) == ["2026-01-10"]
-        assert "t" in meta.structure["waves"].columns
 
     def test_user_declared_column_wins(self, tmp_path):
         """Hand-declared column suppresses injection."""

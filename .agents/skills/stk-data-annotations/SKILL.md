@@ -492,7 +492,7 @@ Every dated annotated load automatically gains an ordered categorical `wave_time
 
 - Combining waves — `read_and_process_data` with multiple metas, or a parent meta over child metas — unions the categories chronologically; each row keeps its own wave's date. Children's dates win; a parent's dates only fill files that lack their own.
 - A file with no resolvable date in a dated combine gets NA `wave_time` plus a warning; a load with no dates anywhere simply has no column. In a multi-meta `read_and_process_data` load, the **last** meta must be dated for the `waves` block to reach the combined meta ("last file is the basis").
-- Opt out with `"time_field": false` in the meta, or rename with `"time_field": "t"`. A column of that name declared in your own blocks always wins over injection, and a column whose values aren't dates is left alone with a warning. `time_field` does **not** compose across nesting — set it identically on the parent (and on the last meta of a combine), or the renamed column is dropped.
+- Opt a dataset out with `"wave_time": false` in the meta. A column of that name declared in your own blocks always wins over injection, and a column whose values aren't dates is left alone with a warning.
 - Population/census metas: their collection dates are fine to fill, but SIP drops a population source's own `wave_time` because a census date is not a survey wave.
 - Downstream, `wave_time` is the standard model time axis (see SIP's `sip-create-model` skill) — so fill the collection fields even for a first wave.
 
