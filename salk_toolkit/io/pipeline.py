@@ -1,5 +1,6 @@
 """The annotation pipeline: stages that turn a SourceBundle + DataMeta into a processed Dataset."""
 
+from collections.abc import Iterable
 from typing import cast
 
 import numpy as np
@@ -78,52 +79,70 @@ def _inject_files_block(bundle: SourceBundle, meta_obj: DataMeta, file_names: di
     return meta_obj.model_copy(update={"structure": structure2})
 
 
-WAVE_TIME_COL = "wave_time"
 WAVES_BLOCK = "waves"
 
 
 def _resolve_time_field(meta_obj: DataMeta) -> str | None:
-    """Resolve the auto survey-date column name; None when disabled."""
+    """The auto survey-date column name for this meta; None when disabled via ``time_field: false``."""
     tf = meta_obj.time_field
-    if tf is False:
-        return None
-    return tf if isinstance(tf, str) else WAVE_TIME_COL
+    return None if tf is False else (tf if isinstance(tf, str) else "wave_time")
 
 
 def _collection_date(meta_obj: DataMeta) -> str | None:
     """Meta's survey date as an ISO string: collection_center, else start/end midpoint."""
     start, end = meta_obj.collection_start, meta_obj.collection_end
-    if meta_obj.collection_center:
-        dt = pd.to_datetime(meta_obj.collection_center)
-    elif start or end:
-        s, e = pd.to_datetime(cast(str, start or end)), pd.to_datetime(cast(str, end or start))
-        dt = s + (e - s) / 2
-    else:
+    if not (meta_obj.collection_center or start or end):
         return None
+    try:
+        if meta_obj.collection_center:
+            dt = pd.to_datetime(meta_obj.collection_center)
+        else:
+            s, e = pd.to_datetime(cast(str, start or end)), pd.to_datetime(cast(str, end or start))
+            dt = s + (e - s) / 2
+    except ValueError as exc:
+        raise ValueError(
+            f"Unparseable collection date in meta (center={meta_obj.collection_center!r}, "
+            f"start={start!r}, end={end!r}) - use an ISO date like '2026-04-15'"
+        ) from exc
     return cast(pd.Timestamp, dt).strftime("%Y-%m-%d")
 
 
-def _sort_wave_time_block(meta_obj: DataMeta, frames: dict[str, pd.DataFrame] | None = None) -> DataMeta:
-    """Chronologically sort the waves block categories; hide it when there is a single wave.
+def _date_sorted(labels: Iterable[str]) -> list[str] | None:
+    """Labels sorted chronologically, or None if any is not a parseable date."""
+    lst = list(labels)
+    dts = pd.to_datetime(pd.Series(lst, dtype=object), errors="coerce")
+    return None if dts.isna().any() else [lst[i] for i in dts.argsort()]
 
-    Combining files appends novel categories in first-seen order (`_fix_meta_categories`),
-    so the combined block needs an explicit date-order re-sort. Frame dtypes are recast to match.
+
+def _sort_wave_time_block(meta_obj: DataMeta, frames: dict[str, pd.DataFrame] | None = None) -> DataMeta:
+    """Re-sort the waves block chronologically and hide it when a single wave.
+
+    Needed because `_fix_meta_categories` unions categories in first-seen order; frames are recast to match.
     """
     name = _resolve_time_field(meta_obj)
     if name is None or WAVES_BLOCK not in meta_obj.structure:
         return meta_obj
     block = meta_obj.structure[WAVES_BLOCK]
     col_meta = block.columns.get(name)
+    # col_meta is legitimately absent when the basis meta's waves block came from another source
     if col_meta is None or not isinstance(col_meta.categories, list):
         return meta_obj
-    cats = sorted(col_meta.categories, key=pd.to_datetime)
+    frames = frames or {}
+    # Union in observed values: recasting to a narrower category list would silently null whole waves
+    observed = {v for fdf in frames.values() if name in fdf.columns for v in fdf[name].dropna().astype(str).unique()}
+    cats = _date_sorted(set(col_meta.categories) | observed)
+    if cats is None:
+        return meta_obj
     block = block.model_copy(
         update={
             "columns": {**block.columns, name: col_meta.model_copy(update={"categories": cats})},
             "hidden": len(cats) <= 1,
         }
     )
-    for fdf in (frames or {}).values():
+    dated = [fc for fc, fdf in frames.items() if name in fdf.columns and fdf[name].notna().any()]
+    if dated and len(dated) < len(frames):
+        warn(f"No survey date for '{name}' in files {sorted(set(frames) - set(dated))} - those rows are left empty")
+    for fdf in frames.values():
         if name in fdf.columns:
             fdf[name] = fdf[name].astype(pd.CategoricalDtype(cats, ordered=True))
     return meta_obj.model_copy(update={"structure": {**meta_obj.structure, WAVES_BLOCK: block}})
@@ -132,34 +151,46 @@ def _sort_wave_time_block(meta_obj: DataMeta, frames: dict[str, pd.DataFrame] | 
 def _inject_wave_time(bundle: SourceBundle, meta_obj: DataMeta) -> DataMeta:
     """Add the auto survey-date column: nested sources keep their values, others get this meta's date.
 
-    Skipped when disabled, when the meta declares the column itself, or when no date is available.
+    Skipped when disabled, when the meta declares that column itself, or when no dates are available.
     """
     name = _resolve_time_field(meta_obj)
-    if name is None:
+    declared = {  # only our own generated block is exempt: a user block of any name owns its columns
+        ((g.scale.col_prefix if g.scale else "") or "") + cn
+        for g in meta_obj.structure.values()
+        if not g.generated
+        for cn in g.columns
+    }
+    if name is None or name in declared:  # a user-declared column of that name wins
         return meta_obj
-    for g in meta_obj.structure.values():  # user-declared column of that name wins
-        prefix = (g.scale.col_prefix if g.scale else None) or ""
-        if g.name != WAVES_BLOCK and any(prefix + cn == name for cn in g.columns):
-            return meta_obj
 
     date = _collection_date(meta_obj)
     labels: set[str] = set()
     for fc, fdf in bundle.frames.items():
         if name in fdf.columns and fdf[name].notna().any():
-            labels |= set(fdf[name].dropna().astype(str).unique())
+            labels |= set(fdf[name].dropna().astype(str).unique())  # nested source: keep its own waves
+            if date is not None:
+                warn(f"File {fc} already carries '{name}' - keeping its values over this meta's collection date")
         elif date is not None:
             fdf[name] = date
             labels.add(date)
-        elif labels or any(name in f.columns for f in bundle.frames.values()):
+        elif any(name in f.columns for f in bundle.frames.values()):
             fdf[name] = None
-            warn(f"File {fc} has no collection date for '{name}' - values left empty")
-    if not labels:
+            warn(f"File {fc} has no collection date for '{name}' - set collection_center; rows left empty")
+    cats = _date_sorted(labels) if labels else None
+    if cats is None:  # no dates at all, or a foreign column of that name carrying non-date values
+        if labels:
+            warn(f"Column '{name}' holds non-date values {sorted(labels)[:3]} - not treated as survey dates")
         return meta_obj
 
-    col = {"categories": sorted(labels, key=pd.to_datetime), "ordered": True, "label": "Survey wave"}
-    block = soft_validate({"name": WAVES_BLOCK, "generated": True, "columns": {name: col}}, ColumnBlockMeta)
-    meta_obj = meta_obj.model_copy(update={"structure": {**meta_obj.structure, WAVES_BLOCK: block}})
-    return _sort_wave_time_block(meta_obj)
+    old = meta_obj.structure.get(WAVES_BLOCK)
+    col = soft_validate({"categories": cats, "ordered": True}, ColumnMeta)
+    upd: dict[str, object] = {"columns": {**(old.columns if old else {}), name: col}}
+    if old is None or old.generated:  # never override a user block's own visibility
+        upd["hidden"] = len(cats) <= 1
+    empty = soft_validate({"name": WAVES_BLOCK, "generated": True, "columns": {}}, ColumnBlockMeta)
+    block = (old or empty).model_copy(update=upd)
+    # Stamp the resolved name so consumers (e.g. SIP) read it off the meta instead of re-deriving it
+    return meta_obj.model_copy(update={"structure": {**meta_obj.structure, WAVES_BLOCK: block}, "time_field": name})
 
 
 def _gather_source(

@@ -3,6 +3,7 @@
 import json
 
 import pandas as pd
+import pytest
 
 from salk_toolkit.io import read_annotated_data, read_and_process_data
 
@@ -35,6 +36,7 @@ class TestSingleMeta:
         """Date = start/end midpoint; single wave hidden."""
         m = make_wave(tmp_path, "w1", {"collection_start": "2026-01-10", "collection_end": "2026-01-20"})
         df, meta = read_annotated_data(m, return_meta=True)
+        assert meta is not None
         assert list(df["wave_time"].unique()) == ["2026-01-15"]
         blk = meta.structure["waves"]
         assert blk.columns["wave_time"].categories == ["2026-01-15"]
@@ -66,6 +68,7 @@ class TestSingleMeta:
         """time_field: "t" renames the column."""
         m = make_wave(tmp_path, "w1", {"collection_center": "2026-01-10"}, {"time_field": "t"})
         df, meta = read_annotated_data(m, return_meta=True)
+        assert meta is not None
         assert list(df["t"].unique()) == ["2026-01-10"]
         assert "t" in meta.structure["waves"].columns
 
@@ -80,6 +83,7 @@ class TestSingleMeta:
         }
         write_json(tmp_path / "w1_meta.json", meta)
         df, m = read_annotated_data(str(tmp_path / "w1_meta.json"), return_meta=True)
+        assert m is not None
         assert set(df["wave_time"]) == {"a", "b"}
         assert "waves" not in m.structure
 
@@ -109,12 +113,52 @@ class TestCombining:
         df = read_and_process_data({"files": [{"file": m1}, {"file": m2}]})
         assert list(df["wave_time"].cat.categories) == ["2026-01-15"]
 
-    def test_dateless_wave_degrades_with_warning(self, tmp_path, capsys):
-        """Dateless wave gets NA values, load survives."""
+    def test_dateless_wave_gets_na_with_warning(self, tmp_path):
+        """A dateless wave beside a dated one gets NA rows plus a warning naming the file."""
         m1 = make_wave(tmp_path, "w1", {"collection_center": "2026-01-15"})
         m2 = make_wave(tmp_path, "w2")  # no dates
-        df = read_and_process_data({"files": [{"file": m2}, {"file": m1}]})
+        with pytest.warns(UserWarning, match="No survey date"):
+            df = read_and_process_data({"files": [{"file": m2}, {"file": m1}]})
         assert df["wave_time"].notna().sum() == 4 and df["wave_time"].isna().sum() == 4
+
+
+class TestForeignColumns:
+    """Pre-existing / user-owned columns of the same name are never trampled."""
+
+    def _raw_col_meta(self, tmp_path, values, extra=None):
+        pd.DataFrame({"q": ["Yes", "No"], "wave_time": values}).to_csv(tmp_path / "d.csv", index=False)
+        meta = {
+            "file": "d.csv",
+            "collection_center": "2026-01-15",
+            **(extra or {}),
+            "structure": [{"name": "op", "columns": [["q", {"categories": ["No", "Yes"]}]]}],
+        }
+        write_json(tmp_path / "d_meta.json", meta)
+        return str(tmp_path / "d_meta.json")
+
+    def test_undeclared_non_date_column_does_not_crash(self, tmp_path):
+        """A raw column of that name holding non-dates is left alone, not parsed as wave dates."""
+        m = self._raw_col_meta(tmp_path, ["wave 1", "wave 1"])
+        with pytest.warns(UserWarning):
+            df, meta = read_annotated_data(m, return_meta=True)
+        assert meta is not None and "waves" not in meta.structure
+
+    def test_user_waves_block_columns_survive(self, tmp_path):
+        """Injecting into a user block named 'waves' keeps its own columns and visibility."""
+        pd.DataFrame({"q": ["Yes", "No"], "surf": [1, 2]}).to_csv(tmp_path / "d.csv", index=False)
+        write_json(
+            tmp_path / "d_meta.json",
+            {
+                "file": "d.csv",
+                "collection_center": "2026-01-15",
+                "structure": [
+                    {"name": "waves", "columns": [["q", {"categories": ["No", "Yes"]}], ["surf", {"continuous": True}]]}
+                ],
+            },
+        )
+        df, meta = read_annotated_data(str(tmp_path / "d_meta.json"), return_meta=True)
+        assert meta is not None
+        assert {"q", "surf"} <= set(meta.structure["waves"].columns) and {"q", "surf"} <= set(df.columns)
 
 
 class TestNestedMeta:
@@ -130,6 +174,7 @@ class TestNestedMeta:
         }
         write_json(tmp_path / "parent_meta.json", parent)
         df, meta = read_annotated_data(str(tmp_path / "parent_meta.json"), return_meta=True)
+        assert meta is not None
         assert meta.structure["waves"].columns["wave_time"].categories == ["2026-01-15", "2026-04-15"]
         assert df["wave_time"].cat.ordered
         assert set(df["wave_time"]) == {"2026-01-15", "2026-04-15"}
