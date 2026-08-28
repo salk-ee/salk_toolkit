@@ -1564,40 +1564,68 @@ def plot_matrix_html(
 # ---- Matrix seriation ------------------------------------------------------
 
 
-def tsp_path(dist: np.ndarray, start: int | None = None, budget: float = 0.05) -> list[int]:
+def tsp_path(dist: np.ndarray, start: int | None = None, exact_max: int = 12) -> list[int]:
     """Shortest Hamiltonian path over a symmetric distance matrix, free-ended unless `start` is given.
 
-    Exact up to 15 nodes; above that `budget` caps the heuristic search.
+    Exact up to `exact_max` nodes, nearest-neighbour + 2-opt above it.
     """
-    try:
-        import fast_tsp
-    except ImportError:  # pragma: no cover - only hit when the extra is missing
-        raise ImportError("Matrix seriation needs the `fast-tsp` package") from None
-
-    n = len(dist)
+    d = np.asarray(dist, dtype=float)
+    n = len(d)
     if n < 3:
         return list(range(n))
+    if n <= exact_max:
+        return _held_karp(d, start)
+    return _two_opt(d, [start] if start is not None else list(range(n)))
 
-    # A depot 0 from every node makes the open path a cycle; far from all but `start`
-    # instead pins the start, for the same constant cost whichever node ends last.
-    big = dist.max() * n + 1
-    ext = np.full((n + 1, n + 1), 0.0 if start is None else big)
-    ext[:n, :n] = dist
-    np.fill_diagonal(ext, 0.0)
-    if start is not None:
-        ext[n, start] = ext[start, n] = 0.0
 
-    # Held-Karp is exact and, unlike the budgeted search, reproducible run to run.
-    scaled = (ext / max(ext.max(), 1e-12) * 10**6).round().astype(int).tolist()
-    solve = fast_tsp.solve_tsp_exact if n + 1 <= 16 else lambda d: fast_tsp.find_tour(d, duration_seconds=budget)
-    tour = list(solve(scaled))
-    if tour[-1] == tour[0]:
-        tour = tour[:-1]
-    k = tour.index(n)
-    path = tour[k + 1 :] + tour[:k]
-    if start is not None and path[0] != start:
-        path = path[::-1]
-    return path
+def _held_karp(d: np.ndarray, start: int | None) -> list[int]:
+    """Exact O(2^n n^2) dynamic program over (visited set, last node)."""
+    n = len(d)
+    dp = np.full((1 << n, n), np.inf)
+    par = np.zeros((1 << n, n), dtype=np.int8)
+    for j in range(n) if start is None else [start]:
+        dp[1 << j, j] = 0.0
+    for mask in range(1 << n):
+        live = np.isfinite(dp[mask])
+        if not live.any():
+            continue
+        cand = np.where(live[:, None], dp[mask][:, None] + d, np.inf)  # cand[i, j]: end at i, step to j
+        best_i, best_v = np.argmin(cand, axis=0), cand.min(axis=0)
+        for j in (j for j in range(n) if not mask >> j & 1 and best_v[j] < dp[mask | 1 << j, j]):
+            dp[mask | 1 << j, j], par[mask | 1 << j, j] = best_v[j], best_i[j]
+    mask = (1 << n) - 1
+    path = [int(np.argmin(dp[mask]))]
+    while mask != 1 << path[-1]:
+        prev, mask = int(par[mask, path[-1]]), mask ^ 1 << path[-1]
+        path.append(prev)
+    return path[::-1]
+
+
+def _two_opt(d: np.ndarray, starts: list[int]) -> list[int]:
+    """Nearest-neighbour from every start, then 2-opt. Ends are free, so the edge past one costs nothing."""
+    n = len(d)
+    edge = lambda a, b: d[a, b] if a >= 0 and b >= 0 else 0.0  # noqa: E731
+    best, best_c = list(range(n)), np.inf
+    for s in starts:
+        path, rest = [s], set(range(n)) - {s}
+        while rest:
+            nxt = min(rest, key=lambda j: (d[path[-1], j], j))
+            path.append(nxt)
+            rest.discard(nxt)
+        improved = True
+        while improved:
+            improved = False
+            for i in range(-1, n - 1):
+                for j in range(i + 2, n):
+                    a = path[i] if i >= 0 else -1
+                    b = path[j + 1] if j + 1 < n else -1
+                    if edge(a, path[j]) + edge(path[i + 1], b) < edge(a, path[i + 1]) + edge(path[j], b) - 1e-12:
+                        path[i + 1 : j + 1] = path[i + 1 : j + 1][::-1]
+                        improved = True
+        c = sum(d[path[k], path[k + 1]] for k in range(n - 1))
+        if c < best_c - 1e-12:
+            best, best_c = path, c
+    return best
 
 
 def _l1(a: np.ndarray, b: np.ndarray) -> float:
@@ -1608,7 +1636,6 @@ def seriate_matrix(
     matrix: np.ndarray,
     rows: Sequence[Hashable],
     cols: Sequence[Hashable],
-    budget: float = 0.05,
 ) -> tuple[list[int], list[int]]:
     """Index permutations of `rows` and `cols` making neighbouring rows and columns alike.
 
@@ -1629,7 +1656,7 @@ def seriate_matrix(
     j_order: list[Hashable] = []
     if joint:
         d = np.array([[joint_dist(a, b) for b in joint] for a in joint])
-        path = tsp_path(d, budget=budget)
+        path = tsp_path(d)
         if path[-1] < path[0]:  # a path and its reverse cost the same, so pin one
             path = path[::-1]
         j_order = [joint[i] for i in path]
@@ -1639,7 +1666,7 @@ def seriate_matrix(
             return labels
         pool = ([anchor] if anchor is not None else []) + labels
         d = np.array([[_l1(vec(a), vec(b)) for b in pool] for a in pool])
-        path = tsp_path(d, start=0 if anchor is not None else None, budget=budget)
+        path = tsp_path(d, start=0 if anchor is not None else None)
         out = [pool[i] for i in path]
         return out[1:] if anchor is not None else out
 

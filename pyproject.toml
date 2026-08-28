@@ -24,7 +24,6 @@ dependencies = [
   "altair",
   "arviz>=1.1",
   "authlib",
-  "fast-tsp",
   "frontegg",
   "hsluv",
   "kdepy",
