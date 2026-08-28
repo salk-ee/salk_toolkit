@@ -910,3 +910,15 @@ class TestSeriateMatrix:
         assert got_r[:4] == got_c, "shared categories must get one order on both axes"
         assert {got_c[0], got_c[1]} in ({"a", "c"}, {"b", "d"}), got_c
         assert got_r[4] == "e", "row-only categories follow the shared block"
+
+    def test_large_matrices_stay_permutations(self):
+        """Above the exact-solver cutoff the tails are 2-opted, which must not displace their anchor."""
+        rng = np.random.default_rng(0)
+        m = rng.uniform(-5, 5, (60, 60))
+        rows = [f"j{i}" for i in range(30)] + [f"r{i}" for i in range(30)]
+        cols = [f"j{i}" for i in range(30)] + [f"c{i}" for i in range(30)]
+
+        r, c = seriate_matrix(m, rows, cols)
+
+        assert sorted(r) == sorted(c) == list(range(60))
+        assert [rows[i] for i in r][:30] == [cols[i] for i in c][:30]

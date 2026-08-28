@@ -1575,7 +1575,7 @@ def tsp_path(dist: np.ndarray, start: int | None = None, exact_max: int = 12) ->
         return list(range(n))
     if n <= exact_max:
         return _held_karp(d, start)
-    return _two_opt(d, [start] if start is not None else list(range(n)))
+    return _two_opt(d, [start], pin=True) if start is not None else _two_opt(d, list(range(n)))
 
 
 def _held_karp(d: np.ndarray, start: int | None) -> list[int]:
@@ -1601,8 +1601,11 @@ def _held_karp(d: np.ndarray, start: int | None) -> list[int]:
     return path[::-1]
 
 
-def _two_opt(d: np.ndarray, starts: list[int]) -> list[int]:
-    """Nearest-neighbour from every start, then 2-opt. Ends are free, so the edge past one costs nothing."""
+def _two_opt(d: np.ndarray, starts: list[int], pin: bool = False) -> list[int]:
+    """Nearest-neighbour from every start, then 2-opt. Ends are free, so the edge past one costs nothing.
+
+    `pin` keeps the start in place by skipping the whole-prefix reversal, which would move it.
+    """
     n = len(d)
     edge = lambda a, b: d[a, b] if a >= 0 and b >= 0 else 0.0  # noqa: E731
     best, best_c = list(range(n)), np.inf
@@ -1615,7 +1618,7 @@ def _two_opt(d: np.ndarray, starts: list[int]) -> list[int]:
         improved = True
         while improved:
             improved = False
-            for i in range(-1, n - 1):
+            for i in range(0 if pin else -1, n - 1):
                 for j in range(i + 2, n):
                     a = path[i] if i >= 0 else -1
                     b = path[j + 1] if j + 1 < n else -1
