@@ -17,7 +17,8 @@ Always read the schema and the pipeline before starting annotation work — both
 
 1. **`translate` / `translate_after`** — for plain value → value remappings (e.g. merging `"Don't remember"` and `"Difficult to answer"` into `"Don't know"`, renaming categories, fixing typos).
 2. **`transform`** (per column) — for expression-level fixes that need the cell / column in scope (casting, regex, `stk.cut_nice`, rule-based recoding).
-3. **`preprocessing`** (top-level code block) — last resort, for changes that need multiple source columns at once, row filtering, or cross-column derivations before any column-level processing runs.
+3. **`not_asked`** (meta level, per-block override) — for skip codes meaning the question was never put to this respondent (`"Nicht erhoben: Filter"`, mode/filter skips). Never hand-roll these with a global `df.replace(...)` in preprocessing.
+4. **`preprocessing`** (top-level code block) — last resort, for changes that need multiple source columns at once, row filtering, or cross-column derivations before any column-level processing runs.
 
 If you think you need to edit the raw file, you're wrong — use translate/transform/preprocessing instead.
 
@@ -104,6 +105,26 @@ df = read_and_process_data({
     ]
 })
 ```
+
+### Combining waves: make translations agree (IMPORTANT)
+
+Each wave is processed with its own meta and the outputs are concatenated; the
+final category list is the **union of the distinct output values**. There is **no
+warning** if waves disagree, so two pitfalls are silent:
+
+- **Translations must map to the same canonical name.** If wave 1 maps `"1" → "Healthcare"`
+  and wave 2 maps `"1" → "Health care"` (or leaves it untranslated), you get two
+  separate categories that should have been one. The same raw index (`1`..`9`) can
+  legitimately mean *different things* in different surveys — that's exactly why the
+  loader can't auto-detect this. It is your job to make the per-wave `translate` /
+  `translate_after` dicts resolve to an identical set of output names.
+- **Differing menus across waves are not flagged.** If an item was offered in wave 2
+  but not wave 1, it simply appears in the union with NA for wave-1 rows. The ranking
+  models (TopK/MaxDiff `segments()`) compare a respondent's picks against the *full*
+  merged category set, so wave-1 respondents will be treated as ranking their picks
+  above an item they were never shown. If wave menus genuinely differ, model the
+  waves separately (or carry the choice set explicitly) rather than relying on the
+  union.
 
 ## JSON Structure Quick Reference
 
@@ -213,7 +234,7 @@ parses dates first and then buckets them into chronologically ordered `"01 Dec 2
 | `col_prefix` | On scale: prefix prepended to column names (disambiguates shared names) |
 | `hidden` | Hide from explorer dashboards |
 | `generated` | Column data produced by model, not in source file |
-| `create` | TopK or MaxDiff block spec (see below) |
+| `type` | Block type discriminator: `plain` (default, may be omitted), `topk`, `maxdiff`, `onehot` (see below) |
 | `subgroup_transform` | Python code applied to all columns in block as `gdf` |
 
 ### Constants
@@ -243,7 +264,7 @@ See `examples/example_web_meta.json` for a worked pattern — `party_colors` con
 
 ### Comments
 
-Every block in the annotation (the top-level `DataMeta`, any entry in `structure`, any `scale`, any per-column meta dict, `create` blocks, etc.) accepts an optional `"comment"` field. JSON has no native comment syntax, so this field is the canonical place to leave notes.
+Every block in the annotation (the top-level `DataMeta`, any entry in `structure`, any `scale`, any per-column meta dict, typed topk/maxdiff/onehot blocks, etc.) accepts an optional `"comment"` field. JSON has no native comment syntax, so this field is the canonical place to leave notes.
 
 - Value is either a single string or a list of strings (one per line) — both render fine in the JSON.
 - The field is ignored by all processing code: it carries no semantic meaning and has zero runtime effect.
@@ -272,90 +293,156 @@ Every block in the annotation (the top-level `DataMeta`, any entry in `structure
 
 If you find yourself wanting to explain a choice to the user in chat, write that explanation into `comment` as well — future readers of the JSON will thank you.
 
-## TopK Blocks
+## TopK / MaxDiff / OneHot Blocks
+
+These specialized block types carry a top-level `type` discriminator and are
+processed by `_process_block` in `salk_toolkit/io/create_blocks.py`. The full reference (all fields,
+`input_format` variants, the translate pipeline, and migration from old files)
+lives in **[specs/block-processing.md](../../../specs/block-processing.md)** — read
+it before authoring these blocks. The essentials:
+
+> **No nested `create`.** The legacy `"create": { ... }` wrapper and the removed
+> block-level fields (`topics`, `sets`, `choice_mapping`, `items`, `translate_values`,
+> `groups`, `na_vals`, block-level `translate`/`translate_after`) now **raise at load
+> time**. Put `type` at the top level and flatten the
+> rest onto the block. **Updating an annotation written in the old syntax?** Follow
+> the migration guide in [legacy.md](legacy.md) — it maps every legacy field (and the
+> maxdiff `scale.translate` semantic change) to the new language.
+
+### TopK
 
 For "select top K" questions (e.g. "which 3 issues matter most?"):
 
 ```json
 {
+  "type": "topk",
   "name": "issue_importance_top3",
-  "create": {
-    "type": "topk",
-    "from_columns": "Q6r(\\d+)",
-    "res_columns": "Q6p_R\\1",
-    "agg_index": 1,
-    "na_vals": ["NO TO: ...", "..."],
-    "translate_after": { "1": "Cost of living", "2": "Healthcare" }
-  },
-  "scale": { "categories": "infer" },
+  "from_columns": "Q6r(\\d+)",
+  "res_columns": "Q6p_R\\1",
+  "agg_index": 1,
+  "k": 3,
+  "not_selected": ["NO TO: ...", "..."],
+  "input_format": "onehot",
+  "scale": { "translate_after": { "1": "Cost of living", "2": "Healthcare" } },
   "columns": []
 }
 ```
 
-- `from_columns`: regex matching source columns (or explicit list)
-- `res_columns`: output column template (or explicit list matching from_columns)
-- `agg_index`: which regex group indexes the items (1-indexed; -1 = last)
-- `na_vals`: values meaning "not selected" — replaced with NA
-- `translate_after`: map item indices to readable names (applied first)
-- `from_prefix`: if `from_columns` is a list, strip this prefix for translation
+- `from_columns` / `res_columns`: regex (with capture groups) or explicit lists.
+- `agg_index`: which regex group indexes the items (1-based; -1 = last).
+- `k`: **required** — how many items the question let people pick. It is a data check:
+  a row with more picks raises, so put the questionnaire's real limit here.
+- `not_selected`: **raw** cell values meaning "offered but not picked" (`"Not mentioned"`,
+  `0`). Must match something or the block raises. Do not use it for skip codes — those
+  are `not_asked` (see Missing data below).
+- `scale.translate_after`: maps the reshaped output values (indices or local names)
+  to final English names; its values become the output `categories`.
+- `input_format`: `onehot` (default; a non-null cell = picked), `ranked_onehot` (the cell
+  is that item's rank), `leftpacked` / `ranked_leftpack` (columns are already the slots).
+- `cell_values: true`: onehot cells hold the item name itself (LimeSurvey style) — the
+  values are packed as-is and `res_columns` becomes a slot-name prefix (`"q4a_"` →
+  `q4a_1..q4a_k`). This replaces `stk.aggregate_multiselect` preprocessing.
 
-**Regex mode rejects `|`** — a `from_columns` pattern containing alternation (e.g. a lookahead excluding DK/None suffixes) raises before any columns are built. To exclude items (DK/None/Other one-hots) or control slot order, use **list mode**: `from_columns` as an explicit column list with a parallel `res_columns` list of the same length. List mode masks cells to the *full source column name*, so key `translate_after` by column name (or set `from_prefix` to strip a shared prefix first); output slots are named by your `res_columns`, so you pick them (`issues_1`, `issues_2`, …), whereas regex mode derives slot names from the source columns via the `res_columns` template in dataframe order.
+### OneHot
 
-The `columns` list in a topk block is usually **empty** — output columns are auto-generated. However, some topk blocks (e.g. issue ownership) list the raw source columns alongside the `create` block when those columns are also needed for other purposes.
-
-### TopK translate pipeline
-
-After the one-hot columns are reshaped (cell value becomes the column's regex-group label), translations are applied in order:
-
-1. **`create.translate_after`** — maps raw regex-group labels (typically numeric indices like `"1"`, `"2"`) to readable names.
-2. **`scale.translate`** — maps those names (or the original text if `translate_after` was not used) to final English output names. When `scale.translate` is present, its values become the output `categories` list.
-
-In practice you use **one or the other**, not both:
-- Numeric one-hot columns → use `translate_after` to go from index → English name.
-- Text-valued one-hot columns (e.g. party names in the local language) → use `scale.translate` to go from local name → English short code.
-
-## MaxDiff Blocks
-
-For best-worst scaling / maxdiff experiments:
+The inverse of TopK: turn a multi-select into one column per choice (for crosstabs
+and per-choice modeling). Replaces `stk.deaggregate_multiselect` and hand-rolled
+`(df[dummy] == 1).map({True: "Yes", False: "No"})` preprocessing.
 
 ```json
 {
+  "type": "onehot",
+  "name": "social_media",
+  "from_columns": "vQ12_M_(\\d+)",
+  "input_format": "wide",
+  "res_prefix": "sm_",
+  "scale": { "translate": { "1": "Facebook", "2": "TikTok", "88": "no_account" } }
+}
+```
+
+- `input_format`: `leftpacked` (mention slots hold chosen names) or `wide` (one 0/1
+  dummy column per choice already).
+- **Wide mode**: the choice is identified by the regex capture group (or the bare
+  column name) and *named* through `scale.translate` — the translate keys are column
+  keys, not cell values. A choice in the universe with no column in this wave becomes
+  all-unselected with a warning (cross-wave dummy drift).
+- **Leftpacked mode**: `choices` fixes the list and order; omitted, it is the sorted
+  union of observed cell values.
+- `coding`: `["No", "Yes"]` by default, stamped as ordered categories (add `likert` /
+  `num_values` on the scale as usual). `"coding": null` keeps raw booleans.
+- `res_prefix`: output names are `<prefix><choice>`; defaults to `<block>_`, and
+  `""` gives bare choice names.
+
+### MaxDiff
+
+```json
+{
+  "type": "maxdiff",
   "name": "maxdiff",
-  "create": {
-    "type": "maxdiff",
-    "best_columns": "Q6_(\\d+?)best",
-    "worst_columns": "Q6_(\\d+?)worst",
-    "set_columns": "Q6_\\1set",
-    "setindex_column": ["Q6_Version", { "continuous": true }],
-    "topics": null,
-    "sets": null
-  },
-  "scale": {
-    "categories": "infer",
-    "translate": { "Local topic 1": "English topic 1", "...": "..." }
-  },
+  "best_columns": "Q6_(\\d+?)best",
+  "worst_columns": "Q6_(\\d+?)worst",
+  "set_columns": "Q6_\\1set",
+  "setindex_column": ["Q6_Version", { "continuous": true }],
+  "input_format": "choice_sets",
+  "scale": { "categories": "infer", "translate": { "1": "English topic 1", "2": "..." } },
   "columns": []
 }
 ```
 
-- `best_columns` / `worst_columns`: regex or list matching best/worst choice columns
-- `set_columns`: regex template or list for the set-membership columns
-- `setindex_column`: column containing set version index (with optional meta; forced `continuous: true`, so it never inherits the scale's topic categories). Mutually exclusive with explicit set_columns data in the file.
-- `topics`: list of all topic strings (typically in `constants`)
-- `sets`: list of lists of 1-indexed topic indices per version (typically in `constants`)
-- Scale `translate` maps local-language topics to English
+- Topic universe: an index-keyed `scale.translate` (`"1"` → name), **or**
+  `scale.categories` when the cells already hold display names.
+- `choice_sets`: the design table. Flat list = per-version item lists; a dict keyed by
+  **design name** when `setindex_column` cells hold design names rather than numbers.
+- `scale.translate` maps 1-based index strings to topic names; it is both the topic
+  universe for `setindex_column` lookups and the element-wise translator for raw
+  best/worst/set cells. There is **no `translate_after`** for maxdiff.
+- `input_format`: `choice_sets` (default) or `resolved` — see the doc.
 
-### MaxDiff translate pipeline
+> **Two maxdiff routes.** The STK `MaxDiffBlock` transform above (int-index cells,
+> required `set_columns`) is distinct from how maxdiff has usually been modelled: in
+> production the best/worst/set columns are often kept as plain name-categorical
+> columns and fed to the SIP `ordinal_ranking` model (shown-set column as the
+> comparison set). Check the model_desc before assuming a survey's maxdiff uses
+> this STK transform. Either way the `structure` should live on the block as a
+> `model_spec` (stamped automatically by the typed block, authored by hand on the
+> plain-columns route — see below) rather than be hand-written per model desc.
 
-All translation happens through **`scale.translate`** (there is no `translate_after` for maxdiff). The flow:
+The `columns` list for these blocks is usually **empty** — output columns are
+auto-generated.
 
-1. **`topics`** defines the full topic list (usually via `constants`) in the source language.
-2. **`scale.translate`** maps each source-language topic to its English name, producing `effective_topics`.
-3. `effective_topics` is used everywhere: best/worst column values are translated and cast to categorical with this list; set columns resolve topic indices through this list; the output meta carries `effective_topics` as its categories.
+### `model_spec` — wiring blocks into SIP models
 
-So `scale.translate` is where all the naming happens for maxdiff — it controls both the cell values and the category list.
+Processed topk/maxdiff blocks automatically carry a `model_spec`: the SIP
+observation-model description (an `ordinal_ranking` with the right `structure`)
+that the block name resolves to when used as a model output. On the model side
+this means the block name alone is a complete `res_cols` entry:
 
-When using `setindex_column`, `topics` and `sets` must be defined (usually via constants). The columns list should be **empty**.
+```jsonc
+"res_cols": ["issue_importance"]                       // → ordinal_ranking from the block's spec
+"res_cols": [{ "name": "issue_importance",
+               "model_spec": { "mode": "Combined" } }] // → same, with parameters overridden
+```
+
+The resolved OM is named `<block>_score` (so the block name keeps meaning the raw
+columns); entry-level `model_spec` dicts shallow-merge over the block's, so
+parameters (`mode`, `model`, `ordered`, …) change without restating `structure`.
+
+Any block may also set `model_spec` **explicitly** — to override a typed block's
+default, or to route a *plain* block to any OM. That makes the annotation the
+canonical home for hand-built ranking setups: e.g. maxdiff kept as plain
+name-categorical best/set/worst columns (see the note below) declares its
+structure once on the block instead of repeating it in every model desc:
+
+```jsonc
+{ "name": "maxdiff",
+  "columns": ["MD1_best", "MD1_set", "MD1_worst", "MD2_best", "MD2_set", "MD2_worst"],
+  "model_spec": { "structure": [ [["MD1_best"], ["MD1_set"], ["MD1_worst"]],
+                                 [["MD2_best"], ["MD2_set"], ["MD2_worst"]] ] } }
+```
+
+Defaults, merge rules and the multi-sibling restriction are in
+specs/block-processing.md; the model-side view is in the `sip-create-model`
+skill (salk_internal_package).
 
 ## Conventions (MUST follow)
 
@@ -383,13 +470,19 @@ When using `setindex_column`, `topics` and `sets` must be defined (usually via c
    3. For A vs B choices without explicit valence, pick the pole aligned with the survey's analytical reference direction (e.g. Western/EU orientation as positive in Eastern-European polling) and document with `comment`.
 
    **Always order likert categories from the negative pole to the positive pole** (disagree → agree, distrust → trust, no → yes, against → for, leave → stay, EAEU → EU); `num_values` increase monotonically from negative to positive. Flip with `translate` if the source data codes the other way.
-7. **Non-response categories** (`nonresponse`): Mark true non-responses ("Don't know", "No answer", "Refused", "Hard to say") in `nonresponse` on **every** categorical block — ordered **and** nominal (unordered) — not only on ordered scales. This is the recommended field going forward; the signal is relied on by data-quality checks and other tooling. The model treats non-responses as out-of-order automatically, so do **not** repeat them in `nonordered`. Reserve `nonordered` for categories that are off-scale but still *substantive* — **not** non-responses (e.g. "Other", "none", "Would not participate", "Did not vote"). On an ordered scale the union (`nonresponse` ∪ `nonordered`) is lifted out of the order and gets `null` in `num_values`; on a nominal categorical neither changes modeling but both record structure worth keeping.
-8. **Party consistency**: Party names must be identical across `party_preference`, `thermometer`, and `ownership` blocks.
-9. **Discrete scales**: Use categorical (not continuous) for scales with <20 values, even if numeric.
-10. **`col_prefix`**: Use to disambiguate columns that share names across blocks (e.g. `attitude_`, `issue_`, `therm_`).
-11. **Auto-inferred blocks from topk/maxdiff**: Delete any blocks that were auto-generated by `infer_meta` for columns that belong to topk/maxdiff `create` blocks — those get regenerated.
-12. **`weight_col`**: If you declare one, it must name a column that exists in the data — pp errors rather than quietly running unweighted, so a renamed weight column (`N_voters` → `N`) surfaces immediately instead of turning weighted numbers into unweighted ones. Leave it `null` when the dataset genuinely has no weights.
-13. **Document non-obvious decisions with `comment`**: Any choice that deviates from best practice or is non-obvious (unusual merges, ambiguous ordering calls, deliberate category mismatches, tricky transforms) must be noted in a `comment` field on the block, scale, or column where it applies. See the Comments subsection above.
+7. **Three kinds of missing — keep them apart**:
+   - **`not_asked`** (meta-level list, block override, `[]` opts out): the question was never put to this respondent (mode/filter skips). Nulled everywhere, and blocks then emit NA for that row rather than inventing an answer — a onehot row goes NA, not all-"No".
+   - **`not_selected`** (typed blocks): the item was offered and not picked (`"Not mentioned"`, `0`). Nulled for packing, but it proves the question *was* asked, so an all-"No" onehot row is a real answer.
+   - **`nonresponse`** (below): the respondent answered "Don't know" / "Refused". Stays a category.
+
+   Getting these wrong is silent: a skip code left unlisted reads as a substantive answer, and a `not_asked` list that swallows "Don't know" throws away real responses.
+8. **Non-response categories** (`nonresponse`): Mark true non-responses ("Don't know", "No answer", "Refused", "Hard to say") in `nonresponse` on **every** categorical block — ordered **and** nominal (unordered) — not only on ordered scales. This is the recommended field going forward; the signal is relied on by data-quality checks and other tooling. The model treats non-responses as out-of-order automatically, so do **not** repeat them in `nonordered`. Reserve `nonordered` for categories that are off-scale but still *substantive* — **not** non-responses (e.g. "Other", "none", "Would not participate", "Did not vote"). On an ordered scale the union (`nonresponse` ∪ `nonordered`) is lifted out of the order and gets `null` in `num_values`; on a nominal categorical neither changes modeling but both record structure worth keeping.
+9. **Party consistency**: Party names must be identical across `party_preference`, `thermometer`, and `ownership` blocks.
+10. **Discrete scales**: Use categorical (not continuous) for scales with <20 values, even if numeric.
+11. **`col_prefix`**: Use to disambiguate columns that share names across blocks (e.g. `attitude_`, `issue_`, `therm_`).
+12. **Auto-inferred blocks from topk/maxdiff**: Delete any blocks that were auto-generated by `infer_meta` for columns that belong to typed topk/maxdiff/onehot blocks — those get regenerated.
+13. **`weight_col`**: If you declare one, it must name a column that exists in the data — pp errors rather than quietly running unweighted, so a renamed weight column (`N_voters` → `N`) surfaces immediately instead of turning weighted numbers into unweighted ones. Leave it `null` when the dataset genuinely has no weights.
+14. **Document non-obvious decisions with `comment`**: Any choice that deviates from best practice or is non-obvious (unusual merges, ambiguous ordering calls, deliberate category mismatches, tricky transforms) must be noted in a `comment` field on the block, scale, or column where it applies. See the Comments subsection above.
 
 ## Common Pitfalls
 
@@ -482,11 +575,20 @@ df = read_and_process_data({
 
 Any category mismatch or duplicate column name will surface as a warning or error. Fix these iteratively until the load is clean.
 
-7. **The last file is the basis for the combined meta.** `read_and_process_data` uses the last file's annotation as the combined schema. If blocks exist in file A but not in file B (the last file), they won't appear in the output — even though the data is present. To fix this, add the missing blocks to the last file with `"generated": true` on each such block. This suppresses "no matching columns in data" warnings for that file while letting the block's schema carry through to the combined result.
+7. **Block structure is unioned across all files, not taken from the last one.** `_merge_data_metas` merges every file's `structure` in file order, so a block — or a single column inside a block — present only in an earlier wave still reaches the combined meta. You no longer hand-extend the last wave's block to the cross-wave column union, and `generated: true` is no longer needed merely to carry an earlier file's block through (it still suppresses "no matching columns in data" warnings). Merge rules:
+
+   - **Columns**: first-seen union — file 1's order, later files' new columns appended.
+   - **Categories**: unioned; `"infer"` on either side stays `"infer"`.
+   - **Column and scale meta** (`ordered`, `likert`, `num_values`, `label`, `colors`, `nonordered`, `continuous`, `datetime`, `neutral_middle`): **last file wins, with a warning** on disagreement.
+   - **Every other field on a block** (`from_columns`, `res_columns`, `k`, `na_vals`, `input_format`, …): the **first** file's value wins, **silently**. So if a typed block's source regex changed between waves, give the waves distinct block names — a merged block keeps only the first wave's pattern and will not match the later wave's columns.
+   - **Top-level fields** (`source`, `preprocessing`, …) come from the last file.
+   - **Hard conflicts raise**: block `type` mismatch, scale-kind mismatch (categorical vs continuous), or a `num_values` length disagreeing with the merged categories.
+
+   The usual hard conflict is one block `name` carrying a different `type` across waves (e.g. `importance` is `topk` in one wave, plain in another). Those produce different output columns — name them apart (`importance_apr` vs `importance`) rather than forcing a merge.
 
 ## Worked Example
 
-A complete minimal example lives in the `examples/` directory beside this skill:
+A complete minimal example lives in this skill's `examples/` directory:
 
 | File | Description |
 |------|-------------|
@@ -503,13 +605,13 @@ A complete minimal example lives in the `examples/` directory beside this skill:
 - **`categories: "infer"` + `translate`**: `party_preference` — category order comes from translate dict key order. Translate dicts are identical across both files for alignment.
 - **Likert `_p` variant pattern**: WEB has 7-point `attitudes` block (columns `pol_interest`, `future`); CATI has 5-point `attitudes` block (columns `pol_interest_p`, `future_p`). Both use `col_prefix: "attitude_"` so columns land in the same namespace.
 - **`generated: true` for alignment**: WEB includes `attitudes_p` block with `generated: true` — this block has no matching data in the WEB file, but its schema lets the 5-point CATI columns carry through when loading both files together.
-- **TopK with `translate_after`**: `issue_importance` block uses regex `from_columns`, `na_vals` to filter unselected items, and `translate_after` to map numeric regex groups to English names.
-- **MaxDiff with `scale.translate`**: `maxdiff` block (WEB only) uses `setindex_column` + `topics`/`sets` constants (2 versions × 3 sets of 3 topics). `scale.translate` maps Lithuanian topic names to English — this single dict controls both cell values and the output category list.
+- **TopK with `scale.translate_after`**: `issue_importance` block (`type: "topk"`) uses regex `from_columns`, `na_vals` to filter unselected items, and `scale.translate_after` to map numeric regex groups to English names.
+- **MaxDiff with `scale.translate`**: `maxdiff` block (`type: "maxdiff"`, WEB only) uses `setindex_column` + inline `choice_sets` (2 versions × 3 sets of 3 topics). `scale.translate` maps 1-based index strings to English topic names — this single dict defines the topic universe, translates the cells, and sets the output category list.
 - **Colors — `colors` vs `question_colors`**: `party_colors` constant is referenced by `colors` on `party_preference` (values are parties) and by `scale.question_colors` on the `thermometer` block (columns are parties, so each party gets its brand color when the block is unpivoted into a `question` dimension). Thermometer column names must match the `party_colors` keys.
 
 ## For more details
 
-- Schema (`salk_toolkit.validation`): `DataMeta`, `ColumnMeta`, `ColumnBlockMeta`, `TopKBlock`, `MaxDiffBlock`
-- Processing (`salk_toolkit.io`): `read_and_process_data` → `_process_annotated_data`; `infer_meta` bootstraps a meta from raw data; `_fix_meta_categories` reconciles categories across files; topk/maxdiff output columns are built by the block-creation helpers in the same package
+- Schema (`salk_toolkit.validation`): `DataMeta`, `ColumnMeta`, `ColumnBlockMeta`, `TopKBlock`, `MaxDiffBlock`, `OneHotBlock`
+- Processing (`salk_toolkit.io`): `read_and_process_data` → `_process_annotated_data`; `infer_meta` bootstraps a meta from raw data; `_fix_meta_categories` reconciles categories across files; typed blocks are processed by `_process_block`
 - Plot-side meta handling (`salk_toolkit.pp`): `_question_meta_clone`
 - Examples: look at recent `*_meta.json` files in the sandbox repo for real-world patterns

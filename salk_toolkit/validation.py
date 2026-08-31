@@ -37,8 +37,12 @@ __all__ = [
     "GroupOrColumnMeta",
     "ElectoralSystem",
     "MandatesDict",
+    "MaxDiffBlock",
+    "OneHotBlock",
+    "TopKBlock",
 ]
 
+import re
 from collections.abc import Mapping
 from datetime import date, datetime
 from functools import lru_cache
@@ -60,7 +64,11 @@ from typing import (
     get_origin,
     get_type_hints,
     TypeAlias,
+    TYPE_CHECKING,
 )
+
+if TYPE_CHECKING:
+    import pandas as pd
 from pydantic import (
     AliasChoices,
     BaseModel,
@@ -231,33 +239,13 @@ class GroupOrColumnMeta(ColumnMeta):
     """Column metadata that can optionally describe a grouped question."""
 
     columns: Optional[List[str]] = None
+    # Carried from the block by `extract_column_meta` (see ColumnBlockMeta.model_spec).
+    model_spec: Optional[Dict[str, Any]] = None
 
 
 # This is for the block-level 'scale' group - basically same as ColumnMeta but with a few extras
 class BlockScaleMeta(ColumnMeta):
     question_colors: Dict[str, Color] = DF(dict)  # Dict mapping columns to different colors
-
-
-class TopKBlock(PBase):
-    type: Literal["topk"] = "topk"
-    k: Union[int, Literal["max"]] = "max"
-    from_columns: Union[str, List[str]]
-    res_columns: Union[str, List[str]]  # Has to be list if from_columns is list
-    agg_index: int = -1
-    na_vals: Optional[List[str]] = []
-    translate_after: Dict[str, str] = DF(dict)
-    from_prefix: Optional[str] = None  # If from_columns is list, prefix will be removed to enable translation
-
-
-class MaxDiffBlock(PBase):
-    type: Literal["maxdiff"] = "maxdiff"
-    name: Optional[str] = None
-    best_columns: Union[str, List[str]]
-    worst_columns: Union[str, List[str]]
-    set_columns: Optional[Union[str, List[str]]] = None  # Mutually exclusive with setindex. Only one is specified.
-    setindex_column: Optional[Union[str, List[object]]] = None  # Keeps metadata tuple used in annotations.
-    topics: Optional[List[str]] = None
-    sets: Optional[List[List[int]]] = None
 
 
 # Import _cs_lst_to_dict for BeforeValidator (needs to be at runtime)
@@ -267,6 +255,10 @@ ColSpec = Annotated[Dict[str, ColumnMeta], BeforeValidator(_cs_lst_to_dict)]
 
 
 class ColumnBlockMeta(PBase):
+    """Plain column block. Specialized blocks (`TopKBlock`, `MaxDiffBlock`) inherit from this
+    and are dispatched on the `type` discriminator in :data:`BlockSpec`."""
+
+    type: Literal["plain"] = "plain"
     name: str  # Name of the block
     scale: Optional[BlockScaleMeta] = None  # Shared column meta for all columns inside the block
 
@@ -278,7 +270,17 @@ class ColumnBlockMeta(PBase):
     # Block level flags
     generated: bool = False  # This block is for data that is generated, i.e. not initially in the file.
     hidden: bool = False  # Use this to hide the block in explorer.py
-    create: Union[TopKBlock, MaxDiffBlock, None] = None
+
+    from_columns: Optional[Union[str, List[str]]] = None
+    subgroup_labels: Optional[Dict[str, Dict[str, str]]] = None
+
+    # Per-block override of the meta-level not_asked values (None = inherit, [] = opt out)
+    not_asked: Optional[List[str]] = None
+
+    # Observation-model description for modeling: the dict a SIP `res_cols` entry would hold
+    # (any OM, e.g. {"structure": [...]} for ordinal_ranking). Typed blocks stamp a default onto
+    # their output blocks; authors can set it on any block to route the block name to that OM.
+    model_spec: Optional[Dict[str, Any]] = None
 
     @model_validator(mode="after")
     def merge_scale_with_columns(self, info: ValidationInfo) -> Self:
@@ -319,6 +321,32 @@ class ColumnBlockMeta(PBase):
         object.__setattr__(self, "columns", merged_columns)
         return self
 
+    def resolve_role_columns(self, df: "pd.DataFrame", raw_key: str) -> Dict[str, Any]:
+        """Narrow regex-valued column-role fields to this sibling's columns, keyed by the raw
+        capture value. Default: no roles beyond `from_columns` (handled by `_narrow_sibling`)."""
+        return {}
+
+    def source_columns(self, df: "pd.DataFrame") -> List[str]:
+        """Every df-column whose cells this block reads. Default: `from_columns` resolved via regex."""
+        pattern = self.from_columns
+        if pattern is None:
+            return [c for c in self.columns.keys() if c in df.columns]
+        if isinstance(pattern, list):
+            return list(pattern)
+        regex = re.compile(pattern)
+        return [c for c in df.columns if regex.match(c)]
+
+    def translate_columns(self, df: "pd.DataFrame") -> List[str]:
+        """Columns whose cell values `scale.translate` maps. Same as the source columns unless
+        a block reads translate as something else (OneHot wide) or holds list cells (MaxDiff)."""
+        return self.source_columns(df)
+
+    def default_model_spec(self) -> Optional[Dict[str, Any]]:
+        """Observation-model description this block resolves to when no explicit
+        `model_spec` is authored. Plain blocks have none; typed blocks stamp an
+        ordinal_ranking spec onto their processed output blocks."""
+        return None
+
     @model_serializer(mode="wrap")
     def _serialize_model(
         self, handler: Callable[[BaseModel], dict[str, Any]], info: SerializationInfo
@@ -329,25 +357,331 @@ class ColumnBlockMeta(PBase):
         return serialize_column_block_meta(self, handler, info)
 
 
-def _cb_lst_to_dict(lst: Sequence[dict[str, object]] | dict[str, dict[str, object]]) -> dict[str, dict[str, object]]:
-    """Again, convert list to dict for easier debugging in case errors get thrown.
+class TopKBlock(ColumnBlockMeta):
+    """Block turning a multi-select question into its picked slots; `from_columns` /
+    `res_columns` are resolved to concrete lists on output."""
 
-    Transform list of block specs to dictionary format.
-    """
-    # If already a dict, return as-is
+    type: Literal["topk"] = "topk"  # type: ignore[assignment]
+
+    columns: ColSpec = DF(dict)
+    k: int = Field(
+        description="How many items the question let a respondent pick. Mandatory: it is also a data "
+        "check - more picks than this in any row is an error, not a silent truncation."
+    )
+    # Source columns: an explicit list, or a regex whose capture group(s) index items/subgroups.
+    from_columns: Union[str, List[str]]  # type: ignore[assignment]
+    res_columns: Union[str, List[str]] = Field(
+        description="Output column names; a regex substitution template (e.g. 'R\\1') when from_columns is a regex."
+    )
+    agg_index: int = Field(
+        default=-1, description="Which regex capture group indexes the items (1-based; -1 = last group)."
+    )
+    not_selected: List[str] = Field(
+        default_factory=list,
+        description="Cell values meaning 'offered but not picked'. Nulled before packing - but they prove "
+        "the question WAS asked (see not_asked).",
+    )
+    from_prefix: Optional[str] = None
+
+    input_format: Literal["onehot", "ranked_onehot", "leftpacked", "ranked_leftpack"] = Field(
+        default="onehot",
+        description=(
+            "Shape of the raw data: 'onehot' = one 0/1 column per item; 'leftpacked' = R1..Rk columns "
+            "already holding chosen item names; 'ranked_*' variants additionally treat slot order as a ranking."
+        ),
+    )
+    cell_values: bool = Field(
+        default=False,
+        description="onehot cells hold the item value itself (not a mention marker): leftpack the cell "
+        "values instead of mapping cells to column identity. res_columns then acts as a slot-name prefix.",
+    )
+
+    def default_model_spec(self) -> Optional[Dict[str, Any]]:
+        """ordinal_ranking: picked items rank above the rest of the item pool
+        (`[cols, None]`); the ranked input formats additionally treat slot order
+        as a ranking within the picks."""
+        cols = list(self.columns.keys())
+        if not cols:
+            return None
+        return {
+            "structure": [[cols, None]],
+            "ordered": self.input_format in ("ranked_onehot", "ranked_leftpack"),
+        }
+
+
+class MaxDiffBlock(ColumnBlockMeta):
+    """Block for MaxDiff best-worst experiments; roles are resolved to per-question aligned
+    lists on output. The topic universe is an index-keyed scale.translate or scale.categories."""
+
+    type: Literal["maxdiff"] = "maxdiff"  # type: ignore[assignment]
+
+    columns: ColSpec = DF(dict)
+    best_columns: Union[str, List[str]] = Field(
+        description="Columns (list or regex) holding the 'best' pick per question."
+    )
+    worst_columns: Union[str, List[str]] = Field(
+        description="Columns (list or regex) holding the 'worst' pick per question."
+    )
+    set_columns: Optional[Union[str, List[str]]] = Field(
+        default=None,
+        description="Columns naming the items shown in each question. For input_format='choice_sets' a "
+        "substitution template against best_columns; for 'resolved' an independent regex.",
+    )
+    setindex_column: Optional[Union[str, List[object]]] = None
+
+    input_format: Literal["choice_sets", "resolved"] = Field(
+        default="choice_sets",
+        description=(
+            "'choice_sets' = best/worst cells hold item indices and choice_sets/set lists define each question's "
+            "options; 'resolved' = best/worst/set columns are already aligned per question."
+        ),
+    )
+
+    # Flat: per-version per-question item lists (int indices). Dict: keyed by sibling label
+    # (multi-sibling blocks), or - when setindex_column cells are strings - by design name,
+    # with per-question item lists of indices or topic names.
+    choice_sets: Optional[
+        Union[
+            List[List[List[int]]],
+            Dict[str, Union[List[List[List[int]]], List[List[Union[int, str]]]]],
+        ]
+    ] = None
+
+    @model_validator(mode="after")
+    def _reject_translate_after(self, info: ValidationInfo) -> Self:
+        if self.scale is not None and self.scale.translate_after:
+            raise ValueError(
+                f"MaxDiffBlock {self.name!r}: scale.translate_after is deprecated for "
+                f"maxdiff; use scale.translate (pre-transform) instead."
+            )
+        return self
+
+    def default_model_spec(self) -> Optional[Dict[str, Any]]:
+        """ordinal_ranking: one weak-order chain per question — best > shown set > worst."""
+        best, worst, sets = self.best_columns, self.worst_columns, self.set_columns
+        if not (isinstance(best, list) and isinstance(worst, list) and isinstance(sets, list)) or not best:
+            return None
+        return {"structure": [[[b], [s], [w]] for b, s, w in zip(best, sets, worst)]}
+
+    def resolve_role_columns(self, df: "pd.DataFrame", raw_key: str) -> Dict[str, Any]:
+        """Resolve best/worst/set roles to this sibling's columns, matching on the raw capture
+        value (`raw_key`), not the display label. See specs/block-processing.md for the shapes."""
+        updates: Dict[str, Any] = {}
+
+        def _match_all(patt: "re.Pattern[str]") -> list[str]:
+            return [c for c in df.columns if patt.match(c)]
+
+        def _match_labeled(patt: "re.Pattern[str]") -> list[str]:
+            hits = ((c, patt.match(c)) for c in df.columns)
+            return [c for c, m in hits if m is not None and (not raw_key or m.group(1) == raw_key)]
+
+        def _sort_by_last_group(cols: list[str], patt: "re.Pattern[str]") -> list[str]:
+            def _key(col: str) -> tuple[int, Any]:
+                m = patt.match(col)
+                assert m is not None  # cols came from matching this same pattern
+                if not m.groups():
+                    return (1, col)
+                last = m.groups()[-1]
+                return (0, int(last)) if str(last).lstrip("-").isdigit() else (0, last)
+
+            return sorted(cols, key=_key)
+
+        if self.input_format == "resolved":
+            all_regex = (
+                isinstance(self.best_columns, str)
+                and isinstance(self.worst_columns, str)
+                and isinstance(self.set_columns, str)
+            )
+            if all_regex:
+                bp = re.compile(cast(str, self.best_columns))
+                wp = re.compile(cast(str, self.worst_columns))
+                sp = re.compile(cast(str, self.set_columns))
+                by_key: Dict[str, List[Optional[str]]] = {}
+                for c in df.columns:
+                    if (m := bp.match(c)) is not None:
+                        by_key.setdefault(m.group(1), [None, None, None])[0] = c
+                    if (m := wp.match(c)) is not None:
+                        by_key.setdefault(m.group(1), [None, None, None])[1] = c
+                    if (m := sp.match(c)) is not None:
+                        by_key.setdefault(m.group(1), [None, None, None])[2] = c
+                missing = [(k, t) for k, t in by_key.items() if None in t]
+                if missing:
+                    raise ValueError(f"MaxDiff resolved: incomplete alignment: {missing}")
+                keys = sorted(by_key, key=lambda s: int(s) if s.isdigit() else s)
+                triples = [by_key[k] for k in keys]
+                updates["best_columns"] = [t[0] for t in triples]
+                updates["worst_columns"] = [t[1] for t in triples]
+                updates["set_columns"] = [t[2] for t in triples]
+                return updates
+            if isinstance(self.best_columns, str):
+                updates["best_columns"] = _match_all(re.compile(self.best_columns))
+            if isinstance(self.worst_columns, str):
+                updates["worst_columns"] = _match_all(re.compile(self.worst_columns))
+            if isinstance(self.set_columns, str):
+                updates["set_columns"] = _match_all(re.compile(self.set_columns))
+            return updates
+
+        # input_format == "choice_sets"
+        if isinstance(self.best_columns, str):
+            best_re = re.compile(self.best_columns)
+            sib_best = _sort_by_last_group(_match_labeled(best_re), best_re)
+            updates["best_columns"] = sib_best
+            if isinstance(self.worst_columns, str):
+                worst_re = re.compile(self.worst_columns)
+                updates["worst_columns"] = _sort_by_last_group(_match_labeled(worst_re), worst_re)
+            if isinstance(self.set_columns, str):
+                # substitution template against best_re
+                updates["set_columns"] = [best_re.sub(self.set_columns, c) for c in sib_best]
+        return updates
+
+    def _role_columns(self, df: "pd.DataFrame", roles: List[object]) -> List[str]:
+        """Concrete df-columns for the given role specs (explicit lists or regexes), deduped."""
+        out: list[str] = []
+        for spec in roles:
+            if isinstance(spec, list):
+                out.extend(spec)
+            elif isinstance(spec, str):
+                out.extend(c for c in df.columns if re.match(spec, c))
+        return list(dict.fromkeys(out))
+
+    def source_columns(self, df: "pd.DataFrame") -> List[str]:
+        """Best + worst, plus set columns when those are read from the data rather than
+        built from the design table a `setindex_column` points into."""
+        roles: List[object] = [self.best_columns, self.worst_columns]
+        if self.setindex_column is None:
+            roles.append(self.set_columns)
+        return self._role_columns(df, roles)
+
+    def translate_columns(self, df: "pd.DataFrame") -> List[str]:
+        """Set cells hold list values in choice_sets mode, so only best/worst pre-translate."""
+        roles: List[object] = [self.best_columns, self.worst_columns]
+        if self.input_format == "resolved":
+            roles.append(self.set_columns)
+        return self._role_columns(df, roles)
+
+
+class OneHotBlock(ColumnBlockMeta):
+    """Block producing one column per choice from a multi-select question, coded via `coding`."""
+
+    type: Literal["onehot"] = "onehot"  # type: ignore[assignment]
+
+    columns: ColSpec = DF(dict)
+    # Source columns: an explicit list or a regex.
+    from_columns: Union[str, List[str]]  # type: ignore[assignment]
+
+    input_format: Literal["leftpacked", "wide"] = Field(
+        default="leftpacked",
+        description=(
+            "'leftpacked' = M_1..M_n columns hold chosen choice names packed left; "
+            "'wide' = one column per choice already (0/1 dummies or mention markers). In wide mode "
+            "scale.translate names the choices (capture group / column name -> choice), not cell values."
+        ),
+    )
+
+    choices: Optional[List[str]] = Field(
+        default=None,
+        description="Explicit choice list (also fixes category order); if None, derived from "
+        "scale.translate values (wide) or observed cell values (leftpacked).",
+    )
+    res_prefix: Optional[str] = None
+    not_selected: List[str] = Field(
+        default_factory=list,
+        description="Cell values meaning 'offered but not picked'; they prove the question WAS asked.",
+    )
+    coding: Optional[List[str]] = Field(
+        default=["No", "Yes"],
+        min_length=2,
+        max_length=2,
+        description="[false_label, true_label] for output cells, stamped as ordered categories; "
+        "null keeps raw booleans.",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _default_scale_categories_to_coding(cls, data: object) -> object:
+        """A coded onehot's category set IS the coding - default it so scale fields like
+        likert/num_values validate without the author restating ["No","Yes"]."""
+        if isinstance(data, dict):
+            scale, coding = data.get("scale"), data.get("coding", ["No", "Yes"])
+            if isinstance(scale, dict) and coding is not None and not scale.get("categories"):
+                scale["categories"] = list(coding)
+        return data
+
+    def translate_columns(self, df: "pd.DataFrame") -> List[str]:
+        """In wide mode scale.translate names the choices, not the cell values."""
+        return [] if self.input_format == "wide" else self.source_columns(df)
+
+
+def _cb_lst_to_dict(lst: Sequence[object] | dict[str, object]) -> dict[str, object]:
+    """Transform list of block specs to dictionary format keyed by block name,
+    defaulting missing ``type`` to ``"plain"`` so the discriminated union validates
+    old-shape annotations without an explicit ``type`` field."""
     if isinstance(lst, dict):
-        return lst
+        return {k: _default_block_type(v) for k, v in lst.items()}
 
-    result: dict[str, dict[str, object]] = {}
+    result: dict[str, object] = {}
     for block in lst:
-        name = block.get("name")
-        if not isinstance(name, str):
+        if isinstance(block, BaseModel):
+            name_val = getattr(block, "name", None)
+        elif isinstance(block, dict):
+            name_val = block.get("name")
+        else:
+            raise TypeError("Block specification must be a dict or BaseModel instance.")
+        if not isinstance(name_val, str):
             raise TypeError("Each block specification must contain a 'name' field of type str.")
-        result[name] = block
+        result[name_val] = _default_block_type(block)
     return result
 
 
-BlockSpec = Annotated[Dict[str, ColumnBlockMeta], BeforeValidator(_cb_lst_to_dict)]
+# Block-level fields removed by the create-refactor. Because ``PBase`` uses
+# ``extra="ignore"``, leaving these unguarded would silently drop the directive and
+# mis-process the block; we reject them loudly so stale annotations fail fast.
+_LEGACY_BLOCK_FIELDS = {
+    "topics": "MaxDiff topic names now come from scale.translate (1-based index -> name).",
+    "sets": "MaxDiff set columns are declared via set_columns / setindex_column.",
+    "choice_mapping": "Folded into scale.translate.",
+    "items": "Folded into scale.translate.",
+    "row_labels": "Folded into scale.translate.",
+    "translate_values": "TopK index->name translation now lives in scale.translate_after.",
+    "translate_after": "Block-level translation lives on the scale: scale.translate_after.",
+    "translate": "Block-level translation lives on the scale: scale.translate.",
+    "groups": "Subgroup naming now uses subgroup_labels.",
+    "na_vals": "Renamed to not_selected ('offered but not picked'); see also meta-level not_asked.",
+}
+
+
+def _default_block_type(block: object) -> object:
+    """Ensure a block dict carries a ``type`` discriminator (default ``"plain"``).
+    Passes Pydantic model instances through untouched. Raises on legacy schema shapes
+    (the nested ``create`` field or removed block-level fields) so silently-lost
+    TopK/MaxDiff processing becomes a loud, actionable failure."""
+    if isinstance(block, BaseModel):
+        return block
+    if not isinstance(block, dict):
+        raise TypeError("Block specification must be a dict or BaseModel instance.")
+    if "create" in block:
+        raise ValueError(
+            f"Block {block.get('name')!r} uses the legacy nested 'create' field, which is no "
+            "longer supported. Hoist create.type to the top level as 'type' and flatten the "
+            "create fields onto the block (e.g. {'type': 'topk', 'name': ..., 'from_columns': ...}). "
+            "See specs/block-processing.md."
+        )
+    legacy = [f for f in _LEGACY_BLOCK_FIELDS if f in block]
+    if legacy:
+        hints = "; ".join(f"'{f}': {_LEGACY_BLOCK_FIELDS[f]}" for f in legacy)
+        raise ValueError(
+            f"Block {block.get('name')!r} uses removed block field(s) {legacy}. {hints} See specs/block-processing.md."
+        )
+    if "type" not in block:
+        return {"type": "plain", **block}
+    return block
+
+
+_BlockUnion = Annotated[
+    Union[TopKBlock, MaxDiffBlock, OneHotBlock, ColumnBlockMeta],
+    Field(discriminator="type"),
+]
+BlockSpec = Annotated[Dict[str, _BlockUnion], BeforeValidator(_cb_lst_to_dict)]
 
 
 class FileDesc(BaseModel):
@@ -449,6 +783,13 @@ class DataMeta(PBase):
     # Different global processing steps
     preprocessing: Optional[Union[str, List[str]]] = None  # Performed on raw data
     postprocessing: Optional[Union[str, List[str]]] = None  # Performed after columns and blocks have been processed
+
+    # Raw cell values meaning the question was NOT ASKED of this respondent (mode/filter skips,
+    # 'Nicht erhoben', ...) - nulled in every block before translation, and the row counts as
+    # unasked so blocks emit NA rather than a fabricated answer. NOT for substantive non-responses
+    # like "Don't know" (keep those as categories flagged via nonresponse) and not for
+    # "offered but not picked" (that is a block's not_selected). Blocks override ([] opts out).
+    not_asked: Optional[List[str]] = None
 
     weight_col: Optional[str] = None  # Column to use for weighting - overriden by model to population weight column
     id_col: Optional[str] = None  # Raw column uniquely identifying rows within each file (e.g. respondent id)

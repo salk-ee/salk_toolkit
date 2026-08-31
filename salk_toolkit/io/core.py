@@ -1,6 +1,7 @@
 """Core types shared across the io package: the Dataset/SourceBundle value objects,
 processing options, the hook execution environment, and shared series helpers."""
 
+import re
 import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -231,3 +232,29 @@ def _is_series_of_lists(s: pd.Series) -> bool:
         return False
     s_rep = dropped.iloc[0]  # Find a non-na element
     return isinstance(s_rep, list) or isinstance(s_rep, np.ndarray)
+
+
+_INT_RE = re.compile(r"-?\d+")
+
+
+def expand_value_keys(translate: Mapping) -> dict:
+    """CSV round-trips turn an index-string cell '1' into 1 / 1.0 / '1.0'; extend integer-string
+    translate keys to also match those cell forms (existing keys always win)."""
+    out = dict(translate)
+    for k, v in translate.items():
+        if isinstance(k, str) and _INT_RE.fullmatch(k):
+            for kk in (int(k), float(k), f"{k}.0"):
+                out.setdefault(kk, v)
+    return out
+
+
+def expand_na_vals(na_vals: list) -> list:
+    """Same int/float/'x.0' form-matching as expand_value_keys, for na_vals lists."""
+    extra = [kk for x in na_vals if isinstance(x, str) and _INT_RE.fullmatch(x) for kk in (int(x), float(x), f"{x}.0")]
+    return list(na_vals) + [x for x in extra if x not in na_vals]
+
+
+def stringify_notna(s: pd.Series) -> pd.Series:
+    """str-coerce non-NA cells for translation, collapsing integral floats so untranslated
+    int codes surface as '18', never '18.0'; NA stays NA."""
+    return s.map(lambda v: None if pd.isna(v) else (str(int(v)) if isinstance(v, float) and v.is_integer() else str(v)))
