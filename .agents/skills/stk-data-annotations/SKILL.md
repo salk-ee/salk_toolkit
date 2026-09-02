@@ -494,6 +494,8 @@ Every dated annotated load automatically gains an ordered categorical `wave_time
 - A file with no resolvable date in a dated combine gets NA `wave_time` plus a warning; a load with no dates anywhere simply has no column. In a multi-meta `read_and_process_data` load, the **last** meta must be dated for the `waves` block to reach the combined meta ("last file is the basis").
 - Opt a dataset out with `"wave_time": false` in the meta. A column of that name declared in your own blocks always wins over injection, and a column whose values aren't dates is left alone with a warning.
 - Population/census metas: their collection dates are fine to fill, but SIP drops a population source's own `wave_time` because a census date is not a survey wave.
+- With only `collection_start` (or only `collection_end`) set, that single date becomes the wave's label — fill `collection_center` to place the wave properly. An unparseable date is a **hard error**, not a warning.
+- In a multi-meta `read_and_process_data` combine, set `wave_time` the same on every meta: opting only some out leaves a column no block describes.
 - Downstream, `wave_time` is the standard model time axis (see SIP's `sip-create-model` skill) — so fill the collection fields even for a first wave.
 
 ## Worked Example

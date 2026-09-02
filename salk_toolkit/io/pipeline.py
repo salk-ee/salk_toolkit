@@ -6,7 +6,7 @@ from typing import cast
 import numpy as np
 import pandas as pd
 
-from salk_toolkit.utils import warn
+from salk_toolkit.utils import is_date_str_series, warn
 from salk_toolkit.validation import (
     ColumnBlockMeta,
     ColumnMeta,
@@ -84,106 +84,120 @@ WAVES_BLOCK = "waves"
 
 
 def _collection_date(meta_obj: DataMeta) -> str | None:
-    """Meta's survey date as an ISO string: collection_center, else start/end midpoint."""
+    """Meta's survey date as an ISO string: collection_center, else the midpoint of whichever
+    of collection_start/collection_end are set."""
     start, end = meta_obj.collection_start, meta_obj.collection_end
     if not (meta_obj.collection_center or start or end):
         return None
     try:
         if meta_obj.collection_center:
-            dt = pd.to_datetime(meta_obj.collection_center)
+            dt = pd.Timestamp(meta_obj.collection_center)
         else:
-            s, e = pd.to_datetime(cast(str, start or end)), pd.to_datetime(cast(str, end or start))
+            s, e = pd.Timestamp(start or end), pd.Timestamp(end or start)
             dt = s + (e - s) / 2
     except ValueError as exc:
         raise ValueError(
             f"Unparseable collection date in meta (center={meta_obj.collection_center!r}, "
             f"start={start!r}, end={end!r}) - use an ISO date like '2026-04-15'"
         ) from exc
-    return cast(pd.Timestamp, dt).strftime("%Y-%m-%d")
+    return dt.strftime("%Y-%m-%d")
 
 
 def _date_sorted(labels: Iterable[str]) -> list[str] | None:
-    """Labels sorted chronologically, or None if any is not a parseable date."""
-    lst = list(labels)
-    dts = pd.to_datetime(pd.Series(lst, dtype=object), errors="coerce")
-    return None if dts.isna().any() else [lst[i] for i in dts.argsort()]
+    """Labels sorted chronologically, or None if they are not all dates. Same date ladder as
+    ``lines_hdi`` / SIP's axis positions, so orderings agree across the repo boundary."""
+    lst = sorted(labels)  # total order first: two spellings of one date must not sort by hash
+    return sorted(lst, key=pd.to_datetime) if is_date_str_series(pd.Series(lst, dtype=object)) else None
 
 
-def _sort_wave_time_block(meta_obj: DataMeta, frames: dict[str, pd.DataFrame] | None = None) -> DataMeta:
-    """Re-sort the waves block chronologically and hide it when a single wave.
+def _user_owns(meta_obj: DataMeta, name: str) -> bool:
+    """Is ``name`` declared by a block other than our own generated waves block?"""
+    return any(
+        ((g.scale.col_prefix if g.scale and g.scale.col_prefix else "") + cn) == name
+        for g in meta_obj.structure.values()
+        if not (g.name == WAVES_BLOCK and g.generated)
+        for cn in g.columns
+    )
 
-    Needed because `_fix_meta_categories` unions categories in first-seen order; frames are recast to match.
-    """
-    name = WAVE_TIME_COL
-    if not meta_obj.wave_time or WAVES_BLOCK not in meta_obj.structure:
+
+def _observed(fdf: pd.DataFrame, name: str) -> set[str]:
+    """Distinct non-null values of ``name`` as strings (dedupe before stringifying: ~30x cheaper)."""
+    return {str(v) for v in fdf[name].dropna().unique()} if name in fdf.columns else set()
+
+
+def _sort_wave_time_block(meta_obj: DataMeta, frames: dict[str, pd.DataFrame]) -> DataMeta:
+    """Restore the waves column's ordered dtype after the multi-file category reconciliation, set
+    ``hidden`` by wave count, and warn about files the combine left dateless."""
+    if not meta_obj.wave_time or WAVES_BLOCK not in meta_obj.structure or _user_owns(meta_obj, WAVE_TIME_COL):
         return meta_obj
     block = meta_obj.structure[WAVES_BLOCK]
-    col_meta = block.columns.get(name)
-    # col_meta is legitimately absent when the basis meta's waves block came from another source
+    col_meta = block.columns.get(WAVE_TIME_COL)
+    # Absent/untyped when the basis meta's waves block came from another source (or is a user block)
     if col_meta is None or not isinstance(col_meta.categories, list):
         return meta_obj
-    frames = frames or {}
     # Union in observed values: recasting to a narrower category list would silently null whole waves
-    observed = {v for fdf in frames.values() if name in fdf.columns for v in fdf[name].dropna().astype(str).unique()}
+    observed = set().union(*(_observed(fdf, WAVE_TIME_COL) for fdf in frames.values())) if frames else set()
     cats = _date_sorted(set(col_meta.categories) | observed)
     if cats is None:
         return meta_obj
-    block = block.model_copy(
-        update={
-            "columns": {**block.columns, name: col_meta.model_copy(update={"categories": cats})},
-            "hidden": len(cats) <= 1,
-        }
-    )
-    dated = [fc for fc, fdf in frames.items() if name in fdf.columns and fdf[name].notna().any()]
+    upd: dict[str, object] = {
+        "columns": {**block.columns, WAVE_TIME_COL: col_meta.model_copy(update={"categories": cats})}
+    }
+    if block.generated:  # never override a user block's own visibility
+        upd["hidden"] = len(cats) <= 1
+    dated = [fc for fc, fdf in frames.items() if _observed(fdf, WAVE_TIME_COL)]
     if dated and len(dated) < len(frames):
-        warn(f"No survey date for '{name}' in files {sorted(set(frames) - set(dated))} - those rows are left empty")
+        undated = sorted(set(frames) - set(dated))
+        warn(f"No survey date for '{WAVE_TIME_COL}' in files {undated} - set collection_center; rows left empty")
     for fdf in frames.values():
-        if name in fdf.columns:
-            fdf[name] = fdf[name].astype(pd.CategoricalDtype(cats, ordered=True))
-    return meta_obj.model_copy(update={"structure": {**meta_obj.structure, WAVES_BLOCK: block}})
+        if WAVE_TIME_COL in fdf.columns:
+            fdf[WAVE_TIME_COL] = fdf[WAVE_TIME_COL].astype(pd.CategoricalDtype(cats, ordered=True))
+    return meta_obj.model_copy(update={"structure": {**meta_obj.structure, WAVES_BLOCK: block.model_copy(update=upd)}})
 
 
 def _inject_wave_time(bundle: SourceBundle, meta_obj: DataMeta) -> DataMeta:
     """Add the auto survey-date column: nested sources keep their values, others get this meta's date.
 
-    Skipped when disabled, when the meta declares that column itself, or when no dates are available.
+    Skipped when disabled, when a user block declares that column, or when no dates are available.
     """
     name = WAVE_TIME_COL
-    declared = {  # only our own generated block is exempt: a user block of any name owns its columns
-        ((g.scale.col_prefix if g.scale else "") or "") + cn
-        for g in meta_obj.structure.values()
-        if not g.generated
-        for cn in g.columns
-    }
-    if not meta_obj.wave_time or name in declared:  # a user-declared column of that name wins
+    if not meta_obj.wave_time or _user_owns(meta_obj, name):
         return meta_obj
 
     date = _collection_date(meta_obj)
+    inherited = any(name in f.columns for f in bundle.frames.values())  # before the loop starts writing it
     labels: set[str] = set()
     for fc, fdf in bundle.frames.items():
-        if name in fdf.columns and fdf[name].notna().any():
-            labels |= set(fdf[name].dropna().astype(str).unique())  # nested source: keep its own waves
-            if date is not None:
-                warn(f"File {fc} already carries '{name}' - keeping its values over this meta's collection date")
+        own = _observed(fdf, name)
+        if own:  # nested source: keep its own waves, this meta's date fills only the others
+            labels |= own
         elif date is not None:
             fdf[name] = date
             labels.add(date)
-        elif any(name in f.columns for f in bundle.frames.values()):
+        elif inherited:
             fdf[name] = None
             warn(f"File {fc} has no collection date for '{name}' - set collection_center; rows left empty")
     cats = _date_sorted(labels) if labels else None
     if cats is None:  # no dates at all, or a foreign column of that name carrying non-date values
         if labels:
-            warn(f"Column '{name}' holds non-date values {sorted(labels)[:3]} - not treated as survey dates")
+            warn(
+                f"Column '{name}' holds non-date values {sorted(labels)[:3]} - not treated as survey dates; "
+                f'rename the column or set "wave_time": false'
+            )
         return meta_obj
 
     old = meta_obj.structure.get(WAVES_BLOCK)
-    col = soft_validate({"categories": cats, "ordered": True}, ColumnMeta)
-    upd: dict[str, object] = {"columns": {**(old.columns if old else {}), name: col}}
+    upd: dict[str, object] = {
+        "columns": {
+            **(old.columns if old else {}),
+            name: soft_validate({"categories": cats, "ordered": True}, ColumnMeta),
+        }
+    }
     if old is None or old.generated:  # never override a user block's own visibility
         upd["hidden"] = len(cats) <= 1
-    empty = soft_validate({"name": WAVES_BLOCK, "generated": True, "columns": {}}, ColumnBlockMeta)
-    block = (old or empty).model_copy(update=upd)
+    block = (old or soft_validate({"name": WAVES_BLOCK, "generated": True, "columns": {}}, ColumnBlockMeta)).model_copy(
+        update=upd
+    )
     return meta_obj.model_copy(update={"structure": {**meta_obj.structure, WAVES_BLOCK: block}})
 
 
