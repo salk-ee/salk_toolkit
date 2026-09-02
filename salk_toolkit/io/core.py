@@ -110,6 +110,9 @@ ROW_ID = "row_id"
 # Per-file provenance columns injected into every row (paired, must stay 1-to-1).
 PROVENANCE_COLUMNS = ("file_code", "file_name")
 
+# Auto-generated survey-date column (the block holding it is pipeline.WAVES_BLOCK).
+WAVE_TIME_COL = "wave_time"
+
 
 def mint_positional_row_id(df: pd.DataFrame, file_code: str = "F0") -> pd.DataFrame:
     """Assign a fresh positional ``{file_code}::{i}`` row id in place (leaf files, inline data)."""

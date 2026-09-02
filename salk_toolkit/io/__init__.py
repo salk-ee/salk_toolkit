@@ -29,9 +29,10 @@ __all__ = [
     "read_parquet_metadata",
     "infer_meta",
     "update_meta_with_model_fields",
+    "WAVE_TIME_COL",
 ]
 
-from salk_toolkit.io.core import Dataset, HookEnv, ProcessOpts, SourceBundle  # noqa: F401
+from salk_toolkit.io.core import WAVE_TIME_COL, Dataset, HookEnv, ProcessOpts, SourceBundle  # noqa: F401
 from salk_toolkit.io.datasets import infer_meta, read_and_process_data, read_annotated_data
 from salk_toolkit.io.meta import (
     _fix_meta_categories,  # noqa: F401  # imported from here by salk_internal_package.sampling.meta

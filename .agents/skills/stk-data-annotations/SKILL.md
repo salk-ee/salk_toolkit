@@ -28,6 +28,7 @@ If you think you need to edit the raw file, you're wrong — use translate/trans
 **Definition of done:**
 - [ ] Matches census in category names and granularity — ask for census file if not provided
 - [ ] `id_col` set to a stable respondent-id column if the data has one (see Identifying the id column)
+- [ ] `collection_start`, `collection_end` **and** `collection_center` filled. Data usually has a per-row collection date — `collection_center` is its **mean** (center of mass, not the window midpoint; response volume is typically front-loaded). Fall back to the start/end midpoint only if no per-row dates exist. These drive the auto-generated `wave_time` column (see Wave time section).
 - [ ] All relevant columns annotated (demographics, opinions, scales, etc.)
 - [ ] Ordered categories correctly ordered (likerts always go negative → positive pole, e.g. disagree → agree); `num_values` set for all ordered columns (centered on zero for likerts, 1–N otherwise, `null` for nonordered entries)
 - [ ] `nonresponse` marks the true non-response categories ("Don't know", "No answer", "Refused") on **every** categorical block — ordered or not — so those semantics stay available to data-quality and other tooling; `nonordered` lists only the extra off-scale-but-substantive categories ("Other", "none", "Would not participate")
@@ -113,6 +114,7 @@ df = read_and_process_data({
   "source": "...",
   "collection_start": "2026-01-15",
   "collection_end": "2026-02-01",
+  "collection_center": "2026-01-20",
   "author": "...",
   "constants": { "party_colors": { "PartyA": "#ff0000" } },
   "files": [{ "file": "data.sav", "opts": {}, "code": "F0" }],
@@ -483,6 +485,18 @@ df = read_and_process_data({
 Any category mismatch or duplicate column name will surface as a warning or error. Fix these iteratively until the load is clean.
 
 7. **The last file is the basis for the combined meta.** `read_and_process_data` uses the last file's annotation as the combined schema. If blocks exist in file A but not in file B (the last file), they won't appear in the output — even though the data is present. To fix this, add the missing blocks to the last file with `"generated": true` on each such block. This suppresses "no matching columns in data" warnings for that file while letting the block's schema carry through to the combined result.
+
+## Wave Time (auto survey-date column)
+
+Every dated annotated load automatically gains an ordered categorical `wave_time` column: one ISO-date category per wave, chronologically sorted, in a generated `waves` block (hidden while there is only one wave). The date is `collection_center`, else the `collection_start`/`collection_end` midpoint.
+
+- Combining waves — `read_and_process_data` with multiple metas, or a parent meta over child metas — unions the categories chronologically; each row keeps its own wave's date. Children's dates win; a parent's dates only fill files that lack their own.
+- A file with no resolvable date in a dated combine gets NA `wave_time` plus a warning; a load with no dates anywhere simply has no column. In a multi-meta `read_and_process_data` load, the **last** meta must be dated for the `waves` block to reach the combined meta ("last file is the basis").
+- Opt a dataset out with `"wave_time": false` in the meta. A column of that name declared in your own blocks always wins over injection, and a column whose values aren't dates is left alone with a warning.
+- Population/census metas: their collection dates are fine to fill, but SIP drops a population source's own `wave_time` because a census date is not a survey wave.
+- With only `collection_start` (or only `collection_end`) set, that single date becomes the wave's label — fill `collection_center` to place the wave properly. An unparseable date is a **hard error**, not a warning.
+- In a multi-meta `read_and_process_data` combine, set `wave_time` the same on every meta: opting only some out leaves a column no block describes.
+- Downstream, `wave_time` is the standard model time axis (see SIP's `sip-create-model` skill) — so fill the collection fields even for a first wave.
 
 ## Worked Example
 

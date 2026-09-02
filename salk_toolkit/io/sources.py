@@ -22,6 +22,7 @@ from salk_toolkit.validation import (
 from salk_toolkit.io import readers
 from salk_toolkit.io.core import (
     ROW_ID,
+    WAVE_TIME_COL,
     Dataset,
     ProcessOpts,
     SourceBundle,
@@ -30,7 +31,7 @@ from salk_toolkit.io.core import (
 )
 from salk_toolkit.io.meta import _fix_meta_categories
 from salk_toolkit.io.parquet import read_parquet_with_metadata
-from salk_toolkit.io.pipeline import process
+from salk_toolkit.io.pipeline import _collection_date, _sort_wave_time_block, process
 
 
 def _reconcile_categories(
@@ -226,6 +227,12 @@ def _load_data_files(
             cats = extra_field_categories[k]
             raw_data[k] = pd.Categorical([v] * len(raw_data), categories=cats)
 
+        # An annotated parquet carries meta but never runs process(), so its wave date is filled here
+        if result_meta is not None and result_meta.wave_time and WAVE_TIME_COL not in raw_data.columns:
+            wt_date = _collection_date(result_meta)
+            if wt_date is not None:
+                raw_data[WAVE_TIME_COL] = wt_date
+
         # Stamp the stable row id (per-file id_col overrides the meta-level default).
         _assign_row_id(raw_data, file_code, fd.id_col or opts.id_col, cast(str, data_file), inherited_row_id)
 
@@ -245,6 +252,8 @@ def _load_data_files(
     # This will fix categories inside meta too - use concatenated view for this
     fdf = pd.concat(raw_data_dict.values())
     meta = _fix_meta_categories(meta, fdf, warnings=False)
+    # Category union above appends in first-seen order; wave dates must stay chronological
+    meta = _sort_wave_time_block(meta, raw_data_dict)
     return SourceBundle(frames=raw_data_dict, env=einfo, meta=meta)
 
 
