@@ -30,6 +30,7 @@ from salk_toolkit.pp import (
     _update_data_meta_with_pp_desc,
 )
 from salk_toolkit.pp.common import _question_meta_clone
+from salk_toolkit.pp.filters import _pp_filter_data_lz
 from salk_toolkit.validation import DataMeta, GroupOrColumnMeta, PlotDescriptor, soft_validate
 from pydantic import ValidationError
 
@@ -310,6 +311,22 @@ def test_transform_cont_full_streaming_pipeline(tmp_path) -> None:
 
     result = lf.collect(engine="streaming")
     assert result.shape == (len(cols), 6)
+
+
+@pytest.mark.parametrize(
+    "col,values,expected",
+    [
+        ("i", [1.0, 2.0], [1, 2]),  # float values against an int column
+        ("f", [1, 2], [1.0, 2.0]),  # int values against a float column
+        ("i", [1.5], []),  # a value the column dtype cannot hold matches nothing
+        ("i", [1, 2.5], [1]),
+    ],
+)
+def test_numeric_filter_values_are_cast_to_the_column_dtype(col: str, values: list, expected: list) -> None:
+    """polars 2 rejects int/float mismatches in is_in, so filter values must be aligned to the column."""
+    df = pl.DataFrame({"i": [1, 2, 3], "f": [1.0, 2.0, 3.0]}).lazy()
+    out, _ = _pp_filter_data_lz(df, {col: values}, {})
+    assert out.collect().get_column(col).to_list() == expected
 
 
 def test_convert_res_continuous_maps_unmapped_nonresponse_to_null() -> None:

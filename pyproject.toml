@@ -33,7 +33,7 @@ dependencies = [
   "openpyxl",
   "pandas>=3.0",
   "pillow",
-  "polars>=1.39.0,<2",
+  "polars>=1.39.0,<3",
   "polib",
   "psutil",
   "pyarrow",

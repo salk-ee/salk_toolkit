@@ -110,7 +110,7 @@ def pp_transform_data(
     Internally works with polars LazyDataFrame for large data set performance.
     """
 
-    pl.enable_string_cache()  # So we can work on categorical columns
+    utils.enable_string_cache()  # So we can work on categorical columns
 
     plot_meta = get_plot_meta(pp_desc.plot)
     assert plot_meta is not None, f"Plot '{pp_desc.plot}' not found in registry"
