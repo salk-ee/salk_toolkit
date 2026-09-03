@@ -50,7 +50,6 @@ with st.spinner("Loading libraries.."):
 
     import altair as alt
     import pandas as pd
-    import polars as pl
     import psutil
     import streamlit.components.v1 as components
     from streamlit_js import st_js, st_js_blocking  # type: ignore[import-untyped]
@@ -77,7 +76,7 @@ with st.spinner("Loading libraries.."):
         matching_plots,
         pp_transform_data,
     )
-    from salk_toolkit.utils import chart_to_url_with_config, plot_matrix_html, replace_constants
+    from salk_toolkit.utils import chart_to_url_with_config, enable_string_cache, plot_matrix_html, replace_constants
     from salk_toolkit.validation import DataMeta, PlotDescriptor, soft_validate
 
     T = TypeVar("T")
@@ -169,7 +168,7 @@ if global_data_meta:
 @st.cache_resource(show_spinner=False)
 def load_file(input_file: str) -> dict[str, object]:
     """Load a parquet file with metadata."""
-    pl.enable_string_cache()
+    enable_string_cache()
     ifile = paths[input_file] + input_file
     ldf, full_meta = read_parquet_with_metadata(ifile, lazy=True)
     if full_meta is None:

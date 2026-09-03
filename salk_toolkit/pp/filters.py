@@ -111,7 +111,13 @@ def _pp_filter_data_lz(
                 continue
         if not values:
             continue
-        # is_in skips nulls, works on Categorical directly (string cache is on), and pushes down to the scan
+        if dtype is not None and dtype.is_numeric():
+            # polars 2 rejects any int/float mismatch in is_in, so align the values with the column.
+            # Values that do not survive the cast intact could never have matched anyway.
+            given = pl.Series(values, strict=False)
+            aligned = given.cast(dtype, strict=False)
+            values = aligned.filter(aligned.cast(pl.Float64, strict=False) == given.cast(pl.Float64, strict=False))
+        # is_in skips nulls, works on Categorical directly, and pushes down to the scan
         inds &= pl.col(k).is_in(values)
 
     filtered_df = df.filter(inds)

@@ -30,6 +30,7 @@ __all__ = [
     "deaggregate_multiselect",
     "deterministic_draws",
     "dict_cache",
+    "enable_string_cache",
     "escape_vega_label",
     "factorize_w_codes",
     "gb_in",
@@ -110,6 +111,7 @@ if TYPE_CHECKING:
 
 import numpy as np
 import pandas as pd
+import polars as pl
 from pandas.api.typing import DataFrameGroupBy
 import scipy
 from scipy.optimize import linear_sum_assignment
@@ -743,6 +745,13 @@ def rel_wave_times(ws: Sequence[int], dts: Sequence[Any], dt0: pd.Timestamp | No
     w_to_time = dict(((adf - dt0).dt.days / 30).items())
 
     return pd.Series(df["wave"].replace(w_to_time), name="t")
+
+
+def enable_string_cache() -> None:
+    """Polars 1 needs the global string cache to share categoricals across frames; in polars 2 it is a no-op."""
+
+    if int(pl.__version__.split(".")[0]) < 2:
+        pl.enable_string_cache()
 
 
 def stable_rng(seed: int | str | bytes) -> np.random.Generator:
