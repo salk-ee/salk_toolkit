@@ -54,7 +54,9 @@ def serialize_pbase(
     for key, value in serialized.items():
         default_val = default_values.get(key)
         if value is None:
-            continue  # Always skip None
+            if key in default_values and default_values[key] is not None:
+                result[key] = None  # an explicit null that overrides a non-null default must survive
+            continue
         if value == default_val:
             continue  # Skip if matches default
         # For optional fields (those that have a declared default), also strip

@@ -688,3 +688,14 @@ class TestRoundTripSerialization:
         for meta in [col1_meta, col2_meta]:
             for field in default_fields:
                 assert field not in meta
+
+
+def test_explicit_null_overriding_nonnull_default_survives_roundtrip():
+    """coding=None means "raw booleans"; dropping it as "just a None" would silently
+    restore the ["No","Yes"] default on re-validation."""
+    from salk_toolkit.validation import OneHotBlock, soft_validate
+
+    b = OneHotBlock(name="x", from_columns=["a"], coding=None)
+    dumped = b.model_dump(mode="json")
+    assert dumped["coding"] is None
+    assert soft_validate(dumped, OneHotBlock).coding is None

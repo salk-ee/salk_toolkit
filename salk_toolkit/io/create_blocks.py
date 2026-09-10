@@ -103,10 +103,13 @@ def _apply_post_transform_translate(
         sdf[col] = sdf[col].astype("object").map(lambda v: _map_cell(v, t))
 
     scale_dict = scale.model_dump(mode="python")
-    if not scale_dict.get("categories") or scale_dict.get("categories") == "infer":
-        new_categories = list(dict.fromkeys(t.values()))
-    else:
-        new_categories = [t.get(c, c) if isinstance(c, str) else c for c in scale_dict["categories"]]
+    cats = scale_dict.get("categories")
+    # "infer" stays inferred (per output column, from the data); an authored list gets translated
+    new_categories = (
+        list(dict.fromkeys(t.values()))
+        if not cats
+        else (cats if cats == "infer" else [t.get(c, c) if isinstance(c, str) else c for c in cats])
+    )
     scale_dict["categories"] = new_categories
     new_scale = type(scale).model_validate(scale_dict)
     # Propagate the post-translate categories onto each column too, mirroring what

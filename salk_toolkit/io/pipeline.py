@@ -295,9 +295,12 @@ def _build_columns(bundle: SourceBundle, meta_obj: DataMeta, hooks: HookEnv) -> 
                 source_df = source_df[order + [c for c in source_df.columns if c not in set(order)]]
             sib_metas: list[ColumnBlockMeta] = []
             for sdf, smeta in _process_block(group, source_df, not_asked=meta_obj.not_asked):
+                # Derived columns get the same category resolution as plain ones, so a block's
+                # declared scale actually reaches the frame's dtype
+                cmetas = dict(smeta.columns)
                 for c in sdf.columns:
-                    ndf_df[c] = sdf[c]
-                sib_metas.append(smeta)
+                    ndf_df[c], cmetas[c] = _resolve_categories(sdf[c], cmetas[c], c)
+                sib_metas.append(smeta.model_copy(update={"columns": cmetas}))
             # Any explicitly declared raw columns were already processed as plain columns
             # above; keep their meta under a demoted plain block. When a derived sibling
             # takes the bare block name, the parent moves to <name>_src instead of being

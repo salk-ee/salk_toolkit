@@ -4281,7 +4281,8 @@ class TestMultiSourceColumns:
         # Single-sibling topk: child uses bare block name, overwriting the demoted parent.
         topk_block = next((b for b in dumped["structure"] if b.get("name") == "demographics"), None)
         assert topk_block is not None
-        assert topk_block["columns"] == ["topk_R1", "topk_R2"]
+        # scale.categories is "infer", so each slot infers its own (R2 only ever holds one value)
+        assert [c if isinstance(c, str) else c[0] for c in topk_block["columns"]] == ["topk_R1", "topk_R2"]
         # System file metadata block is injected implicitly for multi-file inputs
         sys_blocks = [b for b in dumped["structure"] if b.get("name") == "files"]
         assert len(sys_blocks) == 1
@@ -5195,6 +5196,60 @@ class TestPipelineSchema:
         assert list(ndf["sm_no_account"]) == ["No", "No"]
         # coding categories replace the choice-naming translate on the output scale
         assert out.scale is not None and out.scale.categories == ["No", "Yes"] and not out.scale.translate
+
+
+class TestDerivedColumnCategories:
+    """Derived block outputs get the same dtype treatment as plain columns."""
+
+    def test_derived_columns_are_cast_to_declared_categorical(self, meta_file, csv_file):
+        """A block scale's categories must reach the frame, not just the meta."""
+        pd.DataFrame({"q_1": ["Mentioned", "Not mentioned"], "q_2": ["Not mentioned", "Mentioned"]}).to_csv(
+            csv_file, index=False
+        )
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "topk",
+                    "name": "issues",
+                    "from_columns": r"q_(\d+)",
+                    "res_columns": r"R\1",
+                    "k": 2,
+                    "not_selected": ["Not mentioned"],
+                    "scale": {"categories": ["Econ", "Health"], "translate_after": {"1": "Econ", "2": "Health"}},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        ndf, _ = read_annotated_data(str(meta_file), return_meta=True)
+        assert ndf["R1"].dtype.name == "category"
+        assert list(ndf["R1"].cat.categories) == ["Econ", "Health"]
+
+    def test_infer_stays_per_column(self, meta_file, csv_file):
+        """categories:"infer" keeps inferring per output column instead of adopting the
+        whole translate_after universe."""
+        pd.DataFrame({"q_1": ["Mentioned", "Mentioned"], "q_2": ["Not mentioned", "Not mentioned"]}).to_csv(
+            csv_file, index=False
+        )
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "topk",
+                    "name": "issues",
+                    "from_columns": r"q_(\d+)",
+                    "res_columns": r"R\1",
+                    "k": 2,
+                    "not_selected": ["Not mentioned"],
+                    "scale": {"categories": "infer", "translate_after": {"1": "Econ", "2": "Health"}},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        ndf, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        assert meta_obj is not None
+        assert list(ndf["R1"].cat.categories) == ["Econ"]  # only value this slot ever holds
+        assert meta_obj.structure["issues"].columns["R1"].categories == ["Econ"]
 
 
 class TestCreateAdjustments:
