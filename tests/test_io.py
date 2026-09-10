@@ -5252,6 +5252,36 @@ class TestDerivedColumnCategories:
         assert meta_obj.structure["issues"].columns["R1"].categories == ["Econ"]
 
 
+class TestAuthoredOutputColumnMeta:
+    """A block's per-column meta for a generated column name travels with the derived block."""
+
+    def test_onehot_keeps_authored_labels_and_no_phantom_parent(self, meta_file, csv_file):
+        """Labels written on generated names survive; nothing demotes to a phantom parent."""
+        pd.DataFrame({"M_1": ["FB", "TT"], "M_2": ["TT", None]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "onehot",
+                    "name": "sm",
+                    "from_columns": r"M_(\d+)",
+                    "input_format": "leftpacked",
+                    "choices": ["FB", "TT"],
+                    "res_prefix": "sm_",
+                    "columns": [["sm_FB", {"label": "Facebook"}], ["sm_TT", {"label": "TikTok"}]],
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        ndf, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        assert meta_obj is not None
+        out = meta_obj.structure["sm"]
+        assert [c.label for c in out.columns.values()] == ["Facebook", "TikTok"]
+        # declared names are all generated, so there is no raw-column parent to keep
+        assert "sm_src" not in meta_obj.structure
+        assert list(ndf["sm_FB"]) == ["Yes", "No"]
+
+
 class TestCreateAdjustments:
     """cell_values topk, design-keyed maxdiff sets, and translate/not_selected key expansion."""
 

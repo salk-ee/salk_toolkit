@@ -171,9 +171,12 @@ def _resolve_categories(s: pd.Series, mcm: ColumnMeta, cn: str) -> tuple[pd.Seri
         should_warn_ordered = mcm.ordered and not pd.api.types.is_numeric_dtype(s)
         # s is the source of truth: it has the final translate -> transform -> translate_after values
         present = set(s.dropna().unique())
-        if mcm.translate and not mcm.transform and set(mcm.translate.values()) >= present:
+        # Order follows whichever dict produced the final values (translate_after runs last, and
+        # unlike translate a transform in between does not invalidate it)
+        tdict = mcm.translate_after or (mcm.translate if not mcm.transform else None)
+        if tdict and set(tdict.values()) >= present:
             # Infer order from the translation dict; mapping can be many-to-one so dedup preserving order
-            cats = list(dict.fromkeys(str(c) for c in mcm.translate.values() if c in present))
+            cats = list(dict.fromkeys(str(c) for c in tdict.values() if c in present))
         else:
             # Deterministic order: numeric dtypes and numeric-like strings sort numerically, else lexically
             if should_warn_ordered:
@@ -301,10 +304,12 @@ def _build_columns(bundle: SourceBundle, meta_obj: DataMeta, hooks: HookEnv) -> 
                 for c in sdf.columns:
                     ndf_df[c], cmetas[c] = _resolve_categories(sdf[c], cmetas[c], c)
                 sib_metas.append(smeta.model_copy(update={"columns": cmetas}))
-            # Any explicitly declared raw columns were already processed as plain columns
-            # above; keep their meta under a demoted plain block. When a derived sibling
-            # takes the bare block name, the parent moves to <name>_src instead of being
-            # silently clobbered.
+            # Any explicitly declared RAW columns were already processed as plain columns above;
+            # keep their meta under a demoted plain block. Columns the transform generates are not
+            # raw - their authored meta travels with the derived block instead.
+            generated = {c for sm in sib_metas for c in sm.columns}
+            raw_declared = {c: m for c, m in group.columns.items() if c not in generated}
+            group = group.model_copy(update={"columns": raw_declared})
             if group.columns:
                 demoted = _demote_to_plain(group)
                 if any(sm.name == demoted.name for sm in sib_metas):

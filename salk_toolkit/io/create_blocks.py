@@ -457,8 +457,15 @@ BlockT = TypeVar("BlockT", bound=ColumnBlockMeta)
 
 def _output_block(block: BlockT, **updates: object) -> BlockT:
     """Rebuild a block with its roles resolved to concrete lists. Carries every declared field
-    over (new schema fields included) and clears the input-only subgroup directive."""
+    over (new schema fields included) and clears the input-only subgroup directive. Per-column
+    meta the author wrote for a generated column name (labels, colors, ...) is kept."""
     spec = block.model_dump(mode="python") | {"scale": _block_scale_dict(block), "subgroup_labels": None, **updates}
+    as_dict = lambda m: m.model_dump(mode="python") if hasattr(m, "model_dump") else (m or {})  # noqa: E731
+    cols, authored = spec.get("columns"), {c: as_dict(m) for c, m in (block.columns or {}).items()}
+    if isinstance(cols, list):
+        cols = {c: {} for c in cols}
+    if isinstance(cols, dict):
+        spec["columns"] = {c: {**authored.get(c, {}), **as_dict(m)} for c, m in cols.items()}
     return soft_validate(spec, type(block))
 
 
