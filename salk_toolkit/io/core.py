@@ -65,6 +65,7 @@ class ProcessOpts:
     ignore_exclusions: bool = False  # Keep rows listed in meta `excluded`
     add_original_inds: bool = False  # Keep the `original_inds` column in the result
     id_col: str | None = None  # Natural key to derive stable row ids from, if the meta declares one
+    wave_date: str | None = None  # The meta's survey date, stamped onto files that bring none of their own
 
 
 class HookEnv:

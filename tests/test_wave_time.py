@@ -103,18 +103,14 @@ class TestCombining:
 
 
 class TestForeignColumns:
-    """Pre-existing / user-owned columns of the same name are never trampled."""
+    """The column name is reserved: a raw file's own is overwritten like file_code, a declared one is kept."""
 
-    def _raw_col_meta(self, tmp_path, values):
-        pd.DataFrame({"q": ["Yes", "No"], "wave_time": values}).to_csv(tmp_path / "d.csv", index=False)
-        return write_meta(tmp_path / "d_meta.json", file="d.csv", collection_center="2026-01-15")
-
-    def test_undeclared_non_date_column_does_not_crash(self, tmp_path):
-        """A raw column of that name holding non-dates is left alone, not parsed as wave dates."""
-        m = self._raw_col_meta(tmp_path, ["wave 1", "wave 1"])
-        with pytest.warns(UserWarning):
-            df, meta = read_annotated_data(m, return_meta=True)
-        assert meta is not None and "waves" not in meta.structure
+    def test_raw_column_of_that_name_is_overwritten(self, tmp_path):
+        """Whatever a raw file carries under the name - junk or years - is replaced by the meta's date."""
+        pd.DataFrame({"q": ["Yes", "No"], "wave_time": ["wave 1", "2027"]}).to_csv(tmp_path / "d.csv", index=False)
+        m = write_meta(tmp_path / "d_meta.json", file="d.csv", collection_center="2026-01-15")
+        df, meta = read_annotated_data(m, return_meta=True)
+        assert meta is not None and list(df["wave_time"].unique()) == ["2026-01-15"]
 
     def test_user_waves_block_columns_survive(self, tmp_path):
         """Injecting into a user block named 'waves' keeps its own columns and visibility."""
@@ -172,14 +168,6 @@ class TestUserOwnedColumns:
         _, meta = read_and_process_data({"files": [{"file": m}]}, return_meta=True)
         blk = meta.structure["waves"]
         assert not blk.generated and not blk.hidden, "a user block's visibility was overwritten"
-
-    def test_year_labels_are_not_survey_dates(self, tmp_path):
-        """Bare year numbers are numeric labels, not wave dates - a foreign column must not be adopted."""
-        pd.DataFrame({"q": ["Yes", "No"], "wave_time": ["2026", "2027"]}).to_csv(tmp_path / "d.csv", index=False)
-        m = write_meta(tmp_path / "d_meta.json", file="d.csv", collection_center="2026-01-15")
-        with pytest.warns(UserWarning, match="non-date values"):
-            _, meta = read_annotated_data(m, return_meta=True)
-        assert meta is not None and "waves" not in meta.structure
 
     def test_unparseable_collection_date_errors_clearly(self, tmp_path):
         """A free-text collection date names the offending fields rather than raising from pandas."""

@@ -31,7 +31,7 @@ from salk_toolkit.io.core import (
 )
 from salk_toolkit.io.meta import _fix_meta_categories
 from salk_toolkit.io.parquet import read_parquet_with_metadata
-from salk_toolkit.io.pipeline import _collection_date, _sort_wave_time_block, process
+from salk_toolkit.io.pipeline import WAVES_BLOCK, _collection_date, _own_columns, process
 
 
 def _reconcile_categories(
@@ -106,7 +106,7 @@ def _reconcile_categories(
             utils.get_categories(dtype)
         ):  # If the categories are not the same, create a new dtype
             _, cats = _deterministic_categories_and_values(fdf[c].dropna())
-            reconciled[c] = pd.Categorical([], cats).dtype
+            reconciled[c] = pd.CategoricalDtype(cats, ordered=dtype.ordered)
             n_cats = len(utils.get_categories(reconciled[c]))
             if warnings:
                 warn(f"Categories for {c} are different between files - merging to total {n_cats} cats")
@@ -227,10 +227,11 @@ def _load_data_files(
             cats = extra_field_categories[k]
             raw_data[k] = pd.Categorical([v] * len(raw_data), categories=cats)
 
-        # An annotated parquet carries meta but never runs process(), so its wave date is filled here
-        if result_meta is not None and result_meta.wave_time and WAVE_TIME_COL not in raw_data.columns:
-            if (wt := _collection_date(result_meta)) is not None:
-                raw_data[WAVE_TIME_COL] = wt
+        # Survey date: an annotated source brings its own (already a column if it processed), raw files
+        # take the meta's; a raw column of that name is reserved and overwritten, like file_code
+        own_date = _meta_wave_date(result_meta) if result_meta is not None else None
+        if (date := own_date or opts.wave_date) is not None and (result_meta is None or WAVE_TIME_COL not in raw_data):
+            raw_data[WAVE_TIME_COL] = date
 
         # Stamp the stable row id (per-file id_col overrides the meta-level default).
         _assign_row_id(raw_data, file_code, fd.id_col or opts.id_col, cast(str, data_file), inherited_row_id)
@@ -251,8 +252,16 @@ def _load_data_files(
     # This will fix categories inside meta too - use concatenated view for this
     fdf = pd.concat(raw_data_dict.values())
     meta = _fix_meta_categories(meta, fdf, warnings=False)
-    # Category union above appends in first-seen order; wave dates must stay chronological
-    meta = _sort_wave_time_block(meta, raw_data_dict)
+    dated = [fc for fc, d in raw_data_dict.items() if WAVE_TIME_COL in d.columns]
+    if dated and len(dated) < len(raw_data_dict):
+        undated = sorted(set(raw_data_dict) - set(dated))
+        warn(f"No survey date for '{WAVE_TIME_COL}' in files {undated} - set collection_center; rows left empty")
+    blk = meta.structure.get(WAVES_BLOCK)
+    cm = blk.columns.get(WAVE_TIME_COL) if blk is not None and blk.generated else None
+    if cm is not None and isinstance(cats := cm.categories, list):
+        meta = meta.model_copy(
+            update={"structure": {**meta.structure, WAVES_BLOCK: blk.model_copy(update={"hidden": len(cats) <= 1})}}
+        )
     return SourceBundle(frames=raw_data_dict, env=einfo, meta=meta)
 
 
@@ -275,6 +284,11 @@ def _read_meta_input(meta_fname: str | None, meta: DataMeta | dict[str, object] 
     return soft_validate(meta_input, DataMeta, warnings=True)
 
 
+def _meta_wave_date(meta_obj: DataMeta) -> str | None:
+    """The date this meta stamps on its files: none if opted out or the annotation declares the column."""
+    return _collection_date(meta_obj) if meta_obj.wave_time and WAVE_TIME_COL not in _own_columns(meta_obj) else None
+
+
 def _load_meta_sources(
     meta_obj: DataMeta, meta_fname: str | None, data_file: str | None, opts: ProcessOpts
 ) -> SourceBundle:
@@ -292,7 +306,7 @@ def _load_meta_sources(
         path=meta_fname if meta_fname is not None else data_file,
         read_opts=meta_obj.read_opts,
         # The meta's declared natural key travels with the load, per-file id_col still overrides it
-        opts=replace(opts, id_col=meta_obj.id_col),
+        opts=replace(opts, id_col=meta_obj.id_col, wave_date=_meta_wave_date(meta_obj)),
     )
     if bundle.meta is not None:
         warn("Processing main meta file")  # Print this to separate warnings for input jsons from main
