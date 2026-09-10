@@ -2,6 +2,7 @@
   "description": "Example WEB survey — political attitudes (7-point likert)",
   "collection_start": "2026-03-01",
   "collection_end": "2026-03-15",
+  "collection_center": "2026-03-06",
   "constants": {
     "party_colors": {
       "TS-LKD": "#49a39b",
