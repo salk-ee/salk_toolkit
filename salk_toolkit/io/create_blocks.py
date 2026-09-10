@@ -621,21 +621,23 @@ def _maxdiff_transform_choice_sets(
                 if bad:
                     raise ValueError(f"Maxdiff design {dname!r} contains unknown topics: {sorted(bad)}")
             setindex_designs = list(per_design)
+            # A row with no design saw no screens (e.g. the question ran in one mode only)
+            asked_md = df[setindex_col_name].notna()
             keys = df[setindex_col_name].astype(str)
-            unknown_keys = sorted(set(keys) - set(setindex_designs))
+            unknown_keys = sorted(set(keys[asked_md]) - set(setindex_designs))
             if unknown_keys:
                 raise ValueError(f"Maxdiff setindex values not in choice_sets designs: {unknown_keys}")
             for qi, sc in enumerate(set_cols):
-                df[sc] = [per_design[k][qi] for k in keys]
+                df[sc] = [per_design[k][qi] if ok else None for k, ok in zip(keys, asked_md)]
         else:
             topics_arr = np.array(["", *topics], dtype=object)  # "" at index 0: survey sets are 1-indexed
             sets_arr = np.asarray(sets, dtype=int)
             lsets = topics_arr[sets_arr]
 
-            setindex = df[setindex_col_name].astype(np.int64).to_numpy() - 1
-            selected_sets = lsets[setindex]
-            df_setcols = pd.DataFrame(selected_sets.tolist(), columns=set_cols, index=df.index)
-            df[set_cols] = df_setcols
+            # A row with no version saw no screens (e.g. the question ran in one mode only)
+            setindex = pd.to_numeric(df[setindex_col_name], errors="coerce")
+            rows = [lsets[int(v) - 1].tolist() if pd.notna(v) else [None] * len(set_cols) for v in setindex]
+            df[set_cols] = pd.DataFrame(rows, columns=set_cols, index=df.index)
     else:
         df = df[ordered_cols + set_cols]
         for col in set_cols:

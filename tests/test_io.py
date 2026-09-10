@@ -5467,6 +5467,30 @@ class TestCreateAdjustments:
         assert block.columns["design"].categories == ["block 1", "block 2"]
         assert not block.columns["design"].continuous
 
+    def test_maxdiff_rows_without_a_version_get_no_sets(self, meta_file, csv_file):
+        """A maxdiff run in one mode only: rows with no design version saw no screens."""
+        parquet_file = csv_file.with_suffix(".parquet")
+        pd.DataFrame({"Q_1best": ["A", None], "Q_1worst": ["B", None], "ver": [1.0, None]}).to_parquet(parquet_file)
+        meta = {
+            "file": str(parquet_file),
+            "structure": [
+                {
+                    "type": "maxdiff",
+                    "name": "md",
+                    "best_columns": [r"Q_1best"],
+                    "worst_columns": [r"Q_1worst"],
+                    "set_columns": ["Q_1set"],
+                    "setindex_column": "ver",
+                    "choice_sets": [[[1, 2]]],
+                    "scale": {"categories": ["A", "B"], "translate": {"1": "A", "2": "B"}},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        ndf, _ = read_annotated_data(str(meta_file), return_meta=True)
+        assert list(ndf["Q_1set"].iloc[0]) == ["A", "B"]
+        assert ndf["Q_1set"].iloc[1] is None
+
     def test_maxdiff_design_keyed_unknown_design_fails(self, meta_file, csv_file):
         """A setindex value with no matching design key hard-fails."""
         parquet_file = csv_file.with_suffix(".parquet")
