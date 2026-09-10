@@ -234,23 +234,29 @@ def _is_series_of_lists(s: pd.Series) -> bool:
     return isinstance(s_rep, list) or isinstance(s_rep, np.ndarray)
 
 
-_INT_RE = re.compile(r"-?\d+")
+_INT_RE = re.compile(r"-?\d+(?:\.0+)?")
+
+
+def _int_forms(key: str) -> tuple:
+    """Every shape an integral code takes across readers/round-trips: '3', 3, 3.0, '3.0'."""
+    i = int(float(key))
+    return (str(i), i, float(i), f"{i}.0")
 
 
 def expand_value_keys(translate: Mapping) -> dict:
-    """CSV round-trips turn an index-string cell '1' into 1 / 1.0 / '1.0'; extend integer-string
-    translate keys to also match those cell forms (existing keys always win)."""
+    """Readers and CSV round-trips render an integral code as '1', 1, 1.0 or '1.0'; make an
+    integral translate key match all of them, whichever form the annotation used."""
     out = dict(translate)
     for k, v in translate.items():
         if isinstance(k, str) and _INT_RE.fullmatch(k):
-            for kk in (int(k), float(k), f"{k}.0"):
+            for kk in _int_forms(k):
                 out.setdefault(kk, v)
     return out
 
 
 def expand_na_vals(na_vals: list) -> list:
-    """Same int/float/'x.0' form-matching as expand_value_keys, for na_vals lists."""
-    extra = [kk for x in na_vals if isinstance(x, str) and _INT_RE.fullmatch(x) for kk in (int(x), float(x), f"{x}.0")]
+    """Same integral-form matching as expand_value_keys, for value lists."""
+    extra = [kk for x in na_vals if isinstance(x, str) and _INT_RE.fullmatch(x) for kk in _int_forms(x)]
     return list(na_vals) + [x for x in extra if x not in na_vals]
 
 

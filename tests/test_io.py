@@ -5494,6 +5494,36 @@ class TestCreateAdjustments:
         assert list(ndf["code"].fillna("NA")) == ["One", "Two", "NA"]
         assert list(ndf["Q_1best"]) == ["C", "A", "B"]
 
+    def test_translate_keyed_in_float_form_matches(self, meta_file, csv_file):
+        """Annotations written against the old astype(str) output key codes as "3.0"; those must
+        still match however the reader renders the cell."""
+        pd.DataFrame({"vG3": [0.0, 3.0, None]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "name": "main",
+                    "columns": [
+                        [
+                            "education",
+                            "vG3",
+                            {
+                                "categories": ["Primary", "Vocational"],
+                                "translate": {"0.0": "Primary", "3.0": "Vocational"},
+                            },
+                        ]
+                    ],
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        ndf, _ = read_annotated_data(str(meta_file), return_meta=True)
+        assert list(ndf["education"].astype(object).where(ndf["education"].notna(), "NA")) == [
+            "Primary",
+            "Vocational",
+            "NA",
+        ]
+
     def test_topk_na_vals_match_int_cells(self, meta_file, csv_file):
         """Integer 0/1 dummies with string na_vals: expansion makes '0' match int 0."""
         pd.DataFrame({"i_1": [1, 0], "i_2": [0, 1]}).to_csv(csv_file, index=False)
