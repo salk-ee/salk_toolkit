@@ -263,4 +263,7 @@ def expand_na_vals(na_vals: list) -> list:
 def stringify_notna(s: pd.Series) -> pd.Series:
     """str-coerce non-NA cells for translation, collapsing integral floats so untranslated
     int codes surface as '18', never '18.0'; NA stays NA."""
-    return s.map(lambda v: None if pd.isna(v) else (str(int(v)) if isinstance(v, float) and v.is_integer() else str(v)))
+    # astype(object) first: map() on a Categorical maps its categories and stays categorical
+    return s.astype(object).map(
+        lambda v: None if pd.isna(v) else (str(int(v)) if isinstance(v, float) and v.is_integer() else str(v))
+    )

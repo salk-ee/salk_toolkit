@@ -1383,6 +1383,32 @@ class TestColumnTransformations:
         df = read_annotated_data(str(meta_file))
         assert df["doubled_value"].tolist() == [20, 40, 60, 80, 100]
 
+    def test_translate_after_categorical_transform(self, csv_file, meta_file):
+        """translate_after must also recode a transform that returns a Categorical (stk.cut_nice / pd.cut)."""
+        pd.DataFrame({"age": [17, 30, 70]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "name": "demo",
+                    "columns": [
+                        [
+                            "age_group",
+                            "age",
+                            {
+                                "categories": ["16-24", "25-34", "65-74"],
+                                "transform": "pd.cut(s, [16, 25, 35, 75], labels=['16 - 24', '25 - 34', '65 - 74'])",
+                                "translate_after": {"16 - 24": "16-24", "25 - 34": "25-34", "65 - 74": "65-74"},
+                            },
+                        ]
+                    ],
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        ndf = read_annotated_data(str(meta_file))
+        assert ndf["age_group"].tolist() == ["16-24", "25-34", "65-74"]
+
     def test_translate_after_transformation(self, csv_file, meta_file):
         """Test translate_after transformation"""
         df_to_csv(pd.DataFrame({"value": [1, 2, 3, 4, 5], "id": [1, 2, 3, 4, 5]}), csv_file)
