@@ -74,10 +74,13 @@ def _merge_column_meta(a: ColumnMeta, b: ColumnMeta, ctx: str) -> ColumnMeta:
 
 def _merge_blocks(a: ColumnBlockMeta, b: ColumnBlockMeta) -> ColumnBlockMeta:
     """Merge two same-named blocks across files. Columns union (first-seen order);
-    scale + per-column categories union; scalars last-file-wins. Raises on block-type
-    mismatch."""
+    scale + per-column categories union; scalars last-file-wins. Raises on a mismatch between
+    two different specialized types; a wave that only declares the columns (plain) merges into
+    the wave that builds them."""
     if a.type != b.type:
-        raise ValueError(f"Block {a.name!r}: type mismatch across files ({a.type!r} vs {b.type!r})")
+        if a.type != "plain" and b.type != "plain":
+            raise ValueError(f"Block {a.name!r}: type mismatch across files ({a.type!r} vs {b.type!r})")
+        a, b = (b, a) if a.type == "plain" else (a, b)  # the specialized side carries the processing
     cols = dict(a.columns)
     for cn, cm in b.columns.items():
         cols[cn] = _merge_column_meta(cols[cn], cm, ctx=f"Block {a.name!r} column {cn!r}") if cn in cols else cm

@@ -4495,19 +4495,39 @@ class TestStructureMerge:
         merged = _merge_data_metas([m1, m2])
         assert merged.structure["b"].columns["q"].categories == ["Low", "High", "Mid", "VeryHigh"]
 
-    def test_block_type_mismatch_raises(self):
-        """A block with conflicting types across files (plain vs topk) is a hard conflict."""
+    def test_two_specialized_types_is_a_hard_conflict(self):
+        """The same name meaning two different derived questions cannot be reconciled."""
         from salk_toolkit.io.meta import _merge_data_metas
 
-        m1 = make_data_meta({"file": "x.csv", "structure": [{"name": "b", "columns": ["q"]}]})  # plain
+        m1 = make_data_meta(
+            {
+                "file": "x.csv",
+                "structure": [{"type": "topk", "k": 3, "name": "b", "from_columns": "Q(\\d+)", "res_columns": "R\\1"}],
+            }
+        )
         m2 = make_data_meta(
             {
                 "file": "y.csv",
-                "structure": [{"type": "topk", "k": 9, "name": "b", "from_columns": "Q(\\d+)", "res_columns": "R\\1"}],
+                "structure": [{"type": "onehot", "name": "b", "from_columns": "Q(\\d+)"}],
             }
-        )  # topk
+        )
         with pytest.raises(ValueError, match="type mismatch"):
             _merge_data_metas([m1, m2])
+
+    def test_plain_declaration_merges_into_the_wave_that_builds_it(self):
+        """A wave that did not field the question just declares the output columns; the wave that
+        builds them defines the block."""
+        from salk_toolkit.io.meta import _merge_data_metas
+
+        m1 = make_data_meta({"file": "x.csv", "structure": [{"name": "b", "columns": ["R1"]}]})  # plain
+        m2 = make_data_meta(
+            {
+                "file": "y.csv",
+                "structure": [{"type": "topk", "k": 3, "name": "b", "from_columns": "Q(\\d+)", "res_columns": "R\\1"}],
+            }
+        )
+        merged = _merge_data_metas([m1, m2])
+        assert merged.structure["b"].type == "topk"
 
     def test_column_order_first_file_then_appended(self):
         """Columns keep file1 order; later files' new columns are appended in their order."""
