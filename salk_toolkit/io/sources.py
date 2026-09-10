@@ -229,9 +229,8 @@ def _load_data_files(
 
         # An annotated parquet carries meta but never runs process(), so its wave date is filled here
         if result_meta is not None and result_meta.wave_time and WAVE_TIME_COL not in raw_data.columns:
-            wt_date = _collection_date(result_meta)
-            if wt_date is not None:
-                raw_data[WAVE_TIME_COL] = wt_date
+            if (wt := _collection_date(result_meta)) is not None:
+                raw_data[WAVE_TIME_COL] = wt
 
         # Stamp the stable row id (per-file id_col overrides the meta-level default).
         _assign_row_id(raw_data, file_code, fd.id_col or opts.id_col, cast(str, data_file), inherited_row_id)
