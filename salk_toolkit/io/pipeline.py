@@ -301,8 +301,22 @@ def _build_columns(bundle: SourceBundle, meta_obj: DataMeta, hooks: HookEnv) -> 
                 # Derived columns get the same category resolution as plain ones, so a block's
                 # declared scale actually reaches the frame's dtype
                 cmetas = dict(smeta.columns)
+                # Slots of one question share one category pool: the translate_after universe when
+                # declared, else whatever any slot holds
+                pool = pd.concat([sdf[c] for c in sdf.columns], ignore_index=True) if len(sdf.columns) else None
                 for c in sdf.columns:
-                    ndf_df[c], cmetas[c] = _resolve_categories(sdf[c], cmetas[c], c)
+                    m = cmetas[c]
+                    if m.categories == "infer" and m.translate_after:
+                        m = m.model_copy(
+                            update={
+                                "categories": list(
+                                    dict.fromkeys(str(v) for v in m.translate_after.values() if v is not None)
+                                )
+                            }
+                        )
+                    elif m.categories == "infer":
+                        _, m = _resolve_categories(pool, m, c)
+                    ndf_df[c], cmetas[c] = _resolve_categories(sdf[c], m, c)
                 sib_metas.append(smeta.model_copy(update={"columns": cmetas}))
             # Any explicitly declared RAW columns were already processed as plain columns above;
             # keep their meta under a demoted plain block. Columns the transform generates are not

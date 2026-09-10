@@ -152,6 +152,10 @@ inventing a definite "picked nothing" would be a fabrication.
   produce, so no `astype` coercion preprocessing is needed.
 - Column matching follows **raw survey order** even when some matched columns are
   also declared as plain columns elsewhere in the meta.
+- `scale.categories: "infer"` on a typed block resolves to **one pool shared by every
+  output slot** — the full `translate_after` value list when one is declared, else the union
+  of values any slot holds — never a per-slot subset (SIP's ordinal_ranking needs every slot
+  on the same category list).
 
 ## MaxDiff
 

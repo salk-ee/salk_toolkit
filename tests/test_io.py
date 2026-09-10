@@ -5272,9 +5272,9 @@ class TestDerivedColumnCategories:
         assert ndf["R1"].dtype.name == "category"
         assert list(ndf["R1"].cat.categories) == ["Econ", "Health"]
 
-    def test_infer_stays_per_column(self, meta_file, csv_file):
-        """categories:"infer" keeps inferring per output column instead of adopting the
-        whole translate_after universe."""
+    def test_infer_shares_block_pool(self, meta_file, csv_file):
+        """categories:"infer" on a typed block resolves to one pool for every slot: the
+        translate_after universe when declared, else the union of what the slots hold."""
         pd.DataFrame({"q_1": ["Mentioned", "Mentioned"], "q_2": ["Not mentioned", "Not mentioned"]}).to_csv(
             csv_file, index=False
         )
@@ -5295,8 +5295,18 @@ class TestDerivedColumnCategories:
         write_json(meta_file, meta)
         ndf, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
         assert meta_obj is not None
-        assert list(ndf["R1"].cat.categories) == ["Econ"]  # only value this slot ever holds
-        assert meta_obj.structure["issues"].columns["R1"].categories == ["Econ"]
+        assert list(ndf["R1"].cat.categories) == ["Econ", "Health"]
+        assert meta_obj.structure["issues"].columns["R2"].categories == ["Econ", "Health"]
+        # no translate_after: the pool is what any slot holds, so R2 (never filled) still lists Econ
+        del meta["structure"][0]["scale"]["translate_after"]
+        meta["structure"][0]["cell_values"] = True
+        meta["structure"][0]["res_columns"] = "R"
+        pd.DataFrame({"q_1": ["Econ", "Health"], "q_2": ["Not mentioned", "Not mentioned"]}).to_csv(
+            csv_file, index=False
+        )
+        write_json(meta_file, meta)
+        ndf, _ = read_annotated_data(str(meta_file), return_meta=True)
+        assert list(ndf["R2"].cat.categories) == ["Econ", "Health"]
 
 
 class TestAuthoredOutputColumnMeta:
@@ -6066,7 +6076,7 @@ class TestTopKSources:
         assert list(econ.columns) == ["econ_R1", "econ_R2"] and econ.sources is None
         assert econ.columns["econ_R1"].label == "Economy"  # authored meta on a generated name survives
         assert econ.from_columns == ["W1c1", "W1c2", "W1c3", "P1c2", "P2c2", "P3c2"]
-        assert list(ndf["econ_R1"].cat.categories) == ["A", "B"]  # infer = observed per column
+        assert list(ndf["econ_R1"].cat.categories) == ["A", "B", "C"]  # the translate_after universe
 
     def test_row_in_two_layouts_raises(self, meta_file, csv_file):
         """A row with picks in two layouts is a data error."""
