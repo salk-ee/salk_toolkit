@@ -393,6 +393,10 @@ and per-choice modeling). Replaces `stk.deaggregate_multiselect` and hand-rolled
   `scale.categories` when the cells already hold display names.
 - `choice_sets`: the design table. Flat list = per-version item lists; a dict keyed by
   **design name** when `setindex_column` cells hold design names rather than numbers.
+  Rows with an empty `setindex_column` saw no screens (a maxdiff fielded in one mode only).
+- `res_best` / `res_worst`: rename the outputs (substitution templates against the matched
+  columns), for annotations whose output names differ from the raw ones - or that swap the
+  two on purpose. `set_columns` is already such a template.
 - `scale.translate` maps 1-based index strings to topic names; it is both the topic
   universe for `setindex_column` lookups and the element-wise translator for raw
   best/worst/set cells. There is **no `translate_after`** for maxdiff.

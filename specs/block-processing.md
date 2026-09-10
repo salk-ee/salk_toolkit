@@ -158,7 +158,13 @@ inventing a definite "picked nothing" would be a fabrication.
 - `setindex_column` cells may be **design-name strings** instead of version
   numbers: `choice_sets` is then a dict keyed by design name, each value one item
   list per question (indices or names): `{"block 1": [["Economy", "Health"], …]}`.
-  The setindex column stays categorical over the design names.
+  The setindex column stays categorical over the design names. Keys match whichever
+  form the cell takes (`3`, `3.0`, `"3"`), and it is emitted as part of the block.
+- Rows whose `setindex_column` is empty saw no screens (a maxdiff fielded in one mode
+  only) and simply get no sets.
+- `res_best` / `res_worst` rename the outputs, as substitution templates against the
+  matched columns — `best_columns: "Qc_WEBP_(\\d+)worst"` with `res_best: "MD\\1_best"`
+  emits `MD1_best`. Default keeps the source column name.
 
 > **Note — two maxdiff routes.** This `MaxDiffBlock` transform (int-index cells,
 > required `set_columns`) is distinct from how maxdiff is usually modelled in
@@ -188,7 +194,10 @@ inventing a definite "picked nothing" would be a fabrication.
   section above.
 - Output cells are coded via `coding` — default `["No", "Yes"]`, stamped as ordered
   categories (the negative-pole-first house convention); `"coding": null` keeps raw
-  booleans. The block scale can add `likert` / `num_values` on top.
+  booleans.
+- Per-column meta written against a generated column name (a `label` on `sm_Facebook`)
+  travels with the derived block; only declared columns the transform does *not*
+  generate demote to a raw-column parent. The block scale can add `likert` / `num_values` on top.
 - In `wide` mode the choice identity is the first regex capture group of
   `from_columns` (or the bare column name), named through `scale.translate`
   (`{"1": "Facebook", …}`); cells are *not* translated. Choices the universe
@@ -227,6 +236,8 @@ what the create/typed-block stages actually see.
 - **Columns**: first-seen union — file 1's order is preserved, later files' new
   columns are appended.
 - **Categories**: unioned (preserving order); `"infer"` on either side stays `"infer"`.
+- **Block type**: a wave that only declares the output columns (a `plain` block) merges into
+  the wave that builds them; two *different* specialized types still raise.
 - **Column/scale meta fields** (`_MERGE_SCALAR_FIELDS`): last-file-wins, with a warning
   on disagreement.
 - **All other block fields** (`from_columns`, `res_columns`, `k`, `not_selected`, …):

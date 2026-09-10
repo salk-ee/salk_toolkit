@@ -22,7 +22,7 @@ from salk_toolkit.validation import (
     soft_validate,
 )
 
-from salk_toolkit.io.core import _is_series_of_lists, expand_na_vals, expand_value_keys
+from salk_toolkit.io.core import _is_series_of_lists, expand_na_vals, expand_value_keys, stringify_notna
 
 
 def _throw_vals_left(df: pd.DataFrame) -> None:
@@ -623,7 +623,7 @@ def _maxdiff_transform_choice_sets(
             setindex_designs = list(per_design)
             # A row with no design saw no screens (e.g. the question ran in one mode only)
             asked_md = df[setindex_col_name].notna()
-            keys = df[setindex_col_name].astype(str)
+            keys = stringify_notna(df[setindex_col_name])  # 3, 3.0 and "3" all key the same design
             unknown_keys = sorted(set(keys[asked_md]) - set(setindex_designs))
             if unknown_keys:
                 raise ValueError(f"Maxdiff setindex values not in choice_sets designs: {unknown_keys}")
