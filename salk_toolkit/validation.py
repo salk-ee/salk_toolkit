@@ -428,6 +428,12 @@ class MaxDiffBlock(ColumnBlockMeta):
         "substitution template against best_columns; for 'resolved' an independent regex.",
     )
     setindex_column: Optional[Union[str, List[object]]] = None
+    res_best: Optional[str] = Field(
+        default=None,
+        description="Output name for the best columns: a substitution template against best_columns "
+        "(e.g. 'MD\\1_best'). Default keeps the source column name.",
+    )
+    res_worst: Optional[str] = Field(default=None, description="Same as res_best, for the worst columns.")
 
     input_format: Literal["choice_sets", "resolved"] = Field(
         default="choice_sets",

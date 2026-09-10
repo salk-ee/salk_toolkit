@@ -595,6 +595,14 @@ def _maxdiff_transform_choice_sets(
     def _tokens_to_topics(tokens: list[str] | None) -> list[str] | None:
         return [_topic_of(t) for t in tokens] if tokens is not None else None
 
+    # Optional output renaming: raw role columns (Qc_WEBP_3worst) -> annotation names (MD3_best)
+    renames = {}
+    for role, template in (("best_columns", source_block.res_best), ("worst_columns", source_block.res_worst)):
+        pattern = getattr(source_block, role)
+        if template and isinstance(pattern, str):
+            regex = re.compile(pattern)
+            renames.update({c: regex.sub(template, c) for c in (best_cols if role == "best_columns" else worst_cols)})
+
     ordered_cols = best_cols + worst_cols
 
     setindex_designs: list[str] | None = None  # design-name-keyed sets (vs numeric version index)
@@ -632,6 +640,11 @@ def _maxdiff_transform_choice_sets(
         df = df[ordered_cols + set_cols]
         for col in set_cols:
             df[col] = [_tokens_to_topics(_tokens_from_value(v)) for v in df[col].tolist()]  # type: ignore[assignment]
+
+    if renames:
+        df = df.rename(columns=renames)
+        best_cols = [renames.get(c, c) for c in best_cols]
+        worst_cols = [renames.get(c, c) for c in worst_cols]
 
     # Pre-translate already mapped index strings to topic names before the transform ran,
     # so df[col] already contains translated values — just cast to categorical.

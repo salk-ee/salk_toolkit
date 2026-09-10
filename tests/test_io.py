@@ -5398,6 +5398,34 @@ class TestCreateAdjustments:
         assert list(ndf["Q9_1b2"]) == ["B", None]
         assert list(ndf["Q9_2b1"]) == ["C", "A"]
 
+    def test_maxdiff_res_templates_rename_outputs(self, meta_file, csv_file):
+        """Raw role columns can be renamed on output (and best/worst deliberately swapped)."""
+        parquet_file = csv_file.with_suffix(".parquet")
+        pd.DataFrame({"Q_1best": ["A"], "Q_1worst": ["B"], "ver": [1]}).to_parquet(parquet_file)
+        meta = {
+            "file": str(parquet_file),
+            "structure": [
+                {
+                    "type": "maxdiff",
+                    "name": "md",
+                    "best_columns": r"Q_(\d+)worst",  # the annotation swaps the two
+                    "worst_columns": r"Q_(\d+)best",
+                    "set_columns": r"MD\1_set",
+                    "res_best": r"MD\1_best",
+                    "res_worst": r"MD\1_worst",
+                    "setindex_column": "ver",
+                    "choice_sets": [[[1, 2]]],
+                    "scale": {"categories": ["A", "B"], "translate": {"1": "A", "2": "B"}},
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        ndf, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        assert meta_obj is not None
+        assert {"MD1_best", "MD1_worst", "MD1_set"} <= set(ndf.columns)
+        assert list(ndf["MD1_best"]) == ["B"] and list(ndf["MD1_worst"]) == ["A"]
+        assert meta_obj.structure["md"].best_columns == ["MD1_best"]
+
     def test_maxdiff_design_keyed_choice_sets(self, meta_file, csv_file):
         """String setindex cells look up a design-name-keyed choice_sets dict of topic names."""
         parquet_file = csv_file.with_suffix(".parquet")
