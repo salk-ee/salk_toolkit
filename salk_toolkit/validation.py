@@ -47,6 +47,7 @@ from collections.abc import Mapping
 from datetime import date, datetime
 from functools import lru_cache
 from typing import (
+    ClassVar,
     Annotated,
     Any,
     Callable,
@@ -273,6 +274,12 @@ class ColumnBlockMeta(PBase):
 
     from_columns: Optional[Union[str, List[str]]] = None
     subgroup_labels: Optional[Dict[str, Dict[str, str]]] = None
+    sources: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="Typed blocks: alternative raw layouts of the same question (e.g. one per survey mode). "
+        "Each entry overrides block fields (from_columns, agg_index, subgroup_labels, res_columns, ...); "
+        "sibling outputs are unioned by name, and a row answering in two layouts is an error.",
+    )
 
     # Per-block override of the meta-level not_asked values (None = inherit, [] = opt out)
     not_asked: Optional[List[str]] = None
@@ -281,6 +288,18 @@ class ColumnBlockMeta(PBase):
     # (any OM, e.g. {"structure": [...]} for ordinal_ranking). Typed blocks stamp a default onto
     # their output blocks; authors can set it on any block to route the block name to that OM.
     model_spec: Optional[Dict[str, Any]] = None
+
+    # Fields a typed block needs unless `sources` supplies them per layout
+    _required_unless_sources: ClassVar[tuple[str, ...]] = ()
+
+    @model_validator(mode="after")
+    def _check_sources(self) -> Self:
+        if self.sources is not None and self.type == "plain":
+            raise ValueError(f"Block {self.name!r}: sources is only meaningful on typed blocks")
+        missing = [f for f in self._required_unless_sources if getattr(self, f) is None]
+        if missing and not self.sources:
+            raise ValueError(f"{self.type} block {self.name!r}: {missing} required (or given per entry in sources)")
+        return self
 
     @model_validator(mode="after")
     def merge_scale_with_columns(self, info: ValidationInfo) -> Self:
@@ -368,10 +387,13 @@ class TopKBlock(ColumnBlockMeta):
         description="How many items the question let a respondent pick. Mandatory: it is also a data "
         "check - more picks than this in any row is an error, not a silent truncation."
     )
+    _required_unless_sources: ClassVar[tuple[str, ...]] = ("from_columns", "res_columns")
     # Source columns: an explicit list, or a regex whose capture group(s) index items/subgroups.
-    from_columns: Union[str, List[str]]  # type: ignore[assignment]
-    res_columns: Union[str, List[str]] = Field(
-        description="Output column names; a regex substitution template (e.g. 'R\\1') when from_columns is a regex."
+    from_columns: Optional[Union[str, List[str]]] = None
+    res_columns: Optional[Union[str, List[str]]] = Field(
+        default=None,
+        description="Output column names; a regex substitution template (e.g. 'R\\1') when from_columns is a "
+        "regex. '{label}' expands to the sibling's subgroup label (see subgroup_labels).",
     )
     agg_index: int = Field(
         default=-1, description="Which regex capture group indexes the items (1-based; -1 = last group)."
@@ -572,8 +594,9 @@ class OneHotBlock(ColumnBlockMeta):
     type: Literal["onehot"] = "onehot"  # type: ignore[assignment]
 
     columns: ColSpec = DF(dict)
+    _required_unless_sources: ClassVar[tuple[str, ...]] = ("from_columns",)
     # Source columns: an explicit list or a regex.
-    from_columns: Union[str, List[str]]  # type: ignore[assignment]
+    from_columns: Optional[Union[str, List[str]]] = None
 
     input_format: Literal["leftpacked", "wide"] = Field(
         default="leftpacked",

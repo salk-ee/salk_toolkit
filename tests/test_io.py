@@ -311,7 +311,7 @@ class TestReadAnnotatedData:
             "structure": [
                 {
                     "type": "topk",
-                    "k": 9,
+                    "k": 3,
                     "name": "topkcols",
                     "columns": ["id", "q1_1", "q1_2", "q1_3", "q2_1", "q2_2", "q2_3"],
                     "from_columns": r"q(\d+)_(\d+)",
@@ -341,16 +341,16 @@ class TestReadAnnotatedData:
         diffs = data_df[newcols].replace("<NA>", pd.NA).reset_index(drop=True)
         expected_result = pd.DataFrame(
             [
-                ["USA", "USA", "Canada", "Mexico"],
-                ["Canada", "Canada", pd.NA, pd.NA],
-                ["Mexico", "USA", "Canada", pd.NA],
+                ["USA", pd.NA, pd.NA, "USA", "Canada", "Mexico"],
+                ["Canada", pd.NA, pd.NA, "Canada", pd.NA, pd.NA],
+                ["Mexico", pd.NA, pd.NA, "USA", "Canada", pd.NA],
             ],
             columns=newcols,
             dtype=pd.CategoricalDtype(categories=["USA", "Canada", "Mexico"]),
         )
         expected_structure = [
             {"name": "topkcols", "columns": ["id", "q1_1", "q1_2", "q1_3", "q2_1", "q2_2", "q2_3"]},
-            {"name": "topkcols_1", "columns": ["q1_R1"]},
+            {"name": "topkcols_1", "columns": ["q1_R1", "q1_R2", "q1_R3"]},
             {"name": "topkcols_2", "columns": ["q2_R1", "q2_R2", "q2_R3"]},
         ]
         assert_frame_equal(
@@ -385,10 +385,11 @@ class TestReadAnnotatedData:
         meta["structure"][0]["from_columns"] = from_cols
         meta["structure"][0]["res_columns"] = res_cols
         meta["structure"][0]["from_prefix"] = "q1_"
+        meta["structure"][0]["k"] = 1
         write_json(meta_file, meta)
         data_df2, data_meta2 = read_and_process_data(str(meta_file), return_meta=True)
         assert "q1_R1" in data_df2.columns
-        assert "q1_R2" not in data_df2.columns  # Testing for top 1
+        assert "q1_R2" not in data_df2.columns  # k slots exactly
         assert data_df2["q1_R1"].tolist() == ["USA", "Canada", "Mexico"]
 
     def test_topk_create_block_errors_when_not_selected_never_matches(self, meta_file, csv_file):
@@ -774,7 +775,7 @@ class TestReadAnnotatedData:
             "structure": [
                 {
                     "type": "topk",
-                    "k": 9,
+                    "k": 2,
                     "name": "issue_importance",
                     "columns": ["Q6r1", "Q6r2", "Q6r3"],
                     "from_columns": r"Q6r(\d+)",
@@ -1254,7 +1255,7 @@ class TestReadAnnotatedData:
             "structure": [
                 {
                     "type": "topk",
-                    "k": 2,
+                    "k": 1,
                     "name": "q",
                     "from_columns": r"Q(\w)",
                     "res_columns": "R",
@@ -5368,7 +5369,7 @@ class TestCreateAdjustments:
             "structure": [
                 {
                     "type": "topk",
-                    "k": 9,
+                    "k": 2,
                     "name": "challenges",
                     "from_columns": r"q4_(\d+)",
                     "res_columns": "q4a_",
@@ -5399,7 +5400,7 @@ class TestCreateAdjustments:
             "structure": [
                 {
                     "type": "topk",
-                    "k": 9,
+                    "k": 2,
                     "name": "md_best",
                     "from_columns": r"Q9_(\d+)best#(\d+)",
                     "res_columns": r"Q9_\1b",
@@ -5413,7 +5414,7 @@ class TestCreateAdjustments:
         ndf, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
         assert meta_obj is not None
         assert list(meta_obj.structure["md_best_1"].columns.keys()) == ["Q9_1b1", "Q9_1b2"]
-        assert list(meta_obj.structure["md_best_2"].columns.keys()) == ["Q9_2b1"]
+        assert list(meta_obj.structure["md_best_2"].columns.keys()) == ["Q9_2b1", "Q9_2b2"]
         assert list(ndf["Q9_1b1"]) == ["A", "C"]
         assert list(ndf["Q9_1b2"]) == ["B", None]
         assert list(ndf["Q9_2b1"]) == ["C", "A"]
@@ -5966,3 +5967,111 @@ class TestModelSpec:
 
 if __name__ == "__main__":
     pytest.main([__file__])
+
+
+class TestTopKSources:
+    """`sources`: one question fielded in several raw layouts (survey modes), unioned by sibling."""
+
+    META = {
+        "file": "test.csv",
+        "structure": [
+            {
+                "type": "topk",
+                "name": "own",
+                "k": 2,
+                "not_selected": ["no"],
+                "scale": {"categories": "infer", "translate_after": {"1": "A", "2": "B", "3": "C"}},
+                "columns": [["econ_R1", {"label": "Economy"}]],
+                "sources": [
+                    # web: topic index in the column name
+                    {
+                        "from_columns": r"W(\d+)c(\d+)",
+                        "agg_index": 2,
+                        "res_columns": r"{label}_R\2",
+                        "subgroup_labels": {"1": {"1": "econ", "2": "health"}},
+                    },
+                    # phone: a fixed slice - position 1 showed health, position 2 econ
+                    {
+                        "from_columns": r"P(\d+)c(\d+)",
+                        "agg_index": 1,
+                        "res_columns": r"{label}_R\1",
+                        "subgroup_labels": {"2": {"1": "health", "2": "econ"}},
+                    },
+                ],
+            }
+        ],
+    }
+
+    @staticmethod
+    def _vals(s):
+        return [None if pd.isna(v) else v for v in s]
+
+    @staticmethod
+    def _df():
+        na = None
+        return pd.DataFrame(
+            {  # rows 0-1 web, rows 2-3 phone
+                "W1c1": ["yes", "no", na, na],
+                "W1c2": ["no", "yes", na, na],
+                "W1c3": ["yes", "no", na, na],
+                "W2c1": ["no", "yes", na, na],
+                "W2c2": ["no", "no", na, na],
+                "W2c3": ["no", "no", na, na],
+                "P1c1": [na, na, "yes", "no"],
+                "P2c1": [na, na, "no", "yes"],
+                "P3c1": [na, na, "no", "no"],
+                "P1c2": [na, na, "no", "yes"],
+                "P2c2": [na, na, "yes", "yes"],
+                "P3c2": [na, na, "no", "no"],
+            }
+        )
+
+    def test_union_by_label(self, meta_file, csv_file):
+        """Web and phone layouts fill disjoint rows of the same label-named columns."""
+        self._df().to_csv(csv_file, index=False)
+        write_json(meta_file, self.META)
+        ndf, meta = read_annotated_data(str(meta_file), return_meta=True)
+        assert self._vals(ndf["econ_R1"]) == ["A", "B", "B", "A"]
+        assert self._vals(ndf["econ_R2"]) == ["C", None, None, "B"]
+        assert self._vals(ndf["health_R1"]) == [None, "A", "A", "B"]
+        assert self._vals(ndf["health_R2"]) == [None] * 4
+        assert set(meta.structure) >= {"own_econ", "own_health"}
+        econ = meta.structure["own_econ"]
+        assert list(econ.columns) == ["econ_R1", "econ_R2"] and econ.sources is None
+        assert econ.columns["econ_R1"].label == "Economy"  # authored meta on a generated name survives
+        assert econ.from_columns == ["W1c1", "W1c2", "W1c3", "P1c2", "P2c2", "P3c2"]
+        assert list(ndf["econ_R1"].cat.categories) == ["A", "B"]  # infer = observed per column
+
+    def test_row_in_two_layouts_raises(self, meta_file, csv_file):
+        """A row with picks in two layouts is a data error."""
+        df = self._df()
+        df.loc[0, "P1c2"] = "yes"
+        df.to_csv(csv_file, index=False)
+        write_json(meta_file, self.META)
+        with pytest.raises(ValueError, match="more than one source layout"):
+            read_annotated_data(str(meta_file))
+
+    def test_unmatched_source_skipped_but_not_all(self, meta_file, csv_file):
+        """A source matching no columns is skipped; none matching raises."""
+        df = self._df().drop(columns=[c for c in self._df().columns if c.startswith("P")])
+        df.to_csv(csv_file, index=False)
+        write_json(meta_file, self.META)
+        ndf, _ = read_annotated_data(str(meta_file), return_meta=True)
+        assert self._vals(ndf["econ_R1"]) == ["A", "B", None, None]
+        df[["W1c1"]].rename(columns={"W1c1": "Z"}).to_csv(csv_file, index=False)
+        with pytest.raises(ValueError, match="none of its sources matched"):
+            read_annotated_data(str(meta_file))
+
+    def test_sources_only_on_typed_blocks(self):
+        """sources is rejected on plain blocks; typed blocks need from_columns or sources."""
+        with pytest.raises(ValueError, match="only meaningful on typed"):
+            ColumnBlockMeta(name="x", columns={}, sources=[{}])
+        with pytest.raises(ValueError, match="required \\(or given per entry"):
+            TopKBlock(name="x", k=1, res_columns="R")
+
+    def test_sources_round_trip(self):
+        """sources survives serialization on the input block."""
+        m = DataMeta.model_validate({"file": "x.csv", "structure": self.META["structure"]})
+        dumped = m.model_dump(mode="json")["structure"][0]
+        assert dumped["sources"] == self.META["structure"][0]["sources"]
+        assert "from_columns" not in dumped

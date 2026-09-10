@@ -113,11 +113,32 @@ inventing a definite "picked nothing" would be a fabrication.
 ```
 
 - `from_columns` regex capture groups index subgroups and items; siblings explode
-  per leading group. `res_columns` is a substitution template (`\1`, `\2`).
+  per leading group. `res_columns` is a substitution template (`\1`, `\2`); `{label}`
+  in it expands to the sibling's `subgroup_labels` label, so a relabelled subgroup
+  (`{"2": {"5": "defence"}}`) can name its own output columns (`{label}_R\1`).
 - `agg_index` (default `-1`) selects which capture group is the item index.
-- `k` is **mandatory** and is a data check, not a truncation: it is how many items
-  the question let a respondent pick, and more picks than that in any row is an
-  error (fix `k` or the data).
+- `k` is **mandatory**: the block emits exactly `k` slots (fewer only if the item pool
+  is smaller), so the output structure does not depend on the data. It is also a data
+  check, not a truncation: more picks than `k` in any row is an error (fix `k` or the
+  data).
+- `sources`: one question fielded in several raw layouts (typically survey modes) is one
+  block. Each entry is a set of field overrides (`from_columns`, `agg_index`,
+  `subgroup_labels`, `res_columns`, …) applied on top of the block; the block is run once
+  per entry and sibling outputs are unioned by sibling name. A row answering in more than
+  one layout is an error; an entry matching no columns is skipped, none matching is an
+  error. Required fields may live in the entries instead of the block. Example — the
+  Web layout has the topic index in the column name, the CATI layout a fixed
+  position→topic slice:
+
+  ```json
+  {"type": "topk", "name": "issue_ownership", "k": 2, "not_selected": ["NO TO: A", "NO TO: B"],
+   "scale": {"translate_after": {"1": "A", "2": "B"}},
+   "sources": [
+     {"from_columns": "Qd_WEBPr(\\d+)c(\\d+)", "agg_index": 2, "res_columns": "{label}_R\\2",
+      "subgroup_labels": {"1": {"1": "prices", "2": "wages"}}},
+     {"from_columns": "Qd_CATIr(\\d+)c(\\d+)", "agg_index": 1, "res_columns": "{label}_R\\1",
+      "subgroup_labels": {"2": {"1": "wages", "2": "prices"}}}]}
+  ```
 - `cell_values: true` (onehot): the cells hold the item value itself (e.g.
   LimeSurvey multi-choice: `"Social inequalities"` / `"Not mentioned"`), so the
   values are leftpacked as-is instead of mapped to column identity. `res_columns`

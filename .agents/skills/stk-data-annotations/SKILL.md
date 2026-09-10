@@ -330,8 +330,16 @@ For "select top K" questions (e.g. "which 3 issues matter most?"):
 
 - `from_columns` / `res_columns`: regex (with capture groups) or explicit lists.
 - `agg_index`: which regex group indexes the items (1-based; -1 = last).
-- `k`: **required** — how many items the question let people pick. It is a data check:
-  a row with more picks raises, so put the questionnaire's real limit here.
+- `k`: **required** — how many items the question let people pick. The block emits exactly
+  `k` slots, and it is a data check: a row with more picks raises, so put the
+  questionnaire's real limit here.
+- `{label}` in `res_columns` expands to the sibling's `subgroup_labels` label, so a
+  relabelled subgroup names its own output columns (`"{label}_R\\1"` → `defence_R1`).
+- `sources`: the same question in several raw layouts (e.g. Web vs CATI) is **one** block —
+  a list of per-layout overrides (`from_columns`, `agg_index`, `subgroup_labels`,
+  `res_columns`); outputs are unioned by sibling, a row answering in two layouts raises.
+  A fixed randomised/positional slice is just `subgroup_labels` mapping position → item
+  in that layout's entry. See the spec for a full example.
 - `not_selected`: **raw** cell values meaning "offered but not picked" (`"Not mentioned"`,
   `0`). Must match something or the block raises. Do not use it for skip codes — those
   are `not_asked` (see Missing data below).

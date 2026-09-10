@@ -56,9 +56,9 @@ def _prepare_cells(
     if not_selected:
         nulled = _null_values(df, cols, not_selected)
         matched = df[cols].notna() & nulled[cols].isna()
-        if not matched.to_numpy().any():
+        if asked.any() and not matched.to_numpy().any():
             raise ValueError(f"Block {block.name!r}: not_selected={not_selected!r} matched no cell")
-        no_match = [c for c in cols if not matched[c].any()]
+        no_match = [c for c in cols if not matched[c].any()] if asked.any() else []
         if no_match:
             warn(f"Block {block.name!r}: not_selected matched nothing in column(s) {no_match}")
         df = nulled
@@ -135,6 +135,9 @@ def _process_block(
     """Driver for specialized blocks: explode into siblings, then run the
     not_asked/not_selected -> pre-translate -> transform -> post-translate stages on each.
     `not_asked` is the meta-level default; a block-level not_asked overrides it."""
+    if block.sources:
+        yield from _process_sources(block, df, not_asked)
+        return
     siblings: list[ColumnBlockMeta]
     if isinstance(block, MaxDiffBlock) and block.from_columns is None:
         siblings = [_apply_role_resolution(block, block, df, raw_key="")]
@@ -164,6 +167,49 @@ def _process_block(
         if spec is not None:
             meta = meta.model_copy(update={"model_spec": spec})
         yield sdf, meta
+
+
+def _process_sources(
+    block: TopKBlock | MaxDiffBlock | OneHotBlock, df: pd.DataFrame, not_asked: list[str] | None
+) -> Iterator[tuple[pd.DataFrame, ColumnBlockMeta]]:
+    """One question, several raw layouts: run the block once per `sources` entry (each a field
+    override set) and union the sibling outputs by name. Rows are expected to answer in one
+    layout only; a source matching no columns is skipped, none matching at all is an error."""
+    outs: dict[str, tuple[pd.DataFrame, ColumnBlockMeta]] = {}
+    for src in block.sources or []:
+        spec = block.model_dump(mode="python") | {"scale": _block_scale_dict(block), "sources": None, **src}
+        sb = soft_validate(spec, type(block))
+        if not ColumnBlockMeta.source_columns(sb, df):
+            continue
+        for sdf, meta in _process_block(sb, df, not_asked):
+            outs[meta.name] = (
+                _union_outputs(outs[meta.name], (sdf, meta), block.name) if meta.name in outs else (sdf, meta)
+            )
+    if not outs:
+        raise ValueError(f"Block {block.name!r}: none of its sources matched any columns")
+    yield from outs.values()
+
+
+def _union_outputs(
+    a: tuple[pd.DataFrame, ColumnBlockMeta], b: tuple[pd.DataFrame, ColumnBlockMeta], name: str
+) -> tuple[pd.DataFrame, ColumnBlockMeta]:
+    (df1, m1), (df2, m2) = a, b
+    both = df1.columns.intersection(df2.columns)
+    clash = (df1[both].notna() & df2[both].notna()).any(axis=1)
+    if clash.any():
+        raise ValueError(f"Block {name!r}: {int(clash.sum())} row(s) answer {m1.name!r} in more than one source layout")
+    cols = list(dict.fromkeys([*df1.columns, *df2.columns]))
+    lst = lambda v: v if isinstance(v, list) else []  # noqa: E731
+    meta = m1.model_copy(
+        update={
+            "columns": {**m1.columns, **{c: m for c, m in m2.columns.items() if c not in m1.columns}},
+            "from_columns": lst(m1.from_columns) + lst(m2.from_columns),
+            "res_columns": list(
+                dict.fromkeys(lst(getattr(m1, "res_columns", None)) + lst(getattr(m2, "res_columns", None)))
+            ),
+        }
+    )
+    return df1.combine_first(df2)[cols], meta
 
 
 def _apply_transform(
@@ -339,13 +385,13 @@ def _topk_apply_transform(
     return _topk_transform_onehot(block, df, source_pattern=source_pattern, source_block=source_block)
 
 
-def _check_k(sdf: pd.DataFrame, block: TopKBlock) -> None:
-    """k is a data check, not a truncation: more picks than the question allowed is an error."""
-    if sdf.shape[1] > block.k:
-        raise ValueError(
-            f"TopK block {block.name!r}: {sdf.shape[1]} picks in some row exceeds k={block.k} "
-            f"(surplus slots {list(sdf.columns[block.k :])}); fix k or the data"
-        )
+def _keep_k_slots(sdf: pd.DataFrame, block: TopKBlock) -> pd.DataFrame:
+    """The block emits exactly k slots. k is a data check, not a truncation: a row with more
+    picks than the question allowed is an error."""
+    picks = int(sdf.notna().sum(axis=1).max()) if len(sdf) else 0
+    if picks > block.k:
+        raise ValueError(f"TopK block {block.name!r}: {picks} picks in some row exceeds k={block.k}; fix k or the data")
+    return sdf.iloc[:, : block.k]
 
 
 def _topk_transform_passthrough(
@@ -365,11 +411,11 @@ def _topk_transform_passthrough(
         )
 
     sdf = df[from_cols].copy()
-    _check_k(sdf, block)
     if block.not_selected:  # nulled markers leave gaps mid-row
         _throw_vals_left(sdf)
-    meta_out = _output_block(block, columns=from_cols, from_columns=from_cols, res_columns=from_cols)
-    return sdf, meta_out
+    sdf = _keep_k_slots(sdf, block)
+    cols = sdf.columns.tolist()
+    return sdf, _output_block(block, columns=cols, from_columns=from_cols, res_columns=cols)
 
 
 def _order_by_rank(sdf: pd.DataFrame, ranks: np.ndarray) -> pd.DataFrame:
@@ -419,19 +465,24 @@ def _topk_transform_onehot(
     else:
         res_cols = _resolve_topk_res_cols(block, source_block, source_pattern)
     sdf.columns = res_cols
-    sdf = sdf.dropna(axis=1, how="all")
-    _check_k(sdf, block)
+    sdf = _keep_k_slots(sdf, block)
+    cols = sdf.columns.tolist()
+    return sdf, _output_block(block, columns=cols, from_columns=from_cols, res_columns=cols)
 
-    meta_out = _output_block(block, columns=sdf.columns.tolist(), from_columns=from_cols, res_columns=res_cols)
-    return sdf, meta_out
+
+def _res_template(block: TopKBlock, source: TopKBlock) -> str:
+    """res_columns with '{label}' resolved to this sibling's subgroup label ('' when unexploded)."""
+    res = source.res_columns
+    if not isinstance(res, str):
+        raise ValueError(f"TopK {block.name!r}: expected a string res_columns template")
+    label = block.name[len(source.name) + 1 :] if block.name != source.name else ""
+    return res.replace("{label}", label)
 
 
 def _cell_values_res_prefix(block: TopKBlock, source: TopKBlock, pattern: str | None, from_cols: list[str]) -> str:
     """Slot-name prefix for cell_values mode: res_columns expanded against the first matched
     column (so subgroup backrefs like 'Q9_\\1b' resolve per sibling), or used verbatim."""
-    res = source.res_columns
-    if not isinstance(res, str):
-        raise ValueError(f"TopK {block.name!r}: cell_values requires a string res_columns prefix/template")
+    res = _res_template(block, source)
     if pattern:
         m = re.compile(pattern).match(from_cols[0])
         assert m is not None, f"Column {from_cols[0]} should match regex {pattern}"
@@ -445,9 +496,9 @@ def _resolve_topk_res_cols(block: TopKBlock, source: TopKBlock, pattern: str | N
         return list(source.res_columns)
 
     if isinstance(source.res_columns, str) and pattern:
-        regex = re.compile(pattern)
+        regex, res = re.compile(pattern), _res_template(block, source)
         from_cols = list(block.from_columns) if isinstance(block.from_columns, list) else []
-        return [regex.match(c).expand(source.res_columns) for c in from_cols]  # type: ignore[union-attr]
+        return [regex.match(c).expand(res) for c in from_cols]  # type: ignore[union-attr]
 
     raise ValueError(f"TopK {block.name!r}: cannot resolve res_columns")
 
@@ -459,7 +510,12 @@ def _output_block(block: BlockT, **updates: object) -> BlockT:
     """Rebuild a block with its roles resolved to concrete lists. Carries every declared field
     over (new schema fields included) and clears the input-only subgroup directive. Per-column
     meta the author wrote for a generated column name (labels, colors, ...) is kept."""
-    spec = block.model_dump(mode="python") | {"scale": _block_scale_dict(block), "subgroup_labels": None, **updates}
+    spec = block.model_dump(mode="python") | {
+        "scale": _block_scale_dict(block),
+        "subgroup_labels": None,
+        "sources": None,
+        **updates,
+    }
     as_dict = lambda m: m.model_dump(mode="python") if hasattr(m, "model_dump") else (m or {})  # noqa: E731
     cols, authored = spec.get("columns"), {c: as_dict(m) for c, m in (block.columns or {}).items()}
     if isinstance(cols, list):
@@ -628,7 +684,9 @@ def _maxdiff_transform_choice_sets(
             if unknown_keys:
                 raise ValueError(f"Maxdiff setindex values not in choice_sets designs: {unknown_keys}")
             for qi, sc in enumerate(set_cols):
-                df[sc] = [per_design[k][qi] if ok else None for k, ok in zip(keys, asked_md)]
+                df[sc] = pd.Series(
+                    [per_design[k][qi] if ok else None for k, ok in zip(keys, asked_md)], index=df.index, dtype=object
+                )
         else:
             topics_arr = np.array(["", *topics], dtype=object)  # "" at index 0: survey sets are 1-indexed
             sets_arr = np.asarray(sets, dtype=int)
