@@ -316,9 +316,9 @@ def _repair_merge_row_ids(mdf: pd.DataFrame, tag: str) -> None:
     ``right``/``outer`` joins) collapse to ``tag`` and any id duplicated by a one-to-many/``cross``
     join gets a deterministic ``::m{k}`` suffix - merge output order is deterministic.
     """
-    rid = mdf[ROW_ID].fillna(tag)
+    rid = mdf[ROW_ID].astype(object).fillna(tag).astype(str)  # dtype-safe: ids may arrive categorical
     dup = rid.duplicated(keep=False)
-    mdf[ROW_ID] = rid.mask(dup, rid + "::m" + rid.groupby(rid).cumcount().astype(str))
+    mdf[ROW_ID] = rid.mask(dup, rid + "::m" + rid.groupby(rid).cumcount().astype(str)) if dup.any() else rid
 
 
 def _perform_merges(

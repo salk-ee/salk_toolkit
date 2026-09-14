@@ -2141,6 +2141,13 @@ class TestMultipleFiles:
         assert "city" in res
         assert set(res["city"].categories) == {"Tallinn", "Tartu", "Narva"}
 
+    def test_reconcile_categories_skips_row_id(self):
+        """The stable row id is a string key, never a reconciled categorical."""
+        from salk_toolkit.io.sources import _reconcile_categories
+
+        d1, d2 = (pd.DataFrame({"row_id": pd.Series([f"F{i}::0"], dtype="str")}) for i in (0, 1))
+        assert "row_id" not in _reconcile_categories({"F0": d1, "F1": d2})
+
     def test_multiple_files_with_extra_columns(self, temp_dir, meta_file):
         """Test multiple files with extra metadata columns"""
         csv_file1 = temp_dir / "test1.csv"
@@ -2283,6 +2290,33 @@ class TestReadAndProcessData:
         assert df.index.is_unique
         # The fanned-out left row (F0::0) is suffixed; the singleton (F0::1) keeps its id.
         assert sorted(df.index) == ["F0::0::m0", "F0::0::m1", "F0::1"]
+
+    def test_merge_row_id_repair_categorical(self):
+        """A categorical row_id is repaired without crashing and written back as plain strings."""
+        from salk_toolkit.io.datasets import _repair_merge_row_ids
+
+        left = pd.DataFrame({"row_id": pd.Categorical(["F0::0", "F0::1"]), "m": ["A", "B"]})
+        mdf = pd.merge(left, pd.DataFrame({"m": ["A", "A", "B"], "x": [1, 2, 3]}), on="m")
+        _repair_merge_row_ids(mdf, "merge0")
+        assert mdf["row_id"].dtype.name != "category"
+        assert sorted(mdf["row_id"]) == ["F0::0::m0", "F0::0::m1", "F0::1"]
+
+    def test_multi_source_merge_keeps_string_row_id(self, temp_dir):
+        """Multi-file annotated sources must not reconcile row_id into a categorical (crashed the merge repair)."""
+        for i in (1, 2):
+            df_to_csv(pd.DataFrame({"municipality": ["A", "B"], "val": [i, i]}), temp_dir / f"w{i}.csv")
+            write_json(
+                temp_dir / f"w{i}.json",
+                {"file": f"w{i}.csv", "structure": [{"name": "g", "columns": ["municipality", "val"]}]},
+            )
+        df_to_csv(pd.DataFrame({"municipality": ["A", "B"], "extra": [1, 2]}), temp_dir / "enrich.csv")
+        desc = {
+            "files": [{"file": str(temp_dir / "w1.json")}, {"file": str(temp_dir / "w2.json")}],
+            "merge": {"file": str(temp_dir / "enrich.csv"), "on": "municipality"},
+        }
+        df = read_and_process_data(desc)
+        assert df.index.dtype.name != "category"
+        assert sorted(df.index) == ["F0::F0::0", "F0::F0::1", "F1::F0::0", "F1::F0::1"]
 
     def test_merge_applies_categorical_conversion_from_metadata(self, temp_dir):
         """Merged columns should be converted to categorical based on metadata definitions."""
