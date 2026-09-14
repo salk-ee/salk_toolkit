@@ -176,6 +176,9 @@ class ColumnMeta(PBase):
     neutral_middle: Optional[str] = (
         None  # For ordered categoricals - if there is a neutral category, which one should be in the middle?
     )
+    # Bipolar likert items: the statement at each end of the scale. Set both or neither.
+    neg_pole: Optional[str] = None  # Statement at the low end (first category)
+    pos_pole: Optional[str] = None  # Statement at the high end (last category)
 
     topo_feature: Optional[Tuple[str, str, str]] = None  # Link to a geojson/topojson [url,type,col_name inside geodata]
     electoral_system: Optional[ElectoralSystem] = None  # Information about electoral system
@@ -203,9 +206,15 @@ class ColumnMeta(PBase):
         # describes parsing, and the parsed values can be bucketed into categories.)
         if self.continuous and self.categories is not None:
             raise ValueError(f"Column is continuous, so it cannot have categories: {self.categories}")
+        # Half a pole pair is meaningless, so never soft
+        if (self.neg_pole is None) != (self.pos_pole is None):
+            raise ValueError("neg_pole and pos_pole must be set together")
 
         if info.context and info.context.get("validation_mode") == "soft":
             return self
+        # Poles are checked once the scale is merged in (categories known); a bare column skips
+        if self.categories is not None and self.neg_pole is not None and not self.likert:
+            raise ValueError("neg_pole/pos_pole only make sense for likert columns")
         if self.categories is None:
             # if not self.continuous and not self.datetime:
             #    raise ValueError('Column type undefined: need either categories, continuous or datetime')

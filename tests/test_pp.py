@@ -28,8 +28,10 @@ from salk_toolkit.pp import (
     _stk_deregister as stk_deregister,
     stk_plot,
     _update_data_meta_with_pp_desc,
+    create_plot_payload,
 )
 from salk_toolkit.pp.common import _question_meta_clone
+from salk_toolkit.io import extract_column_meta
 from salk_toolkit.validation import DataMeta, GroupOrColumnMeta, PlotDescriptor, soft_validate
 from pydantic import ValidationError
 
@@ -1566,3 +1568,48 @@ def test_shared_draws_do_not_multiply_rows(registry_guard: Any) -> None:
     pi = pp_transform_data(pl.LazyFrame(df), meta, ppd)
     sums = dict(zip(pi.data["question"].astype(str), pi.data[pi.value_col]))
     assert sums == {k: pytest.approx(4.0) for k in ("t0", "t1", "t2")}  # 4 rows each, t0 not doubled
+
+
+def test_bipolar_poles_are_stamped_per_question() -> None:
+    """A likert item with neg/pos poles carries them on every row of its question; items without get None."""
+    cats = ["-2", "-1", "0", "1", "2"]
+    meta = make_data_meta(
+        {
+            "structure": [
+                {"name": "demographics", "scale": {}, "columns": [["gender", {"categories": ["Female", "Male"]}]]},
+                {
+                    "name": "issues",
+                    "scale": {"col_prefix": "issue_", "categories": cats, "ordered": True, "likert": True},
+                    "columns": [
+                        ["immigration", {"label": "Enriches ⟷ Threat", "neg_pole": "Enriches", "pos_pole": "Threat"}],
+                        ["evoting", {"label": "Trustworthy"}],
+                    ],
+                },
+            ]
+        }
+    )
+    col_meta = extract_column_meta(meta)
+    assert (col_meta["issue_immigration"].neg_pole, col_meta["issue_immigration"].pos_pole) == ("Enriches", "Threat")
+    assert col_meta["issue_evoting"].neg_pole is None
+
+    df = pd.DataFrame(
+        {
+            "draw": [0] * 6,
+            "gender": ["Female", "Male"] * 3,
+            "issue_immigration": pd.Categorical(["-2", "0", "2", "1", "-1", "2"], categories=cats, ordered=True),
+            "issue_evoting": pd.Categorical(["1", "1", "0", "-2", "2", "0"], categories=cats, ordered=True),
+        }
+    )
+    ppd = soft_validate(
+        {"res_col": "issues", "facet_dims": ["question"], "plot": "likert_bars", "internal_facet": True}, PlotDescriptor
+    )
+    ppd = ppd.model_copy(update={"facet_dims": impute_facet_dims(ppd, col_meta)})
+    pi = pp_transform_data(pl.LazyFrame(df), meta, ppd)
+
+    # Stamped in the plot step next to question_label; the payload serialises them like any column
+    payload = create_plot_payload(pi, ppd)
+    cell = payload["cells"][0][0]
+    assert {"question_label", "question_neg_pole", "question_pos_pole"}.issubset(cell["columns"])
+    d = cell["data"]
+    stamped = {q: (n, p) for q, n, p in zip(d["question"], d["question_neg_pole"], d["question_pos_pole"])}
+    assert stamped == {"immigration": ("Enriches", "Threat"), "evoting": (None, None)}

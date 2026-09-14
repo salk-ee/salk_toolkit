@@ -82,7 +82,7 @@ def _translate_df(df: pd.DataFrame, translate: Callable[[str], str]) -> pd.DataF
 
     # `reverse_` maxdiff companions are found by prefix and never shown, so leave them untranslated
     def _keep(c: str) -> bool:
-        return c in special_columns or c.endswith("_label") or c.startswith("reverse_")
+        return c in special_columns or c.endswith(("_label", "_pole")) or c.startswith("reverse_")
 
     df.columns = [(c if _keep(c) else translate(c)) for c in df.columns]
     for c in df.columns:
@@ -93,14 +93,21 @@ def _translate_df(df: pd.DataFrame, translate: Callable[[str], str]) -> pd.DataF
     return df
 
 
-def _relabel(col: pd.Series, labels: Mapping[str, Any]) -> np.ndarray | pd.Series:
-    """Map values to their detailed labels, leaving unmapped ones alone."""
+_KEEP = object()
+
+
+def _relabel(col: pd.Series, labels: Mapping[str, Any], default: object = _KEEP) -> np.ndarray | pd.Series:
+    """Map values to their detailed labels; unmapped ones stay as-is unless `default` is given."""
+
+    def look(v: object) -> object:
+        return labels.get(cast(str, v), v if default is _KEEP else default)
 
     if not isinstance(col.dtype, pd.CategoricalDtype):
-        return col.astype("object").replace(dict(labels))
+        out = col.astype("object")
+        return out.replace(dict(labels)) if default is _KEEP else out.map(look)
 
     # Relabel the categories rather than a million rows; -1 codes are nulls
-    mapped = np.array([labels.get(c, c) for c in col.cat.categories] + [None], dtype=object)
+    mapped = np.array([look(c) for c in col.cat.categories] + [None], dtype=object)
     return mapped[col.cat.codes.to_numpy()]
 
 
@@ -130,6 +137,11 @@ def _create_tooltip(
                 q_labels[c.removeprefix(prefix)] = meta.label
         if q_labels:
             label_dict["question"] = q_labels
+        # Bipolar items: stamp both pole statements per row (None for questions without poles)
+        poles = {c.removeprefix(prefix): (m.neg_pole, m.pos_pole) for c in qvals if (m := c_meta.get(c)) and m.neg_pole}
+        if poles:
+            data["question_neg_pole"] = _relabel(data["question"], {q: p[0] for q, p in poles.items()}, default=None)
+            data["question_pos_pole"] = _relabel(data["question"], {q: p[1] for q, p in poles.items()}, default=None)
 
     # Determine the columns we need tooltips for:
     tcols = [f.col for f in pi.facets if f.col in data.columns]

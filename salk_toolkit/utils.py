@@ -968,7 +968,8 @@ def complete_grid(
         grid = df[list(keys)].drop_duplicates().merge(grid, how="cross")
     out = grid.merge(df, on=list(levels) + list(keys), how="left")
     if fill:
-        out = out.fillna(dict(fill))
+        # A None fill is "leave NaN": pandas rejects None as a fill value
+        out = out.fillna({k: v for k, v in fill.items() if v is not None})
     # Ordered categoricals, so that a sort or groupby downstream follows the given order, not the merge's
     for col, lvls in levels.items():
         out[col] = pd.Categorical(out[col], list(lvls), ordered=True)

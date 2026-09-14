@@ -486,6 +486,8 @@ class TestRoundTripSerialization:
                                 "categories": ["Strongly Disagree", "Disagree", "Neutral", "Agree", "Strongly Agree"],
                                 "ordered": True,
                                 "likert": True,
+                                "neg_pole": "Disagree pole",
+                                "pos_pole": "Agree pole",
                             },
                         ],
                     ],
@@ -539,6 +541,9 @@ class TestRoundTripSerialization:
         assert q2_meta["likert"] is True
         assert "categories" not in q2_meta  # Matches block_scale
         assert "ordered" not in q2_meta  # Matches block_scale
+        # Bipolar poles survive the round trip, and only on the column that set them
+        assert (q2_meta["neg_pole"], q2_meta["pos_pole"]) == ("Disagree pole", "Agree pole")
+        assert "neg_pole" not in q1_meta and "pos_pole" not in q1_meta
 
         # Default fields should be excluded from both q1 and q2
         default_fields = ["continuous", "datetime"] + DEFAULT_COLUMN_META_FIELDS
