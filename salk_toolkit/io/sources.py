@@ -55,7 +55,7 @@ def _reconcile_categories(
 
     # Strip categories from categorical columns when multiple files are involved
     for file_code, raw_data in raw_data_dict.items():
-        for c in raw_data.columns:
+        for c in raw_data.columns.drop(ROW_ID, errors="ignore"):
             dropped = raw_data[c].dropna()
             if (
                 raw_data[c].dtype.name in ("object", "str")
