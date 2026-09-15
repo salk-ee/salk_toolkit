@@ -9,11 +9,15 @@ from pathlib import Path
 from typing import Any
 
 import altair as alt
+import hsluv  # type: ignore[import-untyped]
+import matplotlib.colors as mpc
+import numpy as np
 import pandas as pd
 import pytest
 
 from salk_toolkit.election_models import mandate_plot
 from salk_toolkit.io import read_json, read_parquet_with_metadata
+from salk_toolkit.plots import perceptual_alpha
 from salk_toolkit.pp import (
     AltairChart,
     create_plot,
@@ -296,6 +300,25 @@ class TestPlots:
             "internal_facet": True,
         }
         self._run_plot_test("test_boxplots_raw", config, recompute=recompute)
+
+    def test_denstrip_basic(self, recompute):
+        """Test density strip plots."""
+        config = {
+            "res_col": "party_preference",
+            "facet_dims": ["age_group"],
+            "filter": {},
+            "plot": "denstrip",
+            "internal_facet": True,
+        }
+        self._run_plot_test("test_denstrip_basic", config, recompute=recompute)
+
+    def test_perceptual_alpha_lightness_linear(self):
+        """Blending at perceptual_alpha puts HSLuv lightness at the target fraction for any color."""
+        t = np.linspace(0, 1, 11)
+        for c in ["#134C85", "#f2c500", "#888888", "#8D0E26"]:
+            rgb, lc = np.array(mpc.to_rgb(c)), hsluv.hex_to_hsluv(c)[2]
+            ls = [hsluv.rgb_to_hsluv(tuple(a * rgb + 1 - a))[2] for a in perceptual_alpha(c, t)]
+            np.testing.assert_allclose((100 - np.array(ls)) / (100 - lc), t, atol=0.01)
 
     def test_columns_basic(self, recompute):
         """Test basic column plots."""

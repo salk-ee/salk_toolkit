@@ -53,6 +53,10 @@
       "n_facets"
     ]
   ],
+  "denstrip": [
+    10,
+    []
+  ],
   "geobest": [
     -1000000,
     [

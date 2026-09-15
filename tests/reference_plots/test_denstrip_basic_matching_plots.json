@@ -1,64 +1,69 @@
 {
   "area_smooth": [
-    -1000000,
-    [
-      "n_facets"
-    ]
+    50,
+    []
   ],
   "barbell": [
-    -1000000,
-    [
-      "n_facets"
-    ]
+    0,
+    []
   ],
   "boxplots": [
-    60,
+    50,
     []
   ],
   "boxplots-raw": [
-    10,
-    []
-  ],
-  "coalition_applet": [
     -1000000,
     [
-      "n_facets"
+      "raw_data"
+    ]
+  ],
+  "coalition_applet": [
+    -2001000,
+    [
+      "mandates",
+      "electoral_system"
     ]
   ],
   "columns": [
-    10,
+    0,
     []
   ],
   "corr_matrix": [
-    0,
-    []
+    -1000000,
+    [
+      "raw_data"
+    ]
   ],
   "density": [
-    0,
-    []
+    -1000000,
+    [
+      "continuous_only"
+    ]
   ],
   "density-raw": [
+    -1000000,
+    [
+      "raw_data"
+    ]
+  ],
+  "denstrip": [
     0,
     []
   ],
   "diff_columns": [
-    -1000000,
-    [
-      "n_facets"
-    ]
-  ],
-  "facet_dist": [
     0,
     []
   ],
-  "denstrip": [
-    10,
-    []
+  "facet_dist": [
+    -1000000,
+    [
+      "raw_data"
+    ]
   ],
   "geobest": [
     -1000000,
     [
-      "n_facets"
+      "topo_feature"
     ]
   ],
   "geoplot": [
@@ -68,93 +73,93 @@
     ]
   ],
   "likert_bars": [
-    -999930,
+    -999940,
     [
       "likert"
     ]
   ],
   "likert_rad_pol": [
-    -999990,
+    -1000000,
     [
       "likert"
     ]
   ],
   "line": [
-    -999990,
+    -999980,
     [
       "ordered"
     ]
   ],
   "line_hdi": [
-    -1000000,
+    -999990,
     [
       "ordered"
     ]
   ],
   "lines": [
-    -1000000,
-    [
-      "n_facets"
-    ]
+    20,
+    []
   ],
   "lines_hdi": [
-    -1000000,
-    [
-      "n_facets"
-    ]
+    10,
+    []
   ],
   "mandate_plot": [
-    -1000000,
+    -2000500,
     [
-      "n_facets"
+      "mandates",
+      "electoral_system"
     ]
   ],
   "marimekko": [
-    -1000000,
-    [
-      "n_facets"
-    ]
+    100,
+    []
   ],
   "massplot": [
-    10,
+    0,
     []
   ],
   "matrix": [
-    -1000000,
-    [
-      "n_facets"
-    ]
+    55,
+    []
   ],
   "maxdiff": [
-    10,
-    []
-  ],
-  "ordered_population": [
-    0,
-    []
-  ],
-  "party_mandates": [
     -1000000,
     [
-      "n_facets"
+      "continuous_only"
+    ]
+  ],
+  "ordered_population": [
+    -1000000,
+    [
+      "raw_data"
+    ]
+  ],
+  "party_mandates": [
+    -2000500,
+    [
+      "mandates",
+      "electoral_system"
     ]
   ],
   "rank_columns": [
+    -1000000,
+    [
+      "continuous_only"
+    ]
+  ],
+  "stacked_columns": [
+    40,
+    []
+  ],
+  "violin": [
     0,
     []
   ],
-  "stacked_columns": [
+  "violin-raw": [
     -1000000,
     [
-      "n_facets"
+      "raw_data"
     ]
-  ],
-  "violin": [
-    10,
-    []
-  ],
-  "violin-raw": [
-    10,
-    []
   ]
 }

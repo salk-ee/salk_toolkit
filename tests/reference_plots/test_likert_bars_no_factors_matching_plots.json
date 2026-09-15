@@ -61,6 +61,10 @@
       "raw_data"
     ]
   ],
+  "denstrip": [
+    10,
+    []
+  ],
   "geobest": [
     -1000000,
     [

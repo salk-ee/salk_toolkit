@@ -51,6 +51,7 @@ All entries come from `salk_toolkit/plots.py` via `@stk_plot(...)`. The `data_fo
 | `likert_bars` | longform | 1–2 | `likert: true` column | divergent positive/negative bars about the neutral middle |
 | `likert_rad_pol` | longform | varies | `likert: true` block | radial polarisation view of likert batteries |
 | `boxplots` | longform | 1–2 | continuous (or `convert_res="continuous"`) | Tukey whiskers; uses draws when present |
+| `denstrip` | longform | 1–2 | continuous (or `convert_res="continuous"`) | gradient bar from the 1% to 99% quantile; normal-bell opacity anchored at the deciles (opaque at median) |
 | `massplot` | longform | 1–2 | categorical | bubble/mass chart — useful for 3+ dimensional breakdowns |
 | `marimekko` | longform | 2 | categorical | rows sum to 1 within each first-facet level; shows composition × size |
 | `matrix` | longform | 2 | categorical | heatmap of category frequencies; `plot_args={"reorder": "smooth"}` orders both axes so neighbouring rows/cols are alike (`True` = clustering instead) |
