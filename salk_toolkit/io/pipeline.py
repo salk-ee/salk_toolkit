@@ -12,6 +12,7 @@ from salk_toolkit.validation import (
     DataMeta,
     MaxDiffBlock,
     OneHotBlock,
+    SparseBlock,
     TopKBlock,
     soft_validate,
 )
@@ -288,7 +289,7 @@ def _build_columns(bundle: SourceBundle, meta_obj: DataMeta, hooks: HookEnv) -> 
         if group.subgroup_transform is not None:
             ndf_df = _apply_subgroup_transform(bundle, ndf_df, group.subgroup_transform, g_cols, hooks)
 
-        if isinstance(group, (TopKBlock, MaxDiffBlock, OneHotBlock)):
+        if isinstance(group, (TopKBlock, MaxDiffBlock, OneHotBlock, SparseBlock)):
             # Specialized blocks: fan out into derived sibling blocks via the transform.
             source_df = _combine_first_preserving_order(ndf_df, raw_data_concat)
             if not raw_data_concat.empty:

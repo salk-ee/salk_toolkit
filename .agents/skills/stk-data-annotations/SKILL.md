@@ -234,7 +234,7 @@ parses dates first and then buckets them into chronologically ordered `"01 Dec 2
 | `col_prefix` | On scale: prefix prepended to column names (disambiguates shared names) |
 | `hidden` | Hide from explorer dashboards |
 | `generated` | Column data produced by model, not in source file |
-| `type` | Block type discriminator: `plain` (default, may be omitted), `topk`, `maxdiff`, `onehot` (see below) |
+| `type` | Block type discriminator: `plain` (default, may be omitted), `topk`, `maxdiff`, `onehot`, `sparse` (see below) |
 | `subgroup_transform` | Python code applied to all columns in block as `gdf` |
 
 ### Constants
@@ -293,7 +293,7 @@ Every block in the annotation (the top-level `DataMeta`, any entry in `structure
 
 If you find yourself wanting to explain a choice to the user in chat, write that explanation into `comment` as well — future readers of the JSON will thank you.
 
-## TopK / MaxDiff / OneHot Blocks
+## TopK / MaxDiff / OneHot / Sparse Blocks
 
 These specialized block types carry a top-level `type` discriminator and are
 processed by `_process_block` in `salk_toolkit/io/create_blocks.py`. The full reference (all fields,
@@ -381,6 +381,37 @@ and per-choice modeling). Replaces `stk.deaggregate_multiselect` and hand-rolled
 - `res_prefix`: output names are `<prefix><choice>`; defaults to `<block>_`, and
   `""` gives bare choice names.
 
+### Sparse
+
+"Rate a few of many": one raw column per item (candidate, brand…) holding the rating, each
+respondent rated only the items they were shown. Packs into `k` (item, response) slot pairs
+and resolves to SIP's `Sparse` OM. Replaces per-row slot-packing loops in `preprocessing`.
+
+```json
+{
+  "type": "sparse",
+  "name": "cand_therm",
+  "k": 12,
+  "item_dim": "candidate",
+  "from_columns": "Q4a_(\\d+)",
+  "item_columns": "therm_cand_",
+  "res_columns": "therm_",
+  "item_scale": { "categories": "cand_categories", "translate": "cand_map" },
+  "scale": { "categories": ["-5", "0", "5", "Don't know them"], "ordered": true,
+             "translate": { "0 - very negative": "-5", "5 - neutral": "0", "10 - very positive": "5" } }
+}
+```
+
+- Emits the response block `cand_therm` (`therm_1..k`, under `scale`) plus a plain sibling
+  `cand_therm_items` (`therm_cand_1..k`, under `item_scale`: item universe + capture-value →
+  name translate). `res_columns` / `item_columns` are slot-name prefixes (defaults `<name>_`,
+  `<name>_item_`).
+- `k` is required and a data check (more rated cells than `k` raises). `not_selected` =
+  "shown but not rated".
+- Split-sample wordings (thermometer vs would-vote) are two blocks sharing `item_dim` and
+  `item_scale.categories` (the declared universe becomes Sparse `items`, so each sub predicts
+  every candidate); the model uses `{"name": "cand", "variants": ["cand_therm", "cand_vote"]}`.
+
 ### MaxDiff
 
 ```json
@@ -424,9 +455,10 @@ auto-generated.
 
 ### `model_spec` — wiring blocks into SIP models
 
-Processed topk/maxdiff blocks automatically carry a `model_spec`: the SIP
-observation-model description (an `ordinal_ranking` with the right `structure`)
-that the block name resolves to when used as a model output. On the model side
+Processed topk/maxdiff/sparse blocks automatically carry a `model_spec`: the SIP
+observation-model description (an `ordinal_ranking` with the right `structure`; a
+`Sparse` with its slot columns) that the block name resolves to when used as a model
+output — directly in `res_cols`, or nested as a `Variant`'s `variants`. On the model side
 this means the block name alone is a complete `res_cols` entry:
 
 ```jsonc
@@ -623,7 +655,7 @@ A complete minimal example lives in this skill's `examples/` directory:
 
 ## For more details
 
-- Schema (`salk_toolkit.validation`): `DataMeta`, `ColumnMeta`, `ColumnBlockMeta`, `TopKBlock`, `MaxDiffBlock`, `OneHotBlock`
+- Schema (`salk_toolkit.validation`): `DataMeta`, `ColumnMeta`, `ColumnBlockMeta`, `TopKBlock`, `MaxDiffBlock`, `OneHotBlock`, `SparseBlock`
 - Processing (`salk_toolkit.io`): `read_and_process_data` → `_process_annotated_data`; `infer_meta` bootstraps a meta from raw data; `_fix_meta_categories` reconciles categories across files; typed blocks are processed by `_process_block`
 - Plot-side meta handling (`salk_toolkit.pp`): `_question_meta_clone`
 - Examples: look at recent `*_meta.json` files in the sandbox repo for real-world patterns

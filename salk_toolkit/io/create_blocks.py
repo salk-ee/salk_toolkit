@@ -18,6 +18,7 @@ from salk_toolkit.validation import (
     ColumnMeta,
     MaxDiffBlock,
     OneHotBlock,
+    SparseBlock,
     TopKBlock,
     soft_validate,
 )
@@ -25,10 +26,15 @@ from salk_toolkit.validation import (
 from salk_toolkit.io.core import _is_series_of_lists, expand_na_vals, expand_value_keys, stringify_notna
 
 
+def _leftpack_order(mask: np.ndarray) -> np.ndarray:
+    """Per-row column order that moves the True cells left, keeping their relative order."""
+    return np.argsort(~mask, axis=1, kind="stable")
+
+
 def _throw_vals_left(df: pd.DataFrame) -> None:
     """Move all NaN values to the right in each row (in-place)."""
-    # Helper fun to move inplace all nan values to right.
-    df.iloc[:, :] = df.apply(lambda row: sorted(row, key=pd.isna), axis=1).to_list()
+    a = df.to_numpy(dtype=object)
+    df.iloc[:, :] = np.take_along_axis(a, _leftpack_order(pd.notna(a)), axis=1)
 
 
 def _null_values(df: pd.DataFrame, cols: list[str], values: list[str]) -> pd.DataFrame:
@@ -159,7 +165,12 @@ def _process_block(
             raise ValueError(f"Block {sib.name!r}: declared column(s) {missing} are not in the data")
         df_t, asked = _prepare_cells(sib, df, cols, not_asked)
         df_t = _apply_pre_transform_translate(sib, df_t, sib.translate_columns(df))
-        sdf, meta = _apply_transform(sib, df_t, source_block=block, asked=asked)
+        if isinstance(sib, SparseBlock):
+            assert isinstance(block, SparseBlock)
+            (sdf, meta), items = _sparse_apply_transform(sib, df_t, source_block=block)
+            yield items  # plain sibling, no model_spec: the response block carries the Sparse spec
+        else:
+            sdf, meta = _apply_transform(sib, df_t, source_block=block, asked=asked)
         sdf, meta = _apply_post_transform_translate(sib, sdf, meta)
         # Stamp the observation-model description onto the output block: an authored
         # model_spec wins, else the type default (ordinal_ranking for topk/maxdiff).
@@ -324,7 +335,7 @@ def _subgroup_explode(block: ColumnBlockMeta, df: pd.DataFrame) -> list[ColumnBl
     # TOPK-specific: skip one group for sibling identity if aggregating.
     # Otherwise, use all groups.
     agg_pos = None
-    if isinstance(block, TopKBlock):
+    if isinstance(block, (TopKBlock, SparseBlock)):
         agg_pos = _agg_pos(block.agg_index, n_groups)
         if not (0 <= agg_pos < n_groups):
             raise ValueError(
@@ -460,7 +471,7 @@ def _topk_transform_onehot(
 
     # cell_values slots are named <prefix>1..n; otherwise each source column maps to a res column
     if block.cell_values:
-        prefix = _cell_values_res_prefix(block, source_block, source_pattern, from_cols)
+        prefix = _expand_prefix(_res_template(block, source_block), source_pattern, from_cols)
         res_cols = [f"{prefix}{i + 1}" for i in range(sdf.shape[1])]
     else:
         res_cols = _resolve_topk_res_cols(block, source_block, source_pattern)
@@ -470,24 +481,73 @@ def _topk_transform_onehot(
     return sdf, _output_block(block, columns=cols, from_columns=from_cols, res_columns=cols)
 
 
-def _res_template(block: TopKBlock, source: TopKBlock) -> str:
-    """res_columns with '{label}' resolved to this sibling's subgroup label ('' when unexploded)."""
-    res = source.res_columns
+def _res_template(block: ColumnBlockMeta, source: ColumnBlockMeta, res: object = None) -> str:
+    """A name template (default: res_columns) with '{label}' resolved to this sibling's subgroup
+    label ('' when unexploded)."""
+    res = getattr(source, "res_columns", None) if res is None else res
     if not isinstance(res, str):
-        raise ValueError(f"TopK {block.name!r}: expected a string res_columns template")
+        raise ValueError(f"Block {block.name!r}: expected a string res_columns template")
     label = block.name[len(source.name) + 1 :] if block.name != source.name else ""
     return res.replace("{label}", label)
 
 
-def _cell_values_res_prefix(block: TopKBlock, source: TopKBlock, pattern: str | None, from_cols: list[str]) -> str:
-    """Slot-name prefix for cell_values mode: res_columns expanded against the first matched
-    column (so subgroup backrefs like 'Q9_\\1b' resolve per sibling), or used verbatim."""
-    res = _res_template(block, source)
-    if pattern:
-        m = re.compile(pattern).match(from_cols[0])
-        assert m is not None, f"Column {from_cols[0]} should match regex {pattern}"
-        return m.expand(res)
-    return res
+def _expand_prefix(res: str, pattern: str | None, from_cols: list[str]) -> str:
+    """Slot-name prefix: the template expanded against the first matched column (so subgroup
+    backrefs like 'Q9_\\1b' resolve per sibling), or used verbatim."""
+    if not pattern:
+        return res
+    m = re.compile(pattern).match(from_cols[0])
+    assert m is not None, f"Column {from_cols[0]} should match regex {pattern}"
+    return m.expand(res)
+
+
+def _sparse_apply_transform(
+    block: SparseBlock, df: pd.DataFrame, *, source_block: SparseBlock
+) -> tuple[tuple[pd.DataFrame, SparseBlock], tuple[pd.DataFrame, ColumnBlockMeta]]:
+    """Leftpack the rated cells into k (item, response) slot pairs. Returns the response block and
+    the `<name>_items` sibling holding which item each slot rates."""
+    from_cols = list(block.from_columns)
+    pattern = source_block.from_columns if isinstance(source_block.from_columns, str) else None
+    vals = df[from_cols].to_numpy(dtype=object)
+    rated = pd.notna(vals)
+    if (n := int(rated.sum(axis=1).max(initial=0))) > block.k:
+        raise ValueError(
+            f"Sparse block {block.name!r}: {n} rated items in some row exceeds k={block.k}; fix k or the data"
+        )
+
+    # Item identity: the agg capture group (else the bare column name), named through item_scale.translate
+    regex = re.compile(pattern) if pattern else None
+    ids: list[object] = [
+        m.groups()[_agg_pos(block.agg_index)] if regex and (m := regex.match(c)) else c for c in from_cols
+    ]
+    if block.item_scale and block.item_scale.translate:
+        t = cast("dict[object, object]", expand_value_keys(block.item_scale.translate))
+        ids = [t.get(i, i) for i in ids]
+
+    order = _leftpack_order(rated)[:, : min(block.k, len(from_cols))]
+    keep = np.take_along_axis(rated, order, axis=1)
+    items = np.where(keep, np.asarray(ids, dtype=object)[order], None)
+    resp = np.where(keep, np.take_along_axis(vals, order, axis=1), None)
+
+    name = lambda tmpl, default: _expand_prefix(_res_template(block, source_block, tmpl or default), pattern, from_cols)  # noqa: E731
+    res_cols = [f"{name(source_block.res_columns, f'{source_block.name}_')}{i + 1}" for i in range(order.shape[1])]
+    item_cols = [
+        f"{name(source_block.item_columns, f'{source_block.name}_item_')}{i + 1}" for i in range(order.shape[1])
+    ]
+    sdf = pd.DataFrame(resp, index=df.index, columns=res_cols)
+    idf = pd.DataFrame(items, index=df.index, columns=item_cols)
+    out = _output_block(block, columns=res_cols, from_columns=from_cols, res_columns=res_cols, item_columns=item_cols)
+    item_scale = block.item_scale.model_dump(mode="python") if block.item_scale else {}
+    item_scale.pop("translate", None)  # consumed naming the items; must not re-map the slots
+    items_block = soft_validate(
+        {
+            "name": f"{block.name}_items",
+            "scale": {"categories": "infer", **item_scale},
+            "columns": {c: {} for c in item_cols},
+        },
+        ColumnBlockMeta,
+    )
+    return (sdf, out), (idf, items_block)
 
 
 def _resolve_topk_res_cols(block: TopKBlock, source: TopKBlock, pattern: str | None) -> list[str]:

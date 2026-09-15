@@ -19,6 +19,7 @@ discriminator:
 | `topk`    | `TopKBlock`     | Aggregate multi-select / ranked columns into top-K ranked slots.    |
 | `maxdiff` | `MaxDiffBlock`  | Best–worst (MaxDiff) experiments.                                    |
 | `onehot`  | `OneHotBlock`   | Widen rank-position columns into one boolean column per choice.      |
+| `sparse`  | `SparseBlock`   | Rate-a-few-of-many item batteries: pack into (item, response) slot pairs. |
 
 `type` lives at the **top level** of the block. The old nested `"create": {...}`
 form and the removed block-level fields below are rejected at load time with a
@@ -28,7 +29,7 @@ migration hint — they no longer silently no-op.
 
 Plain blocks are processed column-by-column by `salk_toolkit/io/pipeline.py`
 (gather → translate/transform → resolve categories). Specialized blocks
-(`topk`/`maxdiff`/`onehot`) go through `_process_block` in
+(`topk`/`maxdiff`/`onehot`/`sparse`) go through `_process_block` in
 `salk_toolkit/io/create_blocks.py`, which runs five stages:
 
 1. **Match** — resolve `from_columns` (regex or list) to concrete df columns.
@@ -49,6 +50,10 @@ a default onto their processed output blocks:
   formats set `ordered: true` so slot order counts as a ranking.
 - **maxdiff** — `{"structure": [[[best_k], [set_k], [worst_k]], …]}`: one
   weak-order chain per question (best > shown set > worst).
+- **sparse** — `{"item_col": [<item slots>], "res_cols": [<response slots>], "item_dim": …,
+  "items": <item_scale.categories when declared>}`: SIP's `Sparse` OM, one shared response
+  model over every (respondent, item) pair; a declared item universe keeps items rated only
+  in a sibling block (a Variant sub) on this block's prediction grid.
 - **onehot / plain** — no default; an authored `model_spec` passes through as-is.
 
 An authored `model_spec` on a typed block wins over the default. Setting one on
@@ -234,6 +239,45 @@ inventing a definite "picked nothing" would be a fabrication.
 - Replaces `stk.deaggregate_multiselect` (leftpacked) and hand-rolled
   `(df[dummy] == 1).map({True: "Yes", False: "No"})` preprocessing (wide).
 
+## Sparse
+
+A "rate a few of many" battery: one raw column per item (candidate, brand, …) whose cell
+is the rating, and each respondent rated only the handful they were shown. The block
+leftpacks the rated cells into `k` slot pairs.
+
+```json
+{
+  "type": "sparse",
+  "name": "cand_therm",
+  "k": 12,
+  "item_dim": "candidate",
+  "from_columns": "Q4a_(\\d+)",
+  "item_columns": "therm_cand_",
+  "res_columns": "therm_",
+  "item_scale": { "categories": "cand_categories", "translate": "cand_map" },
+  "scale": { "categories": ["-5", "0", "5", "Don't know them"], "ordered": true,
+             "translate": { "0 - very negative": "-5", "5 - neutral": "0", "10 - very positive": "5",
+                            "Don't know": "Don't know them" } }
+}
+```
+
+- Two output blocks: **`cand_therm`** holds the responses `therm_1..k` under `scale` (the
+  block's scale is the *response* scale; `scale.translate` recodes the raw cells before
+  packing), and a plain sibling **`cand_therm_items`** holds `therm_cand_1..k` — which item
+  slot *i* rates — under `item_scale`. `res_columns` / `item_columns` are the slot-name
+  prefixes (defaults `<name>_` / `<name>_item_`; backrefs resolve per subgroup sibling, as
+  for TopK `cell_values`) and are resolved to the concrete lists on output.
+- The item identity is the `agg_index` capture group of `from_columns` (the bare column name
+  for a list), named through `item_scale.translate`; `item_scale.categories` is the item
+  universe (`"infer"` = one pool over all slots, the default). Slot order is raw survey
+  order and carries no meaning.
+- `k` is mandatory and a data check: more rated cells than `k` in any row raises.
+- `not_selected` marks "shown but not rated" cells (nulled; proves the question was asked).
+- A question asked in two wordings to split samples (thermometer vs would-vote) is **two**
+  blocks with the same `item_dim`; on the model side a `Variant` over the two block names
+  gets both `Sparse` subs from their `model_spec`.
+- Replaces per-row slot-packing loops in `preprocessing` (the candidate-battery idiom).
+
 ## Migrating pre-refactor annotations
 
 These block-level fields were **removed** and now raise a `ValueError` at load:
@@ -264,7 +308,7 @@ what the create/typed-block stages actually see.
 - **Block type**: a wave that only declares the output columns (a `plain` block) merges into
   the wave that builds them; two *different* specialized types still raise.
 - **Column/scale meta fields** (`_MERGE_SCALAR_FIELDS`): last-file-wins, with a warning
-  on disagreement.
+  on disagreement. A sparse block's `item_scale` merges like `scale`.
 - **All other block fields** (`from_columns`, `res_columns`, `k`, `not_selected`, …):
   first-file-wins, silently — `_merge_blocks` copies the accumulated block and only
   overrides `columns`/`scale`. A typed block whose source pattern changed between waves

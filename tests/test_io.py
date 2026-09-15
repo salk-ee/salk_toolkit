@@ -4448,6 +4448,38 @@ class TestStructureMerge:
         assert block.scale is not None
         assert block.scale.label == "Second"  # last file, warned
 
+    def test_merged_typed_block_rederives_default_model_spec(self):
+        """Per-file processed sources each stamp their own default model_spec; the merge re-derives it
+        from the merged block (Sparse items = union of both files' item universes)."""
+        from salk_toolkit.io.meta import _merge_data_metas
+        from salk_toolkit.validation import SparseBlock
+
+        def block(cats, spec="default"):
+            b = soft_validate(
+                {
+                    "name": "cand",
+                    "type": "sparse",
+                    "k": 2,
+                    "from_columns": ["q_1", "q_2"],
+                    "columns": ["r_1", "r_2"],
+                    "res_columns": ["r_1", "r_2"],
+                    "item_columns": ["i_1", "i_2"],
+                    "item_scale": {"categories": cats},
+                },
+                SparseBlock,
+            )
+            return b.model_copy(update={"model_spec": b.default_model_spec() if spec == "default" else spec})
+
+        merged = _merge_data_metas(
+            [make_data_meta({"structure": [block(["A", "B"])]}), make_data_meta({"structure": [block(["B", "C"])]})]
+        )
+        assert merged.structure["cand"].model_spec["items"] == ["A", "B", "C"]
+        authored = {"item_col": ["i_1"], "res_cols": ["r_1"], "items": ["A"]}
+        merged = _merge_data_metas(
+            [make_data_meta({"structure": [block(["A"], authored)]}), make_data_meta({"structure": [block(["B"])]})]
+        )
+        assert merged.structure["cand"].model_spec == authored
+
     def test_block_only_in_first_file_survives(self, temp_dir):
         """A block present only in file1 must survive the merge (today metas[-1] drops it)."""
         csv1 = temp_dir / "bs1.csv"
@@ -5454,6 +5486,77 @@ class TestCreateAdjustments:
         assert list(ndf["Q9_1b1"]) == ["A", "C"]
         assert list(ndf["Q9_1b2"]) == ["B", None]
         assert list(ndf["Q9_2b1"]) == ["C", "A"]
+
+    def test_sparse_block_packs_item_and_response_slots(self, meta_file, csv_file):
+        """sparse: one column per item, cells are ratings; leftpack into k (item, response) pairs.
+        Items are named through item_scale.translate, ratings through scale.translate; the item
+        slots land in a `<name>_items` sibling and the response block carries a Sparse model_spec."""
+        pd.DataFrame(
+            {
+                "Q4_11": ["good", None, "dk"],
+                "Q4_12": [None, "bad", None],
+                "Q4_13": ["bad", "good", None],
+            }
+        ).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "structure": [
+                {
+                    "type": "sparse",
+                    "name": "cand",
+                    "k": 2,
+                    "item_dim": "candidate",
+                    "from_columns": r"Q4_(\d+)",
+                    "res_columns": "rate_",
+                    "item_columns": "who_",
+                    "item_scale": {
+                        "categories": ["Ann", "Bob", "Cid"],
+                        "translate": {"11": "Ann", "12": "Bob", "13": "Cid"},
+                    },
+                    "scale": {
+                        "categories": ["Bad", "Good", "DK"],
+                        "translate": {"bad": "Bad", "good": "Good", "dk": "DK"},
+                    },
+                }
+            ],
+        }
+        write_json(meta_file, meta)
+        ndf, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        assert meta_obj is not None
+        assert list(ndf.columns[:4]) == ["who_1", "who_2", "rate_1", "rate_2"]
+        assert list(ndf["who_1"]) == ["Ann", "Bob", "Ann"]
+        assert list(ndf["rate_1"]) == ["Good", "Bad", "DK"]
+        assert list(ndf["who_2"][:2]) == ["Cid", "Cid"] and ndf["who_2"].isna().tolist() == [False, False, True]
+        assert list(ndf["rate_2"][:2]) == ["Bad", "Good"] and ndf["rate_2"].isna().tolist() == [False, False, True]
+        assert list(ndf["who_1"].cat.categories) == ["Ann", "Bob", "Cid"]
+        assert list(ndf["rate_2"].cat.categories) == ["Bad", "Good", "DK"]
+        cand = meta_obj.structure["cand"]
+        assert list(cand.columns) == ["rate_1", "rate_2"]
+        assert list(meta_obj.structure["cand_items"].columns) == ["who_1", "who_2"]
+        assert meta_obj.structure["cand_items"].model_spec is None
+        assert cand.model_spec == {
+            "item_col": ["who_1", "who_2"],
+            "res_cols": ["rate_1", "rate_2"],
+            "item_dim": "candidate",
+            "items": ["Ann", "Bob", "Cid"],
+        }
+        # Round-trips as a sparse block (discriminator kept)
+        dumped = {b["name"]: b for b in json.loads(meta_obj.model_dump_json())["structure"]}
+        assert dumped["cand"]["type"] == "sparse" and "type" not in dumped["cand_items"]
+
+    def test_sparse_block_defaults_and_shared_item_pool(self, meta_file, csv_file):
+        """No item_scale: item ids are the bare capture values pooled into one category list across
+        slots; default slot names `<name>_i` / `<name>_item_i`; more rated cells than k raises."""
+        pd.DataFrame({"c_a": [1, 2], "c_b": [None, 3], "c_c": [4, None]}).to_csv(csv_file, index=False)
+        block = {"type": "sparse", "name": "r", "k": 2, "from_columns": r"c_(\w)"}
+        write_json(meta_file, {"file": "test.csv", "structure": [block]})
+        ndf, meta_obj = read_annotated_data(str(meta_file), return_meta=True)
+        assert list(ndf.columns[:4]) == ["r_item_1", "r_item_2", "r_1", "r_2"]
+        assert list(ndf["r_item_1"].cat.categories) == list(ndf["r_item_2"].cat.categories) == ["a", "b", "c"]
+        assert list(ndf["r_item_2"]) == ["c", "b"]
+        write_json(meta_file, {"file": "test.csv", "structure": [{**block, "k": 1}]})
+        with pytest.raises(ValueError, match="2 rated items in some row exceeds k=1"):
+            read_annotated_data(str(meta_file))
 
     def test_maxdiff_res_templates_rename_outputs(self, meta_file, csv_file):
         """Raw role columns can be renamed on output (and best/worst deliberately swapped)."""

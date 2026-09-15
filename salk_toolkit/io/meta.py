@@ -89,7 +89,19 @@ def _merge_blocks(a: ColumnBlockMeta, b: ColumnBlockMeta) -> ColumnBlockMeta:
         update["scale"] = _merge_column_meta(a.scale, b.scale, ctx=f"Block {a.name!r} scale")
     elif b.scale is not None:
         update["scale"] = b.scale
-    return a.model_copy(update=update)
+    ia, ib = getattr(a, "item_scale", None), getattr(b, "item_scale", None)
+    if ia is not None and ib is not None:
+        update["item_scale"] = _merge_column_meta(ia, ib, ctx=f"Block {a.name!r} item_scale")
+    merged = a.model_copy(update=update)
+    # A stamped default model_spec (processed per-file sources) is re-derived from the merged block,
+    # so e.g. Sparse `items` spans every file's universe; an authored spec stays first-file-wins.
+    if (
+        a.model_spec is not None
+        and a.model_spec == a.default_model_spec()
+        and b.model_spec in (None, b.default_model_spec())
+    ):
+        merged = merged.model_copy(update={"model_spec": merged.default_model_spec()})
+    return merged
 
 
 def _merge_data_metas(metas: list[DataMeta]) -> DataMeta:

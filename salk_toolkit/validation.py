@@ -39,6 +39,7 @@ __all__ = [
     "MandatesDict",
     "MaxDiffBlock",
     "OneHotBlock",
+    "SparseBlock",
     "TopKBlock",
 ]
 
@@ -641,6 +642,59 @@ class OneHotBlock(ColumnBlockMeta):
         return [] if self.input_format == "wide" else self.source_columns(df)
 
 
+class SparseBlock(ColumnBlockMeta):
+    """Block for a rate-a-few-of-many item battery: one raw column per item, each respondent rated a
+    handful. Leftpacks the rated cells into k (item, response) slot pairs: this block holds the
+    responses (`<res_columns>1..k`, under `scale`), a `<name>_items` sibling holds which item each slot
+    rates (`<item_columns>1..k`, under `item_scale`). Resolves to SIP's Sparse observation model."""
+
+    type: Literal["sparse"] = "sparse"  # type: ignore[assignment]
+
+    columns: ColSpec = DF(dict)
+    _required_unless_sources: ClassVar[tuple[str, ...]] = ("from_columns",)
+    from_columns: Optional[Union[str, List[str]]] = None
+    k: int = Field(
+        description="Most items one respondent rated. The block emits exactly k slot pairs; more rated "
+        "cells than this in any row is an error, not a silent truncation."
+    )
+    agg_index: int = Field(
+        default=-1, description="Which regex capture group identifies the item (1-based; -1 = last group)."
+    )
+    item_dim: str = Field(default="item", description="Name of the item axis in the model (Sparse item_dim).")
+    res_columns: Optional[Union[str, List[str]]] = Field(
+        default=None,
+        description="Response slot-name prefix (default '<name>_'); backrefs like '\\1' resolve per sibling. "
+        "Resolved to the concrete slot list on output.",
+    )
+    item_columns: Optional[Union[str, List[str]]] = Field(
+        default=None, description="Item slot-name prefix (default '<name>_item_'), as res_columns."
+    )
+    item_scale: Optional[BlockScaleMeta] = Field(
+        default=None,
+        description="Scale of the item slots: categories = the item universe, translate = capture value -> "
+        "item name. `scale` is the response scale.",
+    )
+    not_selected: List[str] = Field(
+        default_factory=list,
+        description="Cell values meaning 'shown but not rated'; nulled, but they prove the question WAS asked.",
+    )
+
+    def default_model_spec(self) -> Optional[Dict[str, Any]]:
+        """Sparse: each response slot rates the item named in its item slot. A declared item universe
+        (`item_scale.categories`) becomes `items`, so items rated in another block of the same battery
+        (a Variant sub) still get a prediction here."""
+        if not self.columns or not isinstance(self.item_columns, list):
+            return None
+        spec: Dict[str, Any] = {
+            "item_col": list(self.item_columns),
+            "res_cols": list(self.columns),
+            "item_dim": self.item_dim,
+        }
+        if self.item_scale is not None and isinstance(self.item_scale.categories, list):
+            spec["items"] = [str(c) for c in self.item_scale.categories]
+        return spec
+
+
 def _cb_lst_to_dict(lst: Sequence[object] | dict[str, object]) -> dict[str, object]:
     """Transform list of block specs to dictionary format keyed by block name,
     defaulting missing ``type`` to ``"plain"`` so the discriminated union validates
@@ -707,7 +761,7 @@ def _default_block_type(block: object) -> object:
 
 
 _BlockUnion = Annotated[
-    Union[TopKBlock, MaxDiffBlock, OneHotBlock, ColumnBlockMeta],
+    Union[TopKBlock, MaxDiffBlock, OneHotBlock, SparseBlock, ColumnBlockMeta],
     Field(discriminator="type"),
 ]
 BlockSpec = Annotated[Dict[str, _BlockUnion], BeforeValidator(_cb_lst_to_dict)]
