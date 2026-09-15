@@ -87,8 +87,15 @@ def _apply_pre_transform_translate(block: ColumnBlockMeta, df: pd.DataFrame, col
     # Key expansion makes int64/float64 index cells (CSV round-trips) match string keys
     translate = cast("dict[object, object]", expand_value_keys(block.scale.translate))
     df = df.copy()
+    # A dict map is vectorized; list cells and null-valued targets need the per-cell path
+    cellwise = any(v is None for v in translate.values())
     for c in cols:
-        df[c] = df[c].map(lambda v: _map_cell(v, translate))
+        s = df[c]
+        if cellwise or _is_series_of_lists(s):
+            df[c] = s.map(lambda v: _map_cell(v, translate))
+        else:
+            mapped = s.astype("object").map(translate)
+            df[c] = mapped.where(mapped.notna() | s.isna(), s)
     return df
 
 
@@ -936,12 +943,3 @@ def _demote_to_plain(block: ColumnBlockMeta) -> ColumnBlockMeta:
     belong to the derived output (model_spec included)."""
     kwargs = {k: getattr(block, k) for k in ColumnBlockMeta.model_fields if k != "type"}
     return ColumnBlockMeta(**{**kwargs, "from_columns": None, "subgroup_labels": None, "model_spec": None})
-
-
-def _combine_first_preserving_order(*frames: pd.DataFrame) -> pd.DataFrame:
-    """combine_first that keeps source column order instead of lex-sorting it: slot renaming
-    assumes source order, so a sorted `M_1, M_10, M_2` would misname the packed slots."""
-    result = frames[0]
-    for other in frames[1:]:
-        result = result.combine_first(other)
-    return result[list(dict.fromkeys(c for f in frames for c in f.columns))]

@@ -58,6 +58,25 @@ def set_file_map(file_map: dict[str, str]) -> None:
 _TABULAR_EXTENSIONS = ["csv", "gz", "sav", "dta", "xls", "xlsx", "xlsm", "xlsb", "odf", "ods", "odt"]
 
 
+def _apply_value_labels(df: pd.DataFrame, value_labels: dict[str, dict]) -> pd.DataFrame:
+    """What pyreadstat's ``set_value_labels`` does on pandas - labelled values recoded, unlabelled
+    kept, the column cast to an unordered category - built the same way (one value Series inferred
+    from labels + observed values, taken by position), one column at a time."""
+    labelled = {}
+    for c, labels in value_labels.items():
+        if c not in df.columns:
+            continue
+        s = df[c]
+        ext = dict(labels)
+        for v in s.unique():
+            if v not in ext:
+                ext[v] = v
+        pos = pd.Index(list(ext)).get_indexer(s)
+        out = pd.Series(list(ext.values())).iloc[pos]
+        labelled[c] = pd.Series(out.to_numpy(), index=s.index, name=c, dtype=out.dtype).astype("category")
+    return df.assign(**labelled) if labelled else df
+
+
 def _read_tabular(
     mapped_file: str, extension: str, read_opts: dict[str, Any]
 ) -> tuple[pd.DataFrame, dict[str, object]]:
@@ -69,13 +88,23 @@ def _read_tabular(
         return pd.read_csv(mapped_file, **{**csv_defaults, **read_opts}), {}  # type: ignore[call-overload]
     if extension in ["sav", "dta"]:
         read_fn = getattr(pyreadstat, "read_" + mapped_file[-3:].lower())
+        # pyreadstat's own label pass copies the whole frame once per labelled column (quadratic on
+        # wide files); apply the labels here unless the caller asks for pyreadstat's category options.
+        own_labels = read_opts.get("apply_value_formats", True) and not (
+            {"formats_as_category", "formats_as_ordered_category"} & set(read_opts)
+        )
         with warnings.catch_warnings():  # While pyreadstat has not been updated to pandas 2.2 standards
             warnings.simplefilter("ignore")
             raw_data, fmeta = read_fn(
                 mapped_file,
-                **{"apply_value_formats": True, "dates_as_pandas_datetime": True},
-                **read_opts,
+                **{
+                    "dates_as_pandas_datetime": True,
+                    **read_opts,
+                    "apply_value_formats": read_opts.get("apply_value_formats", True) and not own_labels,
+                },
             )
+        if own_labels:
+            raw_data = _apply_value_labels(raw_data, fmeta.variable_value_labels)
         # fmeta fields can be used in hooks just like self-defined constants
         return raw_data, dict(fmeta.__dict__)
     return pd.read_excel(mapped_file, **read_opts), {}  # type: ignore[call-overload]

@@ -33,7 +33,6 @@ from salk_toolkit.io.core import (
     restore_or_assert_row_id,
 )
 from salk_toolkit.io.create_blocks import (
-    _combine_first_preserving_order,
     _demote_to_plain,
     _process_block,
 )
@@ -291,12 +290,7 @@ def _build_columns(bundle: SourceBundle, meta_obj: DataMeta, hooks: HookEnv) -> 
 
         if isinstance(group, (TopKBlock, MaxDiffBlock, OneHotBlock, SparseBlock)):
             # Specialized blocks: fan out into derived sibling blocks via the transform.
-            source_df = _combine_first_preserving_order(ndf_df, raw_data_concat)
-            if not raw_data_concat.empty:
-                # from_columns matching follows raw survey order (a column also declared as a
-                # plain block must not jump the leftpack order); derived-only columns go last
-                order = [c for c in raw_data_concat.columns if c in source_df.columns]
-                source_df = source_df[order + [c for c in source_df.columns if c not in set(order)]]
+            source_df = _typed_block_source(ndf_df, raw_data_concat)
             sib_metas: list[ColumnBlockMeta] = []
             for sdf, smeta in _process_block(group, source_df, not_asked=meta_obj.not_asked):
                 # Derived columns get the same category resolution as plain ones, so a block's
@@ -383,6 +377,18 @@ def _apply_exclusions(ndf_df: pd.DataFrame, meta_obj: DataMeta, opts: ProcessOpt
     if not opts.add_original_inds:
         ndf_df.drop(columns=["original_inds"], inplace=True)
     return ndf_df
+
+
+def _typed_block_source(ndf_df: pd.DataFrame, raw: pd.DataFrame) -> pd.DataFrame:
+    """The frame a typed block reads: every processed column as processed (a nulled cell stays
+    null), raw columns for the rest, in raw survey order (from_columns matching follows it; a
+    column also declared as a plain block must not jump the leftpack order); derived-only last."""
+    if raw.empty:
+        return ndf_df
+    done = set(ndf_df.columns)
+    src = pd.concat([ndf_df, raw[[c for c in raw.columns if c not in done]]], axis=1)
+    order = [c for c in raw.columns if c in src.columns]
+    return src[order + [c for c in src.columns if c not in set(order)]]
 
 
 def process(bundle: SourceBundle, meta_obj: DataMeta, opts: ProcessOpts) -> Dataset:

@@ -76,7 +76,8 @@ Three different things, never interchangeable:
 | `nonresponse` | column/scale | the respondent answered "Don't know" / "Refused" | stays a category, flagged for tooling |
 
 `not_asked` is applied first, on raw cells, in every block (plain columns too);
-`not_selected` right after. A block-level `not_asked` overrides the meta-level
+`not_selected` right after. A typed block reads processed columns *as processed* (a cell
+the plain pipeline nulled stays null) and raw columns only for what no block produced. A block-level `not_asked` overrides the meta-level
 list (`[]` opts the block out). Replaces global `df.replace(na_labels, nan)`
 preprocessing.
 

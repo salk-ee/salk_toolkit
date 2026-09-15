@@ -2747,6 +2747,53 @@ class TestAdvancedFeatures:
         assert df["c"].tolist() == [17, 18, 19]
 
 
+class TestReaderValueLabels:
+    """SPSS/Stata value labels applied by the reader itself."""
+
+    def test_own_value_labels_match_pyreadstat(self, temp_dir):
+        """_read_tabular applies SPSS value labels itself (pyreadstat's pass is quadratic on wide
+        files); the result must equal pyreadstat's own apply_value_formats output exactly - partial
+        labels, string labels, all-null labelled, unlabelled and integer-like columns alike."""
+        import numpy as np
+        import pyreadstat
+
+        from salk_toolkit.io.readers import _read_tabular
+
+        df = pd.DataFrame(
+            {
+                "full": [1.0, 2.0, np.nan, 1.0],
+                "partial": [1.0, 5.5, 99.0, np.nan],
+                "strlab": ["a", "b", "", "a"],
+                "allnull": [np.nan] * 4,
+                "plain": [0.5, 1.5, 2.5, 3.5],
+            }
+        )
+        labels = {
+            "full": {1.0: "Yes", 2.0: "No"},
+            "partial": {99.0: "Don't know"},
+            "strlab": {"a": "Alpha", "b": "Beta"},
+            "allnull": {1.0: "One"},
+        }
+        f = temp_dir / "labels.sav"
+        pyreadstat.write_sav(df, str(f), variable_value_labels=labels)
+        ours, meta = _read_tabular(str(f), "sav", {})
+        ref, _ = pyreadstat.read_sav(str(f), apply_value_formats=True, dates_as_pandas_datetime=True)
+        pd.testing.assert_frame_equal(ours, ref)
+        assert list(ours["full"]) == ["Yes", "No", None, "Yes"] or ours["full"].isna().tolist() == [
+            False,
+            False,
+            True,
+            False,
+        ]
+        assert list(ours["partial"].dropna()) == [1.0, 5.5, "Don't know"]
+        assert "variable_value_labels" in meta
+        # Opting out reproduces the raw codes; pyreadstat's own category options pass through
+        raw, _ = _read_tabular(str(f), "sav", {"apply_value_formats": False})
+        assert list(raw["full"].dropna()) == [1.0, 2.0, 1.0]
+        plain, _ = _read_tabular(str(f), "sav", {"formats_as_category": False})
+        assert plain["full"].dtype != "category" and list(plain["full"].dropna()) == ["Yes", "No", "Yes"]
+
+
 class TestMultipleFiles:
     """Test multiple file handling"""
 
@@ -5185,6 +5232,28 @@ class TestPipelineSchema:
         ndf, _ = read_annotated_data(str(meta_file), return_meta=True)
         assert list(ndf["x_A"].astype(object).where(ndf["x_A"].notna(), "NA")) == ["Yes", "NA"]
         assert list(ndf["x_B"].astype(object).where(ndf["x_B"].notna(), "NA")) == ["No", "NA"]
+
+    def test_typed_block_reads_processed_not_raw_cells(self, meta_file, csv_file):
+        """A typed block's source frame takes processed columns whole: a cell nulled by the plain
+        pipeline (not_asked) must not be resurrected from the raw column of the same name."""
+        pd.DataFrame({"m_1": ["A", "SKIP"], "m_2": ["B", "SKIP"]}).to_csv(csv_file, index=False)
+        meta = {
+            "file": "test.csv",
+            "not_asked": ["SKIP"],
+            "structure": [
+                {"name": "raw", "columns": [["m_1", {"categories": ["A", "B"]}], ["m_2", {"categories": ["A", "B"]}]]},
+                {
+                    "type": "onehot",
+                    "name": "x",
+                    "from_columns": r"m_(\d+)",
+                    "input_format": "leftpacked",
+                    "res_prefix": "x_",
+                },
+            ],
+        }
+        write_json(meta_file, meta)
+        ndf, _ = read_annotated_data(str(meta_file), return_meta=True)
+        assert ndf["x_A"].isna().tolist() == [False, True]  # row 2 was never asked
 
     def test_onehot_leftpacked_inferred_choices(self, meta_file, csv_file):
         """choices=None derives the sorted union from observed cells."""
