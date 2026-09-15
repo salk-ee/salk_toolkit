@@ -54,6 +54,8 @@ from typing import Any, Dict, Sequence
 
 import altair as alt
 import arviz as az
+import hsluv  # type: ignore[import-untyped]
+import matplotlib.colors as mpc
 import numpy as np
 import pandas as pd
 import scipy as sp
@@ -276,6 +278,68 @@ def boxplot_manual(p: PlotInput) -> AltairChart:
 
 # Also create a raw version for the same plot
 stk_plot("boxplots-raw", data_format="raw", n_facets=(1, 2), priority=0)(boxplot_manual)
+
+# Deciles plus 1%/99% ends; opacity is the normal bell at each level's z, 1 at the median and 0 at the ends
+_DENSTRIP_P = [0.01, *np.linspace(0.1, 0.9, 9), 0.99]
+_DENSTRIP_SHADE = np.exp(-(sps.norm.ppf(_DENSTRIP_P) ** 2) / 2)
+_DENSTRIP_SHADE = (_DENSTRIP_SHADE - _DENSTRIP_SHADE[0]) / (1 - _DENSTRIP_SHADE[0])
+_VEGA_TABLEAU10 = "#4c78a8 #f58518 #e45756 #72b7b2 #54a24b #eeca3b #b279a2 #ff9da6 #9d755d #bab0ac".split()
+
+
+def perceptual_alpha(color: str, target: np.ndarray) -> np.ndarray:
+    """Opacity over white putting HSLuv lightness a `target` fraction of the way from white to `color`."""
+    a, rgb = np.linspace(0, 1, 201), np.array(mpc.to_rgb(color))
+    dl = 100 - np.array([hsluv.rgb_to_hsluv(tuple(np.clip(x * rgb + 1 - x, 0, 1)))[2] for x in a])
+    return np.interp(target, dl / max(dl[-1], 1e-6), a)
+
+
+@stk_plot("denstrip", data_format="longform", draws=True, n_facets=(1, 2), priority=0, group_sizes=True)
+def denstrip(p: PlotInput) -> AltairChart:
+    """Density strip: gradient bar per group with normal-bell opacity anchored at its quantiles."""
+
+    if not p.facets:
+        raise ValueError("denstrip requires at least one facet dimension")
+    f0, f1 = p.facets[0], (p.facets[1] if len(p.facets) > 1 else None)
+    cf, data, fmt = f1 or f0, p.data, p.val_format
+    if fmt.endswith("%"):
+        data, fmt = data.assign(**{p.value_col: data[p.value_col] * 100}), fmt[:-1] + "f"
+
+    levels, cols = [*_DENSTRIP_P, 0.25, 0.75], [*(f"dq{i}" for i in range(len(_DENSTRIP_P))), "q1", "q3"]
+    group_cols = p.outer_factors + [f.col for f in p.facets[:2]]
+    df = data.groupby(group_cols, observed=True)[p.value_col].quantile(levels).unstack()[levels]
+    df = df.set_axis(cols, axis=1).reset_index()
+    q = df[cols[:-2]].to_numpy(float)
+    offs = (q - q[:, :1]) / np.maximum(q[:, -1:] - q[:, :1], 1e-12)
+    df = df.drop(columns=cols[1:-3]).assign(denstrip_row=range(len(df)))
+
+    dom, rng = (cf.colors.domain, cf.colors.range) if isinstance(cf.colors, alt.Scale) else (cf.order, _VEGA_TABLEAU10)
+    cmap = {d: rng[i % len(rng)] for i, d in enumerate(dom)}
+
+    # One gradient-filled bar per group: adjacent translucent strips would leave anti-aliasing seams
+    def strip(i: int) -> alt.Chart:
+        c = cmap.get(df[cf.col].iloc[i], utils.default_color)
+        rgb = ",".join(str(round(v * 255)) for v in mpc.to_rgb(c))
+        a = perceptual_alpha(c, _DENSTRIP_SHADE)
+        stops = [alt.GradientStop(offset=round(float(o), 4), color=f"rgba({rgb},{v:.3f})") for o, v in zip(offs[i], a)]
+        grad = alt.LinearGradient(gradient="linear", stops=stops, x1=0, x2=1, y1=0, y2=0)
+        return alt.Chart().transform_filter(f"datum.denstrip_row == {i}").mark_bar(size=12, color=grad)
+
+    # Zero-width bars carry the color legend; data and encodings sit on the layer so outer facets work
+    legend = alt.Legend(orient="top", columns=estimate_legend_columns_horiz(f1.order, p.width)) if f1 else None
+    color = alt.Color(field=cf.col, type="nominal", scale=cf.colors, legend=legend)
+    legend_bars = alt.Chart().mark_bar(size=12).encode(x2=alt.X2("dq0:Q"), color=color)
+    iqr = f"'~' + format(datum.q1, '{fmt}') + ' - ' + format(datum.q3, '{fmt}')"
+    return (
+        alt.layer(legend_bars, *(strip(i) for i in range(len(df))), data=df)
+        .transform_calculate(iqr=iqr)
+        .encode(
+            x=alt.X("dq0:Q", axis=alt.Axis(title=p.value_col, format=fmt)),
+            x2=alt.X2(f"{cols[-3]}:Q"),
+            y=alt.Y(field=f0.col, type="nominal", title=None, sort=f0.order),
+            **({"yOffset": alt.YOffset(field=f1.col, type="nominal", title=None, sort=f1.order)} if f1 else {}),
+            tooltip=[alt.Tooltip("iqr:N", title=p.value_col)] + p.tooltip[1:],
+        )
+    )
 
 
 @stk_plot(
