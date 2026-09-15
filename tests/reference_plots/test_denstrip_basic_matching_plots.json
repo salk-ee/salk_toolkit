@@ -1,14 +1,14 @@
 {
   "area_smooth": [
-    50,
+    60,
     []
   ],
   "barbell": [
-    0,
+    10,
     []
   ],
   "boxplots": [
-    50,
+    60,
     []
   ],
   "boxplots-raw": [
@@ -18,14 +18,14 @@
     ]
   ],
   "coalition_applet": [
-    -2001000,
+    -2000990,
     [
       "mandates",
       "electoral_system"
     ]
   ],
   "columns": [
-    0,
+    10,
     []
   ],
   "corr_matrix": [
@@ -47,11 +47,11 @@
     ]
   ],
   "denstrip": [
-    0,
+    10,
     []
   ],
   "diff_columns": [
-    0,
+    10,
     []
   ],
   "facet_dist": [
@@ -61,66 +61,66 @@
     ]
   ],
   "geobest": [
-    -1000000,
+    -999990,
     [
       "topo_feature"
     ]
   ],
   "geoplot": [
-    -1000000,
+    -999990,
     [
       "topo_feature"
     ]
   ],
   "likert_bars": [
-    -999940,
+    -999950,
     [
       "likert"
     ]
   ],
   "likert_rad_pol": [
-    -1000000,
+    -999990,
     [
       "likert"
     ]
   ],
   "line": [
-    -999980,
+    -999970,
     [
       "ordered"
     ]
   ],
   "line_hdi": [
-    -999990,
+    -999980,
     [
       "ordered"
     ]
   ],
   "lines": [
-    20,
+    30,
     []
   ],
   "lines_hdi": [
-    10,
+    20,
     []
   ],
   "mandate_plot": [
-    -2000500,
+    -2000490,
     [
       "mandates",
       "electoral_system"
     ]
   ],
   "marimekko": [
-    100,
+    110,
     []
   ],
   "massplot": [
-    0,
+    10,
     []
   ],
   "matrix": [
-    55,
+    65,
     []
   ],
   "maxdiff": [
@@ -136,7 +136,7 @@
     ]
   ],
   "party_mandates": [
-    -2000500,
+    -2000490,
     [
       "mandates",
       "electoral_system"
@@ -149,11 +149,11 @@
     ]
   ],
   "stacked_columns": [
-    40,
+    50,
     []
   ],
   "violin": [
-    0,
+    10,
     []
   ],
   "violin-raw": [

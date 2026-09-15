@@ -302,10 +302,10 @@ class TestPlots:
         self._run_plot_test("test_boxplots_raw", config, recompute=recompute)
 
     def test_denstrip_basic(self, recompute):
-        """Test density strip plots."""
+        """Test density strip plots, with an outer facet (needs top-level data)."""
         config = {
             "res_col": "party_preference",
-            "facet_dims": ["age_group"],
+            "facet_dims": ["age_group", "gender"],
             "filter": {},
             "plot": "denstrip",
             "internal_facet": True,

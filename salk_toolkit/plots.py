@@ -310,36 +310,36 @@ def denstrip(p: PlotInput) -> AltairChart:
     df = df.set_axis(cols, axis=1).reset_index()
     q = df[cols[:-2]].to_numpy(float)
     offs = (q - q[:, :1]) / np.maximum(q[:, -1:] - q[:, :1], 1e-12)
+    df = df.drop(columns=cols[1:-3]).assign(denstrip_row=range(len(df)))
 
     dom, rng = (cf.colors.domain, cf.colors.range) if isinstance(cf.colors, alt.Scale) else (cf.order, _VEGA_TABLEAU10)
     cmap = {d: rng[i % len(rng)] for i, d in enumerate(dom)}
-    enc = {
-        "x": alt.X("dq0:Q", axis=alt.Axis(title=p.value_col, format=fmt)),
-        "x2": alt.X2(f"{cols[-3]}:Q"),
-        "y": alt.Y(field=f0.col, type="nominal", title=None, sort=f0.order),
-        **({"yOffset": alt.YOffset(field=f1.col, type="nominal", title=None, sort=f1.order)} if f1 else {}),
-    }
-    iqr = f"'~' + format(datum.q1, '{fmt}') + ' - ' + format(datum.q3, '{fmt}')"
 
     # One gradient-filled bar per group: adjacent translucent strips would leave anti-aliasing seams
     def strip(i: int) -> alt.Chart:
         c = cmap.get(df[cf.col].iloc[i], utils.default_color)
         rgb = ",".join(str(round(v * 255)) for v in mpc.to_rgb(c))
         a = perceptual_alpha(c, _DENSTRIP_SHADE)
-        stops = [alt.GradientStop(offset=float(o), color=f"rgba({rgb},{v:.3f})") for o, v in zip(offs[i], a)]
+        stops = [alt.GradientStop(offset=round(float(o), 4), color=f"rgba({rgb},{v:.3f})") for o, v in zip(offs[i], a)]
         grad = alt.LinearGradient(gradient="linear", stops=stops, x1=0, x2=1, y1=0, y2=0)
-        return (
-            alt.Chart(df.iloc[[i]])
-            .transform_calculate(iqr=iqr)
-            .mark_bar(size=12, color=grad)
-            .encode(**enc, tooltip=[alt.Tooltip("iqr:N", title=p.value_col)] + p.tooltip[1:])
-        )
+        return alt.Chart().transform_filter(f"datum.denstrip_row == {i}").mark_bar(size=12, color=grad)
 
-    # Zero-width bars carry the color legend
+    # Zero-width bars carry the color legend; data and encodings sit on the layer so outer facets work
     legend = alt.Legend(orient="top", columns=estimate_legend_columns_horiz(f1.order, p.width)) if f1 else None
     color = alt.Color(field=cf.col, type="nominal", scale=cf.colors, legend=legend)
-    legend_bars = alt.Chart(df).mark_bar(size=12).encode(**{**enc, "x2": alt.X2("dq0:Q")}, color=color)
-    return alt.layer(legend_bars, *(strip(i) for i in range(len(df))))
+    legend_bars = alt.Chart().mark_bar(size=12).encode(x2=alt.X2("dq0:Q"), color=color)
+    iqr = f"'~' + format(datum.q1, '{fmt}') + ' - ' + format(datum.q3, '{fmt}')"
+    return (
+        alt.layer(legend_bars, *(strip(i) for i in range(len(df))), data=df)
+        .transform_calculate(iqr=iqr)
+        .encode(
+            x=alt.X("dq0:Q", axis=alt.Axis(title=p.value_col, format=fmt)),
+            x2=alt.X2(f"{cols[-3]}:Q"),
+            y=alt.Y(field=f0.col, type="nominal", title=None, sort=f0.order),
+            **({"yOffset": alt.YOffset(field=f1.col, type="nominal", title=None, sort=f1.order)} if f1 else {}),
+            tooltip=[alt.Tooltip("iqr:N", title=p.value_col)] + p.tooltip[1:],
+        )
+    )
 
 
 @stk_plot(
