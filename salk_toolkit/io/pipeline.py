@@ -10,6 +10,10 @@ from salk_toolkit.validation import (
     ColumnBlockMeta,
     ColumnMeta,
     DataMeta,
+    MaxDiffBlock,
+    OneHotBlock,
+    SparseBlock,
+    TopKBlock,
     soft_validate,
 )
 
@@ -22,10 +26,17 @@ from salk_toolkit.io.core import (
     SourceBundle,
     _deterministic_categories_and_values,
     _is_series_of_lists,
+    expand_na_vals,
+    expand_value_keys,
+    stringify_notna,
     finalize_row_index,
     restore_or_assert_row_id,
 )
-from salk_toolkit.io.create_blocks import _create_new_columns_and_metas
+from salk_toolkit.io.create_blocks import (
+    _combine_first_preserving_order,
+    _demote_to_plain,
+    _process_block,
+)
 from salk_toolkit.io.meta import _fix_meta_categories
 
 
@@ -113,15 +124,24 @@ def _gather_source(
 
 
 def _apply_transforms(
-    s: pd.Series, mcm: ColumnMeta, bundle: SourceBundle, ndf_df: pd.DataFrame, cn: str, hooks: HookEnv
+    s: pd.Series,
+    mcm: ColumnMeta,
+    bundle: SourceBundle,
+    ndf_df: pd.DataFrame,
+    cn: str,
+    hooks: HookEnv,
+    not_asked: list[str] | None = None,
 ) -> pd.Series:
-    """Apply translate -> transform -> translate_after -> dtype coercion to a gathered series."""
+    """Apply not_asked -> translate -> transform -> translate_after -> dtype coercion to a gathered series."""
     if _is_series_of_lists(s):
         return s
     if s.dtype.name == "category":
         s = s.astype("object")  # This makes it easier to use common ops like replace and fillna
+    if not_asked:
+        s = s.astype("object").replace(expand_na_vals(list(not_asked)), None)
     if mcm.translate:
-        s = s.astype("str").replace(mcm.translate).replace("nan", None).replace("None", None)
+        # Key expansion matches the "1.0" str-form that integer codes take after CSV round-trips
+        s = stringify_notna(s).replace(expand_value_keys(mcm.translate)).replace("nan", None).replace("None", None)
     if mcm.transform is not None and isinstance(mcm.transform, str):
         # Per-file so transforms can reference that file's raw data (df) and columns so far (ndf)
         transformed_parts: list[pd.Series] = []
@@ -132,7 +152,8 @@ def _apply_transforms(
             transformed_parts.append(pd.Series(transformed, index=s_local.index, name=cn))
         s = pd.concat(transformed_parts, ignore_index=True)
     if mcm.translate_after:
-        s = pd.Series(s).astype("str").replace(mcm.translate_after).replace("nan", None).replace("None", None)
+        s = stringify_notna(pd.Series(s)).replace(expand_value_keys(mcm.translate_after))
+        s = s.replace("nan", None).replace("None", None)
 
     if mcm.datetime:
         s = pd.to_datetime(s, errors="coerce")
@@ -151,9 +172,12 @@ def _resolve_categories(s: pd.Series, mcm: ColumnMeta, cn: str) -> tuple[pd.Seri
         should_warn_ordered = mcm.ordered and not pd.api.types.is_numeric_dtype(s)
         # s is the source of truth: it has the final translate -> transform -> translate_after values
         present = set(s.dropna().unique())
-        if mcm.translate and not mcm.transform and set(mcm.translate.values()) >= present:
+        # Order follows whichever dict produced the final values (translate_after runs last, and
+        # unlike translate a transform in between does not invalidate it)
+        tdict = mcm.translate_after or (mcm.translate if not mcm.transform else None)
+        if tdict and set(tdict.values()) >= present:
             # Infer order from the translation dict; mapping can be many-to-one so dedup preserving order
-            cats = list(dict.fromkeys(str(c) for c in mcm.translate.values() if c in present))
+            cats = list(dict.fromkeys(str(c) for c in tdict.values() if c in present))
         else:
             # Deterministic order: numeric dtypes and numeric-like strings sort numerically, else lexically
             if should_warn_ordered:
@@ -238,6 +262,9 @@ def _build_columns(bundle: SourceBundle, meta_obj: DataMeta, hooks: HookEnv) -> 
         # Col prefix is used to avoid name clashes when different groups naturally share same column names
         col_prefix = group.scale.col_prefix if group.scale is not None else None
 
+        # not_asked values: block override (incl. [] = opt out) or the meta-level global
+        group_not_asked = group.not_asked if group.not_asked is not None else meta_obj.not_asked
+
         # Scale meta is pre-merged by merge_scale_with_columns; df-missing columns are skipped, not dropped
         g_cols = []
         for orig_cn, mcm in group.columns.items():
@@ -252,7 +279,7 @@ def _build_columns(bundle: SourceBundle, meta_obj: DataMeta, hooks: HookEnv) -> 
             s = _gather_source(bundle, source_spec, orig_cn, cn, group.generated)
             if s is None:
                 continue
-            s = _apply_transforms(s, mcm, bundle, ndf_df, cn, hooks)
+            s = _apply_transforms(s, mcm, bundle, ndf_df, cn, hooks, not_asked=group_not_asked)
             s.name = cn  # Ensure name is set
             s, mcm = _resolve_categories(s, mcm, cn)
 
@@ -262,21 +289,55 @@ def _build_columns(bundle: SourceBundle, meta_obj: DataMeta, hooks: HookEnv) -> 
         if group.subgroup_transform is not None:
             ndf_df = _apply_subgroup_transform(bundle, ndf_df, group.subgroup_transform, g_cols, hooks)
 
-        # Handle create blocks - may add new groups to structure
-        if group.create is not None:
-            create_source_df = ndf_df.combine_first(raw_data_concat) if not raw_data_concat.empty else ndf_df
-            for newdf, newmeta_dict in _create_new_columns_and_metas(
-                create_source_df,
-                group,
-                topics=hooks.constants.get("topics", None),
-                sets=hooks.constants.get("sets", None),
-            ):
-                ndf_df = ndf_df.combine_first(newdf)
-                new_group_meta = soft_validate(newmeta_dict, ColumnBlockMeta)
-                new_structure[new_group_meta.name] = new_group_meta
-            group = group.model_copy(update={"create": None})  # The processed group no longer creates
-
-        new_structure[group.name] = group
+        if isinstance(group, (TopKBlock, MaxDiffBlock, OneHotBlock, SparseBlock)):
+            # Specialized blocks: fan out into derived sibling blocks via the transform.
+            source_df = _combine_first_preserving_order(ndf_df, raw_data_concat)
+            if not raw_data_concat.empty:
+                # from_columns matching follows raw survey order (a column also declared as a
+                # plain block must not jump the leftpack order); derived-only columns go last
+                order = [c for c in raw_data_concat.columns if c in source_df.columns]
+                source_df = source_df[order + [c for c in source_df.columns if c not in set(order)]]
+            sib_metas: list[ColumnBlockMeta] = []
+            for sdf, smeta in _process_block(group, source_df, not_asked=meta_obj.not_asked):
+                # Derived columns get the same category resolution as plain ones, so a block's
+                # declared scale actually reaches the frame's dtype
+                cmetas = dict(smeta.columns)
+                # Slots of one question share one category pool: the translate_after universe when
+                # declared, else whatever any slot holds
+                pool = pd.concat([sdf[c] for c in sdf.columns], ignore_index=True) if len(sdf.columns) else None
+                for c in sdf.columns:
+                    m = cmetas[c]
+                    if m.categories == "infer" and m.translate_after:
+                        m = m.model_copy(
+                            update={
+                                "categories": list(
+                                    dict.fromkeys(str(v) for v in m.translate_after.values() if v is not None)
+                                )
+                            }
+                        )
+                    elif m.categories == "infer":
+                        _, m = _resolve_categories(pool, m, c)
+                    ndf_df[c], cmetas[c] = _resolve_categories(sdf[c], m, c)
+                sib_metas.append(smeta.model_copy(update={"columns": cmetas}))
+            # Any explicitly declared RAW columns were already processed as plain columns above;
+            # keep their meta under a demoted plain block. Columns the transform generates are not
+            # raw - their authored meta travels with the derived block instead.
+            generated = {c for sm in sib_metas for c in sm.columns}
+            raw_declared = {c: m for c, m in group.columns.items() if c not in generated}
+            group = group.model_copy(update={"columns": raw_declared})
+            if group.columns:
+                demoted = _demote_to_plain(group)
+                if any(sm.name == demoted.name for sm in sib_metas):
+                    demoted = demoted.model_copy(update={"name": f"{demoted.name}_src"})
+                    warn(
+                        f"Block {group.name!r}: declared raw columns kept under {demoted.name!r} "
+                        f"(the derived block takes the bare name)"
+                    )
+                new_structure[demoted.name] = demoted
+            for smeta in sib_metas:
+                new_structure[smeta.name] = smeta
+        else:
+            new_structure[group.name] = group
 
     # ROW_ID is a system column, not rebuilt column-by-column, but ndf_df is aligned positionally
     if not raw_data_concat.empty:
@@ -286,6 +347,22 @@ def _build_columns(bundle: SourceBundle, meta_obj: DataMeta, hooks: HookEnv) -> 
 
     # Update meta with new structure (including any groups created during processing)
     return ndf_df, meta_obj.model_copy(update={"structure": new_structure})
+
+
+def _recast_hook_created_columns(ndf_df: pd.DataFrame, meta_obj: DataMeta) -> None:
+    """Snap columns that postprocessing created (or replaced) back to their declared
+    categorical dtype. Columns already categorical were cast during the main pass and
+    are left untouched, preserving their inferred category order."""
+    for group in meta_obj.structure.values():
+        if group.type != "plain":
+            continue
+        prefix = group.scale.col_prefix if group.scale and group.scale.col_prefix else ""
+        for orig_cn, mcm in group.columns.items():
+            cn = prefix + orig_cn
+            if cn not in ndf_df.columns or ndf_df[cn].dtype.name == "category":
+                continue
+            s, _ = _resolve_categories(ndf_df[cn], mcm, cn)
+            ndf_df[cn] = s
 
 
 def _apply_exclusions(ndf_df: pd.DataFrame, meta_obj: DataMeta, opts: ProcessOpts) -> pd.DataFrame:
@@ -333,6 +410,7 @@ def process(bundle: SourceBundle, meta_obj: DataMeta, opts: ProcessOpts) -> Data
     if meta_obj.postprocessing is not None:
         ndf_df = hooks.exec_df(meta_obj.postprocessing, ndf_df)
         ndf_df = restore_or_assert_row_id(ndf_df, "postprocessing")
+        _recast_hook_created_columns(ndf_df, meta_obj)
 
     # Fix categories after postprocessing; also replaces "infer" with the actual categories
     meta_obj = _fix_meta_categories(meta_obj, ndf_df, warnings=True)
