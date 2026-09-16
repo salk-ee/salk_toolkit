@@ -588,8 +588,8 @@ def _wrangle_data(
                     for q in wide_value_vars
                 ]
                 data = pl.concat(parts)
-                if literal_res:  # Null values count toward no aggregate; drop before the group totals
-                    data = data.filter(pl.col(res_col).is_not_null())
+                # Null values count toward no aggregate; drop before the group totals
+                data = data.filter(pl.col(res_col).is_not_null())
                 data = data.with_columns(pl.col("percent").sum().over(gb + ["question"]).alias(weight_col))
 
             else:  # Continuous: aggregate each question column per group
@@ -627,8 +627,8 @@ def _wrangle_data(
 
             # Group totals as a window sum over the small aggregate - avoids a second full group_by + join
             data = raw_df.group_by(gb_dims + [res_col]).agg(pl.col(weight_col).sum().alias("percent"))
-            if literal_res:  # Null values count toward no aggregate; drop before the group totals
-                data = data.filter(pl.col(res_col).is_not_null())
+            # Null values count toward no aggregate; drop before the group totals
+            data = data.filter(pl.col(res_col).is_not_null())
             data = data.with_columns(pl.col("percent").sum().over(gb_dims).alias(weight_col))
 
             if agg_fn == "mean":
