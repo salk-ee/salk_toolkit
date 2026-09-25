@@ -176,8 +176,7 @@ class ColumnMeta(PBase):
     neutral_middle: Optional[str] = (
         None  # For ordered categoricals - if there is a neutral category, which one should be in the middle?
     )
-    # Bipolar likert items: (statement at the first category, statement at the last category)
-    pole_labels: Optional[Tuple[str, str]] = None
+    pole_labels: Optional[Tuple[str, str]] = None  # Bipolar likert: (statement at first category, at last category)
 
     topo_feature: Optional[Tuple[str, str, str]] = None  # Link to a geojson/topojson [url,type,col_name inside geodata]
     electoral_system: Optional[ElectoralSystem] = None  # Information about electoral system
@@ -211,9 +210,6 @@ class ColumnMeta(PBase):
 
         if info.context and info.context.get("validation_mode") == "soft":
             return self
-        # Poles are checked once the scale is merged in (categories known); a bare column skips
-        if self.categories is not None and self.pole_labels is not None and not self.likert:
-            raise ValueError("pole_labels only makes sense for likert columns")
         if self.categories is None:
             # if not self.continuous and not self.datetime:
             #    raise ValueError('Column type undefined: need either categories, continuous or datetime')
@@ -232,6 +228,8 @@ class ColumnMeta(PBase):
                 for f in ["likert"]:  # ['num_values'] can be situationally useful in non-ordered settings
                     if getattr(self, f):
                         raise ValueError(f"Field {f} only makes sense for ordered categorical columns")
+            if self.pole_labels and not self.likert:
+                raise ValueError("pole_labels only makes sense for likert columns")
         return self
 
 

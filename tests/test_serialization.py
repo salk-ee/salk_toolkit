@@ -540,7 +540,6 @@ class TestRoundTripSerialization:
         assert q2_meta["likert"] is True
         assert "categories" not in q2_meta  # Matches block_scale
         assert "ordered" not in q2_meta  # Matches block_scale
-        # Bipolar pole_labels survives the round trip as a JSON list, and only on the column that set it
         assert q2_meta["pole_labels"] == ["Disagree pole", "Agree pole"]
         assert "pole_labels" not in q1_meta
 

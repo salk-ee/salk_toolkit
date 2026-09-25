@@ -1305,35 +1305,23 @@ class TestCategoricalFeatures:
         with pytest.raises(ValidationError, match="continuous, so it cannot have categories"):
             read_annotated_data(str(meta_file))
 
-    @pytest.mark.parametrize("labels", [["Left"], ["Left", "Mid", "Right"]], ids=["len1", "len3"])
-    def test_pole_labels_wrong_length_fails_to_load(self, csv_file, meta_file, labels):
-        """pole_labels must be exactly (neg, pos); pydantic rejects any other tuple length."""
+    @staticmethod
+    def _write_pole_meta(csv_file, meta_file, pole_labels):
+        """Write a one-item likert block whose column `q` carries `pole_labels`."""
         df_to_csv(pd.DataFrame({"q": ["-1", "1"], "id": [1, 2]}), csv_file)
         scale = {"categories": ["-1", "0", "1"], "ordered": True, "likert": True}
-        write_json(
-            meta_file,
-            {
-                "file": "test.csv",
-                "structure": [{"name": "t", "scale": scale, "columns": ["id", ["q", {"pole_labels": labels}]]}],
-            },
-        )
+        block = {"name": "t", "scale": scale, "columns": ["id", ["q", {"pole_labels": pole_labels}]]}
+        write_json(meta_file, {"file": "test.csv", "structure": [block]})
 
-        with pytest.raises(ValidationError):
-            read_annotated_data(str(meta_file))
-
-    def test_pole_labels_empty_element_fails_to_load(self, csv_file, meta_file):
-        """A blank pole statement is rejected even under soft validation."""
-        df_to_csv(pd.DataFrame({"q": ["-1", "1"], "id": [1, 2]}), csv_file)
-        scale = {"categories": ["-1", "0", "1"], "ordered": True, "likert": True}
-        write_json(
-            meta_file,
-            {
-                "file": "test.csv",
-                "structure": [{"name": "t", "scale": scale, "columns": ["id", ["q", {"pole_labels": ["", "Right"]}]]}],
-            },
-        )
-
-        with pytest.raises(ValidationError, match="non-empty"):
+    @pytest.mark.parametrize(
+        "labels,match",
+        [(["Left"], None), (["Left", "Mid", "Right"], None), (["", "Right"], "non-empty")],
+        ids=["len1", "len3", "blank"],
+    )
+    def test_bad_pole_labels_fail_to_load(self, csv_file, meta_file, labels, match):
+        """pole_labels must be exactly two non-empty statements; the blank check holds even under soft validation."""
+        self._write_pole_meta(csv_file, meta_file, labels)
+        with pytest.raises(ValidationError, match=match):
             read_annotated_data(str(meta_file))
 
     def test_pole_labels_require_likert(self):
@@ -1345,18 +1333,7 @@ class TestCategoricalFeatures:
 
     def test_pole_labels_inherit_likert_from_block_scale(self, csv_file, meta_file):
         """A column's pole_labels combines with the block's likert scale and lands on the merged column meta."""
-        df_to_csv(pd.DataFrame({"q": ["-1", "1"], "id": [1, 2]}), csv_file)
-        scale = {"categories": ["-1", "0", "1"], "ordered": True, "likert": True}
-        write_json(
-            meta_file,
-            {
-                "file": "test.csv",
-                "structure": [
-                    {"name": "t", "scale": scale, "columns": ["id", ["q", {"pole_labels": ["Left", "Right"]}]]}
-                ],
-            },
-        )
-
+        self._write_pole_meta(csv_file, meta_file, ["Left", "Right"])
         _, meta = read_annotated_data(str(meta_file), return_meta=True)
         col = extract_column_meta(meta)["q"]
         assert col.likert and col.pole_labels == ("Left", "Right")

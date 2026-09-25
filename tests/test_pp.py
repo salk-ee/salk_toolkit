@@ -31,8 +31,8 @@ from salk_toolkit.pp import (
     _update_data_meta_with_pp_desc,
     create_plot_payload,
 )
-from salk_toolkit.pp.common import _question_meta_clone
 from salk_toolkit.io import extract_column_meta
+from salk_toolkit.pp.common import _question_meta_clone
 from salk_toolkit.validation import DataMeta, GroupOrColumnMeta, PlotDescriptor, soft_validate
 from pydantic import ValidationError
 
