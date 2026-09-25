@@ -176,6 +176,7 @@ class ColumnMeta(PBase):
     neutral_middle: Optional[str] = (
         None  # For ordered categoricals - if there is a neutral category, which one should be in the middle?
     )
+    pole_labels: Optional[Tuple[str, str]] = None  # Bipolar likert: (statement at first category, at last category)
 
     topo_feature: Optional[Tuple[str, str, str]] = None  # Link to a geojson/topojson [url,type,col_name inside geodata]
     electoral_system: Optional[ElectoralSystem] = None  # Information about electoral system
@@ -203,6 +204,9 @@ class ColumnMeta(PBase):
         # describes parsing, and the parsed values can be bucketed into categories.)
         if self.continuous and self.categories is not None:
             raise ValueError(f"Column is continuous, so it cannot have categories: {self.categories}")
+        # A blank pole statement is meaningless, so never soft
+        if self.pole_labels is not None and not all(self.pole_labels):
+            raise ValueError("pole_labels entries must be non-empty")
 
         if info.context and info.context.get("validation_mode") == "soft":
             return self
@@ -224,6 +228,8 @@ class ColumnMeta(PBase):
                 for f in ["likert"]:  # ['num_values'] can be situationally useful in non-ordered settings
                     if getattr(self, f):
                         raise ValueError(f"Field {f} only makes sense for ordered categorical columns")
+            if self.pole_labels and not self.likert:
+                raise ValueError("pole_labels only makes sense for likert columns")
         return self
 
 

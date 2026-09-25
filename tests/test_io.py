@@ -1305,6 +1305,39 @@ class TestCategoricalFeatures:
         with pytest.raises(ValidationError, match="continuous, so it cannot have categories"):
             read_annotated_data(str(meta_file))
 
+    @staticmethod
+    def _write_pole_meta(csv_file, meta_file, pole_labels):
+        """Write a one-item likert block whose column `q` carries `pole_labels`."""
+        df_to_csv(pd.DataFrame({"q": ["-1", "1"], "id": [1, 2]}), csv_file)
+        scale = {"categories": ["-1", "0", "1"], "ordered": True, "likert": True}
+        block = {"name": "t", "scale": scale, "columns": ["id", ["q", {"pole_labels": pole_labels}]]}
+        write_json(meta_file, {"file": "test.csv", "structure": [block]})
+
+    @pytest.mark.parametrize(
+        "labels,match",
+        [(["Left"], None), (["Left", "Mid", "Right"], None), (["", "Right"], "non-empty")],
+        ids=["len1", "len3", "blank"],
+    )
+    def test_bad_pole_labels_fail_to_load(self, csv_file, meta_file, labels, match):
+        """pole_labels must be exactly two non-empty statements; the blank check holds even under soft validation."""
+        self._write_pole_meta(csv_file, meta_file, labels)
+        with pytest.raises(ValidationError, match=match):
+            read_annotated_data(str(meta_file))
+
+    def test_pole_labels_require_likert(self):
+        """Poles describe the ends of a symmetric scale, so a non-likert categorical rejects them."""
+        with pytest.raises(ValidationError, match="only makes sense for likert"):
+            ColumnMeta(categories=["a", "b"], ordered=True, pole_labels=("Left", "Right"))
+        # Bare column without categories defers the check to the scale merge
+        ColumnMeta(pole_labels=("Left", "Right"))
+
+    def test_pole_labels_inherit_likert_from_block_scale(self, csv_file, meta_file):
+        """A column's pole_labels combines with the block's likert scale and lands on the merged column meta."""
+        self._write_pole_meta(csv_file, meta_file, ["Left", "Right"])
+        _, meta = read_annotated_data(str(meta_file), return_meta=True)
+        col = extract_column_meta(meta)["q"]
+        assert col.likert and col.pole_labels == ("Left", "Right")
+
     def test_column_type_overrides_block_scale_type(self, csv_file, meta_file):
         """A column declaring `continuous` opts out of the block's categories instead of inheriting a contradiction."""
         df_to_csv(pd.DataFrame({"score": [1, 2, 3], "rating": ["a", "b", "a"], "id": [1, 2, 3]}), csv_file)

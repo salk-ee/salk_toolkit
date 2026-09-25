@@ -82,7 +82,7 @@ def _translate_df(df: pd.DataFrame, translate: Callable[[str], str]) -> pd.DataF
 
     # `reverse_` maxdiff companions are found by prefix and never shown, so leave them untranslated
     def _keep(c: str) -> bool:
-        return c in special_columns or c.endswith("_label") or c.startswith("reverse_")
+        return c in special_columns or c.endswith("_label") or c == POLES_COL or c.startswith("reverse_")
 
     df.columns = [(c if _keep(c) else translate(c)) for c in df.columns]
     for c in df.columns:
@@ -93,14 +93,15 @@ def _translate_df(df: pd.DataFrame, translate: Callable[[str], str]) -> pd.DataF
     return df
 
 
-def _relabel(col: pd.Series, labels: Mapping[str, Any]) -> np.ndarray | pd.Series:
+POLES_COL = "question_pole_labels"
+
+
+def _relabel(col: pd.Series, labels: Mapping[str, Any]) -> np.ndarray:
     """Map values to their detailed labels, leaving unmapped ones alone."""
 
-    if not isinstance(col.dtype, pd.CategoricalDtype):
-        return col.astype("object").replace(dict(labels))
-
-    # Relabel the categories rather than a million rows; -1 codes are nulls
-    mapped = np.array([labels.get(c, c) for c in col.cat.categories] + [None], dtype=object)
+    # Relabel the categories rather than a million rows; -1 codes are nulls. pd.Series keeps tuple values 1-D
+    col = col.astype("category")
+    mapped = pd.Series([labels.get(c, c) for c in col.cat.categories] + [None], dtype=object).to_numpy()
     return mapped[col.cat.codes.to_numpy()]
 
 
@@ -130,6 +131,10 @@ def _create_tooltip(
                 q_labels[c.removeprefix(prefix)] = meta.label
         if q_labels:
             label_dict["question"] = q_labels
+        # Bipolar items: stamp the (neg, pos) pole tuple per row (None for questions without poles)
+        poles = {c.removeprefix(prefix): m.pole_labels if (m := c_meta.get(c)) else None for c in qvals}
+        if any(poles.values()):
+            data[POLES_COL] = _relabel(data["question"], poles)
 
     # Determine the columns we need tooltips for:
     tcols = [f.col for f in pi.facets if f.col in data.columns]
