@@ -68,6 +68,7 @@ from scipy.cluster import hierarchy
 
 from salk_toolkit import utils as utils
 from salk_toolkit.pp import AltairChart, FacetMeta, PlotInput, stk_plot
+from salk_toolkit.pp.plotting import POLES_COL
 
 # --------------------------------------------------------
 #          LEGEND UTILITIES
@@ -215,12 +216,18 @@ def boxplot_manual(p: PlotInput) -> AltairChart:
         minv -= 0.01
         maxv += 0.01
 
-    group_cols = p.outer_factors + [facet.col for facet in p.facets[:2] if facet is not None]
+    group_cols = utils.gb_cols_with_tooltip_fields(
+        p.outer_factors + [facet.col for facet in p.facets[:2] if facet is not None],
+        p.tooltip,
+        data.columns,
+        p.value_col,
+    )
     df = (
         data.groupby(group_cols, observed=True)[p.value_col]
         .apply(boxplot_vals, delta=(maxv - minv) / 400)
         .reset_index()
     )
+    df = utils.reattach_question_attrs(df, data)
     _clean_levels(df)
 
     shared = {
@@ -305,9 +312,15 @@ def denstrip(p: PlotInput) -> AltairChart:
         data, fmt = data.assign(**{p.value_col: data[p.value_col] * 100}), fmt[:-1] + "f"
 
     levels, cols = [*_DENSTRIP_P, 0.25, 0.75], [*(f"dq{i}" for i in range(len(_DENSTRIP_P))), "q1", "q3"]
-    group_cols = p.outer_factors + [f.col for f in p.facets[:2]]
+    group_cols = utils.gb_cols_with_tooltip_fields(
+        p.outer_factors + [f.col for f in p.facets[:2]],
+        p.tooltip,
+        data.columns,
+        p.value_col,
+    )
     df = data.groupby(group_cols, observed=True)[p.value_col].quantile(levels).unstack()[levels]
     df = df.set_axis(cols, axis=1).reset_index()
+    df = utils.reattach_question_attrs(df, data)
     q = df[cols[:-2]].to_numpy(float)
     offs = (q - q[:, :1]) / np.maximum(q[:, -1:] - q[:, :1], 1e-12)
     df = df.drop(columns=cols[1:-3]).assign(denstrip_row=range(len(df)))
@@ -383,13 +396,22 @@ def maxdiff_manual(p: PlotInput) -> AltairChart:
     if minv == maxv:
         minv, maxv = minv - 0.01, maxv + 0.01
 
-    f_cols = p.outer_factors + [facet.col for facet in p.facets[:2] if facet is not None]
+    f_cols = utils.gb_cols_with_tooltip_fields(
+        p.outer_factors + [facet.col for facet in p.facets[:2] if facet is not None],
+        p.tooltip,
+        data.columns,
+        p.value_col,
+    )
     df = data.groupby(f_cols, observed=True)[p.value_col].apply(boxplot_vals, delta=(maxv - minv) / 400).reset_index()
     df_reverse = (
         data.groupby(f_cols, observed=True)[reverse_val_col]
         .apply(boxplot_vals, delta=(maxv - minv) / 400)
         .reset_index()
     )
+    df = utils.reattach_question_attrs(df, data)
+    df_reverse = utils.reattach_question_attrs(df_reverse, data)
+    attr_cols = [c for c in ("question_label", POLES_COL) if c in df.columns and c not in f_cols]
+
     df_reverse["mean"] = -df_reverse["mean"]
     df_reverse["kind"] = "Least important"
 
@@ -410,8 +432,9 @@ def maxdiff_manual(p: PlotInput) -> AltairChart:
         + p.tooltip[1:],
     }
 
+    keep_cols = f_cols + attr_cols + ["kind", "mean"]
     df = pd.concat(
-        [df[f_cols + ["kind", "mean"]], df_reverse[f_cols + ["kind", "mean"]]],
+        [df[keep_cols], df_reverse[keep_cols]],
         ignore_index=True,
         sort=False,
     )
@@ -1030,6 +1053,7 @@ def density(
         scale=stacked,
         bw=bw,
     ).reset_index()
+    ndata = utils.reattach_question_attrs(ndata, data)
     _clean_levels(ndata)
 
     selection = None
@@ -1148,6 +1172,7 @@ def violin(
         scale=True,
         bw=bw,
     ).reset_index()
+    ndata = utils.reattach_question_attrs(ndata, data)
     _clean_levels(ndata)
 
     if f1:
@@ -1614,7 +1639,7 @@ def draws_to_hdis(
 ) -> pd.DataFrame:
     """Compute HDI intervals for draw data."""
 
-    gbc = [c for c in data.columns if c not in [vc, "draw"]]
+    gbc = [c for c in data.columns if c not in (vc, "draw", POLES_COL)]
     ldfs = []
     for hdiv in hdi_vals:
         ldf_v = (
@@ -1626,7 +1651,7 @@ def draws_to_hdis(
         ldfs.append(ldf_v)
     ldf = pd.concat(ldfs).reset_index(drop=True)
     df = ldf.pivot(index=gbc + ["hdi"], columns=ldf.columns[-3], values=vc).reset_index()
-    return df
+    return utils.reattach_question_attrs(df, data)
 
 
 @stk_plot(
@@ -1848,6 +1873,7 @@ def likert_rad_pol(
         cat_order=f0.order,
         value_col=p.value_col,
     ).reset_index()
+    likert_indices = utils.reattach_question_attrs(likert_indices, data)
 
     if normalized and len(likert_indices) > 1:
         likert_indices.loc[:, ["polarisation", "radicalisation"]] = likert_indices[
@@ -2203,6 +2229,7 @@ def facet_dist(
         value_col=p.value_col,
         factor_col=f0.col,
     ).reset_index()
+    ndata = utils.reattach_question_attrs(ndata, data)
     _clean_levels(ndata)
     plot = (
         alt.Chart(ndata)

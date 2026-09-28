@@ -56,6 +56,7 @@ __all__ = [
     "multicol_to_vals_cats",
     "read_json",
     "read_yaml",
+    "reattach_question_attrs",
     "rel_wave_times",
     "rename_cats",
     "replace_cat_with_dummies",
@@ -952,6 +953,25 @@ def gb_cols_with_tooltip_fields(
             skip.add(fld)
             out.append(fld)
     return out
+
+
+POLES_COL = "question_pole_labels"
+
+
+def reattach_question_attrs(
+    ndata: pd.DataFrame,
+    data: pd.DataFrame,
+    key: str = "question",
+    cols: Iterable[str] = ("question_label", POLES_COL),
+) -> pd.DataFrame:
+    """Left-merge per-``key`` attribute cols from ``data`` onto ``ndata``; skips ones missing or already present."""
+    if key not in ndata.columns or key not in data.columns:
+        return ndata
+    present = [c for c in cols if c in data.columns and c not in ndata.columns]
+    if not present:
+        return ndata
+    attrs = data.drop_duplicates(key)[[key, *present]]
+    return ndata.merge(attrs, on=key, how="left")
 
 
 def complete_grid(
