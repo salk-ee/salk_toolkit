@@ -942,8 +942,9 @@ def gb_cols_with_tooltip_fields(
     data_columns: pd.Index | Sequence[str],
     value_col: str,
     exclude: Iterable[str] = (),
+    carry: Iterable[str] = (),
 ) -> list[str]:
-    """Build groupby columns from ``base_cols``, adding tooltip label fields present in ``data_columns``."""
+    """Build groupby columns from ``base_cols``, plus tooltip and ``carry`` fields present in ``data_columns``."""
     out: list[str] = [c for c in base_cols if c is not None]
     skip = set(out) | {value_col} | set(exclude)
     for t in tooltip:
@@ -951,6 +952,10 @@ def gb_cols_with_tooltip_fields(
         if fld and fld in data_columns and fld not in skip:
             skip.add(fld)
             out.append(fld)
+    for c in carry:
+        if c in data_columns and c not in skip:
+            skip.add(c)
+            out.append(c)
     return out
 
 
@@ -991,9 +996,13 @@ def gb_in_apply(
     gb_cols: Sequence[str],
     fn: Callable[..., pd.DataFrame | pd.Series],
     cols: Sequence[str] | None = None,
+    dropna: bool = True,
     **kwargs: object,
 ) -> pd.DataFrame:
-    """Groupby apply if needed - similar to gb_in but for apply."""
+    """Groupby apply if needed - similar to gb_in but for apply.
+
+    ``dropna=False`` keeps groups whose key is ``None`` (e.g. a carried column that is null for some rows).
+    """
 
     if cols is None:
         cols = list(df.columns)
@@ -1003,7 +1012,7 @@ def gb_in_apply(
             res = pd.DataFrame(res).T
     else:
         # Convert to list for pandas groupby overload matching
-        res = df.groupby(list(gb_cols), observed=True)[cols].apply(fn, **kwargs)  # type: ignore[call-overload]
+        res = df.groupby(list(gb_cols), observed=True, dropna=dropna)[cols].apply(fn, **kwargs)  # type: ignore[call-overload]
         # No groups means pandas never called fn and handed back the input's columns, group keys
         # included - which then collide with the same names in the index on reset_index()
         if df.empty:

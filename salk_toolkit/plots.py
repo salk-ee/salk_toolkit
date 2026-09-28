@@ -68,6 +68,7 @@ from scipy.cluster import hierarchy
 
 from salk_toolkit import utils as utils
 from salk_toolkit.pp import AltairChart, FacetMeta, PlotInput, stk_plot
+from salk_toolkit.pp.plotting import POLES_COL
 
 # --------------------------------------------------------
 #          LEGEND UTILITIES
@@ -215,9 +216,15 @@ def boxplot_manual(p: PlotInput) -> AltairChart:
         minv -= 0.01
         maxv += 0.01
 
-    group_cols = p.outer_factors + [facet.col for facet in p.facets[:2] if facet is not None]
+    group_cols = utils.gb_cols_with_tooltip_fields(
+        p.outer_factors + [facet.col for facet in p.facets[:2] if facet is not None],
+        p.tooltip,
+        data.columns,
+        p.value_col,
+        carry=(POLES_COL,),
+    )
     df = (
-        data.groupby(group_cols, observed=True)[p.value_col]
+        data.groupby(group_cols, observed=True, dropna=False)[p.value_col]
         .apply(boxplot_vals, delta=(maxv - minv) / 400)
         .reset_index()
     )
@@ -305,8 +312,14 @@ def denstrip(p: PlotInput) -> AltairChart:
         data, fmt = data.assign(**{p.value_col: data[p.value_col] * 100}), fmt[:-1] + "f"
 
     levels, cols = [*_DENSTRIP_P, 0.25, 0.75], [*(f"dq{i}" for i in range(len(_DENSTRIP_P))), "q1", "q3"]
-    group_cols = p.outer_factors + [f.col for f in p.facets[:2]]
-    df = data.groupby(group_cols, observed=True)[p.value_col].quantile(levels).unstack()[levels]
+    group_cols = utils.gb_cols_with_tooltip_fields(
+        p.outer_factors + [f.col for f in p.facets[:2]],
+        p.tooltip,
+        data.columns,
+        p.value_col,
+        carry=(POLES_COL,),
+    )
+    df = data.groupby(group_cols, observed=True, dropna=False)[p.value_col].quantile(levels).unstack()[levels]
     df = df.set_axis(cols, axis=1).reset_index()
     q = df[cols[:-2]].to_numpy(float)
     offs = (q - q[:, :1]) / np.maximum(q[:, -1:] - q[:, :1], 1e-12)
@@ -383,10 +396,20 @@ def maxdiff_manual(p: PlotInput) -> AltairChart:
     if minv == maxv:
         minv, maxv = minv - 0.01, maxv + 0.01
 
-    f_cols = p.outer_factors + [facet.col for facet in p.facets[:2] if facet is not None]
-    df = data.groupby(f_cols, observed=True)[p.value_col].apply(boxplot_vals, delta=(maxv - minv) / 400).reset_index()
+    f_cols = utils.gb_cols_with_tooltip_fields(
+        p.outer_factors + [facet.col for facet in p.facets[:2] if facet is not None],
+        p.tooltip,
+        data.columns,
+        p.value_col,
+        carry=(POLES_COL,),
+    )
+    df = (
+        data.groupby(f_cols, observed=True, dropna=False)[p.value_col]
+        .apply(boxplot_vals, delta=(maxv - minv) / 400)
+        .reset_index()
+    )
     df_reverse = (
-        data.groupby(f_cols, observed=True)[reverse_val_col]
+        data.groupby(f_cols, observed=True, dropna=False)[reverse_val_col]
         .apply(boxplot_vals, delta=(maxv - minv) / 400)
         .reset_index()
     )
@@ -1010,6 +1033,7 @@ def density(
         p.tooltip,
         data.columns,
         p.value_col,
+        carry=(POLES_COL,),
     )
 
     lims = list(data[p.value_col].quantile([0.005, 0.995]))
@@ -1029,6 +1053,7 @@ def density(
         ls=ls,
         scale=stacked,
         bw=bw,
+        dropna=False,
     ).reset_index()
     _clean_levels(ndata)
 
@@ -1133,6 +1158,7 @@ def violin(
         p.tooltip,
         data.columns,
         p.value_col,
+        carry=(POLES_COL,),
     )
 
     ls = np.linspace(data[p.value_col].min() - 1e-10, data[p.value_col].max() + 1e-10, 101)
@@ -1147,6 +1173,7 @@ def violin(
         ls=ls,
         scale=True,
         bw=bw,
+        dropna=False,
     ).reset_index()
     _clean_levels(ndata)
 
@@ -1618,7 +1645,7 @@ def draws_to_hdis(
     ldfs = []
     for hdiv in hdi_vals:
         ldf_v = (
-            data.groupby(gbc, observed=True)[vc]
+            data.groupby(gbc, observed=True, dropna=False)[vc]
             .apply(lambda s: pd.Series(list(az.hdi(s.to_numpy(), prob=hdiv)), index=["lo", "hi"]))
             .reset_index()
         )
@@ -1839,6 +1866,7 @@ def likert_rad_pol(
         data.columns,
         p.value_col,
         exclude=(f0.col,),
+        carry=(POLES_COL,),
     )
     likert_indices = utils.gb_in_apply(
         data,
@@ -1847,6 +1875,7 @@ def likert_rad_pol(
         cat_col=f0.col,
         cat_order=f0.order,
         value_col=p.value_col,
+        dropna=False,
     ).reset_index()
 
     if normalized and len(likert_indices) > 1:
@@ -2193,6 +2222,7 @@ def facet_dist(
         data.columns,
         p.value_col,
         exclude=(f0.col,),
+        carry=(POLES_COL,),
     )
 
     ndata = utils.gb_in_apply(
@@ -2202,6 +2232,7 @@ def facet_dist(
         fn=fd_mangle,
         value_col=p.value_col,
         factor_col=f0.col,
+        dropna=False,
     ).reset_index()
     _clean_levels(ndata)
     plot = (

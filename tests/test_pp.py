@@ -33,6 +33,7 @@ from salk_toolkit.pp import (
 )
 from salk_toolkit.io import extract_column_meta
 from salk_toolkit.pp.common import _question_meta_clone
+from salk_toolkit.utils import gb_cols_with_tooltip_fields
 from salk_toolkit.validation import DataMeta, GroupOrColumnMeta, PlotDescriptor, soft_validate
 from pydantic import ValidationError
 
@@ -1614,3 +1615,197 @@ def test_bipolar_poles_are_stamped_per_question() -> None:
     json_data = json.loads(json.dumps(cell))["data"]
     stamped = dict(zip(json_data["question"], json_data["question_pole_labels"]))
     assert stamped == {"immigration": ["Enriches", "Threat"], "evoting": None}
+
+
+def _mixed_pole_battery(n: int = 40) -> tuple[DataMeta, dict[str, GroupOrColumnMeta], pd.DataFrame]:
+    """A gender + 2-question likert battery (one poled, one not), with ``n`` distinct draws per question."""
+    cats = ["-2", "-1", "0", "1", "2"]
+    meta = make_data_meta(
+        {
+            "structure": [
+                {"name": "demographics", "scale": {}, "columns": [["gender", {"categories": ["Female", "Male"]}]]},
+                {
+                    "name": "issues",
+                    "scale": {"col_prefix": "issue_", "categories": cats, "ordered": True, "likert": True},
+                    "columns": [
+                        ["immigration", {"label": "Immigration", "pole_labels": ["Enriches", "Threat"]}],
+                        ["evoting", {"label": "E-voting"}],
+                    ],
+                },
+            ]
+        }
+    )
+    col_meta = extract_column_meta(meta)
+    rng = np.random.default_rng(0)
+    df = pd.DataFrame(
+        {
+            "draw": list(range(n)),
+            "gender": rng.choice(["Female", "Male"], size=n),
+            "issue_immigration": pd.Categorical(rng.choice(cats, size=n), categories=cats, ordered=True),
+            "issue_evoting": pd.Categorical(rng.choice(cats, size=n), categories=cats, ordered=True),
+        }
+    )
+    return meta, col_meta, df
+
+
+def _pole_battery_payload(plot: str) -> dict[str, Any]:
+    """Build a draws-aggregating plot's payload over the mixed pole battery."""
+    meta, col_meta, df = _mixed_pole_battery()
+    ppd = soft_validate(
+        {"res_col": "issues", "facet_dims": ["question"], "convert_res": "continuous", "plot": plot},
+        PlotDescriptor,
+    )
+    ppd = ppd.model_copy(update={"facet_dims": impute_facet_dims(ppd, col_meta)})
+    pi = pp_transform_data(pl.LazyFrame(df), meta, ppd)
+    return create_plot_payload(pi, ppd)
+
+
+def test_density_carries_poles_and_label_through_aggregation() -> None:
+    """density groups draws by question; question_label/poles must survive per question, none dropped."""
+    payload = _pole_battery_payload("density")
+    assert {c["keys"]["question"] for c in (cell for row in payload["cells"] for cell in row)} == {
+        "immigration",
+        "evoting",
+    }
+    for row in payload["cells"]:
+        for cell in row:
+            assert {"question_label", "question_pole_labels"}.issubset(cell["columns"])
+            json_data = json.loads(json.dumps(cell))["data"]
+            assert all(lbl is not None for lbl in json_data["question_label"])
+            poles = set(tuple(p) if isinstance(p, list) else p for p in json_data["question_pole_labels"])
+            expected = {("Enriches", "Threat")} if cell["keys"]["question"] == "immigration" else {None}
+            assert poles == expected
+
+
+def test_boxplots_carry_poles_and_label_alongside_stats() -> None:
+    """boxplot_manual's groupby must keep question_label/poles next to the six summary stats."""
+    payload = _pole_battery_payload("boxplots")
+    cell = payload["cells"][0][0]
+    assert {"question_label", "question_pole_labels", "min", "q1", "mean", "max"}.issubset(cell["columns"])
+    json_data = json.loads(json.dumps(cell))["data"]
+    stamped = dict(zip(json_data["question"], json_data["question_pole_labels"]))
+    assert stamped == {"immigration": ["Enriches", "Threat"], "evoting": None}
+    labels = dict(zip(json_data["question"], json_data["question_label"]))
+    assert labels == {"immigration": "Immigration", "evoting": "E-voting"}
+
+
+def test_violin_columns_include_poles_and_label() -> None:
+    """violin's per-question density groupby must also carry question_label/poles."""
+    payload = _pole_battery_payload("violin")
+    cell = payload["cells"][0][0]
+    assert {"question_label", "question_pole_labels", "density"}.issubset(cell["columns"])
+
+
+def test_gb_cols_with_tooltip_fields_carry() -> None:
+    """``carry`` appends a present column once, skips an absent one, and honors ``exclude``."""
+    df_cols = pd.Index(["gender", "question_pole_labels", "value", "already_in"])
+    out = gb_cols_with_tooltip_fields(
+        ["already_in"], [], df_cols, "value", carry=("question_pole_labels", "missing_col", "already_in")
+    )
+    assert out == ["already_in", "question_pole_labels"]
+
+    excluded = gb_cols_with_tooltip_fields(
+        ["gender"], [], df_cols, "value", exclude=("question_pole_labels",), carry=("question_pole_labels",)
+    )
+    assert excluded == ["gender"]
+
+
+def test_maxdiff_carries_poles_and_label_through_aggregation() -> None:
+    """maxdiff_manual's groupby mirrors boxplot_manual's pre-fix shape; must carry question_label/poles too."""
+    rng = np.random.default_rng(0)
+    n = 20
+    data = pd.DataFrame(
+        {
+            "question": pd.Categorical(["immigration"] * n + ["evoting"] * n, categories=["immigration", "evoting"]),
+            "question_label": ["Immigration"] * n + ["E-voting"] * n,
+            "question_pole_labels": [("Enriches", "Threat")] * n + [None] * n,
+            "score": rng.normal(size=2 * n),
+            "reverse_score": rng.normal(size=2 * n),
+        }
+    )
+    pi = PlotInput(
+        data=data,
+        value_col="score",
+        val_format=".1%",
+        facets=[FacetMeta(col="question", order=["immigration", "evoting"], colors=alt.Undefined)],
+        tooltip=[
+            alt.Tooltip(field="score", type="quantitative"),
+            alt.Tooltip(field="question_label", type="nominal", title="question"),
+        ],
+    )
+    df = get_plot_fn("maxdiff")(pi).data
+    assert {"question_label", "question_pole_labels"}.issubset(df.columns)
+    assert set(df["question"]) == {"immigration", "evoting"}  # no question dropped
+    stamped = dict(zip(df["question"], df["question_pole_labels"]))
+    assert stamped["immigration"] == ("Enriches", "Threat")
+    assert pd.isna(stamped["evoting"])
+
+
+def test_lines_hdi_carries_poles_and_label_through_aggregation() -> None:
+    """draws_to_hdis's wildcard groupby key sweeps in question_pole_labels; dropna=False keeps unpoled questions."""
+    rng = np.random.default_rng(0)
+    n = 30
+    rows = []
+    for q, lbl, pole in [("immigration", "Immigration", ("Enriches", "Threat")), ("evoting", "E-voting", None)]:
+        for t in range(3):
+            for d in range(n):
+                rows.append(
+                    {
+                        "question": q,
+                        "question_label": lbl,
+                        "question_pole_labels": pole,
+                        "t": t,
+                        "draw": d,
+                        "score": rng.normal(loc=t, size=1)[0],
+                    }
+                )
+    data = pd.DataFrame(rows)
+    data["question"] = pd.Categorical(data["question"], categories=["immigration", "evoting"])
+    data["t"] = pd.Categorical(data["t"], categories=list(range(3)), ordered=True)
+
+    pi = PlotInput(
+        data=data,
+        value_col="score",
+        val_format=".2f",
+        facets=[
+            FacetMeta(col="question", order=["immigration", "evoting"], colors=alt.Undefined),
+            FacetMeta(col="t", order=list(range(3)), colors=alt.Undefined),
+        ],
+        tooltip=[
+            alt.Tooltip(field="score", type="quantitative"),
+            alt.Tooltip(field="question_label", type="nominal", title="question"),
+        ],
+    )
+    df = get_plot_fn("lines_hdi")(pi).data
+    assert {"question_label", "question_pole_labels"}.issubset(df.columns)
+    assert set(df["question"]) == {"immigration", "evoting"}  # no question dropped
+    poles = df.drop_duplicates("question").set_index("question")["question_pole_labels"]
+    assert poles["immigration"] == ("Enriches", "Threat")
+    assert pd.isna(poles["evoting"])
+
+
+def test_denstrip_columns_include_poles_and_label() -> None:
+    """denstrip's quantile groupby must also carry question_label/poles, dropping no question."""
+    rng = np.random.default_rng(0)
+    n = 30
+    data = pd.DataFrame(
+        {
+            "question": pd.Categorical(["immigration"] * n + ["evoting"] * n, categories=["immigration", "evoting"]),
+            "question_label": ["Immigration"] * n + ["E-voting"] * n,
+            "question_pole_labels": [("Enriches", "Threat")] * n + [None] * n,
+            "score": rng.normal(size=2 * n),
+        }
+    )
+    pi = PlotInput(
+        data=data,
+        value_col="score",
+        val_format=".2f",
+        facets=[FacetMeta(col="question", order=["immigration", "evoting"], colors=alt.Undefined)],
+        tooltip=[
+            alt.Tooltip(field="score", type="quantitative"),
+            alt.Tooltip(field="question_label", type="nominal", title="question"),
+        ],
+    )
+    df = get_plot_fn("denstrip")(pi).data
+    assert {"question_label", "question_pole_labels"}.issubset(df.columns)
+    assert set(df["question"]) == {"immigration", "evoting"}  # no question dropped
