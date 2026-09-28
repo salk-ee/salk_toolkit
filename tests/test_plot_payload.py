@@ -159,6 +159,14 @@ def test_payload_shape_columns(small_pi_fixture, ppd_columns):
         assert f["colors"] is None or all(isinstance(c, str) for c in f["colors"].values())
 
 
+def test_payload_denstrip_carries_all_deciles(small_pi_fixture):
+    """denstrip ships dq0..dq10 plus q1/q3 so a non-Vega renderer can anchor its own gradient."""
+
+    ppd = PlotDescriptor(plot="denstrip", res_col="score", facet_dims=["group.a"])
+    cols = set(pp.create_plot_payload(small_pi_fixture, ppd)["cells"][0][0]["columns"])
+    assert {f"dq{i}" for i in range(11)} | {"q1", "q3"} <= cols
+
+
 def test_payload_echoes_filter_weights(small_pi_fixture, ppd_columns):
     """The payload carries pre-filter (`total_size`) and post-filter (`filtered_size`) weight
     so the frontend can render "filtered to X%"."""

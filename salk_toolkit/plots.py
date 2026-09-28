@@ -310,7 +310,8 @@ def denstrip(p: PlotInput) -> AltairChart:
     df = df.set_axis(cols, axis=1).reset_index()
     q = df[cols[:-2]].to_numpy(float)
     offs = (q - q[:, :1]) / np.maximum(q[:, -1:] - q[:, :1], 1e-12)
-    df = df.drop(columns=cols[1:-3]).assign(denstrip_row=range(len(df)))
+    # All deciles stay on the frame so the payload path can hand them to non-Vega renderers
+    df = df.assign(denstrip_row=range(len(df)))
 
     dom, rng = (cf.colors.domain, cf.colors.range) if isinstance(cf.colors, alt.Scale) else (cf.order, _VEGA_TABLEAU10)
     cmap = {d: rng[i % len(rng)] for i, d in enumerate(dom)}
