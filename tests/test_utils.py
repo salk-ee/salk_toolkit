@@ -33,6 +33,7 @@ from salk_toolkit.utils import (
     rel_wave_times,
     stable_draws,
     deterministic_draws,
+    enable_string_cache,
     clean_kwargs,
     call_kwsafe,
     censor_dict,
@@ -446,6 +447,12 @@ class TestDataProcessing:
 
 class TestTimeAndRandomUtilities:
     """Test time and random utility functions."""
+
+    def test_enable_string_cache_is_quiet_on_both_polars_majors(self):
+        """Polars 2 deprecated the string cache, so we must not call it there."""
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            enable_string_cache()
 
     def test_stable_draws(self):
         """Test stable_draws function."""
