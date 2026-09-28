@@ -54,7 +54,9 @@ def serialize_pbase(
     for key, value in serialized.items():
         default_val = default_values.get(key)
         if value is None:
-            continue  # Always skip None
+            if key in default_values and default_values[key] is not None:
+                result[key] = None  # an explicit null that overrides a non-null default must survive
+            continue
         if value == default_val:
             continue  # Skip if matches default
         # For optional fields (those that have a declared default), also strip
@@ -140,6 +142,13 @@ def serialize_column_block_meta(
         # Convert columns dict to list format
         if "columns" in serialized and isinstance(serialized["columns"], dict):
             serialized["columns"] = _cs_dict_to_lst(serialized["columns"])
+
+    # Preserve the discriminator on specialized subclasses (topk/maxdiff) even when it
+    # matches the subclass's own default; otherwise discriminated-union re-validation
+    # can't recover the subclass. Plain blocks still omit "type" for visual stability.
+    block_type = getattr(model, "type", None)
+    if block_type and block_type != "plain":
+        serialized["type"] = block_type
 
     return serialized
 

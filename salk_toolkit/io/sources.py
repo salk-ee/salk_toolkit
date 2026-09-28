@@ -28,7 +28,7 @@ from salk_toolkit.io.core import (
     _deterministic_categories_and_values,
     mint_positional_row_id,
 )
-from salk_toolkit.io.meta import _fix_meta_categories
+from salk_toolkit.io.meta import _fix_meta_categories, _merge_data_metas
 from salk_toolkit.io.parquet import read_parquet_with_metadata
 from salk_toolkit.io.pipeline import process
 
@@ -152,7 +152,7 @@ def _load_data_files(
     """
 
     raw_data_dict: dict[str, pd.DataFrame] = {}
-    meta: DataMeta | None = None
+    metas: list[DataMeta] = []
     einfo: dict[str, object] = {}
     if read_opts is None:
         read_opts = {}
@@ -189,8 +189,7 @@ def _load_data_files(
             # Pass in orig_data_file here as it might loop back to this function here and we need to preserve paths
             raw_data, result_meta = _load_dataset(cast(str, data_file), opts)
             if result_meta is not None:
-                # TODO: one should also merge the structures in case the columns don't match
-                meta = soft_validate(result_meta, DataMeta, warnings=True)  # Last annotated source wins
+                metas.append(soft_validate(result_meta, DataMeta, warnings=True))
         elif extension in readers._TABULAR_EXTENSIONS:
             raw_data, fenv = readers._read_tabular(
                 cast(str, mapped_file), extension, cast(dict[str, Any], fopts) if fopts else {}
@@ -231,8 +230,11 @@ def _load_data_files(
 
         raw_data_dict[file_code] = raw_data
 
-    if meta is None:  # Do we have any metainfo?
+    if not metas:  # Do we have any metainfo?
         return SourceBundle(frames=raw_data_dict, env=einfo)
+
+    # Union block structure (blocks + column lists) across all annotated sources in file order
+    meta = _merge_data_metas(metas)
 
     # pd.concat collapses categoricals with differing category lists to object, so unify first
     if len(raw_data_dict) > 1:
