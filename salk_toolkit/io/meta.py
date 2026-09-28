@@ -6,6 +6,7 @@ from typing import TypeVar
 import pandas as pd
 
 from salk_toolkit import utils
+from salk_toolkit.utils import is_date_str_series
 from salk_toolkit.utils import (
     is_datetime,
     warn,
@@ -325,9 +326,10 @@ def _fix_meta_categories(
                         warn(f"Fixing missing categories for {cn}: {diff}")
                     # Preserve original order and append missing categories at the end
                     existing_cats = list(col_meta.categories)
-                    # Preserve the observed dtype category order (do NOT sort).
+                    # Keep the declared order and append novel values; dates have one order, take the dtype's
                     missing_cats = [c for c in cats if c not in existing_cats]
-                    updated_col_meta = col_meta.model_copy(update={"categories": existing_cats + missing_cats})
+                    merged = list(cats) if is_date_str_series(pd.Series(list(cats))) else existing_cats + missing_cats
+                    updated_col_meta = col_meta.model_copy(update={"categories": merged})
                 all_cats |= set(cats)
             updated_columns[cn] = updated_col_meta
 

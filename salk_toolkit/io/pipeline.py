@@ -20,13 +20,17 @@ from salk_toolkit.io.core import (
     HookEnv,
     ProcessOpts,
     SourceBundle,
+    WAVE_TIME_COL,
     _deterministic_categories_and_values,
     _is_series_of_lists,
     finalize_row_index,
     restore_or_assert_row_id,
 )
 from salk_toolkit.io.create_blocks import _create_new_columns_and_metas
+
 from salk_toolkit.io.meta import _fix_meta_categories
+
+WAVES_BLOCK = "waves"
 
 
 def _file_meta_map(dfs: dict[str, pd.DataFrame]) -> dict[str, str]:
@@ -41,41 +45,49 @@ def _file_meta_map(dfs: dict[str, pd.DataFrame]) -> dict[str, str]:
     return dict(zip(fm["file_code"], fm["file_name"]))
 
 
-def _inject_files_block(bundle: SourceBundle, meta_obj: DataMeta, file_names: dict[str, str]) -> DataMeta:
-    """(Re)stamp provenance columns and add the generated `files` block to the structure.
+def _upsert_generated_block(structure: dict, name: str, cols: dict, hidden: bool) -> dict:
+    """Add a generated block, or extend one of that name; a user's own block keeps its columns and visibility."""
+    new = soft_validate({"name": name, "generated": True, "hidden": hidden, "columns": cols}, ColumnBlockMeta)
+    if (old := structure.get(name)) is not None:
+        vis = {"hidden": hidden} if old.generated else {}
+        new = old.model_copy(update={"columns": {**new.columns, **old.columns}, **vis})
+    return {**structure, name: new}
 
-    The columns are overwritten to guarantee correctness even if preprocessing mutated/dropped them.
-    The block gets explicit ordered categories (no "infer") for determinism, so the system file
-    columns can be used downstream (e.g. plotting/pipeline).
-    """
+
+def _own_columns(meta_obj: DataMeta) -> set[str]:
+    """Columns the annotation declares itself (our generated waves block excepted)."""
+    return {cn for g in meta_obj.structure.values() if not (g.name == WAVES_BLOCK and g.generated) for cn in g.columns}
+
+
+def _collection_date(meta_obj: DataMeta) -> str | None:
+    """Meta's survey date as ISO: collection_center, else the midpoint of whichever of start/end are set."""
+    c, start, end = meta_obj.collection_center, meta_obj.collection_start, meta_obj.collection_end
+    if not (c or start or end):
+        return None
+    try:  # a center given on both sides makes the midpoint the center itself
+        s, e = pd.Timestamp(c or start or end), pd.Timestamp(c or end or start)
+    except ValueError as exc:
+        raise ValueError(f"Unparseable collection date: center={c!r} start={start!r} end={end!r}") from exc
+    return (s + (e - s) / 2).strftime("%Y-%m-%d")
+
+
+def _inject_files_block(bundle: SourceBundle, meta_obj: DataMeta, file_names: dict[str, str]) -> DataMeta:
+    """(Re)stamp provenance columns and declare the generated `files` and `waves` blocks, so the system
+    columns survive `_build_columns` with explicit ordered categories (no "infer") for determinism."""
     for fc, fdf in bundle.frames.items():
         fdf["file_code"] = str(fc)
         fdf["file_name"] = file_names[fc]
-
-    sys_block_name = "files"
-    sys_block_hidden = len(bundle.frames) <= 1
-    sys_block_dict: dict[str, object] = {
-        "name": sys_block_name,
-        "generated": True,
-        "hidden": sys_block_hidden,
-        "columns": {
-            "file_code": {"categories": [str(fc) for fc in bundle.frames], "ordered": True},
-            "file_name": {"categories": [file_names[fc] for fc in bundle.frames], "ordered": True},
-        },
+    files = {
+        "file_code": {"categories": [str(fc) for fc in bundle.frames], "ordered": True},
+        "file_name": {"categories": [file_names[fc] for fc in bundle.frames], "ordered": True},
     }
-    sys_block = soft_validate(sys_block_dict, ColumnBlockMeta)
-    structure2 = dict(meta_obj.structure)
-    if sys_block_name in structure2:
-        existing = structure2[sys_block_name]
-        merged_cols = dict(existing.columns)
-        for k, v in sys_block.columns.items():
-            merged_cols.setdefault(k, v)
-        structure2[sys_block_name] = existing.model_copy(
-            update={"columns": merged_cols, "hidden": sys_block_hidden, "generated": True}
-        )
-    else:
-        structure2[sys_block_name] = sys_block
-    return meta_obj.model_copy(update={"structure": structure2})
+    structure = _upsert_generated_block(dict(meta_obj.structure), "files", files, len(bundle.frames) <= 1)
+    waves = {str(v) for f in bundle.frames.values() if WAVE_TIME_COL in f for v in f[WAVE_TIME_COL].dropna().unique()}
+    if waves and meta_obj.wave_time and WAVE_TIME_COL not in _own_columns(meta_obj):
+        cats = sorted(waves, key=pd.to_datetime)
+        wave = {WAVE_TIME_COL: {"categories": cats, "ordered": True}}
+        structure = _upsert_generated_block(structure, WAVES_BLOCK, wave, len(cats) <= 1)
+    return meta_obj.model_copy(update={"structure": structure})
 
 
 def _gather_source(

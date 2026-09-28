@@ -65,6 +65,7 @@ class ProcessOpts:
     ignore_exclusions: bool = False  # Keep rows listed in meta `excluded`
     add_original_inds: bool = False  # Keep the `original_inds` column in the result
     id_col: str | None = None  # Natural key to derive stable row ids from, if the meta declares one
+    wave_date: str | None = None  # The meta's survey date, stamped onto files that bring none of their own
 
 
 class HookEnv:
@@ -109,6 +110,9 @@ ROW_ID = "row_id"
 
 # Per-file provenance columns injected into every row (paired, must stay 1-to-1).
 PROVENANCE_COLUMNS = ("file_code", "file_name")
+
+# Auto-generated survey-date column (the block holding it is pipeline.WAVES_BLOCK).
+WAVE_TIME_COL = "wave_time"
 
 
 def mint_positional_row_id(df: pd.DataFrame, file_code: str = "F0") -> pd.DataFrame:
