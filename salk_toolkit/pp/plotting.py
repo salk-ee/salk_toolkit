@@ -14,7 +14,7 @@ import polars as pl
 
 import salk_toolkit.utils as utils
 from salk_toolkit.io import read_parquet_with_metadata
-from salk_toolkit.utils import batch, clean_kwargs
+from salk_toolkit.utils import POLES_COL, batch, clean_kwargs
 from salk_toolkit.validation import ColumnMeta, DataMeta, GroupOrColumnMeta, PlotDescriptor, soft_validate
 
 from .common import (
@@ -91,9 +91,6 @@ def _translate_df(df: pd.DataFrame, translate: Callable[[str], str]) -> pd.DataF
             remap = dict(zip(cats, [translate(c) for c in cats]))
             df[c] = df[c].cat.rename_categories(remap)
     return df
-
-
-POLES_COL = "question_pole_labels"
 
 
 def _relabel(col: pd.Series, labels: Mapping[str, Any]) -> np.ndarray:

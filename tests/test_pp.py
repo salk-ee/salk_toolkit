@@ -33,7 +33,7 @@ from salk_toolkit.pp import (
 )
 from salk_toolkit.io import extract_column_meta
 from salk_toolkit.pp.common import _question_meta_clone
-from salk_toolkit.utils import gb_cols_with_tooltip_fields
+from salk_toolkit.utils import reattach_question_attrs
 from salk_toolkit.validation import DataMeta, GroupOrColumnMeta, PlotDescriptor, soft_validate
 from pydantic import ValidationError
 
@@ -1696,18 +1696,34 @@ def test_violin_columns_include_poles_and_label() -> None:
     assert {"question_label", "question_pole_labels", "density"}.issubset(cell["columns"])
 
 
-def test_gb_cols_with_tooltip_fields_carry() -> None:
-    """``carry`` appends a present column once, skips an absent one, and honors ``exclude``."""
-    df_cols = pd.Index(["gender", "question_pole_labels", "value", "already_in"])
-    out = gb_cols_with_tooltip_fields(
-        ["already_in"], [], df_cols, "value", carry=("question_pole_labels", "missing_col", "already_in")
+def test_reattach_question_attrs() -> None:
+    """No-op when ``key`` is absent; retains ``None`` poles; skips a column already in ``ndata``; no row growth."""
+    data = pd.DataFrame(
+        {
+            "question": ["immigration", "immigration", "evoting", "evoting"],
+            "question_label": ["Immigration"] * 2 + ["E-voting"] * 2,
+            "question_pole_labels": [("Enriches", "Threat")] * 2 + [None, None],
+            "score": [1.0, 2.0, 3.0, 4.0],
+        }
     )
-    assert out == ["already_in", "question_pole_labels"]
 
-    excluded = gb_cols_with_tooltip_fields(
-        ["gender"], [], df_cols, "value", exclude=("question_pole_labels",), carry=("question_pole_labels",)
-    )
-    assert excluded == ["gender"]
+    # No-op when `key` missing from `ndata`
+    no_key = pd.DataFrame({"gender": ["F", "M"]})
+    out = reattach_question_attrs(no_key, data)
+    assert out is no_key
+
+    # Merges in question_pole_labels; None poles survive; question_label already present is left alone
+    ndata = pd.DataFrame({"question": ["immigration", "evoting"], "question_label": ["Immigration", "E-voting"]})
+    out = reattach_question_attrs(ndata, data)
+    assert len(out) == len(ndata)  # merge does not multiply rows
+    assert list(out.columns).count("question_label") == 1  # no duplicate/suffixed column
+    stamped = dict(zip(out["question"], out["question_pole_labels"]))
+    assert stamped["immigration"] == ("Enriches", "Threat")
+    assert pd.isna(stamped["evoting"])
+
+    # No-op when there is nothing left to attach
+    already_full = reattach_question_attrs(out, data)
+    assert list(already_full.columns) == list(out.columns)
 
 
 def test_maxdiff_carries_poles_and_label_through_aggregation() -> None:
@@ -1809,3 +1825,4 @@ def test_denstrip_columns_include_poles_and_label() -> None:
     df = get_plot_fn("denstrip")(pi).data
     assert {"question_label", "question_pole_labels"}.issubset(df.columns)
     assert set(df["question"]) == {"immigration", "evoting"}  # no question dropped
+    assert len(df) == data["question"].nunique()  # one row per question, the merge did not multiply rows

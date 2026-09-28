@@ -56,6 +56,7 @@ __all__ = [
     "multicol_to_vals_cats",
     "read_json",
     "read_yaml",
+    "reattach_question_attrs",
     "rel_wave_times",
     "rename_cats",
     "replace_cat_with_dummies",
@@ -942,9 +943,8 @@ def gb_cols_with_tooltip_fields(
     data_columns: pd.Index | Sequence[str],
     value_col: str,
     exclude: Iterable[str] = (),
-    carry: Iterable[str] = (),
 ) -> list[str]:
-    """Build groupby columns from ``base_cols``, plus tooltip and ``carry`` fields present in ``data_columns``."""
+    """Build groupby columns from ``base_cols``, adding tooltip label fields present in ``data_columns``."""
     out: list[str] = [c for c in base_cols if c is not None]
     skip = set(out) | {value_col} | set(exclude)
     for t in tooltip:
@@ -952,11 +952,26 @@ def gb_cols_with_tooltip_fields(
         if fld and fld in data_columns and fld not in skip:
             skip.add(fld)
             out.append(fld)
-    for c in carry:
-        if c in data_columns and c not in skip:
-            skip.add(c)
-            out.append(c)
     return out
+
+
+POLES_COL = "question_pole_labels"
+
+
+def reattach_question_attrs(
+    ndata: pd.DataFrame,
+    data: pd.DataFrame,
+    key: str = "question",
+    cols: Iterable[str] = ("question_label", POLES_COL),
+) -> pd.DataFrame:
+    """Left-merge per-``key`` attribute cols from ``data`` onto ``ndata``; skips ones missing or already present."""
+    if key not in ndata.columns or key not in data.columns:
+        return ndata
+    present = [c for c in cols if c in data.columns and c not in ndata.columns]
+    if not present:
+        return ndata
+    attrs = data.drop_duplicates(key)[[key, *present]]
+    return ndata.merge(attrs, on=key, how="left")
 
 
 def complete_grid(
@@ -996,13 +1011,9 @@ def gb_in_apply(
     gb_cols: Sequence[str],
     fn: Callable[..., pd.DataFrame | pd.Series],
     cols: Sequence[str] | None = None,
-    dropna: bool = True,
     **kwargs: object,
 ) -> pd.DataFrame:
-    """Groupby apply if needed - similar to gb_in but for apply.
-
-    ``dropna=False`` keeps groups whose key is ``None`` (e.g. a carried column that is null for some rows).
-    """
+    """Groupby apply if needed - similar to gb_in but for apply."""
 
     if cols is None:
         cols = list(df.columns)
@@ -1012,7 +1023,7 @@ def gb_in_apply(
             res = pd.DataFrame(res).T
     else:
         # Convert to list for pandas groupby overload matching
-        res = df.groupby(list(gb_cols), observed=True, dropna=dropna)[cols].apply(fn, **kwargs)  # type: ignore[call-overload]
+        res = df.groupby(list(gb_cols), observed=True)[cols].apply(fn, **kwargs)  # type: ignore[call-overload]
         # No groups means pandas never called fn and handed back the input's columns, group keys
         # included - which then collide with the same names in the index on reset_index()
         if df.empty:
