@@ -110,8 +110,6 @@ def pp_transform_data(
     Internally works with polars LazyDataFrame for large data set performance.
     """
 
-    pl.enable_string_cache()  # So we can work on categorical columns
-
     plot_meta = get_plot_meta(pp_desc.plot)
     assert plot_meta is not None, f"Plot '{pp_desc.plot}' not found in registry"
     c_meta, gc_dict = _update_data_meta_with_pp_desc(data_meta, pp_desc)
@@ -719,7 +717,9 @@ def _wrangle_data(
         if len(set(labels)) < len(vals):
             labels = [repr(float(v)) for v in vals]
         # Codes by position in the sorted values - no re-formatting or string factorization per row
-        data[cat_col] = pd.Categorical.from_codes(np.searchsorted(vals, data[cat_col].to_numpy()), labels, ordered=True)
+        data[cat_col] = pd.Categorical.from_codes(
+            np.searchsorted(vals, data[cat_col].to_numpy()), pd.Index(labels), ordered=True
+        )
         update = soft_validate(
             {"continuous": False, "categories": labels, "ordered": True, "num_values": [float(v) for v in vals]},
             GroupOrColumnMeta,
