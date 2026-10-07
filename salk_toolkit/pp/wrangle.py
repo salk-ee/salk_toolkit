@@ -717,7 +717,9 @@ def _wrangle_data(
         if len(set(labels)) < len(vals):
             labels = [repr(float(v)) for v in vals]
         # Codes by position in the sorted values - no re-formatting or string factorization per row
-        data[cat_col] = pd.Categorical.from_codes(np.searchsorted(vals, data[cat_col].to_numpy()), labels, ordered=True)
+        data[cat_col] = pd.Categorical.from_codes(
+            np.searchsorted(vals, data[cat_col].to_numpy()), pd.Index(labels), ordered=True
+        )
         update = soft_validate(
             {"continuous": False, "categories": labels, "ordered": True, "num_values": [float(v) for v in vals]},
             GroupOrColumnMeta,
