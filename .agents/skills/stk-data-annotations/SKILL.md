@@ -30,7 +30,8 @@ If you think you need to edit the raw file, you're wrong — use translate/trans
 - [ ] `id_col` set to a stable respondent-id column if the data has one (see Identifying the id column)
 - [ ] All relevant columns annotated (demographics, opinions, scales, etc.)
 - [ ] Ordered categories correctly ordered (likerts always go negative → positive pole, e.g. disagree → agree); `num_values` set for all ordered columns (centered on zero for likerts, 1–N otherwise, `null` for nonordered entries)
-- [ ] `nonresponse` marks the true non-response categories ("Don't know", "No answer", "Refused") on **every** categorical block — ordered or not — so those semantics stay available to data-quality and other tooling; `nonordered` lists only the extra off-scale-but-substantive categories ("Other", "none", "Would not participate")
+- [ ] `nonresponse` marks the true non-response categories ("Don't know", "No answer", "Refused") on **every** categorical block — ordered or not — so those semantics stay available to data-quality and other tooling; `nonordered` lists the extra off-scale-but-substantive categories ("Other", "none", "Would not participate") **and, on ordered columns, repeats every non-response** (see Convention 7)
+- [ ] Likert split check passes (see Validation Commands) — no non-response or off-scale category lands on a pole
 - [ ] All conventions followed (see below)
 - [ ] Loads cleanly via `read_annotated_data(meta_file)` with no warnings
 - [ ] Everything translated to English (exception: party acronyms)
@@ -179,8 +180,8 @@ parses dates first and then buckets them into chronologically ordered `"01 Dec 2
 
 | Field | Type | Purpose |
 |-------|------|---------|
-| `nonresponse` | `list` | Categories that are true non-responses ("Don't know", "No answer", "Refused", "Hard to say"). **Recommended field going forward** — annotate on all categorical blocks so the nonresponse semantics feed data-quality checks and other tooling, not just modeling. The model treats non-responses as out-of-order automatically, so do not repeat them in `nonordered`. |
-| `nonordered` | `list` | Categories that fall **outside the order but are still substantive** — *not* non-responses ("Other", "none", "Would not participate", "Did not vote"). List only these extras; the effective out-of-order set is `nonresponse` ∪ `nonordered`. For ordered scales the union is excluded from the order (gets `null` in `num_values`). |
+| `nonresponse` | `list` | Categories that are true non-responses ("Don't know", "No answer", "Refused", "Hard to say"). **Recommended field going forward** — annotate on all categorical blocks so the nonresponse semantics feed data-quality checks and other tooling, not just modeling. On **ordered** columns, also repeat them in `nonordered` — the plot pipeline reads only `nonordered` (see Convention 7). |
+| `nonordered` | `list` | Categories that fall **outside the order but are still substantive** ("Other", "none", "Would not participate", "Did not vote"), **plus, on ordered columns, a repeat of every `nonresponse` entry**. The model's out-of-order set is `nonresponse` ∪ `nonordered`, so the repeat changes nothing there. For ordered scales the union is excluded from the order (gets `null` in `num_values`). |
 
 **Transformations** — applied in order: `translate` → `transform` → `translate_after`:
 
@@ -383,7 +384,9 @@ When using `setindex_column`, `topics` and `sets` must be defined (usually via c
    3. For A vs B choices without explicit valence, pick the pole aligned with the survey's analytical reference direction (e.g. Western/EU orientation as positive in Eastern-European polling). If unsure, default issue positons from conservative towards liberal.
 
    **Always order likert categories from the negative pole to the positive pole** (disagree → agree, distrust → trust, no → yes, against → for, leave → stay, EAEU → EU); `num_values` increase monotonically from negative to positive. Flip with `translate` if the source data codes the other way.
-7. **Non-response categories** (`nonresponse`): Mark true non-responses ("Don't know", "No answer", "Refused", "Hard to say") in `nonresponse` on **every** categorical block — ordered **and** nominal (unordered) — not only on ordered scales. This is the recommended field going forward; the signal is relied on by data-quality checks and other tooling. The model treats non-responses as out-of-order automatically, so do **not** repeat them in `nonordered`. Reserve `nonordered` for categories that are off-scale but still *substantive* — **not** non-responses (e.g. "Other", "none", "Would not participate", "Did not vote"). On an ordered scale the union (`nonresponse` ∪ `nonordered`) is lifted out of the order and gets `null` in `num_values`; on a nominal categorical neither changes modeling but both record structure worth keeping.
+7. **Non-response categories** (`nonresponse`): Mark true non-responses ("Don't know", "No answer", "Refused", "Hard to say") in `nonresponse` on **every** categorical block — ordered **and** nominal (unordered) — not only on ordered scales. This is the recommended field going forward; the signal is relied on by data-quality checks and other tooling. Use `nonordered` for categories that are off-scale but still *substantive* (e.g. "Other", "none", "Would not participate", "Did not vote").
+
+   **On ordered columns, repeat every non-response in `nonordered` as well** (e.g. `"nonresponse": ["Don't know"], "nonordered": ["Don't know"]`). The model takes the union, so this changes nothing in the fit, but the plot pipeline (`_get_neutral_cats` in `pp/plotting.py`) reads only `nonordered` + `neutral_middle`. A "Don't know" listed only in `nonresponse` is drawn as a scale point: `[No, Yes, Don't know]` plots "Yes" as the neutral middle, a 4-point scale + DK plots its third point as neutral and DK as the most positive answer, and `[Against, For, Would not vote, DK]` puts "For" on the negative side. Nominal (unordered) columns need `nonresponse` only. Drop the repeat once the plot code reads `nonresponse`. On an ordered scale the union (`nonresponse` ∪ `nonordered`) is lifted out of the order and gets `null` in `num_values`; on a nominal categorical neither changes modeling but both record structure worth keeping.
 8. **Party consistency**: Party names must be identical across `party_preference`, `thermometer`, and `ownership` blocks.
 9. **Discrete scales**: Use categorical (not continuous) for scales with <20 values, even if numeric.
 10. **`col_prefix`**: Use to disambiguate columns that share names across blocks (e.g. `attitude_`, `issue_`, `therm_`).
@@ -442,6 +445,24 @@ df = read_and_process_data({
 ```
 
 Warnings during `read_annotated_data` are important — they flag missing columns, dropped categories, and category mismatches. Resolve all of them.
+
+**Likert split check.** A load cannot catch a scale that *plots* wrong. Run stk's own neutral/pole split on every likert; it must print nothing:
+
+```python
+from salk_toolkit.io import read_annotated_data
+from salk_toolkit.io.meta import extract_column_meta
+from salk_toolkit.pp.plotting import _get_neutral_cats
+from salk_toolkit.utils import split_to_neg_neutral_pos
+
+df, meta = read_annotated_data("my_meta.json", return_meta=True)
+for name, c in extract_column_meta(meta).items():
+    if name not in df.columns or not c.likert or not isinstance(c.categories, list):
+        continue
+    neg, neutral, pos = split_to_neg_neutral_pos(list(c.categories), _get_neutral_cats(c))
+    off = set(c.nonresponse) | set(c.nonordered)
+    if off & set(neg + pos) or len(neg) != len(pos):
+        print(name, neg, "|", neutral, "|", pos)
+```
 
 ## Aligning With Census
 
