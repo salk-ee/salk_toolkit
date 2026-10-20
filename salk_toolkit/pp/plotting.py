@@ -31,13 +31,12 @@ from .wrangle import pp_transform_data
 
 
 def _get_neutral_cats(cmeta: ColumnMeta) -> List[str]:
-    """Return the list of neutral Likert categories defined in metadata."""
-
-    neutrals = list(cmeta.nonordered).copy()
-    neutral_middle = cmeta.neutral_middle
-    if neutral_middle:
-        neutrals.append(neutral_middle)
-    return neutrals
+    """Return the Likert neutrals: the out-of-order set (nonresponse ∪ nonordered) plus neutral_middle."""
+    return list(
+        dict.fromkeys(
+            [*cmeta.nonresponse, *cmeta.nonordered, *([cmeta.neutral_middle] if cmeta.neutral_middle else [])]
+        )
+    )
 
 
 def _meta_color_scale(

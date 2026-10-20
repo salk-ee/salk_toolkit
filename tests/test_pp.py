@@ -1631,3 +1631,29 @@ def test_bipolar_poles_are_stamped_per_question() -> None:
     json_data = json.loads(json.dumps(cell))["data"]
     stamped = dict(zip(json_data["question"], json_data["question_pole_labels"]))
     assert stamped == {"immigration": ["Enriches", "Threat"], "evoting": None}
+
+
+@pytest.mark.parametrize(
+    "cats,nonresponse,nonordered,neutral_middle,expected",
+    [
+        (["No", "Yes", "DK"], ["DK"], [], None, (["No"], ["DK"], ["Yes"])),
+        (["SO", "O", "S", "SS", "DK"], ["DK"], [], None, (["SO", "O"], ["DK"], ["S", "SS"])),
+        (["Against", "For", "Abstain", "DK"], ["DK"], ["Abstain"], None, (["Against"], ["DK", "Abstain"], ["For"])),
+        (["D", "N", "A", "DK"], ["DK"], ["DK"], "N", (["D"], ["DK", "N"], ["A"])),
+    ],
+)
+def test_nonresponse_is_neutral_in_likert_split(cats, nonresponse, nonordered, neutral_middle, expected) -> None:
+    """Non-responses are neutral even when listed only in `nonresponse`, not `nonordered`."""
+    from salk_toolkit.pp.plotting import _get_neutral_cats
+    from salk_toolkit.utils import split_to_neg_neutral_pos
+    from salk_toolkit.validation import ColumnMeta
+
+    cm = ColumnMeta(
+        categories=cats,
+        ordered=True,
+        likert=True,
+        nonresponse=nonresponse,
+        nonordered=nonordered,
+        neutral_middle=neutral_middle,
+    )
+    assert split_to_neg_neutral_pos(cats, _get_neutral_cats(cm)) == expected
