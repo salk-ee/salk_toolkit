@@ -182,6 +182,16 @@ parses dates first and then buckets them into chronologically ordered `"01 Dec 2
 | `nonresponse` | `list` | Categories that are true non-responses ("Don't know", "No answer", "Refused", "Hard to say"). **Recommended field going forward** — annotate on all categorical blocks so the nonresponse semantics feed data-quality checks and other tooling, not just modeling. The model treats non-responses as out-of-order automatically, so do not repeat them in `nonordered`. |
 | `nonordered` | `list` | Categories that fall **outside the order but are still substantive** — *not* non-responses ("Other", "none", "Would not participate", "Did not vote"). List only these extras; the effective out-of-order set is `nonresponse` ∪ `nonordered`. For ordered scales the union is excluded from the order (gets `null` in `num_values`). |
 
+The test: a category whose *share you would report as a result* is `nonordered`; one you would *drop from the denominator as missing* is `nonresponse`. A thermometer with both:
+
+```json
+{"categories": ["Strongly dislike", "Dislike", "Like", "Strongly like", "Never heard of them", "Don't know"],
+ "ordered": true, "likert": true, "num_values": [-2, -1, 1, 2, null, null],
+ "nonordered": ["Never heard of them"], "nonresponse": ["Don't know"]}
+```
+
+Other `nonordered` examples: "Would not vote" on a referendum for/against scale, "I am not employed" on employer satisfaction.
+
 **Transformations** — applied in order: `translate` → `transform` → `translate_after`:
 
 | Field | Type | Purpose |
@@ -505,6 +515,7 @@ A complete minimal example lives in the `examples/` directory beside this skill:
 - **`generated: true` for alignment**: WEB includes `attitudes_p` block with `generated: true` — this block has no matching data in the WEB file, but its schema lets the 5-point CATI columns carry through when loading both files together.
 - **TopK with `translate_after`**: `issue_importance` block uses regex `from_columns`, `na_vals` to filter unselected items, and `translate_after` to map numeric regex groups to English names.
 - **MaxDiff with `scale.translate`**: `maxdiff` block (WEB only) uses `setindex_column` + `topics`/`sets` constants (2 versions × 3 sets of 3 topics). `scale.translate` maps Lithuanian topic names to English — this single dict controls both cell values and the output category list.
+- **`nonordered` vs `nonresponse`**: the `thermometer` block lists "Never heard of them" (substantive, off-scale) in `nonordered` and "Don't know" in `nonresponse`; both get `null` in `num_values`.
 - **Colors — `colors` vs `question_colors`**: `party_colors` constant is referenced by `colors` on `party_preference` (values are parties) and by `scale.question_colors` on the `thermometer` block (columns are parties, so each party gets its brand color when the block is unpivoted into a `question` dimension). Thermometer column names must match the `party_colors` keys.
 
 ## For more details

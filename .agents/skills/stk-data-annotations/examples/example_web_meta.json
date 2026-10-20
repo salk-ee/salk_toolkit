@@ -94,13 +94,15 @@
     },
     {
       "name": "thermometer",
-      "comment": "Demonstrates `scale.question_colors` — coloring each column (party) with its brand color when the block is unpivoted in plots. The likert `colors` gradient for the scale values is derived automatically; `question_colors` handles the orthogonal dimension (which party). Thermometer column names must match keys in `party_colors`. Marked `generated: true` so no raw data is required in this example.",
+      "comment": "Demonstrates `scale.question_colors` — coloring each column (party) with its brand color when the block is unpivoted in plots. The likert `colors` gradient for the scale values is derived automatically; `question_colors` handles the orthogonal dimension (which party). Thermometer column names must match keys in `party_colors`. Also shows the `nonresponse` / `nonordered` split: 'Never heard of them' is a real answer (awareness) with no place on the scale, 'Don't know' is a non-response. Marked `generated: true` so no raw data is required in this example.",
       "generated": true,
       "scale": {
-        "categories": ["Strongly dislike", "Dislike", "Like", "Strongly like"],
+        "categories": ["Strongly dislike", "Dislike", "Like", "Strongly like", "Never heard of them", "Don't know"],
         "ordered": true,
         "likert": true,
-        "num_values": [-2, -1, 1, 2],
+        "num_values": [-2, -1, 1, 2, null, null],
+        "nonresponse": ["Don't know"],
+        "nonordered": ["Never heard of them"],
         "question_colors": "party_colors"
       },
       "columns": [["TS-LKD"], ["LSDP"], ["LVŽS"]]
