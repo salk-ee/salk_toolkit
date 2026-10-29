@@ -1657,3 +1657,47 @@ def test_nonresponse_is_neutral_in_likert_split(cats, nonresponse, nonordered, n
         neutral_middle=neutral_middle,
     )
     assert split_to_neg_neutral_pos(cats, _get_neutral_cats(cm)) == expected
+
+
+def _segmented_meta() -> DataMeta:
+    """Two categorical questions on a shared scale, plus a grouping column."""
+    return make_data_meta(
+        {
+            "structure": [
+                {
+                    "name": "demographics",
+                    "scale": {},
+                    "columns": [["gender", {"categories": ["Female", "Male"]}]],
+                },
+                {
+                    "name": "questions",
+                    "scale": {"categories": ["No", "Yes"]},
+                    "columns": [["q1", {}], ["q2", {}]],
+                },
+            ]
+        }
+    )
+
+
+@pytest.mark.parametrize("res_col", ["q1", "questions"])  # single column, and the wide question-group path
+def test_categorical_shares_ignore_null_rows(res_col: str) -> None:
+    """A question asked of only some respondents (SIP's ``segment_by`` leaves the rest null) must
+    report shares of those who answered. Counting nulls in the denominator understates every
+    category by the answered fraction and draws a phantom null category."""
+    df = pd.DataFrame(
+        {
+            "draw": [0] * 8,
+            "gender": ["Female"] * 4 + ["Male"] * 4,
+            # Half of each gender answered; the answers are an even Yes/No split.
+            "q1": ["Yes", "No", None, None] * 2,
+            "q2": ["Yes", "No", None, None] * 2,
+        }
+    )
+    ppd = soft_validate({"res_col": res_col, "factor_cols": ["gender"], "plot": "columns"}, PlotDescriptor)
+    pi = pp_transform_data(pl.LazyFrame(df), _segmented_meta(), ppd)
+
+    data = pi.data
+    assert data[pi.cat_col].isna().sum() == 0, "null must not become a plotted category"
+    # Shares are over answered rows only: an even split reads 0.5, not 0.25.
+    for share in data[pi.value_col]:
+        assert share == pytest.approx(0.5)
