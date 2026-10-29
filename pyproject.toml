@@ -29,7 +29,7 @@ dependencies = [
   "kdepy",
   "libsql_client",
   "matplotlib",
-  "numpy>=2.4",
+  "numpy>=2.4,<2.5",
   "openpyxl",
   "pandas>=3.0",
   "pillow",
