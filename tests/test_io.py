@@ -3828,9 +3828,9 @@ class TestAnnotationFixes:
     def test_meta_shared_between_columns_keeps_each_source(self, tmp_path):
         """Column specs sharing one meta dict (constants, YAML anchors) must not share a source."""
         pd.DataFrame({"q1": ["x"], "q2": ["y"]}).to_csv(tmp_path / "d.csv", index=False)
-        shared = {"categories": ["x", "y"]}
-        cols = [["n1", "q1", shared], ["n2", "q2", shared]]
-        write_json(tmp_path / "m.json", {"file": "d.csv", "structure": [{"name": "s", "columns": cols}]})
+        cols = [["n1", "q1", "shared"], ["n2", "q2", "shared"]]
+        meta = {"file": "d.csv", "constants": {"shared": {"categories": ["x", "y"]}}}
+        write_json(tmp_path / "m.json", {**meta, "structure": [{"name": "s", "columns": cols}]})
         df = read_annotated_data(str(tmp_path / "m.json"))
         assert (df["n1"].tolist(), df["n2"].tolist()) == (["x"], ["y"])
 
