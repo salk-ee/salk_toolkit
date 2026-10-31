@@ -67,12 +67,10 @@ def _reconcile_categories(
                 raw_data[c].dtype.name == "category" and multiple_files
             ):  # Strip categories when multiple files involved
                 dtype, prev = raw_data[c].dtype, cat_dtypes.get(c)
-                earlier = utils.get_categories(prev) if prev is not None else []
-                if dtype.ordered:  # Same rule as the meta: last file's order first, then what only earlier files had
-                    cats = utils.get_categories(dtype)
-                    cat_dtypes[c] = pd.CategoricalDtype([*cats, *(x for x in earlier if x not in cats)], ordered=True)
-                elif len(earlier) <= len(utils.get_categories(dtype)):
-                    cat_dtypes[c] = dtype
+                keep = prev if prev is not None and len(prev.categories) > len(dtype.categories) else dtype
+                # The most complete list decides the order; one nominal source makes the column nominal
+                ordered = dtype.ordered and (prev is None or prev.ordered)
+                cat_dtypes[c] = pd.CategoricalDtype(keep.categories, ordered=ordered)
                 raw_data[c] = raw_data[c].astype("object")
 
     # Now reconcile across all files
@@ -105,10 +103,7 @@ def _reconcile_categories(
             utils.get_categories(dtype)
         ):  # If the categories are not the same, create a new dtype
             _, cats = _deterministic_categories_and_values(fdf[c].dropna())
-            if dtype.ordered:
-                declared = utils.get_categories(dtype)
-                cats = [*declared, *(x for x in cats if x not in declared)]
-            reconciled[c] = pd.CategoricalDtype(cats, ordered=dtype.ordered)
+            reconciled[c] = pd.Categorical([], cats).dtype
             n_cats = len(utils.get_categories(reconciled[c]))
             if warnings:
                 warn(f"Categories for {c} are different between files - merging to total {n_cats} cats")
@@ -118,15 +113,19 @@ def _reconcile_categories(
     return reconciled
 
 
-def _warn_category_mismatches(frames: Iterable[pd.DataFrame], ignore: Iterable[str]) -> None:
-    """Warn when annotated sources disagree on a shared column: unlike raw files, they are already final."""
-    dtypes: dict[str, list[pd.CategoricalDtype]] = {}
+def _warn_ordered_mismatches(frames: Iterable[pd.DataFrame]) -> None:
+    """Warn when annotated sources disagree on a column any of them orders, as its ranks are then unreliable."""
+    dtypes: dict[str, list[Any]] = {}
     for df in frames:
-        for c in df.columns.difference(list(ignore), sort=False):
-            if df[c].dtype.name == "category":
-                dtypes.setdefault(c, []).append(df[c].dtype)
-    if bad := [c for c, ds in dtypes.items() if any(d != ds[0] for d in ds)]:
-        warn(f"Annotated sources disagree on categories or their order, merging with the last file first: {bad}")
+        for c, d in df.dtypes.items():
+            dtypes.setdefault(str(c), []).append(d)
+    for c, ds in dtypes.items():
+        if any(getattr(d, "ordered", False) for d in ds) and any(d != ds[0] for d in ds):
+            cats = [list(d.categories) if isinstance(d, pd.CategoricalDtype) else str(d) for d in ds]
+            warn(
+                f"Annotated sources disagree on ordered column {c}: {cats}. The most complete list decides the order, "
+                "or the column turns nominal if none covers the rest. Declare the same list in every meta."
+            )
 
 
 def _assign_row_id(df: pd.DataFrame, file_code: str, id_col: str | None, data_file: str, inherited: bool) -> None:
@@ -253,7 +252,7 @@ def _load_data_files(
 
     # pd.concat collapses categoricals with differing category lists to object, so unify first
     if len(raw_data_dict) > 1:
-        _warn_category_mismatches(annotated, ["file_code", "file_name", *extra_field_categories])
+        _warn_ordered_mismatches(annotated)
         reconciled_dtypes = _reconcile_categories(raw_data_dict, warnings=False)
         for fc, rdf in raw_data_dict.items():
             for col, dtype in reconciled_dtypes.items():
@@ -262,7 +261,7 @@ def _load_data_files(
 
     # This will fix categories inside meta too - use concatenated view for this
     fdf = pd.concat(raw_data_dict.values())
-    meta = _fix_meta_categories(meta, fdf, warnings=False)
+    meta = _fix_meta_categories(meta, fdf, warnings=False, merged=len(raw_data_dict) > 1)
     return SourceBundle(frames=raw_data_dict, env=einfo, meta=meta)
 
 

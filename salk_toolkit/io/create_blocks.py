@@ -195,7 +195,7 @@ def _create_maxdiff_metas_and_dfs(
         worst_columns (Union[str,List[str]]): Regex template with groups to select df cols from OR just a list of cols.
         setindex (int): The index of the column to use as the set index.
         topics (Optional[List[str]]): The topics used in maxdiffs. If `None`, then `constants` is used.
-        sets (Optional[List[List[int]]]): The sets of indices per each version. If `None`, then `constants` is used.
+        sets: The `[version][set][topic]` indices. If `None`, then `constants` is used.
 
     Args:
         df (pd.DataFrame): The dataframe to create metas and dfs for.

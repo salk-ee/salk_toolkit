@@ -110,6 +110,7 @@ def group_columns_dict(data_meta: DataMeta) -> dict[str, list[str]]:
 
 
 T_list_alias = TypeVar("T_list_alias")
+_CatMeta = TypeVar("_CatMeta", bound=ColumnMeta)
 
 
 def list_aliases(lst: Sequence[T_list_alias], da: dict[str, list[str]]) -> list[T_list_alias | str]:
@@ -138,7 +139,9 @@ def _get_original_column_names(dmeta: DataMeta) -> dict[str, str]:
         for cn, col_meta in block.columns.items():
             sn = col_meta.source if col_meta.source is not None else cn
             col_name = f"{col_prefix}{cn}"
-            res[col_name] = sn
+            res[col_name] = (
+                sn if isinstance(sn, str) else str(sorted(sn.items()))
+            )  # Per-file sources compare as a whole
     return res
 
 
@@ -176,11 +179,12 @@ def _change_df_to_meta(
     ocn = _get_original_column_names(old_dmeta)
     ncn = _get_original_column_names(new_dmeta)
     shared_sources = set(ocn.values()) & set(ncn.values())
-    old_source_map = {source: name for name, source in ocn.items()}
-    new_source_map = {source: name for name, source in ncn.items()}
+    # A source feeding several columns can't identify which of them got renamed
+    old_source_map = {source: name for name, source in ocn.items() if list(ocn.values()).count(source) == 1}
+    new_source_map = {source: name for name, source in ncn.items() if list(ncn.values()).count(source) == 1}
     name_changes = {
         old_source_map[source]: new_source_map[source]
-        for source in shared_sources
+        for source in shared_sources & old_source_map.keys() & new_source_map.keys()
         if old_source_map[source] != new_source_map[source]
     }
     if name_changes != {}:
@@ -277,13 +281,32 @@ def update_meta_with_model_fields(meta: DataMeta, donor: DataMeta) -> DataMeta:
     return meta.model_copy(update=updates)
 
 
+def _follow_merged_order(meta: _CatMeta, cats: list[Any], ordered: bool) -> _CatMeta:
+    """Make an ordered meta match the merged frame, keeping each category's num_value."""
+    if meta.categories == cats and meta.ordered == ordered:
+        return meta
+    nvals = dict(zip(meta.categories or [], meta.num_values)) if meta.num_values else None
+    return meta.model_copy(
+        update={
+            "categories": cats,
+            "ordered": ordered,
+            "likert": meta.likert and ordered,
+            "num_values": [nvals.get(c) for c in cats] if nvals else meta.num_values,
+        }
+    )
+
+
 def _fix_meta_categories(
     data_meta: DataMeta,
     df: pd.DataFrame,
     infers_only: bool = False,
     warnings: bool = True,
+    merged: bool = False,
 ) -> DataMeta:
-    """Infer categories (and validate the ones already present) in metadata based on DataFrame, working in-place."""
+    """Infer categories (and validate the ones already present) in metadata based on DataFrame, working in-place.
+
+    ``merged`` means df concatenates annotated sources, so its dtypes decide the order of columns declared ordered.
+    """
     if data_meta.structure is None:
         return data_meta
 
@@ -294,6 +317,7 @@ def _fix_meta_categories(
 
     for g in structure.values():
         all_cats: dict[Any, None] = {}  # Ordered set
+        all_ordered = True
         # Work with Pydantic object directly
         scale_meta = g.scale
         prefix = scale_meta.col_prefix if scale_meta is not None and scale_meta.col_prefix is not None else ""
@@ -310,7 +334,9 @@ def _fix_meta_categories(
             if full_col_name in df.columns and df[full_col_name].dtype.name == "category":
                 dtype = df[full_col_name].dtype
                 cats = utils.get_categories(dtype)
-                if col_meta.categories == "infer":
+                if merged and col_meta.ordered and isinstance(col_meta.categories, list):
+                    updated_col_meta = _follow_merged_order(col_meta, cats, bool(dtype.ordered))
+                elif col_meta.categories == "infer":
                     # Use the dtype's category order, which preserves the deterministic order set during inference
                     updated_col_meta = col_meta.model_copy(update={"categories": cats})
                 elif (
@@ -329,6 +355,7 @@ def _fix_meta_categories(
                     missing_cats = [c for c in cats if c not in existing_cats]
                     updated_col_meta = col_meta.model_copy(update={"categories": existing_cats + missing_cats})
                 all_cats.update(dict.fromkeys(cats))
+                all_ordered = all_ordered and bool(dtype.ordered)
             updated_columns[cn] = updated_col_meta
 
         # Get scale for category inference - work with Pydantic object directly
@@ -346,16 +373,24 @@ def _fix_meta_categories(
             # Update scale categories using model_copy
             updated_scale = scale_meta.model_copy(update={"categories": scats})
         elif (
+            merged
+            and scale_meta is not None
+            and scale_meta.ordered
+            and isinstance(scale_meta.categories, list)
+            and all_cats
+        ):
+            updated_scale = _follow_merged_order(scale_meta, list(all_cats), all_ordered)
+        elif (
             (not infers_only)
             and scale_meta is not None
             and scale_meta.categories is not None
             and isinstance(scale_meta.categories, list)
             and not set(scale_meta.categories) >= set(all_cats)
         ):
-            diff = [c for c in all_cats if c not in scale_meta.categories]
+            diff = set(all_cats) - set(scale_meta.categories)
             if warnings:
                 warn(f"Fixing missing categories for group {g.name}: {diff}")
-            updated_scale = scale_meta.model_copy(update={"categories": [*scale_meta.categories, *diff]})
+            updated_scale = scale_meta.model_copy(update={"categories": list(all_cats)})
 
         # Update the block with new scale and columns if they changed
         update_dict: dict[str, object] = {}

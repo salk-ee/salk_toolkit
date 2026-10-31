@@ -7,7 +7,7 @@ description: Create, validate, align and audit stk (salk_toolkit) JSON data meta
 
 ## Overview
 
-STK annotations are JSON (`*_meta.json`) or YAML files that describe how to transform raw survey data (`.sav`, `.csv`, `.parquet`) into a standardised, English-language, typed DataFrame. The authoritative schema is the `DataMeta` model in `salk_toolkit.validation`; the processing pipeline lives in the `salk_toolkit.io` package, entered via `read_and_process_data`.
+STK annotations are JSON (`*_meta.json`) or YAML (`.yaml`, not `.yml`) files that describe how to transform raw survey data (`.sav`, `.csv`, `.parquet`) into a standardised, English-language, typed DataFrame. The authoritative schema is the `DataMeta` model in `salk_toolkit.validation`; the processing pipeline lives in the `salk_toolkit.io` package, entered via `read_and_process_data`.
 
 Always read the schema and the pipeline before starting annotation work — both evolve. Grep for the symbol names listed under [For more details](#for-more-details) rather than for file paths; the modules get reorganised, the names are stable.
 
@@ -32,7 +32,7 @@ If you think you need to edit the raw file, you're wrong — use translate/trans
 - [ ] Ordered categories correctly ordered (likerts always go negative → positive pole, e.g. disagree → agree); `num_values` set for all ordered columns (centered on zero for likerts, 1–N otherwise, `null` for nonordered entries)
 - [ ] `nonresponse` marks the true non-response categories ("Don't know", "No answer", "Refused") on **every** categorical block — ordered or not — so those semantics stay available to data-quality and other tooling; `nonordered` lists only the extra off-scale-but-substantive categories ("Other", "none", "Would not participate")
 - [ ] All conventions followed (see below)
-- [ ] Loads cleanly via `read_annotated_data(meta_file)` with no warnings (one exception: an aggregating `postprocessing`, as in census metas, always warns about minting fresh row ids)
+- [ ] Loads cleanly via `read_annotated_data(meta_file)` with no warnings (exception: a hook that aggregates without keeping `row_id` warns about minting fresh ids)
 - [ ] Everything translated to English (exception: party acronyms)
 - [ ] If a questionnaire / data description is available, add `label` entries with the exact question wording (per-item text on individual columns, shared lead-in text on `scale.label` for item-battery blocks)
 - [ ] Shortened category names have their full answer wording in `labels` (see Labels)
@@ -158,7 +158,7 @@ Column-level `{ meta }` should only contain fields that **differ** from the bloc
 ["trust_gov", {"source": {"default": "Q5", "W2": "Q7"}, "categories": "infer"}]
 ```
 
-`default` is optional. A file with no mapping gets nulls for its rows and a warning. A `source` inside the meta wins over the positional one.
+`default` is optional. A file with no mapping and no `default` falls back to a raw column named like the output column; if that is absent too, its rows are null, with a warning unless the block is `generated`. A `source` inside the meta wins over the positional one.
 
 ### Key ColumnMeta fields
 
@@ -193,7 +193,7 @@ parses dates first and then buckets them into chronologically ordered `"01 Dec 2
 | `nonresponse` | `list` | Categories that are true non-responses ("Don't know", "No answer", "Refused", "Hard to say"). **Recommended field going forward** — annotate on all categorical blocks so the nonresponse semantics feed data-quality checks and other tooling, not just modeling. The model treats non-responses as out-of-order automatically, so do not repeat them in `nonordered`. |
 | `nonordered` | `list` | Categories that fall **outside the order but are still substantive** — *not* non-responses ("Other", "none", "Would not participate", "Did not vote"). List only these extras; the effective out-of-order set is `nonresponse` ∪ `nonordered`. For ordered scales the union is excluded from the order (gets `null` in `num_values`). |
 
-The test is what the category means: one whose *share you would report as a result* is `nonordered`; one that *carries no answer* is `nonresponse`. Marking it does not remove it from plotted shares: pp draws both as likert neutrals and maps both to null under `convert_res: "continuous"`, but categorical shares still count them. Only true nulls leave the denominator, so for a question asked of part of the sample, leave the unasked rows null instead of adding a "Not asked" category. A thermometer with both:
+The test is what the category means: one whose *share you would report as a result* is `nonordered`; one that *carries no answer* is `nonresponse`. Marking it does not remove it from plotted shares: pp draws both as likert neutrals, but categorical shares still count them. Under `convert_res: "continuous"` a category becomes null only through a `null` in `num_values`, whatever its marking (fully numeric category names ignore `num_values` and use the name as the value). Only true nulls leave the denominator, so for a question asked of part of the sample, leave the unasked rows null instead of adding a "Not asked" category. A thermometer with both:
 
 ```json
 {"categories": ["Strongly dislike", "Dislike", "Like", "Strongly like", "Never heard of them", "Don't know"],
@@ -208,7 +208,7 @@ Other `nonordered` examples: "Would not vote" on a referendum for/against scale,
 | Field | Type | Purpose |
 |-------|------|---------|
 | `translate` | `dict` | Map source values → output values |
-| `transform` | `str` | Python expression with `s`, `df`, `ndf`, `pd`, `np`, `stk`, constants in scope (`file_code` is only available in `preprocessing`) |
+| `transform` | `str` | Python expression with `s`, `df`, `ndf`, `pd`, `np`, `stk`, constants in scope (the bare name `file_code` exists only in the meta's `preprocessing`; elsewhere use the `df.file_code` column) |
 | `translate_after` | `dict` | Like translate, applied after transform |
 
 **Display & modeling context:**
@@ -245,7 +245,7 @@ Other `nonordered` examples: "Would not vote" on a referendum for/against scale,
 
 ### Bipolar statement pairs
 
-For "A ⟷ B" items, where respondents place themselves between two statements, **always set `pole_labels: [neg, pos]`**. Without it, a reader of the plot can't tell which statement +3 refers to.
+For "A ⟷ B" items, where respondents place themselves between two statements, **always set `pole_labels: [neg, pos]`**. Without it, a reader can't tell which statement +3 refers to. When the block is unpivoted into `question`, plots stamp it as a `question_pole_labels` column for renderers such as Periskoop; STK's own Altair charts don't draw it.
 
 ```json
 ["national_future", "R2r1", {
@@ -254,12 +254,12 @@ For "A ⟷ B" items, where respondents place themselves between two statements, 
 }]
 ```
 
-- **Order:** the statements at the first and the last category of the final scale. If `translate` flips the scale, flip the poles too. Nothing checks this, so verify it against the questionnaire.
+- **Order:** the statements at the first and the last on-scale category of the final scale, so ignore trailing non-responses. If `translate` flips the scale, flip the poles too. Nothing checks this, so verify it against the questionnaire.
 - **Authored, not inferred:** take the statements from the questionnaire. Keep the full wording in `label`.
-- **Per column:** set it on each column, not on `scale`; the column can inherit `likert` from its block.
-- **Validation:** it takes exactly two non-empty strings (a load error otherwise). On a non-likert column it warns on load and fails `hard_validate`.
+- **Per column:** set it on each column, not on `scale`; the column can inherit `likert` from its block (a column declaring its own `categories` must also set `likert: true`).
+- **Validation:** it takes exactly two non-empty strings (a load error otherwise). On a non-likert categorical column it prints a validation warning on load and fails `hard_validate`. On a column without categories nothing checks it.
 - **Multi-file loads:** the last file's meta is the basis, so that file must carry the poles too.
-- **Packaging:** package models with a salk_toolkit that includes this field, since older ones silently drop it.
+- **Packaging:** package models with a salk_toolkit that includes this field, since older ones drop it, silently when reading parquet metadata.
 
 ### Block-level fields
 
@@ -400,7 +400,7 @@ For best-worst scaling / maxdiff experiments:
 - `set_columns`: regex template or list for the set-membership columns
 - `setindex_column`: column containing set version index (with optional meta; forced `continuous: true`, so it never inherits the scale's topic categories). Mutually exclusive with explicit set_columns data in the file.
 - `topics`: list of all topic strings (typically in `constants`)
-- `sets`: 1-indexed topic indices per version, as `[version][set][topic]` (typically in `constants`)
+- `sets`: 1-indexed topic indices per version, as `[version][set][topic]` (typically in `constants`). A 2-level list validates but puts one topic in each set column.
 - Scale `translate` maps local-language topics to English
 
 ### MaxDiff translate pipeline
@@ -499,9 +499,9 @@ df = read_and_process_data({
 })
 ```
 
-Warnings during `read_annotated_data` are important — they flag missing columns, dropped categories, and category mismatches. Resolve all of them.
+Warnings during `read_annotated_data` are important — they flag missing columns, dropped categories, and category mismatches. Resolve them, or document real differences with a `comment`.
 
-Hooks and exclusions run in this order: `preprocessing` per file → columns → `excluded` → `postprocessing`. An aggregating `postprocessing` therefore never sees excluded rows, but an aggregating `preprocessing` removes the rows `excluded` refers to, and you get a "not present in data" warning. Outside that case, the warning usually means a mistyped id.
+Hooks and exclusions run in this order: `preprocessing` per file → columns → `excluded` → `postprocessing`. An aggregating `postprocessing` therefore never sees excluded rows. An aggregating `preprocessing` re-mints ids, so `excluded` silently hits the wrong rows when an old id is still in range and warns "not present in data" otherwise, so don't combine them. That warning also fires for a mistyped id or a row a filtering `preprocessing` or nested meta already removed.
 
 ## Aligning With Census
 
@@ -540,9 +540,9 @@ df = read_and_process_data({
 })
 ```
 
-When annotated sources disagree on a shared column's categories, `ordered` flag, or the order of an ordered column, you get one "disagree on categories" warning listing the columns. The load still succeeds: an ordered column takes the last file's order followed by what only earlier files had. Fix these iteratively until the load is clean, unless the difference is real (e.g. a party that only exists in one wave), in which case note it in a `comment`.
+When annotated sources disagree on a column any of them marks ordered, you get a "disagree on ordered column" warning per column, and the load still succeeds. The most complete list decides the order when it covers the rest (the last file wins a tie). If none covers the rest, or any source is nominal, the column turns nominal in both frame and meta, because no ranking can be trusted. Under a merged order, a category the last file's meta lacks gets a `null` num_value. Declare the same list in every meta, or in an outer meta. Nominal columns merge silently, so compare their `categories` yourself when they must line up. Fix these iteratively until the load is clean.
 
-7. **The last file is the basis for the combined meta.** `read_and_process_data` uses the last file's annotation as the combined schema. If blocks exist in file A but not in file B (the last file), they won't appear in the output — even though the data is present. To fix this, add the missing blocks to the last file with `"generated": true` on each such block. This suppresses "no matching columns in data" warnings for that file while letting the block's schema carry through to the combined result.
+7. **The last file is the basis for the combined meta.** `read_and_process_data` uses the last file's annotation as the combined schema. If blocks exist in file A but not in file B (the last file), their columns stay in the frame but have no meta. To fix this, add the missing blocks to the last file with `"generated": true` on each such block. This suppresses "no matching columns in data" warnings for that file while letting the block's schema carry through to the combined result.
 
 ## Data descriptions
 
@@ -560,7 +560,8 @@ df = read_and_process_data({
 
 - `data` replaces `files` with an inline `{column: values}` dict.
 - `filter` is an expression evaluated as `df[<expr>]`.
-- `merge` adds columns from another source; `add` limits which ones (default: all).
+- `merge` adds columns from another source. `add` limits which ones (default: all except provenance; any overlap beyond `on` raises, so annotated sources usually need `add`). `how` defaults to `inner`, which drops unmatched rows.
+- `preprocessing` here runs once on the concatenated frame, not per file. Columns it or `merge` adds are absent from the returned meta.
 
 ## Worked Example
 
@@ -580,11 +581,11 @@ A complete minimal example lives in the `examples/` directory beside this skill:
 - **`method` column**: Synthetic column created via `transform` — WEB file produces `'web'`, CATI file produces `'cati'`; both share `"categories": ["web", "cati"]`.
 - **`categories: "infer"` + `translate`**: `party_preference` — category order comes from translate dict key order. Translate dicts are identical across both files for alignment.
 - **Likert `_p` variant pattern**: WEB has 7-point `attitudes` block (columns `pol_interest`, `future`); CATI has 5-point `attitudes` block (columns `pol_interest_p`, `future_p`). Both use `col_prefix: "attitude_"` so columns land in the same namespace.
-- **`generated: true` for alignment**: WEB includes `attitudes_p` block with `generated: true` — this block has no matching data in the WEB file, but its schema lets the 5-point CATI columns carry through when loading both files together.
+- **`generated: true` for alignment**: WEB includes `attitudes_p` block with `generated: true` — this block has no matching data in the WEB file, but its schema describes the 5-point CATI columns when WEB is loaded last.
 - **TopK with `translate_after`**: `issue_importance` block uses regex `from_columns`, `na_vals` to filter unselected items, and `translate_after` to map numeric regex groups to English names.
 - **MaxDiff with `scale.translate`**: `maxdiff` block (WEB only) uses `setindex_column` + `topics`/`sets` constants (2 versions × 3 sets of 3 topics). `scale.translate` maps Lithuanian topic names to English — this single dict controls both cell values and the output category list.
 - **`nonordered` vs `nonresponse`**: the `thermometer` block lists "Never heard of them" (substantive, off-scale) in `nonordered` and "Don't know" in `nonresponse`; both get `null` in `num_values`.
-- **`pole_labels`**: the `attitudes` items are statement pairs, so each has the full wording in `label` and the two statements in `pole_labels`.
+- **`pole_labels`**: the `attitudes` items are statement pairs, so each has the full wording in `label` and the two statements in `pole_labels`, including in WEB's generated `attitudes_p`.
 - **Colors — `colors` vs `question_colors`**: `party_colors` constant is referenced by `colors` on `party_preference` (values are parties) and by `scale.question_colors` on the `thermometer` block (columns are parties, so each party gets its brand color when the block is unpivoted into a `question` dimension). Thermometer column names must match the `party_colors` keys.
 
 ## For more details

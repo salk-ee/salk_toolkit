@@ -126,7 +126,10 @@
         "ordered": true,
         "likert": true
       },
-      "columns": [["pol_interest_p"], ["future_p"]]
+      "columns": [
+        ["pol_interest_p", {"pole_labels": ["I follow politics closely", "I rarely follow politics"]}],
+        ["future_p", {"pole_labels": ["Optimistic about the future", "Pessimistic about the future"]}]
+      ]
     },
     {
       "name": "issue_importance",

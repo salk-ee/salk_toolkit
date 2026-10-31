@@ -194,14 +194,15 @@ def _cspec(tpl: ColumnSpecInput) -> ParsedColumnSpec:
 
         if not isinstance(raw_meta, dict):
             raise TypeError("Column metadata must be provided as a dictionary when present.")
-        o_cd = raw_meta
+        o_cd = dict(raw_meta)  # A meta can be shared between columns, each with its own source
     else:
         cn = sn = tpl
         o_cd = {}
 
     # Add source to metadata dict; one set in the meta itself wins
-    o_cd.setdefault("source", sn)
-    return (cn, sn, o_cd)
+    if o_cd.get("source") is None:
+        o_cd["source"] = sn
+    return (cn, cast(str | dict[str, str], o_cd["source"]), o_cd)
 
 
 def _cs_lst_to_dict(
@@ -231,7 +232,7 @@ def _cs_dict_to_lst(
     result: list[ColumnSpecInput] = []
     for cn, col_meta in d.items():
         # Extract source from ColumnMeta
-        source = col_meta.get("source") if isinstance(col_meta, dict) else col_meta.source
+        source = col_meta.get("source") if isinstance(col_meta, dict) else getattr(col_meta, "source", None)
         sn = source if source is not None else cn
 
         # Serialize metadata, excluding source (it's in the tuple position)
@@ -245,7 +246,7 @@ def _cs_dict_to_lst(
         else:
             meta_dict = dict(col_meta) if col_meta else {}
         meta_dict.pop("source", None)
-        if isinstance(sn, dict):  # Per-file sources stay in the meta: a dict in the tuple position would read as meta
+        if isinstance(sn, dict):  # A dict in the tuple position would read as meta
             meta_dict, sn = {"source": sn, **meta_dict}, cn
 
         if sn == cn:
