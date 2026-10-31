@@ -85,10 +85,12 @@
       },
       "columns": [
         ["pol_interest", "Q2r1", {
-          "label": "I follow politics closely — I rarely follow politics"
+          "label": "I follow politics closely ⟷ I rarely follow politics",
+          "pole_labels": ["I follow politics closely", "I rarely follow politics"]
         }],
         ["future", "Q2r2", {
-          "label": "Optimistic about the future — Pessimistic about the future"
+          "label": "Optimistic about the future ⟷ Pessimistic about the future",
+          "pole_labels": ["Optimistic about the future", "Pessimistic about the future"]
         }]
       ]
     },
@@ -124,7 +126,10 @@
         "ordered": true,
         "likert": true
       },
-      "columns": [["pol_interest_p"], ["future_p"]]
+      "columns": [
+        ["pol_interest_p", {"pole_labels": ["I follow politics closely", "I rarely follow politics"]}],
+        ["future_p", {"pole_labels": ["Optimistic about the future", "Pessimistic about the future"]}]
+      ]
     },
     {
       "name": "issue_importance",

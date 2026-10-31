@@ -263,7 +263,9 @@ class MaxDiffBlock(PBase):
     set_columns: Optional[Union[str, List[str]]] = None  # Mutually exclusive with setindex. Only one is specified.
     setindex_column: Optional[Union[str, List[object]]] = None  # Keeps metadata tuple used in annotations.
     topics: Optional[List[str]] = None
-    sets: Optional[List[List[int]]] = None
+    sets: Optional[Union[List[List[int]], List[List[List[int]]]]] = (
+        None  # [version][set][topic], or [version][set column] for one topic each
+    )
 
 
 # Import _cs_lst_to_dict for BeforeValidator (needs to be at runtime)

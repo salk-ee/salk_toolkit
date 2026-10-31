@@ -184,7 +184,7 @@ def _create_maxdiff_metas_and_dfs(
     df: pd.DataFrame,
     group: ColumnBlockMeta,
     topics: Sequence[str] | None = None,
-    sets: Sequence[Sequence[int]] | None = None,
+    sets: Sequence[Sequence[int]] | Sequence[Sequence[Sequence[int]]] | None = None,
     **kwargs: dict[str, str],
 ) -> tuple[list[pd.DataFrame], list[dict[str, object]]]:
     """
@@ -195,7 +195,7 @@ def _create_maxdiff_metas_and_dfs(
         worst_columns (Union[str,List[str]]): Regex template with groups to select df cols from OR just a list of cols.
         setindex (int): The index of the column to use as the set index.
         topics (Optional[List[str]]): The topics used in maxdiffs. If `None`, then `constants` is used.
-        sets (Optional[List[List[int]]]): The sets of indices per each version. If `None`, then `constants` is used.
+        sets: The `[version][set][topic]` indices. If `None`, then `constants` is used.
 
     Args:
         df (pd.DataFrame): The dataframe to create metas and dfs for.
@@ -418,7 +418,7 @@ def _create_topk_metas_and_dfs_list(
         from_cols = [without_prefix.get(col, col) for col in from_cols]
         df.columns = [without_prefix.get(col, col) for col in df.columns]
 
-    sdf = df[from_cols].replace(na_vals, None)
+    sdf = df[from_cols].astype("object").replace(na_vals, None)
     _check_topk_na_vals_after_replace(sdf, block_name=name)
 
     sdf = sdf.mask(
