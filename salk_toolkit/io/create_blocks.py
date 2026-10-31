@@ -184,7 +184,7 @@ def _create_maxdiff_metas_and_dfs(
     df: pd.DataFrame,
     group: ColumnBlockMeta,
     topics: Sequence[str] | None = None,
-    sets: Sequence[Sequence[int]] | None = None,
+    sets: Sequence[Sequence[int]] | Sequence[Sequence[Sequence[int]]] | None = None,
     **kwargs: dict[str, str],
 ) -> tuple[list[pd.DataFrame], list[dict[str, object]]]:
     """
@@ -418,7 +418,7 @@ def _create_topk_metas_and_dfs_list(
         from_cols = [without_prefix.get(col, col) for col in from_cols]
         df.columns = [without_prefix.get(col, col) for col in df.columns]
 
-    sdf = df[from_cols].replace(na_vals, None)
+    sdf = df[from_cols].astype("object").replace(na_vals, None)
     _check_topk_na_vals_after_replace(sdf, block_name=name)
 
     sdf = sdf.mask(

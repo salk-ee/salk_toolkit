@@ -7,7 +7,7 @@ description: Create, validate, align and audit stk (salk_toolkit) JSON data meta
 
 ## Overview
 
-STK annotations are JSON files (`*_meta.json`) that describe how to transform raw survey data (`.sav`, `.csv`, `.parquet`) into a standardised, English-language, typed DataFrame. The authoritative schema is the `DataMeta` model in `salk_toolkit.validation`; the processing pipeline lives in the `salk_toolkit.io` package, entered via `read_and_process_data`.
+STK annotations are JSON (`*_meta.json`) or YAML files that describe how to transform raw survey data (`.sav`, `.csv`, `.parquet`) into a standardised, English-language, typed DataFrame. The authoritative schema is the `DataMeta` model in `salk_toolkit.validation`; the processing pipeline lives in the `salk_toolkit.io` package, entered via `read_and_process_data`.
 
 Always read the schema and the pipeline before starting annotation work — both evolve. Grep for the symbol names listed under [For more details](#for-more-details) rather than for file paths; the modules get reorganised, the names are stable.
 
@@ -32,9 +32,11 @@ If you think you need to edit the raw file, you're wrong — use translate/trans
 - [ ] Ordered categories correctly ordered (likerts always go negative → positive pole, e.g. disagree → agree); `num_values` set for all ordered columns (centered on zero for likerts, 1–N otherwise, `null` for nonordered entries)
 - [ ] `nonresponse` marks the true non-response categories ("Don't know", "No answer", "Refused") on **every** categorical block — ordered or not — so those semantics stay available to data-quality and other tooling; `nonordered` lists only the extra off-scale-but-substantive categories ("Other", "none", "Would not participate")
 - [ ] All conventions followed (see below)
-- [ ] Loads cleanly via `read_annotated_data(meta_file)` with no warnings
+- [ ] Loads cleanly via `read_annotated_data(meta_file)` with no warnings (one exception: an aggregating `postprocessing`, as in census metas, always warns about minting fresh row ids)
 - [ ] Everything translated to English (exception: party acronyms)
 - [ ] If a questionnaire / data description is available, add `label` entries with the exact question wording (per-item text on individual columns, shared lead-in text on `scale.label` for item-battery blocks)
+- [ ] Shortened category names have their full answer wording in `labels` (see Labels)
+- [ ] Statement-pair items ("A ⟷ B") have `pole_labels` (see Bipolar statement pairs)
 - [ ] Region fields have a `topo_feature` attached — ask the user for a link to the map JSON if not provided
 - [ ] Party brand colors collected and wired up wherever parties appear (see Colors section) — search the web if not provided by user
 
@@ -148,6 +150,15 @@ df = read_and_process_data({
 
 Column-level `{ meta }` should only contain fields that **differ** from the block's `scale`. The scale is merged as defaults into every column, so don't repeat what's already set there.
 
+**Per-file sources.** When one column has a different name in each wave, map file codes to source columns:
+
+```json
+"files": [{"file": "w1.sav", "code": "W1"}, {"file": "w2.sav", "code": "W2"}],
+...
+["trust_gov", {"source": {"default": "Q5", "W2": "Q7"}, "categories": "infer"}]
+```
+
+`default` is optional. A file with no mapping gets nulls for its rows and a warning. A `source` inside the meta wins over the positional one.
 
 ### Key ColumnMeta fields
 
@@ -182,7 +193,7 @@ parses dates first and then buckets them into chronologically ordered `"01 Dec 2
 | `nonresponse` | `list` | Categories that are true non-responses ("Don't know", "No answer", "Refused", "Hard to say"). **Recommended field going forward** — annotate on all categorical blocks so the nonresponse semantics feed data-quality checks and other tooling, not just modeling. The model treats non-responses as out-of-order automatically, so do not repeat them in `nonordered`. |
 | `nonordered` | `list` | Categories that fall **outside the order but are still substantive** — *not* non-responses ("Other", "none", "Would not participate", "Did not vote"). List only these extras; the effective out-of-order set is `nonresponse` ∪ `nonordered`. For ordered scales the union is excluded from the order (gets `null` in `num_values`). |
 
-The test: a category whose *share you would report as a result* is `nonordered`; one you would *drop from the denominator as missing* is `nonresponse`. A thermometer with both:
+The test is what the category means: one whose *share you would report as a result* is `nonordered`; one that *carries no answer* is `nonresponse`. Marking it does not remove it from plotted shares: pp draws both as likert neutrals and maps both to null under `convert_res: "continuous"`, but categorical shares still count them. Only true nulls leave the denominator, so for a question asked of part of the sample, leave the unasked rows null instead of adding a "Not asked" category. A thermometer with both:
 
 ```json
 {"categories": ["Strongly dislike", "Dislike", "Like", "Strongly like", "Never heard of them", "Don't know"],
@@ -197,14 +208,16 @@ Other `nonordered` examples: "Would not vote" on a referendum for/against scale,
 | Field | Type | Purpose |
 |-------|------|---------|
 | `translate` | `dict` | Map source values → output values |
-| `transform` | `str` | Python expression with `s`, `df`, `ndf`, `pd`, `np`, `stk`, constants in scope |
+| `transform` | `str` | Python expression with `s`, `df`, `ndf`, `pd`, `np`, `stk`, constants in scope (`file_code` is only available in `preprocessing`) |
 | `translate_after` | `dict` | Like translate, applied after transform |
 
 **Display & modeling context:**
 
 | Field | Type | Purpose |
 |-------|------|---------|
-| `label` | `str` | Column description for tooltips/headers |
+| `label` | `str` | Question wording, for tooltips/headers |
+| `labels` | `dict` | Category → full answer wording. See Labels. |
+| `pole_labels` | `[neg, pos]` | Statements at the first and last category of a likert. See Bipolar statement pairs. |
 | `colors` | `dict \| str` | Category value → color mapping (or constant name). See Colors section. |
 | `question_colors` | `dict \| str` | Block-scale only: column name → color for unpivoted plots. See Colors section. |
 | `groups` | `dict` | Named category groupings for filtering |
@@ -212,6 +225,41 @@ Other `nonordered` examples: "Would not vote" on a referendum for/against scale,
 | `modifiers` | `list[str]` | Columns that modify responses (private inputs for modeling) |
 | `bin_breaks` | `int \| list[float]` | Discretization edges for a numeric column — an int means that many quantiles (default 5). Used when a numeric column is a facet dimension, and by a descriptor's `convert_res: "categorical"`. |
 | `bin_labels` | `list[str]` | Labels for those buckets (`len(bin_breaks)+1` when the breaks are explicit). |
+
+### Labels
+
+`label` holds the question wording; **`labels` holds the answer wording**. Category names stay short and stable because they are what plots draw, filters match and waves align on, so the full text of an answer goes in `labels`, keyed by the final category name. Fill it whenever a questionnaire is available and a category name shortens the answer.
+
+```json
+["coping", "Q12", {
+  "categories": ["1", "2", "3", "4", "5"], "ordered": true,
+  "label": "How well does your household cope financially?",
+  "labels": {"1": "We have great difficulty coping", "3": "We manage satisfactorily", "5": "We live very comfortably"}
+}]
+```
+
+- **Partial is fine:** an unlisted category shows its own name. Scale endpoints alone are often enough for numeric scales.
+- **Blocks:** set it on `scale` when every column shares the same answers.
+- **Where it shows:** plot tooltips use it when the column is a facet dimension, through a `<col>_label` column. DMS uses it as an option's survey wording when `translate` has no source text for that category.
+- **Language:** plots don't translate it, so write it in the annotation's language (English by convention 1).
+
+### Bipolar statement pairs
+
+For "A ⟷ B" items, where respondents place themselves between two statements, **always set `pole_labels: [neg, pos]`**. Without it, a reader of the plot can't tell which statement +3 refers to.
+
+```json
+["national_future", "R2r1", {
+  "label": "Estonia's best years are behind it ⟷ Estonia's best years are ahead of it",
+  "pole_labels": ["Estonia's best years are behind it", "Estonia's best years are ahead of it"]
+}]
+```
+
+- **Order:** the statements at the first and the last category of the final scale. If `translate` flips the scale, flip the poles too. Nothing checks this, so verify it against the questionnaire.
+- **Authored, not inferred:** take the statements from the questionnaire. Keep the full wording in `label`.
+- **Per column:** set it on each column, not on `scale`; the column can inherit `likert` from its block.
+- **Validation:** it takes exactly two non-empty strings (a load error otherwise). On a non-likert column it warns on load and fails `hard_validate`.
+- **Multi-file loads:** the last file's meta is the basis, so that file must carry the poles too.
+- **Packaging:** package models with a salk_toolkit that includes this field, since older ones silently drop it.
 
 ### Block-level fields
 
@@ -352,7 +400,7 @@ For best-worst scaling / maxdiff experiments:
 - `set_columns`: regex template or list for the set-membership columns
 - `setindex_column`: column containing set version index (with optional meta; forced `continuous: true`, so it never inherits the scale's topic categories). Mutually exclusive with explicit set_columns data in the file.
 - `topics`: list of all topic strings (typically in `constants`)
-- `sets`: list of lists of 1-indexed topic indices per version (typically in `constants`)
+- `sets`: 1-indexed topic indices per version, as `[version][set][topic]` (typically in `constants`)
 - Scale `translate` maps local-language topics to English
 
 ### MaxDiff translate pipeline
@@ -453,6 +501,8 @@ df = read_and_process_data({
 
 Warnings during `read_annotated_data` are important — they flag missing columns, dropped categories, and category mismatches. Resolve all of them.
 
+Hooks and exclusions run in this order: `preprocessing` per file → columns → `excluded` → `postprocessing`. An aggregating `postprocessing` therefore never sees excluded rows, but an aggregating `preprocessing` removes the rows `excluded` refers to, and you get a "not present in data" warning. Outside that case, the warning usually means a mistyped id.
+
 ## Aligning With Census
 
 Census files define the ground-truth category names and granularity for demographic columns. When annotating:
@@ -490,9 +540,27 @@ df = read_and_process_data({
 })
 ```
 
-Any category mismatch or duplicate column name will surface as a warning or error. Fix these iteratively until the load is clean.
+When annotated sources disagree on a shared column's categories, `ordered` flag, or the order of an ordered column, you get one "disagree on categories" warning listing the columns. The load still succeeds: an ordered column takes the last file's order followed by what only earlier files had. Fix these iteratively until the load is clean, unless the difference is real (e.g. a party that only exists in one wave), in which case note it in a `comment`.
 
 7. **The last file is the basis for the combined meta.** `read_and_process_data` uses the last file's annotation as the combined schema. If blocks exist in file A but not in file B (the last file), they won't appear in the output — even though the data is present. To fix this, add the missing blocks to the last file with `"generated": true` on each such block. This suppresses "no matching columns in data" warnings for that file while letting the block's schema carry through to the combined result.
+
+## Data descriptions
+
+The dict passed to `read_and_process_data` is a `DataDescription`, and it can do more than list `files`:
+
+```python
+df = read_and_process_data({
+    "files": [{"file": "wave1_meta.json"}, {"file": "wave2_meta.json"}],
+    "preprocessing": "df['wave_year'] = 2026",
+    "filter": "df.age >= 18",
+    "merge": [{"file": "regions_meta.json", "on": "municipality", "add": ["region"]}],
+    "postprocessing": "df = df[df.region.notna()]",
+})
+```
+
+- `data` replaces `files` with an inline `{column: values}` dict.
+- `filter` is an expression evaluated as `df[<expr>]`.
+- `merge` adds columns from another source; `add` limits which ones (default: all).
 
 ## Worked Example
 
@@ -516,6 +584,7 @@ A complete minimal example lives in the `examples/` directory beside this skill:
 - **TopK with `translate_after`**: `issue_importance` block uses regex `from_columns`, `na_vals` to filter unselected items, and `translate_after` to map numeric regex groups to English names.
 - **MaxDiff with `scale.translate`**: `maxdiff` block (WEB only) uses `setindex_column` + `topics`/`sets` constants (2 versions × 3 sets of 3 topics). `scale.translate` maps Lithuanian topic names to English — this single dict controls both cell values and the output category list.
 - **`nonordered` vs `nonresponse`**: the `thermometer` block lists "Never heard of them" (substantive, off-scale) in `nonordered` and "Don't know" in `nonresponse`; both get `null` in `num_values`.
+- **`pole_labels`**: the `attitudes` items are statement pairs, so each has the full wording in `label` and the two statements in `pole_labels`.
 - **Colors — `colors` vs `question_colors`**: `party_colors` constant is referenced by `colors` on `party_preference` (values are parties) and by `scale.question_colors` on the `thermometer` block (columns are parties, so each party gets its brand color when the block is unpivoted into a `question` dimension). Thermometer column names must match the `party_colors` keys.
 
 ## For more details

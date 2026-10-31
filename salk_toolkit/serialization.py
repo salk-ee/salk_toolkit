@@ -4,14 +4,14 @@ This module contains helper functions for custom serialization logic,
 keeping the validation.py file clean by separating serialization concerns.
 """
 
-from typing import Any, Callable, Dict, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, Sequence, Tuple, Union, cast
 
 from pydantic import BaseModel, SerializationInfo, ValidationInfo
 
 # Type aliases for column specifications
 ColumnSpecMeta = Dict[str, Any]
 ColumnSpecInput = Union[str, list[object]]
-ParsedColumnSpec = Tuple[str, str, ColumnSpecMeta]
+ParsedColumnSpec = Tuple[str, str | dict[str, str], ColumnSpecMeta]
 
 
 def serialize_pbase(
@@ -181,8 +181,9 @@ def _cspec(tpl: ColumnSpecInput) -> ParsedColumnSpec:
             raise TypeError("Column specification must start with the target column name.")
         cn = raw_cn  # column name
 
+        # A 3-tuple's middle is the source (str, or per-file dict); a 2-tuple's dict is the meta
         raw_sn = tpl[1] if len(tpl) > 1 else cn
-        sn = raw_sn if isinstance(raw_sn, str) else cn  # source column
+        sn = cast(str | dict[str, str], raw_sn) if isinstance(raw_sn, str) or len(tpl) == 3 else cn
 
         if len(tpl) == 3:
             raw_meta = tpl[2]
@@ -198,8 +199,8 @@ def _cspec(tpl: ColumnSpecInput) -> ParsedColumnSpec:
         cn = sn = tpl
         o_cd = {}
 
-    # Add source to metadata dict
-    o_cd["source"] = sn
+    # Add source to metadata dict; one set in the meta itself wins
+    o_cd.setdefault("source", sn)
     return (cn, sn, o_cd)
 
 
@@ -230,7 +231,8 @@ def _cs_dict_to_lst(
     result: list[ColumnSpecInput] = []
     for cn, col_meta in d.items():
         # Extract source from ColumnMeta
-        sn = col_meta.source if hasattr(col_meta, "source") and col_meta.source is not None else cn
+        source = col_meta.get("source") if isinstance(col_meta, dict) else col_meta.source
+        sn = source if source is not None else cn
 
         # Serialize metadata, excluding source (it's in the tuple position)
         if isinstance(col_meta, BaseModel):
@@ -243,6 +245,8 @@ def _cs_dict_to_lst(
         else:
             meta_dict = dict(col_meta) if col_meta else {}
         meta_dict.pop("source", None)
+        if isinstance(sn, dict):  # Per-file sources stay in the meta: a dict in the tuple position would read as meta
+            meta_dict, sn = {"source": sn, **meta_dict}, cn
 
         if sn == cn:
             if meta_dict:

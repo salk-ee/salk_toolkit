@@ -75,10 +75,12 @@
       },
       "columns": [
         ["pol_interest_p", "Q2r1", {
-          "label": "I follow politics closely — I rarely follow politics"
+          "label": "I follow politics closely ⟷ I rarely follow politics",
+          "pole_labels": ["I follow politics closely", "I rarely follow politics"]
         }],
         ["future_p", "Q2r2", {
-          "label": "Optimistic about the future — Pessimistic about the future"
+          "label": "Optimistic about the future ⟷ Pessimistic about the future",
+          "pole_labels": ["Optimistic about the future", "Pessimistic about the future"]
         }]
       ]
     },

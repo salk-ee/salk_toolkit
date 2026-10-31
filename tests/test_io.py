@@ -8,6 +8,7 @@ import pandas as pd
 import numpy as np
 import json
 import tempfile
+import warnings
 import pyarrow as pa
 import pyarrow.parquet as pq
 from typing import cast
@@ -28,7 +29,7 @@ from salk_toolkit.io import (
     read_parquet_metadata,
     infer_meta,
 )
-from salk_toolkit.validation import soft_validate, DataMeta, ColumnMeta, ColumnBlockMeta, BlockScaleMeta
+from salk_toolkit.validation import hard_validate, soft_validate, DataMeta, ColumnMeta, ColumnBlockMeta, BlockScaleMeta
 from salk_toolkit.utils import read_json
 
 
@@ -3714,8 +3715,20 @@ class TestMultiSourceColumns:
             "name": "demographics",
             "columns": [
                 "id",
-                ["topk_1", {"categories": ["False", "Mentioned", "No", "True", "Yes"]}],
-                ["topk_2", {"categories": ["False", "Mentioned", "No", "Not mentioned", "True", "Yes"]}],
+                [
+                    "topk_1",
+                    {
+                        "source": {"F0": "topk_col1", "F1": "column1", "F2": "USA"},
+                        "categories": ["False", "Mentioned", "No", "True", "Yes"],
+                    },
+                ],
+                [
+                    "topk_2",
+                    {
+                        "source": {"F0": "topk_col2", "F1": "column2", "F2": "Canada"},
+                        "categories": ["False", "Mentioned", "No", "Not mentioned", "True", "Yes"],
+                    },
+                ],
             ],
         } in dumped["structure"]
         # System file metadata block is injected implicitly for multi-file inputs
@@ -3791,3 +3804,146 @@ class TestInferMetaDeepL:
 
 if __name__ == "__main__":
     pytest.main([__file__])
+
+
+class TestAnnotationFixes:
+    """Per-file source specs, list-mode topk on categoricals, annotated-source category merging."""
+
+    @pytest.mark.parametrize(
+        "spec",
+        [
+            ["val", {"source": {"W0": "a", "W1": "b"}, "continuous": True}],
+            ["val", {"W0": "a", "W1": "b"}, {"continuous": True}],
+            ["val", "ignored", {"source": {"W0": "a", "W1": "b"}, "continuous": True}],
+        ],
+    )
+    def test_per_file_source_list_forms(self, temp_dir, spec):
+        """Every list form of a per-file source reads the right column per file."""
+        pd.DataFrame({"a": [1, 2]}).to_csv(temp_dir / "w0.csv", index=False)
+        pd.DataFrame({"b": [3]}).to_csv(temp_dir / "w1.csv", index=False)
+        meta = {
+            "files": [{"file": "w0.csv", "code": "W0"}, {"file": "w1.csv", "code": "W1"}],
+            "structure": [{"name": "s", "columns": [spec]}],
+        }
+        path = temp_dir / "m.json"
+        write_json(path, meta)
+        assert read_annotated_data(str(path))["val"].tolist() == [1, 2, 3]
+
+    def test_single_source_in_meta_is_kept(self, temp_dir):
+        """A plain source inside the column meta is honoured."""
+        pd.DataFrame({"a": [1, 2]}).to_csv(temp_dir / "w0.csv", index=False)
+        path = temp_dir / "m.json"
+        write_json(
+            path,
+            {"file": "w0.csv", "structure": [{"name": "s", "columns": [["val", {"source": "a", "continuous": True}]]}]},
+        )
+        assert read_annotated_data(str(path))["val"].tolist() == [1, 2]
+
+    @pytest.mark.parametrize("source", ["a", {"W0": "a"}])
+    @pytest.mark.parametrize("scale", [None, {"continuous": True}])
+    def test_source_survives_serialization(self, source, scale):
+        """Sources survive a dump and reload, with or without a block scale."""
+        block = {"name": "s", "columns": {"val": {"source": source, "continuous": True}}}
+        meta = soft_validate(
+            {"files": [{"file": "w0.csv", "code": "W0"}], "structure": [{**block, "scale": scale}]}, DataMeta
+        )
+        again = soft_validate(meta.model_dump(mode="json"), DataMeta)
+        assert again.structure["s"].columns["val"].source == source
+
+    def test_topk_list_mode_categorical_sources(self, temp_dir):
+        """List-mode topk over Categorical one-hot columns (the sav/parquet case)."""
+        pd.DataFrame(
+            {
+                "q1_1": pd.Categorical(["Mentioned", "Not mentioned", "Mentioned"]),
+                "q1_2": pd.Categorical(["Not mentioned", "Mentioned", "Mentioned"]),
+            }
+        ).to_parquet(temp_dir / "t.parquet")
+        path = temp_dir / "m.json"
+        create = {
+            "type": "topk",
+            "from_columns": ["q1_1", "q1_2"],
+            "res_columns": ["issues_1", "issues_2"],
+            "na_vals": ["Not mentioned"],
+            "translate_after": {"q1_1": "Crime", "q1_2": "Housing"},
+        }
+        scale = {"categories": ["Crime", "Housing"]}
+        write_json(
+            path,
+            {"file": "t.parquet", "structure": [{"name": "issues", "create": create, "scale": scale, "columns": []}]},
+        )
+        df = read_annotated_data(str(path))
+        assert df["issues_1"].tolist() == ["Crime", "Housing", "Crime"]
+        assert df["issues_2"].isna().tolist() == [True, True, False]
+
+    @staticmethod
+    def _two_metas(temp_dir, cats0, cats1, values1, ordered=True, block_scale=False):
+        pd.DataFrame({"q": cats0}).to_csv(temp_dir / "f0.csv", index=False)
+        pd.DataFrame({"q": values1}).to_csv(temp_dir / "f1.csv", index=False)
+        for i, cats in enumerate([cats0, cats1]):
+            m = {"categories": cats, "ordered": ordered}
+            block = {"name": "b", "scale": m, "columns": ["q"]} if block_scale else {"name": "b", "columns": [["q", m]]}
+            write_json(temp_dir / f"m{i}.json", {"file": f"f{i}.csv", "structure": [block]})
+        return {"files": [{"file": str(temp_dir / f"m{i}.json")} for i in range(2)]}
+
+    @pytest.mark.parametrize("block_scale", [False, True])
+    def test_annotated_category_mismatch_warns_and_keeps_order(self, temp_dir, block_scale):
+        """Conflicting metas warn; frame and meta share one merged, ordered list."""
+        desc = self._two_metas(temp_dir, ["x", "y"], ["z", "x"], ["z", "x"], block_scale=block_scale)
+        with pytest.warns(UserWarning, match=r"disagree on categories.*\bq\b"):
+            df, meta = read_and_process_data(desc, return_meta=True)
+        assert df["q"].cat.ordered
+        assert list(df["q"].cat.categories) == ["z", "x", "y"]
+        assert meta.structure["b"].columns["q"].categories == ["z", "x", "y"]
+        if scale := meta.structure["b"].scale:
+            assert scale.categories == ["z", "x", "y"]
+
+    def test_annotated_merge_keeps_earlier_declared_categories(self, temp_dir):
+        """Declared categories only an earlier file has are kept after the last file's."""
+        desc = self._two_metas(temp_dir, ["x", "y", "w"], ["x", "z"], ["x", "z"])
+        with pytest.warns(UserWarning, match="disagree on categories"):
+            df, meta = read_and_process_data(desc, return_meta=True)
+        assert list(df["q"].cat.categories) == ["x", "z", "y", "w"]
+        assert meta.structure["b"].columns["q"].categories == ["x", "z", "y", "w"]
+
+    def test_annotated_reordered_categories_warn(self, temp_dir):
+        """Same categories in a different order on an ordered column warn."""
+        desc = self._two_metas(temp_dir, ["x", "y"], ["y", "x"], ["y", "x"])
+        with pytest.warns(UserWarning, match="disagree on categories"):
+            read_and_process_data(desc)
+
+    def test_matching_annotated_categories_do_not_warn(self, temp_dir):
+        """Identical metas merge silently and stay ordered."""
+        desc = self._two_metas(temp_dir, ["x", "y"], ["x", "y"], ["y", "x"])
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            df = read_and_process_data(desc)
+        assert not [w for w in caught if "disagree" in str(w.message)]
+        assert df["q"].cat.ordered
+
+    def test_raw_source_mismatch_stays_silent(self, temp_dir):
+        """Raw files legitimately differ: the annotation aligns them afterwards."""
+        pd.DataFrame({"q": pd.Categorical(["x"])}).to_parquet(temp_dir / "f0.parquet")
+        pd.DataFrame({"q": pd.Categorical(["y"])}).to_parquet(temp_dir / "f1.parquet")
+        path = temp_dir / "m.json"
+        write_json(
+            path,
+            {
+                "files": [{"file": "f0.parquet"}, {"file": "f1.parquet"}],
+                "structure": [{"name": "b", "columns": [["q", {"categories": ["x", "y"]}]]}],
+            },
+        )
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            read_annotated_data(str(path))
+        assert not [w for w in caught if "disagree" in str(w.message)]
+
+    def test_skill_examples_load_together(self):
+        """The skill's worked example must keep working, poles included."""
+        examples = Path(__file__).parent.parent / ".agents/skills/stk-data-annotations/examples"
+        files = [{"file": str(examples / f"example_{name}_meta.json")} for name in ["web", "cati"]]
+        for fd in files:
+            hard_validate(read_json(fd["file"]))
+        df, meta = read_and_process_data({"files": files}, return_meta=True)
+        assert len(df) == 100
+        poles = meta.structure["attitudes"].columns["pol_interest_p"].pole_labels
+        assert poles == ("I follow politics closely", "I rarely follow politics")

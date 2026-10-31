@@ -1,7 +1,7 @@
 """Metadata introspection and reconciliation helpers for DataMeta structures."""
 
 from collections.abc import Sequence
-from typing import TypeVar
+from typing import Any, TypeVar
 
 import pandas as pd
 
@@ -293,7 +293,7 @@ def _fix_meta_categories(
     new_structure: dict[str, ColumnBlockMeta] = {}
 
     for g in structure.values():
-        all_cats = set()
+        all_cats: dict[Any, None] = {}  # Ordered set
         # Work with Pydantic object directly
         scale_meta = g.scale
         prefix = scale_meta.col_prefix if scale_meta is not None and scale_meta.col_prefix is not None else ""
@@ -328,7 +328,7 @@ def _fix_meta_categories(
                     # Preserve the observed dtype category order (do NOT sort).
                     missing_cats = [c for c in cats if c not in existing_cats]
                     updated_col_meta = col_meta.model_copy(update={"categories": existing_cats + missing_cats})
-                all_cats |= set(cats)
+                all_cats.update(dict.fromkeys(cats))
             updated_columns[cn] = updated_col_meta
 
         # Get scale for category inference - work with Pydantic object directly
@@ -337,9 +337,9 @@ def _fix_meta_categories(
         if scale_meta is not None and scale_meta.categories == "infer":
             # IF they all share same categories, keep the category order
             tr = scale_meta.translate or {}
-            if all_cats == set(tr.values()):  # First prefer translate order
+            if set(all_cats) == set(tr.values()):  # First prefer translate order
                 scats = list(dict.fromkeys(tr.values()))
-            elif all_cats == set(cats):  # Then prefer order from single col
+            elif set(all_cats) == set(cats):  # Then prefer order from single col
                 scats = list(cats)
             else:  # Otherwise, sort categories
                 scats = sorted(list(all_cats))
@@ -350,12 +350,12 @@ def _fix_meta_categories(
             and scale_meta is not None
             and scale_meta.categories is not None
             and isinstance(scale_meta.categories, list)
-            and not set(scale_meta.categories) >= all_cats
+            and not set(scale_meta.categories) >= set(all_cats)
         ):
-            diff = all_cats - set(scale_meta.categories)
+            diff = [c for c in all_cats if c not in scale_meta.categories]
             if warnings:
                 warn(f"Fixing missing categories for group {g.name}: {diff}")
-            updated_scale = scale_meta.model_copy(update={"categories": list(all_cats)})
+            updated_scale = scale_meta.model_copy(update={"categories": [*scale_meta.categories, *diff]})
 
         # Update the block with new scale and columns if they changed
         update_dict: dict[str, object] = {}
